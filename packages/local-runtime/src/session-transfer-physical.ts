@@ -9,6 +9,7 @@ import { Session } from "@ericsanchezok/synergy-harness/session"
 import {
   SessionTransferEpochs as Epochs,
   SessionTransferSource as Source,
+  SessionTransferWorkspaces as Files,
 } from "@ericsanchezok/synergy-harness/session/transfer"
 import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
 import { WorkspaceBinding, WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
@@ -142,10 +143,11 @@ export namespace NativeSessionTransferPhysical {
     owner.directory = await fs.mkdtemp(path.join(Global.Path.data, "session-physical-"))
     const database = (owner.database = new Database(path.join(owner.directory, "cohort.sqlite"), { create: true }))
     database.exec(
-      "PRAGMA journal_mode=OFF; PRAGMA synchronous=OFF; PRAGMA temp_store=FILE; PRAGMA cache_size=-2048; CREATE TABLE members(id TEXT PRIMARY KEY,parent TEXT,workspace TEXT); CREATE TABLE workspaces(id TEXT PRIMARY KEY,path TEXT NOT NULL,generation INTEGER NOT NULL)",
+      "PRAGMA journal_mode=OFF; PRAGMA synchronous=OFF; PRAGMA temp_store=FILE; PRAGMA cache_size=-2048; CREATE TABLE members(id TEXT PRIMARY KEY,parent TEXT,workspace TEXT); CREATE TABLE workspaces(id TEXT PRIMARY KEY,path TEXT NOT NULL,generation INTEGER NOT NULL); CREATE TABLE remote_workspaces(id TEXT PRIMARY KEY,metadata TEXT NOT NULL)",
     )
     using insert = database.prepare("INSERT INTO members(id,parent,workspace) VALUES(?,?,?)")
     using workspace = database.prepare("INSERT OR IGNORE INTO workspaces(id,path,generation) VALUES(?,?,?)")
+    using remote = database.prepare("INSERT OR IGNORE INTO remote_workspaces(id,metadata) VALUES(?,?)")
     let root = false
     for await (const member of Source.members(owner.binding, owner.signal)) {
       const source = await Epochs.ownerPreparationBinding({
@@ -162,6 +164,19 @@ export namespace NativeSessionTransferPhysical {
         continue
       }
       const info = await WorkspaceCatalog.get(session.workspaceID, source.scopeID)
+      if (info.backend && Files.hasSourceProvider(info.backend.provider)) {
+        if (
+          info.lifecycle !== "active" ||
+          info.binding.state !== "bound" ||
+          info.binding.path !== null ||
+          info.binding.physicalID ||
+          info.content ||
+          info.activeMount
+        )
+          fail("remote Workspace cannot substitute native geometry")
+        remote.run(info.id, JSON.stringify(info))
+        continue
+      }
       const binding = await WorkspaceBinding.validate(info.id, info.scopeID, info.binding.generation)
       workspace.run(info.id, await fs.realpath(binding.path), info.binding.generation)
     }
@@ -208,6 +223,14 @@ export namespace NativeSessionTransferPhysical {
     for (const root of roots.iterate()) {
       const current = await WorkspaceBinding.validate(root.id, owner.binding.scopeID, root.generation)
       if ((await fs.realpath(current.path)) !== root.path) fail("Workspace physical binding changed during capture")
+    }
+    using remotes = database.prepare<{ id: string; metadata: string }, []>(
+      "SELECT id,metadata FROM remote_workspaces ORDER BY id",
+    )
+    for (const row of remotes.iterate()) {
+      const info = await WorkspaceCatalog.get(row.id, owner.binding.scopeID)
+      if (!info.backend || !Files.hasSourceProvider(info.backend.provider) || JSON.stringify(info) !== row.metadata)
+        fail("remote Workspace binding changed during source capture")
     }
   }
   async function drain(owner: Held) {

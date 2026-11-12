@@ -229,6 +229,13 @@ export namespace OrganizationHandoffTarget {
         if (selected.workspaceMoveReceiptHash !== undefined && selected.workspaceMoveReceiptHash !== moveHash)
           fail("Destination mapping conflicts with its frozen WorkspaceMove receipt")
         selected.workspaceMoveReceiptHash = moveHash
+        const sourceHash =
+          member.session.id === plan.sessionID && frozen?.purpose === "source-frozen"
+            ? (frozen.workspaceSourceHash ?? null)
+            : null
+        if (selected.workspaceSourceHash !== undefined && selected.workspaceSourceHash !== sourceHash)
+          fail("Destination mapping conflicts with its frozen Workspace source snapshot")
+        selected.workspaceSourceHash = sourceHash
         if (frozen?.purpose === "source-frozen" && frozen.fileClosureHash !== null) {
           const native = await Files.targetMapping({
             handoffID: plan.handoffID,
@@ -256,7 +263,7 @@ export namespace OrganizationHandoffTarget {
         )
         converted.update(JSON.stringify([member.session.id, mapping]))
         const reservation = binding(plan, member.session.id)
-        await Epochs.reserve(reservation, manifestHash)
+        await Epochs.reserve(reservation, manifestHash, await Epochs.destinationPrior(reservation))
         if (retain) bindings.push(reservation)
         for (const ownerID of ownerOrder(Object.keys(member.owners))) {
           const context = await Staging.context({
@@ -391,6 +398,7 @@ export namespace OrganizationHandoffTarget {
             closureHash: aggregate.digest,
             fileClosureHash: frozen.fileClosureHash,
             workspaceMoveReceiptHash: frozen.workspaceMoveReceiptHash,
+            ...(frozen.workspaceSourceHash === undefined ? {} : { workspaceSourceHash: frozen.workspaceSourceHash }),
             paused: true,
           })
           assertOwner(input.signal)

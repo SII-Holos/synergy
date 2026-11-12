@@ -6,6 +6,8 @@ export namespace SessionTransferWorkspaces {
   export type SourcePort = WorkspacePortableSource.SourcePort
   export type Host = WorkspacePortableSource.Host
   export const registerHost = WorkspacePortableSource.registerHost
+  export const registerSourceProvider = WorkspacePortableSource.registerProvider
+  export const hasSourceProvider = WorkspacePortableSource.hasProvider
   export const capture = WorkspacePortableSource.capture
   export const receipt = WorkspacePortableSource.receipt
   export const withCaptured = WorkspacePortableSource.withCaptured

@@ -552,6 +552,35 @@ export namespace SessionTransferEpochs {
     })
   }
 
+  export async function destinationPrior(value: Binding) {
+    const binding = Binding.parse(value)
+    return Storage.snapshot(async () => {
+      const current = await pointer(binding.sessionID)
+      if (!current) return
+      if (!current.handoffID || !current.fromEpoch || current.uncertain || current.scopeID !== binding.scopeID)
+        fail("destination has unrelated current epoch data")
+      const old = await optional(
+        State,
+        stateKey({ sessionID: binding.sessionID, handoffID: current.handoffID, fromEpoch: current.fromEpoch }),
+      )
+      if (
+        !old ||
+        old.role !== "source" ||
+        old.phase !== "surrendered" ||
+        !old.manifestHash ||
+        current.epoch !== old.binding.fromEpoch ||
+        old.binding.scopeID !== binding.scopeID ||
+        old.binding.sourceID !== binding.targetID ||
+        old.binding.toEpoch > binding.fromEpoch
+      )
+        fail("destination requires its exact permanently surrendered epoch")
+      return Supersedes.parse({
+        handoffID: old.binding.handoffID,
+        fromEpoch: old.binding.fromEpoch,
+        manifestHash: old.manifestHash,
+      })
+    })
+  }
   export async function reserve(value: Binding, manifestHash: string, previous?: z.infer<typeof Supersedes>) {
     const binding = Binding.parse(value)
     Hash.parse(manifestHash)

@@ -13,11 +13,13 @@ import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { createHash } from "node:crypto"
 import fs from "node:fs/promises"
 import path from "node:path"
-import { startMemberSyncExporter } from "../src/sync-exporter"
+import { startMemberSyncExporter, drainMemberSync } from "../src/sync-exporter"
 import type { MemberConnection } from "../src/connection"
 import { registerSessionSchema } from "../src/session-schema"
 import { OrganizationSyncPath as Keys } from "../src/storage/path"
 import { RolloutArtifact } from "@ericsanchezok/synergy-harness/session/rollout/artifact"
+import { SessionTransferEpochs as Epochs } from "@ericsanchezok/synergy-harness/session/transfer"
+import { SessionLifecycle } from "@ericsanchezok/synergy-harness/session/lifecycle"
 
 const binding: Sessions.Binding = {
   schemaVersion: 1,
@@ -27,6 +29,108 @@ const binding: Sessions.Binding = {
   driverRuntimeID: "runtime-sync",
   bindingEpoch: 1,
 }
+
+test("a surrendered source never dispatches its retained shared transcript queue", async () => {
+  await using runtime = await testRuntime({ register: () => registerSessionSchema(binding) })
+  await runtime.run(async () => {
+    const f = await fixture()
+    await ScopeContext.provide({
+      scope: f.scope,
+      workspace: null,
+      fn: async () => {
+        await SessionLifecycle.pause({ sessionID: f.session.id, reason: "interrupted" })
+        const source = {
+          sessionID: f.session.id,
+          scopeID: binding.projectID,
+          handoffID: "sync-return",
+          sourceID: binding.driverRuntimeID,
+          targetID: "runtime-target",
+          fromEpoch: 1,
+          toEpoch: 2,
+        }
+        await Epochs.freeze(source)
+        await Epochs.seal(source, "a".repeat(64))
+        await Epochs.surrender(source, "b".repeat(64))
+        const remote = transport(f.session.id)
+        let reads = 0
+        const read = remote.connection.syncState
+        remote.connection.syncState = async (...args) => {
+          reads++
+          return read(...args)
+        }
+        const exporter = startMemberSyncExporter({
+          identity: { orgID: binding.orgID, accountID: binding.creatorID, deviceID: "device-sync" },
+          connection: remote.connection,
+          signal: new AbortController().signal,
+        })
+        try {
+          await exporter.flush()
+          expect(reads).toBe(0)
+          expect(remote.batches).toHaveLength(0)
+          expect((await Session.get(f.session.id)).organization?.driverRuntimeID).toBe(binding.driverRuntimeID)
+          expect((await Epochs.inspect(source)).phase).toBe("surrendered")
+        } finally {
+          await exporter.close()
+        }
+      },
+    })
+  })
+})
+
+test("source freeze drains an already accepted sync request before its final closure", async () => {
+  await using runtime = await testRuntime({ register: () => registerSessionSchema(binding) })
+  await runtime.run(async () => {
+    const f = await fixture()
+    const remote = transport(f.session.id)
+    const accepted = Promise.withResolvers<void>()
+    const released = Promise.withResolvers<void>()
+    const read = remote.connection.syncState
+    remote.connection.syncState = async (...args) => {
+      accepted.resolve()
+      await released.promise
+      return read(...args)
+    }
+    const exporter = startMemberSyncExporter({
+      identity: { orgID: binding.orgID, accountID: binding.creatorID, deviceID: "device-sync" },
+      connection: remote.connection,
+      signal: new AbortController().signal,
+    })
+    try {
+      const flushing = exporter.flush()
+      await accepted.promise
+      await ScopeContext.provide({
+        scope: f.scope,
+        workspace: null,
+        fn: async () => {
+          await SessionLifecycle.pause({ sessionID: f.session.id, reason: "interrupted" })
+          await Epochs.beginSource({
+            sessionID: f.session.id,
+            scopeID: binding.projectID,
+            handoffID: "accepted-sync",
+            sourceID: binding.driverRuntimeID,
+            targetID: "runtime-target",
+            fromEpoch: 1,
+            toEpoch: 2,
+          })
+        },
+      })
+      let done = false
+      const draining = drainMemberSync(f.session.id).then(() => {
+        done = true
+      })
+      await Bun.sleep(10)
+      expect(done).toBe(false)
+      released.resolve()
+      await draining
+      await flushing
+      expect(done).toBe(true)
+      expect(remote.batches).toHaveLength(0)
+    } finally {
+      released.resolve()
+      await exporter.close()
+    }
+  })
+})
 
 async function fixture() {
   const scope = await Scope.registerProject({

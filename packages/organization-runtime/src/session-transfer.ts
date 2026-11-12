@@ -21,10 +21,13 @@ import { OrganizationIntakePath as Keys } from "./storage/path"
 import { OrganizationSessionAdoption as Adoption } from "./session-adoption"
 import { WorkspaceMove } from "@ericsanchezok/synergy-harness/workspace/move"
 import { WorkspaceContent } from "@ericsanchezok/synergy-harness/workspace/content"
+import { WorkspaceArchive } from "@ericsanchezok/synergy-harness/workspace/archive"
+import { drainMemberSync } from "./sync-exporter"
+import { drainMemberFiles } from "./execution-source"
 
 export namespace OrganizationSessionTransfer {
   export const id = "organization-runtime"
-  export const version = 4
+  export const version = 5
   const ID = z.string().min(1)
   const Count = z.number().int().nonnegative().safe()
   const LegacyHeader = z.strictObject({
@@ -42,11 +45,58 @@ export namespace OrganizationSessionTransfer {
     commandSeq: Count,
     records: Count,
   })
-  const CurrentHeader = LegacyHeader.extend({
+  const ReceiptHeader = LegacyHeader.extend({
     version: z.literal(4),
     workspaceMoveReceipt: WorkspaceMove.Receipt.nullable(),
   })
-  const Header = z.union([LegacyHeader, CurrentHeader])
+  const CurrentHeader = ReceiptHeader.extend({
+    version: z.literal(5),
+    workspaceSourceSnapshot: WorkspaceArchive.Subtree.nullable(),
+  })
+  const Header = z.union([LegacyHeader, ReceiptHeader, CurrentHeader])
+  const sourceKey = (binding: Epochs.Binding) => [
+    "organization-session-transfer",
+    binding.handoffID,
+    binding.sessionID,
+    "workspace-source",
+  ]
+  const WorkspaceSource = z.strictObject({
+    version: z.literal(1),
+    binding: Epochs.Binding,
+    snapshot: WorkspaceArchive.Subtree,
+  })
+  export async function workspaceSource(value: Epochs.Binding) {
+    const binding = Epochs.Binding.parse(value)
+    const [raw] = await Storage.readMany([sourceKey(binding)])
+    if (raw === undefined) return null
+    const retained = WorkspaceSource.parse(raw)
+    if (!same(retained.binding, binding)) fail("Workspace source belongs to another exact aggregate")
+    return retained.snapshot
+  }
+  export async function retainWorkspaceSource(
+    value: Epochs.Binding,
+    snapshot: WorkspaceArchive.Subtree,
+    signal: AbortSignal,
+  ) {
+    const binding = Epochs.Binding.parse(value)
+    const selected = WorkspaceArchive.Subtree.parse(snapshot)
+    const assert = WorkspaceContent.captureOwner(signal)
+    await Storage.transaction(
+      async () => {
+        const actual = await Epochs.ownerPreparationBinding({
+          sessionID: binding.sessionID,
+          handoffID: binding.handoffID,
+        })
+        if (!same(actual, binding)) fail("Workspace source epoch changed")
+        const previous = await workspaceSource(binding)
+        if (previous && !same(previous, selected)) fail("Workspace source cannot replace its captured service head")
+        if (!previous)
+          await Storage.write(sourceKey(binding), WorkspaceSource.parse({ version: 1, binding, snapshot: selected }))
+        assert()
+      },
+      { commitGuard: assert },
+    )
+  }
   const moveKey = (handoffID: string, sessionID: string) => [
     "organization-session-transfer",
     ID.parse(handoffID),
@@ -237,9 +287,14 @@ export namespace OrganizationSessionTransfer {
   function current(session: Readonly<Session.Info>) {
     return OrganizationProtocol.SessionBinding.parse(session.organization)
   }
-  function sourceHeader(context: Owners.SourceContext, value: unknown, receipt: WorkspaceMove.Receipt | null = null) {
+  function sourceHeader(
+    context: Owners.SourceContext,
+    value: unknown,
+    receipt: WorkspaceMove.Receipt | null = null,
+    snapshot: WorkspaceArchive.Subtree | null = null,
+  ) {
     return CurrentHeader.parse({
-      version: 4,
+      version: 5,
       capabilities: { adoption: 1, commandClosure: 1, executionContinuation: 1, corePublication: 1 },
       handoffID: context.handoffID,
       rootSessionID: context.rootSessionID,
@@ -248,6 +303,7 @@ export namespace OrganizationSessionTransfer {
       commandSeq: value === undefined ? 0 : Records.State.parse(value).commandSeq,
       records: 0,
       workspaceMoveReceipt: receipt,
+      workspaceSourceSnapshot: snapshot,
     })
   }
   async function closedPosition(
@@ -283,6 +339,11 @@ export namespace OrganizationSessionTransfer {
           value,
           context.session.id === context.rootSessionID
             ? await workspaceMove(
+                await Epochs.ownerPreparationBinding({ sessionID: context.session.id, handoffID: context.handoffID }),
+              )
+            : null,
+          context.session.id === context.rootSessionID
+            ? await workspaceSource(
                 await Epochs.ownerPreparationBinding({ sessionID: context.session.id, handoffID: context.handoffID }),
               )
             : null,
@@ -357,20 +418,32 @@ export namespace OrganizationSessionTransfer {
       !same(header.sourceBinding, current(context.session))
     )
       fail("Workspace receipt has another source header")
-    return header.version === 4 ? header.workspaceMoveReceipt : null
+    return header.version >= 4 && "workspaceMoveReceipt" in header ? header.workspaceMoveReceipt : null
+  }
+  export async function stagedWorkspaceSource(context: Owners.TargetContext) {
+    await stagedWorkspaceMove(context)
+    const row = await context.staged.record(headerKey(context))
+    const header = Header.parse(row?.value)
+    return header.version === 5 ? header.workspaceSourceSnapshot : null
   }
   async function validate(context: Owners.TargetContext) {
     const row = await context.staged.record(headerKey(context))
     if (!row) fail("Portable organization owner proof is missing")
     const header = Header.parse(row.value)
     if (header.version !== context.sourceVersion) fail("Portable organization header has another reader version")
-    const move = header.version === 4 ? header.workspaceMoveReceipt : null
+    const move = header.version !== 3 ? header.workspaceMoveReceipt : null
     const expectedMove = context.mapping.workspaceMoveReceiptHash ?? null
     if (
       (move ? WorkspaceMove.receiptHash(move) : null) !== expectedMove ||
       (move && (header.sessionID !== header.rootSessionID || move.source.scopeID !== header.sourceBinding.projectID))
     )
       fail("Portable organization header has another complete WorkspaceMove receipt")
+    const snapshot = header.version === 5 ? header.workspaceSourceSnapshot : null
+    if (
+      (snapshot ? WorkspaceArchive.subtreeHash(snapshot) : null) !== (context.mapping.workspaceSourceHash ?? null) ||
+      (snapshot && (move || header.sessionID !== header.rootSessionID))
+    )
+      fail("Portable organization header has another complete Workspace source snapshot")
     const core = await context.staged.relatedRecord?.("session-core", [
       "sessions",
       context.session.scope.id,
@@ -551,7 +624,7 @@ export namespace OrganizationSessionTransfer {
   export function register() {
     Owners.register(id, {
       version,
-      reads: [3, version],
+      reads: [3, 4, version],
       stagedDependencies: ["session-core"],
       publicationAfter: ["session-core"],
       applies: (session) => !!session.organization,
@@ -559,7 +632,12 @@ export namespace OrganizationSessionTransfer {
         return { requirements: [], children: (async function* () {})() }
       },
       async freeze(context) {
-        await Epochs.ownerPreparationBinding({ sessionID: context.session.id, handoffID: context.handoffID })
+        const binding = await Epochs.ownerPreparationBinding({
+          sessionID: context.session.id,
+          handoffID: context.handoffID,
+        })
+        await drainMemberFiles(binding, context.signal)
+        if (context.session.id === context.rootSessionID) await drainMemberSync(context.session.id)
         await Storage.snapshot(async () => {
           const binding = current(context.session)
           const [state] = await Storage.readMany([Keys.state(binding.orgID, context.session.id)])

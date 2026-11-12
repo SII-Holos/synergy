@@ -2655,6 +2655,19 @@ export type OrgHandoffView = {
         kind: "native"
       }
     | {
+        kind: "organization-live"
+        source: {
+          workspaceID: string
+          generation: number
+        }
+        resource: {
+          resourceID: string
+          workspaceID: string
+          generation: number
+          path: string
+        }
+      }
+    | {
         kind: "organization-object"
         moveID: string
         source: {
@@ -2683,6 +2696,19 @@ export type OrgHandoffPrepare =
       workspaceMapping:
         | {
             kind: "native"
+          }
+        | {
+            kind: "organization-live"
+            source: {
+              workspaceID: string
+              generation: number
+            }
+            resource: {
+              resourceID: string
+              workspaceID: string
+              generation: number
+              path: string
+            }
           }
         | {
             kind: "organization-object"
@@ -2774,6 +2800,7 @@ export type OrgHandoffProof =
       closureHash: string
       fileClosureHash: string | null
       workspaceMoveReceiptHash: string | null
+      workspaceSourceHash?: string | null
       paused: true
       drained: true
     }
@@ -2796,6 +2823,7 @@ export type OrgHandoffProof =
       closureHash: string
       fileClosureHash: string | null
       workspaceMoveReceiptHash: string | null
+      workspaceSourceHash?: string | null
       paused: true
     }
   | {
@@ -2999,22 +3027,55 @@ export type Schema2 =
       [key: string]: Schema2
     }
 
+export type Schema3 =
+  | string
+  | number
+  | boolean
+  | null
+  | Array<Schema3>
+  | {
+      [key: string]: Schema3
+    }
+
+export type Schema4 =
+  | string
+  | number
+  | boolean
+  | null
+  | Array<Schema4>
+  | {
+      [key: string]: Schema4
+    }
+
 export type OrgHandoffWorkspaceResult =
+  | {
+      action: "source"
+      snapshot: Schema0
+    }
+  | {
+      action: "source-object"
+      hash: string
+      data: string
+    }
+  | {
+      action: "source-validate"
+      snapshot: Schema1
+    }
   | {
       action: "put"
       hash: string
     }
   | {
       action: "publish"
-      receipt: Schema0
+      receipt: Schema2
     }
   | {
       action: "inspect"
-      status?: Schema1
+      status?: Schema3
     }
   | {
       action: "validate"
-      receipt: Schema2
+      receipt: Schema4
     }
 
 export type OrgHandoffWorkspaceRequest = {
@@ -3035,6 +3096,17 @@ export type OrgHandoffWorkspaceRequest = {
     connectionEpoch: number
     mappingHash: string
     operation:
+      | {
+          action: "source"
+        }
+      | {
+          action: "source-object"
+          hash: string
+          maximumBytes: number
+        }
+      | {
+          action: "source-validate"
+        }
       | {
           action: "put"
           hash: string

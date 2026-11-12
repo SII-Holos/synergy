@@ -13,6 +13,8 @@ import {
 import { createOrganizationClient } from "@ericsanchezok/synergy-sdk/organization"
 import { OrganizationRuntimeError } from "./error"
 import { WorkspaceMove } from "@ericsanchezok/synergy-harness/workspace/move"
+import { WorkspaceArchive } from "@ericsanchezok/synergy-harness/workspace/archive"
+import { WorkspaceTree } from "@ericsanchezok/synergy-harness/workspace/tree"
 
 export interface MemberResourceClient {
   inspectWorkspaceFile(
@@ -161,7 +163,7 @@ export function createMemberResourceClient(options: {
         try {
           const pathname = new URL(input instanceof Request ? input.url : String(input), options.origin).pathname
           const maximum =
-            pathname === "/runtime/v1/workspaces/files"
+            pathname === "/runtime/v1/workspaces/files" || pathname === "/runtime/v1/handoffs/workspace"
               ? 6 * 1024 * 1024
               : /\/runtime\/v1\/gateway\/connections\/[^/]+\/mcp$/.test(pathname)
                 ? 16 * 1024 * 1024
@@ -403,28 +405,26 @@ export function createMemberResourceClient(options: {
       const plan = Handoff.MachinePlan.parse(value)
       const operation = Cloud.HandoffWorkspaceOperation.parse(input)
       const workspace = plan.workspacePlan
-      if (
-        !workspace ||
-        workspace.mapping.kind !== "organization-object" ||
-        !workspace.targetScopeID ||
-        !workspace.selectionActor
-      )
+      if (!workspace || workspace.mapping.kind === "native" || !workspace.targetScopeID || !workspace.selectionActor)
         throw failure("HANDOFF_BLOCKED", "Workspace transfer requires its complete original mapping", "not_dispatched")
       const mapping = workspace.mapping
-      const original = WorkspaceMove.Request.parse({
-        id: mapping.moveID,
-        source: { ...mapping.source, scopeID: plan.sourceBinding.projectID },
-        target: {
-          workspaceID: mapping.target.workspaceID,
-          generation: mapping.target.generation,
-          scopeID: workspace.targetScopeID,
-          path: mapping.target.path,
-          expectedRevision: mapping.target.expectedRevision,
-        },
-        mappingRevision: plan.mappingPlanRevision,
-        acceptedDiffHash: mapping.acceptedDiffHash,
-        actor: workspace.selectionActor,
-      })
+      const original =
+        mapping.kind === "organization-object"
+          ? WorkspaceMove.Request.parse({
+              id: mapping.moveID,
+              source: { ...mapping.source, scopeID: plan.sourceBinding.projectID },
+              target: {
+                workspaceID: mapping.target.workspaceID,
+                generation: mapping.target.generation,
+                scopeID: workspace.targetScopeID,
+                path: mapping.target.path,
+                expectedRevision: mapping.target.expectedRevision,
+              },
+              mappingRevision: plan.mappingPlanRevision,
+              acceptedDiffHash: mapping.acceptedDiffHash,
+              actor: workspace.selectionActor,
+            })
+          : undefined
       const issuedAt = Date.now()
       const proof = Cloud.HandoffWorkspaceProof.parse({
         ...Object.fromEntries(
@@ -452,6 +452,35 @@ export function createMemberResourceClient(options: {
             (result.action === "put" && (operation.action !== "put" || result.hash !== operation.hash))
           )
             throw failure("PROTOCOL_MISMATCH", "Workspace transfer returned another original operation")
+          if (result.action === "source" || result.action === "source-validate") {
+            if (mapping.kind !== "organization-live")
+              throw failure("PROTOCOL_MISMATCH", "Workspace source changed its selected mapping")
+            const snapshot = WorkspaceArchive.Subtree.parse(result.snapshot)
+            if (
+              snapshot.workspaceID !== mapping.resource.workspaceID ||
+              snapshot.generation !== mapping.resource.generation ||
+              snapshot.scopeID !== workspace.targetScopeID ||
+              snapshot.path !== mapping.resource.path ||
+              snapshot.manifest !== WorkspaceTree.hash(new TextEncoder().encode(JSON.stringify(snapshot.files))) ||
+              (plan.frozen?.proof.purpose === "source-frozen" &&
+                plan.frozen.proof.workspaceSourceHash !== WorkspaceArchive.subtreeHash(snapshot))
+            )
+              throw failure(
+                "PROTOCOL_MISMATCH",
+                "Workspace source snapshot differs from its original service selection",
+              )
+            return
+          }
+          if (result.action === "source-object") {
+            if (operation.action !== "source-object" || result.hash !== operation.hash)
+              throw failure("PROTOCOL_MISMATCH", "Workspace source returned another object")
+            const bytes = Buffer.from(result.data, "base64")
+            if (bytes.toString("base64") !== result.data)
+              throw failure("PROTOCOL_MISMATCH", "Workspace source object encoding changed")
+            WorkspaceTree.verify(result.hash, bytes, operation.maximumBytes)
+            return
+          }
+          if (!original) throw failure("PROTOCOL_MISMATCH", "Live Workspace source cannot publish a move")
           const receipt =
             result.action === "publish" || result.action === "validate"
               ? WorkspaceMove.Receipt.parse(result.receipt)

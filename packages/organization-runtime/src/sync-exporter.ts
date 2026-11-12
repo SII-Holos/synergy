@@ -21,6 +21,15 @@ import { SecretMask } from "@ericsanchezok/synergy-harness/secrets/mask"
 import { currentRunID, observeSessionStatus } from "./session-status"
 import type { StatusInfo } from "@ericsanchezok/synergy-harness/session/types"
 import { readCommandControlVersion } from "./command-intake"
+import { SessionTransferEpochs as Epochs } from "@ericsanchezok/synergy-harness/session/transfer"
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
+
+const exporters = RuntimeContext.state(() => new Set<() => Promise<void>>())
+export async function drainMemberSync(sessionID: string) {
+  if (Storage.inTransaction() || !(await Epochs.isFrozen(sessionID)))
+    throw new Error("Shared export drainage requires its frozen native source outside a transaction")
+  await Promise.all([...exporters()].map((drain) => drain()))
+}
 
 const State = z.strictObject({
   schemaVersion: z.literal(1),
@@ -126,6 +135,10 @@ export function startMemberSyncExporter(input: {
   let closed = false
   let running: Promise<void> | undefined
   let closing: Promise<void> | undefined
+  const drain = async () => {
+    await Promise.allSettled([startup, ...tails.values(), ...(running ? [running] : [])])
+  }
+  exporters().add(drain)
 
   function queue(sessionID: string, work: () => Promise<void>) {
     if (closed || signal.aborted) return
@@ -185,6 +198,7 @@ export function startMemberSyncExporter(input: {
       )
     )
       return
+    if (await Epochs.isFrozen(root.id)) return
     return {
       session: initial,
       root,
@@ -258,7 +272,12 @@ export function startMemberSyncExporter(input: {
     const previous = await read(ProjectionRecord, Keys.projection(identity.orgID, rootSessionID, draftID))
     let status = previous?.event.type === "session" ? previous.event.session.status : undefined
     const controlVersion = await readCommandControlVersion(identity.orgID, rootSessionID)
-    if (!status || observed || status.controlVersion !== controlVersion || status.runID !== (await currentRunID(session)))
+    if (
+      !status ||
+      observed ||
+      status.controlVersion !== controlVersion ||
+      status.runID !== (await currentRunID(session))
+    )
       status = await observeSessionStatus(session, identity.orgID, rootSessionID)
     await putDraft(
       rootSessionID,
@@ -621,6 +640,7 @@ export function startMemberSyncExporter(input: {
           ? ({ kind: "session", scopeID: record.scopeID, sessionID: sourceSessionID } as const)
           : record.owner
       if (artifact.bytes === 0) {
+        if (!(await sessionBinding(rootSessionID))) return
         await connection.uploadBlob(
           {
             sessionID: rootSessionID,
@@ -639,6 +659,7 @@ export function startMemberSyncExporter(input: {
       let offset = 0
       async function send() {
         if (!buffered) return
+        if (!(await sessionBinding(rootSessionID))) throw new Error("Shared export source epoch is frozen")
         const bytes = Buffer.concat(parts.map((part) => Buffer.from(part)))
         await connection.uploadBlob(
           {
@@ -814,6 +835,7 @@ export function startMemberSyncExporter(input: {
   }
 
   async function flushSession(sessionID: string) {
+    if (!(await sessionBinding(sessionID))) return
     const share = await connection.syncState(sessionID, signal)
     if (share.shareState !== "shared" || share.syncState === "blocked") return
     await prepareGeneration(sessionID, share)
@@ -821,6 +843,8 @@ export function startMemberSyncExporter(input: {
     const batch = await prepare(sessionID, share)
     if (!batch) return
     await uploadBatchBlobs(sessionID, share, batch)
+    const bound = await sessionBinding(sessionID)
+    if (!bound || bound.binding.bindingEpoch !== batch.bindingEpoch) return
     const ack = Sync.Ack.parse(await connection.sync(batch, signal))
     if (
       ack.sessionID !== batch.sessionID ||
@@ -962,6 +986,7 @@ export function startMemberSyncExporter(input: {
       partWorkers.clear()
       tails.clear()
       sessions.clear()
+      exporters().delete(drain)
       const errors = settled.flatMap((result) => (result.status === "rejected" ? [result.reason] : []))
       if (errors.length) throw new AggregateError(errors, "Shared transcript exporter cleanup failed")
     })()

@@ -29,6 +29,7 @@ import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
 import { WorkspaceMove } from "@ericsanchezok/synergy-harness/workspace/move"
 import { WorkspaceArchive } from "@ericsanchezok/synergy-harness/workspace/archive"
 import { OrganizationSessionTransfer as Transfer } from "./session-transfer"
+import { OrganizationHandoffWorkspaceSource as WorkspaceSource } from "./handoff-workspace-source"
 
 export namespace OrganizationHandoffSource {
   interface Input {
@@ -206,7 +207,7 @@ export namespace OrganizationHandoffSource {
       signal: AbortSignal,
     ) {
       const mapping = plan.workspacePlan?.mapping
-      if (!mapping || mapping.kind === "native") return
+      if (!mapping || mapping.kind !== "organization-object") return
       if (!resources) fail("Workspace move requires the original machine resource client")
       const send = resources.handoffWorkspace.bind(resources)
       const session = await Session.get(plan.sessionID)
@@ -272,7 +273,7 @@ export namespace OrganizationHandoffSource {
       await Physical.withCapture(lease, async () => {
         await supportedCohort(plan, signal)
         if (!Owners.compatibility({ "session-workspaces": 1 }).length)
-          await Files.capture({ binding: binding(plan), signal })
+          await WorkspaceSource.run(plan, resources, signal, () => Files.capture({ binding: binding(plan), signal }))
         await moveWorkspace(plan, resources, signal)
       })
       Physical.assertCurrent(lease)
@@ -509,6 +510,13 @@ export namespace OrganizationHandoffSource {
               workspaceMoveReceiptHash: await Transfer.workspaceMove(binding(plan)).then((receipt) =>
                 receipt ? WorkspaceMove.receiptHash(receipt) : null,
               ),
+              ...(plan.workspacePlan?.mapping.kind === "organization-live"
+                ? {
+                    workspaceSourceHash: await Transfer.workspaceSource(binding(plan)).then((snapshot) =>
+                      snapshot ? WorkspaceArchive.subtreeHash(snapshot) : null,
+                    ),
+                  }
+                : {}),
               paused: true,
               drained: true,
             })

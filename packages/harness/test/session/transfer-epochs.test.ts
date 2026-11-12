@@ -86,11 +86,13 @@ test("verified return activation advances the current epoch while retaining the 
         await Epochs.surrender(outbound, "b".repeat(64))
         const inbound = { ...outbound, handoffID: "return", sourceID: "B", targetID: "A", fromEpoch: 2, toEpoch: 3 }
         await expect(Epochs.reserve(inbound, "c".repeat(64))).rejects.toThrow("unrelated")
-        await Epochs.reserve(inbound, "c".repeat(64), {
+        const prior = await Epochs.destinationPrior(inbound)
+        expect(prior).toEqual({
           handoffID: outbound.handoffID,
           fromEpoch: 1,
           manifestHash: "a".repeat(64),
         })
+        await Epochs.reserve(inbound, "c".repeat(64), prior)
         let imported = 0
         await Epochs.activate(inbound, "c".repeat(64), async () => {
           imported++
@@ -124,7 +126,10 @@ test("destination retirement and activation are permanent alternatives", async (
       toEpoch: 2,
     }
     const partial = { ...binding, sessionID: "ses_partial_target", handoffID: "partial-target" }
-    await Storage.writeBinary(["sessions", "home", partial.sessionID, "rollout", "blobs", "retained"], new Uint8Array([1, 2, 3]))
+    await Storage.writeBinary(
+      ["sessions", "home", partial.sessionID, "rollout", "blobs", "retained"],
+      new Uint8Array([1, 2, 3]),
+    )
     await expect(Epochs.reserve(partial, "b".repeat(64))).rejects.toThrow("unrelated")
     await Epochs.reserve(binding, "a".repeat(64))
     await Epochs.neverActivate(binding, "a".repeat(64))

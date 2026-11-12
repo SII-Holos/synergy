@@ -13,7 +13,13 @@ import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
 import { WorkspaceMove } from "@ericsanchezok/synergy-harness/workspace/move"
-import { SessionTransferStaging as Staging } from "@ericsanchezok/synergy-harness/session/transfer"
+import {
+  SessionTransferStaging as Staging,
+  SessionTransferWorkspaces as Files,
+} from "@ericsanchezok/synergy-harness/session/transfer"
+import { WorkspacePortableTree } from "@ericsanchezok/synergy-harness/workspace/portable-tree"
+import { WorkspaceArchive } from "@ericsanchezok/synergy-harness/workspace/archive"
+import { OrganizationSessionTransfer as Transfer } from "../src/session-transfer"
 import { testResources } from "@ericsanchezok/synergy-testing/resources"
 import { prepareMemberHome } from "../src/home"
 import { enrollMemberRuntime } from "../src/enrollment"
@@ -27,7 +33,15 @@ async function port() {
   return selected
 }
 
-for (const scenario of ["complete", "cancel", "lost-publish", "retire", "grant-revoked", "recipient"] as const)
+for (const scenario of [
+  "complete",
+  "cancel",
+  "lost-publish",
+  "retire",
+  "grant-revoked",
+  "recipient",
+  "return-cloud",
+] as const)
   test(`consented native files complete one cross-Realm receipt (${scenario})`, async () => {
     await using resources = testResources()
     using wake = spyOn(SessionManager, "scheduleWake").mockImplementation(() => {})
@@ -491,4 +505,157 @@ for (const scenario of ["complete", "cancel", "lost-publish", "retire", "grant-r
     expect((await f.client.orgHandoff.get({ handoffID }, options)).data.phase).toBe("completed")
     expect(await Bun.file(path.join(directory, "private.bin")).bytes()).toEqual(bytes)
     expect(allocations).toBe(0)
+    if (scenario === "return-cloud") {
+      const changedBytes = new Uint8Array([255, 0, 99, 100, 10, 128])
+      const head = (await f.client.orgCloudWorkspaces.get({ workspaceID: cloud.workspaceID }, options)).data
+      const version = "sha256:" + new Bun.CryptoHasher("sha256").update(bytes).digest("hex")
+      const changed = (
+        await f.client.orgCloudWorkspaces.write(
+          {
+            workspaceID: cloud.workspaceID,
+            orgCloudWorkspaceWrite: {
+              operationID: "cloud-current-before-return",
+              expectedRevision: head.revision,
+              path: "received/private.bin",
+              data: Buffer.from(changedBytes).toString("base64"),
+              expectedVersion: version,
+            },
+          },
+          options,
+        )
+      ).data
+      const returningID = "return-" + handoffID
+      const remoteSource = await target.runtime.run(async () => {
+        const current = await Session.get(sessionID)
+        const workspace = await WorkspaceCatalog.get(current.workspaceID!, project.projectID)
+        return { workspaceID: workspace.id, generation: workspace.binding.generation }
+      })
+      const returning = await f.client.orgHandoff.prepare(
+        {
+          sessionID,
+          orgHandoffPrepare: {
+            handoffID: returningID,
+            targetRuntimeID: source.registration.runtimeID,
+            expectedBindingEpoch: 2,
+            expectedControlRevision: 3,
+            mappingPlanRevision: 1,
+            workspaceMapping: {
+              kind: "organization-live",
+              source: remoteSource,
+              resource: {
+                resourceID: resource.resourceID,
+                workspaceID: cloud.workspaceID,
+                generation: cloud.generation,
+                path: "received",
+              },
+            },
+          },
+        },
+        options,
+      )
+      await f.client.orgHandoff.accept(
+        {
+          handoffID: returningID,
+          orgHandoffAccept: {
+            mappingPlanRevision: 1,
+            mappingHash: returning.data.mappingHash,
+          },
+        },
+        options,
+      )
+      const back = async (operation: Handoff.Drive["operation"]) =>
+        Handoff.MachineResult.parse(
+          (
+            await f.client.orgHandoff.drive(
+              {
+                handoffID: returningID,
+                orgHandoffDrive: { operation, requestID: crypto.randomUUID() },
+              },
+              options,
+            )
+          ).data,
+        )
+      const returnedFrozen = (await back("prepare-source")).facts[0]?.proof
+      expect(returnedFrozen?.purpose).toBe("source-frozen")
+      const captured = await target.runtime.run(async () => {
+        const binding = {
+          sessionID,
+          scopeID: project.projectID,
+          handoffID: returningID,
+          sourceID: target.registration.runtimeID,
+          targetID: source.registration.runtimeID,
+          fromEpoch: 2,
+          toEpoch: 3,
+        }
+        const snapshot = await Transfer.workspaceSource(binding)
+        expect(snapshot).toMatchObject({
+          workspaceID: cloud.workspaceID,
+          revision: changed.revision,
+          head: changed.manifest,
+          path: "received",
+        })
+        expect(returnedFrozen?.purpose === "source-frozen" ? returnedFrozen.workspaceSourceHash : null).toBe(
+          WorkspaceArchive.subtreeHash(snapshot!),
+        )
+        return Files.withCaptured(
+          { binding, ...remoteSource, signal: new AbortController().signal },
+          async (capture) => {
+            const cache = path.join(objects, "captured-return")
+            await fs.mkdir(cache)
+            await using tree = await WorkspacePortableTree.open({
+              root: capture.captured.files,
+              store: capture.store,
+              directory: cache,
+            })
+            const chunks: Uint8Array[] = []
+            for await (const chunk of tree.read("private.bin")) chunks.push(chunk)
+            return Buffer.concat(chunks)
+          },
+        )
+      })
+      expect(captured).toEqual(Buffer.from(changedBytes))
+      let validations = 0
+      f.interceptHTTP(async (request) => {
+        if (new URL(request.url).pathname !== "/runtime/v1/handoffs/workspace") return
+        const body = Cloud.HandoffWorkspaceRequest.parse(await request.clone().json())
+        if (body.proof.handoffID !== returningID || body.proof.operation.action !== "source-validate") return
+        const response = await f.service.fetch(request)
+        if (++validations !== 2 || response.status !== 200) return response
+        return Response.json(
+          {
+            code: "SERVICE_UNAVAILABLE",
+            message: "Lost validation after private Workspace preparation",
+            outcome: "unknown",
+            retryable: false,
+          },
+          { status: 503 },
+        )
+      })
+      await expect(back("prepare-target")).rejects.toMatchObject({ outcome: "unknown" })
+      expect((await back("prepare-target")).facts[0]?.proof.purpose).toBe("target-prepared")
+      await f.client.orgHandoff.permit(
+        { handoffID: returningID, orgHandoffPermitRequest: { purpose: "handoff-surrender" } },
+        options,
+      )
+      expect((await back("surrender-source")).facts[0]?.proof.purpose).toBe("source-surrendered")
+      await f.client.orgHandoff.commit({ handoffID: returningID, body: {} }, options)
+      await f.client.orgHandoff.permit(
+        { handoffID: returningID, orgHandoffPermitRequest: { purpose: "handoff-activation" } },
+        options,
+      )
+      expect((await back("activate-target")).facts[0]?.proof.purpose).toBe("target-activated")
+      await source.runtime.run(async () => {
+        const restored = await Session.get(sessionID)
+        expect(restored.organization).toMatchObject({ driverRuntimeID: source.registration.runtimeID, bindingEpoch: 3 })
+        expect(restored.paused).toBeDefined()
+        const locator = await WorkspaceCatalog.get(restored.workspaceID!, project.projectID)
+        expect(locator.backend).toMatchObject({
+          provider: "organization",
+          spec: { workspaceID: cloud.workspaceID, path: "received" },
+        })
+        expect(locator.content).toBeUndefined()
+      })
+      expect((await f.client.orgCloudWorkspaces.get({ workspaceID: cloud.workspaceID }, options)).data).toEqual(changed)
+      expect(await Bun.file(path.join(directory, "private.bin")).bytes()).toEqual(bytes)
+    }
   }, 30_000)

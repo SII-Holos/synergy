@@ -76,7 +76,7 @@ export interface MemberConnectionOptions {
     signal: AbortSignal,
     resources: MemberResourceClient,
   ) => Promise<Handoff.MachineExecution>
-  handoffVersion?: 1 | 2
+  handoffVersion?: 1 | 2 | 3
   read?: (authorization: Read.SignedPermit, connection: Connected, signal: AbortSignal) => Promise<Read.Result>
   interactions?: (
     authorization: Interactions.SignedPermit,

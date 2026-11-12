@@ -20,6 +20,7 @@
 ## Index
 
 - [0157](0157-private-credentials-trusted-preopen-permissions.md)
+- [0156](0156-surrendered-sync-source-disconnected-return-target.md)
 - [0154](0154-cortex-files-confused-caller-and-ancestor-roots.md)
 - [0153](0153-service-maintenance-obscured-health-probes.md)
 - [0152](0152-remote-file-lease-used-mutated-call-inputs.md)

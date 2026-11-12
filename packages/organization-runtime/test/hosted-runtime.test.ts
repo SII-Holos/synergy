@@ -2,6 +2,7 @@ import { expect, test } from "bun:test"
 import path from "node:path"
 import { OrganizationRuntimeProtocol as Protocol } from "@ericsanchezok/synergy-organization-protocol"
 import { EnvironmentProviders } from "@ericsanchezok/synergy-harness/environment/provider"
+import { RuntimeMaintenance } from "@ericsanchezok/synergy-harness/storage/runtime-maintenance"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionTransferOwners as Owners } from "@ericsanchezok/synergy-harness/session/transfer"
@@ -96,4 +97,58 @@ test("a hosted Runtime receives organization-created Sessions with the signed ac
       driverRuntimeID: registration.runtimeID,
     },
   })
+  const oldConnection = (
+    await service.client.orgRuntime.connection(
+      { runtimeID: registration.runtimeID },
+      { headers: service.headers, throwOnError: true },
+    )
+  ).data
+  const lease = await runtime.run(async () => {
+    const lease = await RuntimeMaintenance.begin({
+      purpose: "organization-backup",
+      requestID: "actual-hosted-bridge",
+      actor: {
+        kind: "system",
+        subjectID: "host-operator",
+        displayName: "Host operator",
+        clientKind: "system",
+        requestID: "actual-hosted-bridge",
+      },
+    })
+    await RuntimeMaintenance.freeze(lease, await RuntimeMaintenance.drain(lease))
+    expect(await RuntimeMaintenance.assertHeld(lease)).toMatchObject({ phase: "frozen" })
+    return lease
+  })
+  expect(
+    (
+      await service.client.orgRuntime.connection(
+        { runtimeID: registration.runtimeID },
+        { headers: service.headers, throwOnError: true },
+      )
+    ).data.state,
+  ).toBe("offline")
+  const reconnected = Promise.withResolvers<void>()
+  service.interceptFrames((_socket, frame) => {
+    const message = Protocol.ClientFrame.parse(JSON.parse(String(frame)))
+    if (message.type === "heartbeat" && message.connectionEpoch > oldConnection.connectionEpoch) reconnected.resolve()
+    return false
+  })
+  await runtime.run(() => RuntimeMaintenance.release(lease))
+  const restartTimer = setTimeout(() => reconnected.reject(new Error("Released Hosted bridge did not reconnect")), 3000)
+  try {
+    await reconnected.promise
+  } finally {
+    clearTimeout(restartTimer)
+  }
+  const current = (
+    await service.client.orgRuntime.connection(
+      { runtimeID: registration.runtimeID },
+      { headers: service.headers, throwOnError: true },
+    )
+  ).data
+  expect(current.state).toBe("online")
+  expect(current.connectionEpoch).toBeGreaterThan(oldConnection.connectionEpoch)
+  expect((await runtime.run(() => Session.get(created.data.effect.sessionID))).organization?.creatorID).toBe(
+    service.identity.accountID,
+  )
 })

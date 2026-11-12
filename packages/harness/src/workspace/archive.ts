@@ -37,7 +37,113 @@ export namespace WorkspaceArchive {
     }
   }
   type Saved = { info: WorkspaceCatalog.Info; store: BlobStore; tree: WorkspaceContent.StoredTree }
-  const snapshots = new WeakMap<Saved, () => void>()
+  const snapshots = new WeakMap<Saved, { assert(): void; info: WorkspaceCatalog.Info }>()
+  export const Subtree = z.strictObject({
+    version: z.literal(1),
+    workspaceID: z.string().min(1),
+    scopeID: z.string().min(1),
+    generation: z.number().int().positive().safe(),
+    revision: z.number().int().positive().safe(),
+    path: z.union([WorkspaceTree.Path, z.literal("")]),
+    head: WorkspaceTree.Hash.nullable(),
+    manifest: WorkspaceTree.Hash,
+    files: Portable.Root,
+  })
+  export type Subtree = z.infer<typeof Subtree>
+  export const subtreeHash = (value: Subtree) =>
+    WorkspaceTree.hash(new TextEncoder().encode(JSON.stringify(Subtree.parse(value))))
+  const subtrees = new WeakMap<Subtree, { store: BlobStore; assert(): void; signal?: AbortSignal }>()
+  export async function subtree(snapshot: Saved, value: string, signal?: AbortSignal): Promise<Subtree> {
+    const selected = snapshots.get(snapshot)
+    if (!selected) throw new Invalid("Workspace subtree requires its original saved selection")
+    const info = WorkspaceCatalog.Info.parse(structuredClone(selected.info))
+    const path = Subtree.shape.path.parse(value)
+    const assert = () => {
+      selected.assert()
+      signal?.throwIfAborted()
+    }
+    assert()
+    if (info.activeMount) throw new Invalid("Workspace subtree requires its dormant object owner")
+    const files = await WorkspaceContent.withTree(
+      info,
+      snapshot.store,
+      async (tree) => {
+        const resolved = await tree.resolve(path)
+        assert()
+        if (resolved.path !== path || (path && resolved.entry?.kind !== "directory"))
+          throw new Invalid("Workspace subtree requires its exact canonical directory")
+        const prefix = path ? path + "/" : ""
+        return Portable.Root.parse({
+          version: 1,
+          mode: path ? resolved.entry!.mode : tree.mode,
+          tree: await Stream.link({
+            store: snapshot.store,
+            owners: { "workspace-files": 1 },
+            signal,
+            entries: (async function* () {
+              for await (const entry of tree.references({ prefix })) {
+                assert()
+                const relative = entry.id.slice(prefix.length)
+                const metadata = Portable.Metadata.parse(entry.metadata)
+                if (metadata.kind === "symlink") {
+                  const target = path ? (await tree.resolve(entry.id)).path : undefined
+                  if (target !== undefined && target !== path && !target.startsWith(prefix))
+                    throw new Invalid("Workspace subtree contains a link outside its selected directory")
+                }
+                yield { ...entry, id: Portable.path(relative, metadata) }
+              }
+            })(),
+          }),
+        })
+      },
+      { signal },
+    )
+    assert()
+    const bytes = new TextEncoder().encode(JSON.stringify(files))
+    const manifest = WorkspaceTree.hash(bytes)
+    await snapshot.store.put(manifest, bytes)
+    assert()
+    const result = Subtree.parse({
+      version: 1,
+      workspaceID: info.id,
+      scopeID: info.scopeID,
+      generation: info.binding.generation,
+      revision: info.revision,
+      path,
+      head: info.content?.manifest ?? null,
+      manifest,
+      files,
+    })
+    Object.freeze(result.files.tree.owners)
+    Object.freeze(result.files.tree)
+    Object.freeze(result.files)
+    Object.freeze(result)
+    subtrees.set(result, { store: snapshot.store, assert, signal })
+    return result
+  }
+  export function subtreeObjects(snapshot: Subtree): AsyncIterable<{ hash: string; bytes: number }> {
+    const source = subtrees.get(snapshot)
+    if (!source) throw new Invalid("Workspace subtree requires its original capture owner")
+    source.assert()
+    return (async function* () {
+      source.assert()
+      yield { hash: snapshot.manifest, bytes: new TextEncoder().encode(JSON.stringify(snapshot.files)).byteLength }
+      const directory = path.join(RuntimeContext.current().host.root, "cache", "workspace-archives")
+      await fs.mkdir(directory, { recursive: true, mode: 0o700 })
+      source.assert()
+      await using reader = await Portable.open({
+        root: snapshot.files,
+        store: source.store,
+        directory,
+        signal: source.signal,
+      })
+      for await (const object of reader.objects()) {
+        source.assert()
+        yield object
+      }
+      source.assert()
+    })()
+  }
   function owner(signal?: AbortSignal) {
     const runtime = RuntimeContext.current()
     const primary = runtime.storage
@@ -94,7 +200,7 @@ export namespace WorkspaceArchive {
     const tree = await WorkspaceContent.storedRoot(info, selected)
     assert()
     const value = Object.freeze({ info, store: selected, tree })
-    snapshots.set(value, assert)
+    snapshots.set(value, { assert, info: WorkspaceCatalog.Info.parse(structuredClone(info)) })
     return value
   }
 
@@ -127,7 +233,7 @@ export namespace WorkspaceArchive {
   }
 
   export async function* records(snapshot: Saved, signal?: AbortSignal): AsyncGenerator<ArchiveRecord> {
-    const assert = snapshots.get(snapshot)
+    const assert = snapshots.get(snapshot)?.assert
     if (!assert) throw new Invalid("Workspace archive requires its original saved selection")
     yield* graphRecords(snapshot, assert, signal)
   }
@@ -181,7 +287,7 @@ export namespace WorkspaceArchive {
   }
 
   export async function copyObjects(snapshot: Saved, destination: Pick<BlobStore, "put">, signal?: AbortSignal) {
-    const assert = snapshots.get(snapshot)
+    const assert = snapshots.get(snapshot)?.assert
     if (!assert) throw new Invalid("Workspace archive requires its original saved selection")
     return copyGraph(snapshot, assert, destination, signal)
   }

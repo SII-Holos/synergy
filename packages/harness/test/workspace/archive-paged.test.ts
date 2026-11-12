@@ -369,3 +369,89 @@ test("valid individual archive objects cannot hide a wrong complete-file digest"
     expect(await WorkspaceCatalog.list("target")).toEqual([])
   })
 })
+
+test("an owned paged subtree snapshot fixes the current head and links existing chunks without rereading file bodies", async () => {
+  await using temporary = await tmpdir()
+  const store = files(temporary.path)
+  const data = new Uint8Array([0, 255, 27])
+  const bodyHash = WorkspaceTree.hash(data)
+  await using runtime = await testRuntime({ register: () => WorkspaceBlobs.register("fixture", store) })
+  await runtime.run(async () => {
+    const root = Portable.Root.parse({
+      version: 1,
+      mode: 0o755,
+      tree: await Stream.write({
+        store,
+        owners: { "workspace-files": 1 },
+        entries: (async function* () {
+          yield {
+            id: "mapped",
+            kind: "record",
+            metadata: { version: 1, kind: "directory", mode: 0o750 },
+            content: (async function* () {})(),
+          }
+          for (let i = 0; i < 270; i++)
+            yield {
+              id: "mapped/file-" + String(i).padStart(3, "0"),
+              kind: "file",
+              metadata: { version: 1, kind: "file", mode: 0o640 },
+              content: (async function* () {
+                yield data
+              })(),
+            }
+          yield {
+            id: "outside",
+            kind: "file",
+            metadata: { version: 1, kind: "file", mode: 0o644 },
+            content: (async function* () {
+              yield data
+            })(),
+          }
+        })(),
+      }),
+    })
+    const encoded = new TextEncoder().encode(JSON.stringify(root))
+    const manifest = WorkspaceTree.hash(encoded)
+    await store.put(manifest, encoded)
+    const initial = await WorkspaceCatalog.create({
+      scopeID: "source",
+      backend: { provider: "objects", spec: { blobStore: "fixture" } },
+    })
+    const current = await WorkspaceCatalog.publishContent(initial, manifest)
+    let reads = 0
+    const get = store.get.bind(store)
+    store.get = async (hash, maximum) => {
+      if (hash === bodyHash) reads++
+      return get(hash, maximum)
+    }
+    const saved = await WorkspaceArchive.saved({
+      workspaceID: current.id,
+      scopeID: "source",
+      expectedRevision: current.revision,
+    })
+    reads = 0
+    saved.info.id = "caller-rewritten-workspace"
+    const snapshot = await WorkspaceArchive.subtree(saved, "mapped")
+    expect(reads).toBe(0)
+    expect(snapshot).toMatchObject({
+      version: 1,
+      workspaceID: current.id,
+      scopeID: "source",
+      generation: current.binding.generation,
+      revision: current.revision,
+      path: "mapped",
+      head: manifest,
+      files: { mode: 0o750, tree: { entries: 270 } },
+    })
+    let bodyReferences = 0
+    for await (const object of WorkspaceArchive.subtreeObjects(snapshot)) if (object.hash === bodyHash) bodyReferences++
+    expect(bodyReferences).toBe(1)
+    expect(reads).toBe(0)
+    await using tree = await Portable.open({ root: snapshot.files, store, directory: temporary.path })
+    expect(await tree.get("outside")).toBeUndefined()
+    expect(await tree.get("file-269")).toMatchObject({ hash: bodyHash, size: 3 })
+    expect(await Array.fromAsync(tree.read("file-269"))).toEqual([data])
+    expect((await WorkspaceCatalog.get(current.id, "source")).content?.manifest).toBe(manifest)
+    expect(() => WorkspaceArchive.subtreeObjects(structuredClone(snapshot))).toThrow("original")
+  })
+})

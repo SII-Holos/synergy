@@ -100,7 +100,7 @@ export namespace OrganizationCloudProtocol {
     })
     .meta({ ref: "OrgCloudFileReference" })
   export type FileReference = z.infer<typeof FileReference>
-  export const FileLocator = z.strictObject({
+  const LegacyFileLocator = z.strictObject({
     version: z.literal(1),
     orgID: Identity.ID,
     deploymentIncarnation: Identity.ID,
@@ -113,6 +113,14 @@ export namespace OrganizationCloudProtocol {
     mappingRevision: z.number().int().positive().safe(),
     workspaceMoveReceiptHash: Hash,
   })
+  export const FileLocator = z.union([
+    LegacyFileLocator,
+    LegacyFileLocator.omit({ moveID: true, workspaceMoveReceiptHash: true }).extend({
+      version: z.literal(2),
+      handoffID: Identity.ID,
+      workspaceSourceHash: Hash,
+    }),
+  ])
   export type FileLocator = z.infer<typeof FileLocator>
   export const FileItem = z.strictObject({
     path: RootPath,
@@ -281,6 +289,13 @@ export namespace OrganizationCloudProtocol {
     .meta({ ref: "OrgCloudFileResult" })
   export type FileResult = z.infer<typeof FileResult>
   export const HandoffWorkspaceOperation = z.discriminatedUnion("action", [
+    z.strictObject({ action: z.literal("source") }),
+    z.strictObject({
+      action: z.literal("source-object"),
+      hash: Hash,
+      maximumBytes: z.number().int().nonnegative().max(chunkBytes),
+    }),
+    z.strictObject({ action: z.literal("source-validate") }),
     z.strictObject({ action: z.literal("put"), hash: Hash, data: z.string().max(Math.ceil(chunkBytes / 3) * 4) }),
     z.strictObject({ action: z.literal("publish"), source: z.json() }),
     z.strictObject({ action: z.literal("inspect") }),
@@ -302,7 +317,7 @@ export namespace OrganizationCloudProtocol {
     )
     .refine(
       (value) =>
-        value.operation.action === "validate"
+        value.operation.action === "validate" || value.operation.action === "source-validate"
           ? value.runtimeID === value.targetRuntimeID
           : value.operation.action === "inspect"
             ? [value.sourceRuntimeID, value.targetRuntimeID].includes(value.runtimeID)
@@ -319,6 +334,13 @@ export namespace OrganizationCloudProtocol {
   export const verifyHandoffWorkspace = signedHandoffWorkspace.verify
   export const HandoffWorkspaceResult = z
     .discriminatedUnion("action", [
+      z.strictObject({ action: z.literal("source"), snapshot: z.json() }),
+      z.strictObject({
+        action: z.literal("source-object"),
+        hash: Hash,
+        data: z.string().max(Math.ceil(chunkBytes / 3) * 4),
+      }),
+      z.strictObject({ action: z.literal("source-validate"), snapshot: z.json() }),
       z.strictObject({ action: z.literal("put"), hash: Hash }),
       z.strictObject({ action: z.literal("publish"), receipt: z.json() }),
       z.strictObject({ action: z.literal("inspect"), status: z.json().optional() }),

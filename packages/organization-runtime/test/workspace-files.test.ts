@@ -32,6 +32,11 @@ import { FileView } from "@ericsanchezok/synergy-local-runtime/file/view"
 import { WorkspaceOperations } from "@ericsanchezok/synergy-harness/workspace/operations"
 import { Cortex } from "@ericsanchezok/synergy-harness/cortex"
 import { EditTool } from "@ericsanchezok/synergy-local-runtime/tools/edit"
+import {
+  SessionTransferEpochs as Epochs,
+  SessionTransferOwners as Owners,
+} from "@ericsanchezok/synergy-harness/session/transfer"
+import { SessionLifecycle } from "@ericsanchezok/synergy-harness/session/lifecycle"
 
 async function availablePort() {
   const probe = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() })
@@ -550,6 +555,94 @@ test("two enrolled member file APIs share one remote Workspace head and retain o
     })
   expect(f.allocations()).toBe(0)
 }, 30_000)
+
+test("final source owner freezing drains an accepted remote file writer before its snapshot", async () => {
+  await using f = await sharedFilesFixture()
+  const alice = await f.member("files-freezing", "f".repeat(64))
+  f.interceptFrames(undefined)
+  const reference = Cloud.FileResult.parse(
+    await (await alice.request({ operation: { action: "describe" } })).json(),
+  ).reference
+  const accepted = Promise.withResolvers<void>()
+  const released = Promise.withResolvers<void>()
+  f.beforePut(async () => {
+    accepted.resolve()
+    await released.promise
+  })
+  const writing = alice.request({
+    reference,
+    operation: {
+      action: "write",
+      id: "accepted-before-freeze",
+      path: "last-write",
+      data: "eA==",
+      expectedVersion: null,
+    },
+  })
+  try {
+    await accepted.promise
+    let frozen = false
+    const freezing = alice.runtime.run(async () => {
+      const session = await Session.get(alice.sessionID)
+      await ScopeContext.provide({
+        scope: session.scope,
+        workspace: null,
+        fn: async () => {
+          await SessionLifecycle.pause({ sessionID: session.id, reason: "interrupted" })
+          await Epochs.beginSource({
+            sessionID: session.id,
+            scopeID: session.scope.id,
+            handoffID: "files-freezing",
+            sourceID: alice.registration.runtimeID,
+            targetID: "return-target",
+            fromEpoch: 1,
+            toEpoch: 2,
+          })
+          await Owners.freeze(
+            {
+              session: await Session.get(session.id),
+              rootSessionID: session.id,
+              handoffID: "files-freezing",
+              signal: new AbortController().signal,
+            },
+            ["organization-runtime"],
+          )
+          frozen = true
+        },
+      })
+    })
+    await Bun.sleep(30)
+    expect(frozen).toBe(false)
+    released.resolve()
+    expect((await writing).status).toBe(200)
+    await freezing
+    expect(frozen).toBe(true)
+    const head = (
+      await f.client.orgCloudWorkspaces.get(
+        { workspaceID: reference.workspaceID },
+        { headers: f.headers, throwOnError: true },
+      )
+    ).data
+    expect(head.revision).toBe(reference.revision + 1)
+    const final = (
+      await f.client.orgCloudWorkspaces.read(
+        { workspaceID: reference.workspaceID, orgCloudWorkspaceRead: { path: "last-write", offset: 0, length: 1 } },
+        { headers: f.headers, throwOnError: true },
+      )
+    ).data
+    expect(Buffer.from(final.data, "base64").toString()).toBe("x")
+    const denied = await alice.request({
+      reference,
+      operation: { action: "write", id: "after-freeze", path: "late-write", data: "eA==", expectedVersion: null },
+    })
+    expect(denied.status).not.toBe(200)
+    expect(f.allocations()).toBe(0)
+  } finally {
+    f.beforePut(undefined)
+    released.resolve()
+    await writing
+  }
+})
 
 test("accepted physical file work blocks grant release and rechecks resource disablement before publication", async () => {
   await using f = await sharedFilesFixture()

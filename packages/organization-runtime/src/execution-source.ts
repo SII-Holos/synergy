@@ -22,6 +22,9 @@ import { OrganizationRuntimeError } from "./error"
 import { OrganizationExecutionLeases as Leases } from "./execution-leases"
 import { createMemberModelProvider, MemberModelContext } from "./model-provider"
 import { EnvironmentOrigin } from "@ericsanchezok/synergy-harness/environment/origin"
+import { SessionTransferEpochs as Epochs } from "@ericsanchezok/synergy-harness/session/transfer"
+import { WorkspaceContent } from "@ericsanchezok/synergy-harness/workspace/content"
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 
 interface Connection {
   connection: MemberConnection["connected"]
@@ -128,6 +131,23 @@ export async function withMemberExecution<T>(
   fn: (resolution: MemberExecutionResolution, signal: AbortSignal) => Promise<T>,
 ): Promise<T> {
   return withMemberResolution(identity, input, fn, true)
+}
+
+export async function drainMemberFiles(value: Epochs.Binding, signal: AbortSignal) {
+  const binding = Epochs.Binding.parse(value)
+  const owner = WorkspaceContent.captureOwner(signal)
+  if (Storage.inTransaction()) throw denied("Member file drainage must run outside a transaction")
+  const assert = async () => {
+    owner()
+    const actual = await Epochs.ownerPreparationBinding({ sessionID: binding.sessionID, handoffID: binding.handoffID })
+    owner()
+    if (JSON.stringify(actual) !== JSON.stringify(binding))
+      throw denied("Member file drainage requires its exact source epoch")
+  }
+  await assert()
+  using held = await Lock.writeWithSignal(`organization-execution:${binding.sessionID}`, signal)
+  if (!held) throw denied("Member file drainage could not retain its original resolution lock")
+  await assert()
 }
 
 export async function withMemberFiles<T>(

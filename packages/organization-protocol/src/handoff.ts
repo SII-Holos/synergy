@@ -51,6 +51,7 @@ export namespace OrganizationHandoffProtocol {
         closureHash: Hash,
         fileClosureHash: Hash.nullable(),
         workspaceMoveReceiptHash: Hash.nullable(),
+        workspaceSourceHash: Hash.nullable().optional(),
         paused: z.literal(true),
         drained: z.literal(true),
       }),
@@ -62,6 +63,7 @@ export namespace OrganizationHandoffProtocol {
         closureHash: Hash,
         fileClosureHash: Hash.nullable(),
         workspaceMoveReceiptHash: Hash.nullable(),
+        workspaceSourceHash: Hash.nullable().optional(),
         paused: z.literal(true),
       }),
       Binding.extend({
@@ -124,6 +126,16 @@ export namespace OrganizationHandoffProtocol {
   export type PermitRequest = z.infer<typeof PermitRequest>
   export const WorkspaceMapping = z.discriminatedUnion("kind", [
     z.strictObject({ kind: z.literal("native") }),
+    z.strictObject({
+      kind: z.literal("organization-live"),
+      source: z.strictObject({ workspaceID: Identity.ID, generation: OrganizationProtocol.Epoch }),
+      resource: z.strictObject({
+        resourceID: Identity.ID,
+        workspaceID: Identity.ID,
+        generation: OrganizationProtocol.Epoch,
+        path: WorkspacePath,
+      }),
+    }),
     z.strictObject({
       kind: z.literal("organization-object"),
       moveID: Identity.ID,

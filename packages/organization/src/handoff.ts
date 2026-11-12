@@ -28,6 +28,8 @@ import { upgradeAccessRecord } from "@ericsanchezok/synergy-harness/migration/im
 import { OrganizationCloud } from "./cloud"
 import { WorkspaceMove } from "@ericsanchezok/synergy-harness/workspace/move"
 import { WorkspaceContent } from "@ericsanchezok/synergy-harness/workspace/content"
+import { WorkspaceArchive } from "@ericsanchezok/synergy-harness/workspace/archive"
+import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
 
 const LegacyStored = Handoff.LegacyView.omit({
   missingRequirements: true,
@@ -56,6 +58,7 @@ const Stored = LegacyStored.extend({
   request: Handoff.CurrentPrepare,
   selectionActor: ActorStamp.Info.nullable(),
   workspaceContract: Record.SessionResources.optional(),
+  workspaceSource: WorkspaceArchive.Subtree.optional(),
 }).refine(
   (record) =>
     record.request.workspaceMapping.kind === "native" ||
@@ -71,7 +74,11 @@ const key = (id: string) => ["organization", "handoffs", id]
 const sessionKey = (sessionID: string) => ["organization", "session-handoffs", sessionID]
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 interface WorkspaceFrame {
-  request: WorkspaceMove.Request
+  scopeID: string
+  request?: WorkspaceMove.Request
+  source?: Extract<Handoff.WorkspaceMapping, { kind: "organization-live" }>["resource"]
+  snapshot(): Promise<WorkspaceArchive.Subtree | undefined>
+  retain(snapshot: WorkspaceArchive.Subtree): Promise<WorkspaceArchive.Subtree>
   proof: Cloud.HandoffWorkspaceProof
   assert(): void
   recheck(): Promise<void>
@@ -83,7 +90,7 @@ function publicRuntime(record: Record.RuntimeRegistration) {
 }
 function workspaceRequest(record: Stored, projectID: string) {
   const mapping = record.request.workspaceMapping
-  if (mapping.kind === "native") return
+  if (mapping.kind !== "organization-object") return
   if (!record.selectionActor) fail("HANDOFF_BLOCKED", "Workspace mapping has no original authenticated selector")
   return WorkspaceMove.Request.parse({
     id: mapping.moveID,
@@ -140,6 +147,7 @@ export function registerHandoffAuthorityHistory() {
               record.request,
               ...(record.version === 2 ? [record.selectionActor] : []),
               ...(record.version === 2 && record.workspaceContract ? [record.workspaceContract] : []),
+              ...(record.version === 2 && record.workspaceSource ? [record.workspaceSource] : []),
               record.frozen,
               record.prepared,
               record.surrendered,
@@ -165,7 +173,11 @@ export namespace OrganizationHandoffExecution {
     if (!frame) fail("PERMISSION_DENIED", "Workspace moves require their original handoff authority")
     frame.assert()
     return {
-      request: WorkspaceMove.Request.parse(frame.request),
+      scopeID: frame.scopeID,
+      request: frame.request && WorkspaceMove.Request.parse(frame.request),
+      source: frame.source && structuredClone(frame.source),
+      snapshot: frame.snapshot,
+      retain: frame.retain,
       proof: Cloud.HandoffWorkspaceProof.parse(frame.proof),
       assert: frame.assert,
       recheck: frame.recheck,
@@ -453,6 +465,20 @@ export function createHandoffs(options: {
         workspace: { resourceID: mapping.target.resourceID, workspaceID: mapping.target.workspaceID },
         environment: null,
       })
+    } else if (mapping.kind === "organization-live") {
+      const selected = contract?.selection?.infrastructure.workspace
+      if (
+        !selected ||
+        selected.resourceID !== mapping.resource.resourceID ||
+        selected.workspaceID !== mapping.resource.workspaceID
+      )
+        fail("PROTOCOL_MISMATCH", "Live handoff must retain the Session's original Workspace resource")
+      const catalog = await WorkspaceCatalog.get(
+        selected.workspaceID,
+        OrganizationCloud.scopeID(record.orgID, current.projectID),
+      )
+      if (catalog.activeMount || catalog.binding.generation !== mapping.resource.generation)
+        fail("RESOURCE_UNAVAILABLE", "Live handoff requires its current dormant Workspace generation")
     }
     return {
       current,
@@ -535,10 +561,12 @@ export function createHandoffs(options: {
       window()
       const connection = options.connections.captureHandoff(proof.runtimeID)
       assertRuntimeConnection(authority.runtime, connection.handshake)
-      if (connection.handshake.schemas.handoffs !== 2)
+      if (connection.handshake.schemas.handoffs < 2)
         fail("PROTOCOL_MISMATCH", "Workspace handoff requires the complete mapped file reader")
       let open = true
       let retained: WorkspaceMove.Request | undefined
+      let source: WorkspaceFrame["source"]
+      let scopeID: string | undefined
       const assert = () => {
         window()
         connection.assertCurrent()
@@ -550,7 +578,7 @@ export function createHandoffs(options: {
           const record = await load(proof.handoffID)
           if (
             bindingFields.some((field) => record[field] !== proof[field]) ||
-            record.request.workspaceMapping.kind !== "organization-object" ||
+            record.request.workspaceMapping.kind === "native" ||
             proof.mappingHash !== (await Handoff.mappingHash(record.request.workspaceMapping))
           )
             fail("PROTOCOL_MISMATCH", "Workspace handoff belongs to another original mapping")
@@ -566,10 +594,24 @@ export function createHandoffs(options: {
           if (participant.publicKey !== authority.runtime.publicKey)
             fail("PERMISSION_DENIED", "Workspace handoff machine changed")
           const access = await eligible(record)
-          const selected = workspaceRequest(record, access.current.projectID)
-          if (!selected || (retained && !same(selected, retained)))
-            fail("PROTOCOL_MISMATCH", "Workspace handoff target changed")
-          retained ??= selected
+          scopeID = OrganizationCloud.scopeID(record.orgID, access.current.projectID)
+          const mapping = record.request.workspaceMapping
+          if (mapping.kind === "organization-live") {
+            if (
+              connection.handshake.schemas.handoffs < 3 ||
+              !["source", "source-object", "source-validate"].includes(proof.operation.action)
+            )
+              fail("PROTOCOL_MISMATCH", "Live Workspace handoff requires its source snapshot protocol")
+            if (source && !same(source, mapping.resource)) fail("PROTOCOL_MISMATCH", "Live Workspace source changed")
+            source ??= mapping.resource
+          } else {
+            if (["source", "source-object", "source-validate"].includes(proof.operation.action))
+              fail("PROTOCOL_MISMATCH", "Object publication cannot substitute a live source")
+            const selected = workspaceRequest(record, access.current.projectID)
+            if (!selected || (retained && !same(selected, retained)))
+              fail("PROTOCOL_MISMATCH", "Workspace handoff target changed")
+            retained ??= selected
+          }
           access.guard()
           assert()
         })
@@ -580,7 +622,66 @@ export function createHandoffs(options: {
         const evidence: OrganizationHandoffExecution.WorkspaceAuthority = Object.freeze({
           kind: "handoff-workspace-authority",
         })
-        workspaceFrames.set(evidence, { request: WorkspaceMove.Request.parse(retained), proof, assert, recheck })
+        if (!scopeID) fail("PROTOCOL_MISMATCH", "Workspace handoff lost its canonical Scope")
+        workspaceFrames.set(evidence, {
+          scopeID,
+          request: retained,
+          source,
+          proof,
+          assert,
+          recheck,
+          async snapshot() {
+            await recheck()
+            const snapshot = (await load(proof.handoffID)).workspaceSource
+            assert()
+            return snapshot
+          },
+          async retain(value) {
+            const snapshot = WorkspaceArchive.Subtree.parse(value)
+            return History.system(
+              "handoff.workspace-source",
+              async (identify, actionID) => {
+                await recheck()
+                const record = await load(proof.handoffID)
+                if (
+                  !source ||
+                  snapshot.workspaceID !== source.workspaceID ||
+                  snapshot.generation !== source.generation ||
+                  snapshot.path !== source.path ||
+                  snapshot.scopeID !== OrganizationCloud.scopeID(record.orgID, (await session(record)).projectID)
+                )
+                  fail("PROTOCOL_MISMATCH", "Workspace snapshot changed its authoritative source")
+                if (record.workspaceSource) {
+                  if (!same(record.workspaceSource, snapshot))
+                    fail("REVISION_CONFLICT", "Workspace source cannot replace its captured head")
+                  return record.workspaceSource
+                }
+                if (record.phase !== "preparing" || record.frozen)
+                  fail("HANDOFF_BLOCKED", "Workspace source capture must precede its final freeze")
+                const current = await WorkspaceCatalog.get(snapshot.workspaceID, snapshot.scopeID)
+                if (
+                  current.activeMount ||
+                  current.binding.generation !== snapshot.generation ||
+                  current.revision !== snapshot.revision ||
+                  (current.content?.manifest ?? null) !== snapshot.head
+                )
+                  fail("REVISION_CONFLICT", "Workspace source changed during capture")
+                identify({
+                  kind: "system",
+                  orgID: record.orgID,
+                  subjectID: proof.runtimeID,
+                  displayName: "Workspace source capture",
+                  clientKind: "runtime",
+                  requestID: actionID,
+                })
+                record.workspaceSource = snapshot
+                await save(record)
+                return snapshot
+              },
+              { commitGuard: assert },
+            )
+          },
+        })
         const result = await body(evidence)
         assert()
         return result
@@ -760,10 +861,7 @@ export function createHandoffs(options: {
         }
         const runtime = role === "source" ? record.source : record.target
         const connection = options.connections.captureHandoff(runtime.runtimeID)
-        if (
-          record.request.workspaceMapping.kind === "organization-object" &&
-          connection.handshake.schemas.handoffs !== 2
-        )
+        if (record.request.workspaceMapping.kind === "organization-object" && connection.handshake.schemas.handoffs < 2)
           fail("HANDOFF_BLOCKED", "Object Workspace handoff requires the complete mapped file reader")
         const authority = await runtimeAuthority({
           runtimeID: runtime.runtimeID,
@@ -781,13 +879,13 @@ export function createHandoffs(options: {
           ...record,
           ...request,
           workspacePlan:
-            connection.handshake.schemas.handoffs === 2
+            connection.handshake.schemas.handoffs >= 2
               ? {
                   mapping: record.request.workspaceMapping,
                   hash: await Handoff.mappingHash(record.request.workspaceMapping),
                   selectionActor: record.selectionActor,
                   targetScopeID:
-                    record.request.workspaceMapping.kind === "organization-object"
+                    record.request.workspaceMapping.kind !== "native"
                       ? OrganizationCloud.scopeID(record.orgID, access.session.projectID)
                       : undefined,
                 }
@@ -949,8 +1047,10 @@ export function createHandoffs(options: {
           ] as const) {
             const files = options.connections.captureHandoff(runtime.runtimeID)
             files.assertCurrent()
-            if (request.workspaceMapping.kind === "organization-object" && files.handshake.schemas.handoffs !== 2)
+            if (request.workspaceMapping.kind === "organization-object" && files.handshake.schemas.handoffs < 2)
               fail("HANDOFF_BLOCKED", "Both participants must support complete mapped Workspace files")
+            if (request.workspaceMapping.kind === "organization-live" && files.handshake.schemas.handoffs < 3)
+              fail("HANDOFF_BLOCKED", "Both participants must support live Workspace source snapshots")
             await runtimeAuthority({
               runtimeID: runtime.runtimeID,
               orgID: current.orgID,
@@ -1219,6 +1319,14 @@ export function createHandoffs(options: {
               fail("HANDOFF_BLOCKED", "Source fact omits its complete consented Workspace move receipt")
           } else if (proof.workspaceMoveReceiptHash !== null)
             fail("PROTOCOL_MISMATCH", "Native mapping cannot claim an unrelated Workspace move")
+          if (current.version === 2 && current.request.workspaceMapping.kind === "organization-live") {
+            if (
+              !current.workspaceSource ||
+              proof.workspaceSourceHash !== WorkspaceArchive.subtreeHash(current.workspaceSource)
+            )
+              fail("HANDOFF_BLOCKED", "Source fact omits its complete current Workspace snapshot")
+          } else if (proof.workspaceSourceHash != null)
+            fail("PROTOCOL_MISMATCH", "Workspace mapping cannot claim an unrelated source snapshot")
           current.manifestHash = proof.manifestHash
         } else if (proof.purpose === "target-prepared") {
           const frozen = current.frozen?.proof
@@ -1230,7 +1338,8 @@ export function createHandoffs(options: {
             proof.compatibilityHash !== frozen.compatibilityHash ||
             proof.closureHash !== frozen.closureHash ||
             proof.fileClosureHash !== frozen.fileClosureHash ||
-            proof.workspaceMoveReceiptHash !== frozen.workspaceMoveReceiptHash
+            proof.workspaceMoveReceiptHash !== frozen.workspaceMoveReceiptHash ||
+            (proof.workspaceSourceHash ?? null) !== (frozen.workspaceSourceHash ?? null)
           )
             fail("HANDOFF_BLOCKED", "Destination preparation does not preserve the frozen closure")
           current.phase = "prepared"

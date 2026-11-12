@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { RuntimeMaintenance } from "@ericsanchezok/synergy-harness/storage/runtime-maintenance"
 import { RuntimeContext, type RuntimeLaunch } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { openAgentRuntime, type AgentRuntimeOptions } from "@ericsanchezok/synergy-agent-runtime"
 import { localRuntime } from "@ericsanchezok/synergy-local-runtime/component"
@@ -25,6 +26,7 @@ import { registerOrganizationTransferOwner } from "./session-transfer"
 import { OrganizationRuntimeNative } from "./backup/native"
 import { createRuntimeHandoff } from "./handoff-runtime"
 import { OrganizationHandoffWorkspaceTarget } from "./handoff-workspace-target"
+import { OrganizationHandoffWorkspaceSource } from "./handoff-workspace-source"
 import { OrganizationWorkspaceFileSource } from "./workspace-file-source"
 import {
   SessionTransferCore,
@@ -80,6 +82,10 @@ async function openOrganizationRuntime(input: MemberRuntimeOptions) {
   const registration = await readRuntimeRegistration(member.home, member.identity)
   if (!registration || registration.state !== "active")
     throw new MemberHomeError("Member Runtime must be enrolled before startup")
+  let bridge: ReturnType<typeof startMemberBridge> | undefined
+  let handoff: ReturnType<typeof createRuntimeHandoff> | undefined
+  let restartBridge: (() => Promise<void>) | undefined
+  let bridgeDrained = false
   const components = [
     localRuntime({ workers: false, environment: "accountID" in member.identity ? "native" : false }),
     ...(listener.data ? [(await import("@ericsanchezok/synergy-server/component")).server()] : []),
@@ -89,6 +95,39 @@ async function openOrganizationRuntime(input: MemberRuntimeOptions) {
       workers: { agent: new URL("./worker.ts", import.meta.url), policy: new URL("./worker.ts", import.meta.url) },
       register() {
         registerMemberSources(member.identity)
+        RuntimeMaintenance.register("organization-bridge", {
+          version: 1,
+          order: 200,
+          async suspend(context) {
+            await RuntimeMaintenance.assertDraining(context.lease)
+          },
+          async drain(context) {
+            await RuntimeMaintenance.assertDraining(context.lease)
+            await bridge?.close()
+            await handoff?.close()
+            bridgeDrained = true
+          },
+          async inspect(context) {
+            context.signal.throwIfAborted()
+            return bridgeDrained
+              ? []
+              : [
+                  {
+                    code: "organization_bridge_active",
+                    owner: "organization-bridge",
+                    label: "Drain the installed organization bridge and accepted receipts",
+                    recoverable: true,
+                  },
+                ]
+          },
+          async release(context) {
+            await RuntimeMaintenance.assertReleasing(context.lease)
+          },
+          async released(context) {
+            await RuntimeMaintenance.assertReleased(context.lease)
+            if (RuntimeContext.isReady()) await restartBridge?.()
+          },
+        })
         OrganizationWorkspaceFileSource.register(member.identity)
         OrganizationLocalProjects.register(member.identity)
         OrganizationSessionReads.register(member.identity, registration.runtimeID)
@@ -97,72 +136,92 @@ async function openOrganizationRuntime(input: MemberRuntimeOptions) {
         SessionTransferSnapshots.register()
         SessionTransferWorkspaces.register()
         OrganizationHandoffWorkspaceTarget.register()
+        OrganizationHandoffWorkspaceSource.register()
         SessionTransferEnvironments.register()
         registerOrganizationTransferOwner()
-        if (!("accountID" in member.identity))
+        if (!("accountID" in member.identity)) {
           OrganizationRuntimeNative.register({ identity: member.identity, ca: input.ca })
+          RuntimeMaintenance.configure({
+            required: [
+              "sessions",
+              "loop-jobs",
+              "environments",
+              "cortex",
+              "organization-bridge",
+              "native-processes",
+              "workspace-access",
+              "workspace-mounts",
+              "workspace-operations",
+              "workspace-moves",
+            ],
+          })
+        }
       },
       services() {
-        let bridge: ReturnType<typeof startMemberBridge> | undefined
-        let handoff: ReturnType<typeof createRuntimeHandoff> | undefined
+        const start = async () => {
+          const context = RuntimeContext.current()
+          handoff = input.handoff
+            ? createRuntimeHandoff({ identity: member.identity, runtimeID: registration.runtimeID })
+            : undefined
+          bridgeDrained = false
+          bridge = startMemberBridge({
+            home: member.home,
+            identity: member.identity,
+            buildVersion: version,
+            ca: input.ca,
+            signal: input.signal,
+            commands: context.bind((connection, signal, resources) => {
+              const intake = createCommandIntake({
+                identity: connection.signingIdentity,
+                runtimeID: connection.runtimeID,
+                accountID: "accountID" in member.identity ? member.identity.accountID : undefined,
+                connectionEpoch: connection.connectionEpoch,
+                signal,
+              })
+              attachMemberExecution({ connection, signal, resources, intake, origin: member.origin, ca: input.ca })
+              const closeReleaseObserver = startExecutionReleaseObserver({ connection, intake, resources, signal })
+              return {
+                create: context.bind(intake.create),
+                control: context.bind(intake.control),
+                input: context.bind(intake.input),
+                decision: context.bind(intake.decision),
+                query: context.bind(intake.query),
+                skip: context.bind(intake.skip),
+                close: context.bind(closeReleaseObserver),
+              }
+            }),
+            sync: true,
+            ...(handoff ? { handoff: context.bind(handoff.dispatch), handoffVersion: 3 as const } : {}),
+            notifications: true,
+            read: context.bind(OrganizationSessionReads.remote),
+            interactions: context.bind(OrganizationSessionReads.interactions),
+            onConnected: context.bind((connection, signal) => {
+              const exporter = startMemberSyncExporter({ identity: member.identity, connection, signal })
+              const stopNotifications = startMemberNotifications(connection, signal)
+              void exporter.flush()
+              return () => {
+                stopNotifications()
+                return exporter.close()
+              }
+            }),
+          })
+          void bridge.closed.then((result) => {
+            if (result.kind === "closed") return
+            Log.create({ service: "organization-runtime" }).warn("Member bridge stopped", {
+              kind: result.kind,
+              code: result.error?.code,
+            })
+          })
+        }
+        restartBridge = start
         return {
           resident: {
             async start() {
-              const context = RuntimeContext.current()
-              handoff = input.handoff
-                ? createRuntimeHandoff({ identity: member.identity, runtimeID: registration.runtimeID })
-                : undefined
-              bridge = startMemberBridge({
-                home: member.home,
-                identity: member.identity,
-                buildVersion: version,
-                ca: input.ca,
-                signal: input.signal,
-                commands: context.bind((connection, signal, resources) => {
-                  const intake = createCommandIntake({
-                    identity: connection.signingIdentity,
-                    runtimeID: connection.runtimeID,
-                    accountID: "accountID" in member.identity ? member.identity.accountID : undefined,
-                    connectionEpoch: connection.connectionEpoch,
-                    signal,
-                  })
-                  attachMemberExecution({ connection, signal, resources, intake, origin: member.origin, ca: input.ca })
-                  const closeReleaseObserver = startExecutionReleaseObserver({ connection, intake, resources, signal })
-                  return {
-                    create: context.bind(intake.create),
-                    control: context.bind(intake.control),
-                    input: context.bind(intake.input),
-                    decision: context.bind(intake.decision),
-                    query: context.bind(intake.query),
-                    skip: context.bind(intake.skip),
-                    close: context.bind(closeReleaseObserver),
-                  }
-                }),
-                sync: true,
-                ...(handoff ? { handoff: context.bind(handoff.dispatch), handoffVersion: 2 as const } : {}),
-                notifications: true,
-                read: context.bind(OrganizationSessionReads.remote),
-                interactions: context.bind(OrganizationSessionReads.interactions),
-                onConnected: context.bind((connection, signal) => {
-                  const exporter = startMemberSyncExporter({ identity: member.identity, connection, signal })
-                  const stopNotifications = startMemberNotifications(connection, signal)
-                  void exporter.flush()
-                  return () => {
-                    stopNotifications()
-                    return exporter.close()
-                  }
-                }),
-              })
-              void bridge.closed.then((result) => {
-                if (result.kind === "closed") return
-                Log.create({ service: "organization-runtime" }).warn("Member bridge stopped", {
-                  kind: result.kind,
-                  code: result.error?.code,
-                })
-              })
+              await start()
             },
             async stop() {
               await bridge?.close()
+              bridgeDrained = true
               await handoff?.close()
             },
           },

@@ -41,7 +41,10 @@ export namespace WorkspacePortableSource {
   export interface Host {
     source(binding: Epochs.Binding): SourcePort
   }
-  const state = RuntimeContext.state(() => ({ host: undefined as Host | undefined }))
+  const state = RuntimeContext.state(() => ({
+    host: undefined as Host | undefined,
+    providers: new Map<string, Host>(),
+  }))
   interface Proof {
     binding: Epochs.Binding
     hash: string
@@ -76,6 +79,16 @@ export namespace WorkspacePortableSource {
     RuntimeContext.assertCompositionOpen("Workspace portability Host")
     if (state().host) fail("Workspace portability Host is already registered")
     state().host = Object.freeze({ source: host.source.bind(host) })
+  }
+  export function registerProvider(id: string, host: Host) {
+    RuntimeContext.assertCompositionOpen("Workspace capture providers")
+    id = Schema.Reference.shape.id.parse(id)
+    if (["objects", "directory"].includes(id) || state().providers.has(id))
+      fail("Workspace capture provider is reserved or registered")
+    state().providers.set(id, Object.freeze({ source: host.source.bind(host) }))
+  }
+  export function hasProvider(id: string) {
+    return state().providers.has(id)
   }
   export function applies(_session: Readonly<Session.Info>) {
     return true
@@ -629,9 +642,14 @@ export namespace WorkspacePortableSource {
               return bytes
             },
           }
+          const provider = current.backend && state().providers.get(current.backend.provider)
+          const selected = provider?.source(binding)
+          const capture = selected ? selected.capture.bind(selected) : captureNative
+          selected?.assert()
           const files = WorkspacePortableTree.Root.parse(
-            await captureNative(Object.freeze(structuredClone(current)), store, signal),
+            await capture(Object.freeze(structuredClone(current)), store, signal),
           )
+          selected?.assert()
           guard()
           const directory = Global.Path.cache
           await fs.mkdir(directory, { recursive: true })

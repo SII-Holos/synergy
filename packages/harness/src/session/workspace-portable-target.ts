@@ -43,6 +43,7 @@ export namespace WorkspacePortableTarget {
     prepare(input: {
       handoffID: string
       captured: Schema.Captured
+      createdAt: number
       signal: AbortSignal
     }): Promise<WorkspaceCatalog.Info>
     validate(catalog: WorkspaceCatalog.Info, signal: AbortSignal): Promise<void>
@@ -227,7 +228,7 @@ export namespace WorkspacePortableTarget {
             const now = previous?.catalog.createdAt ?? Date.now()
             const catalog = remote
               ? WorkspaceCatalog.Info.parse(
-                  await provider(remote).prepare({ handoffID: binding.handoffID, captured, signal }),
+                  await provider(remote).prepare({ handoffID: binding.handoffID, captured, createdAt: now, signal }),
                 )
               : WorkspaceCatalog.Info.parse({
                   id: selected!.workspaceID,

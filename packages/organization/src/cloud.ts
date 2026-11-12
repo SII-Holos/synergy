@@ -22,6 +22,7 @@ import { OrganizationAuthorityHistory as History } from "./authority-history"
 import { OrganizationExecutionGrants } from "./execution-grants"
 import { OrganizationHandoffExecution } from "./handoff"
 import { WorkspaceMove } from "@ericsanchezok/synergy-harness/workspace/move"
+import { WorkspaceArchive } from "@ericsanchezok/synergy-harness/workspace/archive"
 
 export interface OrganizationCloudOptions {
   blobStores?: Record<string, BlobStore>
@@ -632,28 +633,84 @@ export namespace OrganizationCloud {
     const frame = OrganizationHandoffExecution.workspaceAuthority(evidence)
     const operation = frame.proof.operation
     await frame.recheck()
+    if (
+      operation.action === "source" ||
+      operation.action === "source-object" ||
+      operation.action === "source-validate"
+    ) {
+      const selected = frame.source
+      if (!selected) fail("PROTOCOL_MISMATCH", "Workspace handoff has no live source selection")
+      let snapshot = await frame.snapshot()
+      const { info, store } = await WorkspaceContent.resolve({
+        workspaceID: selected.workspaceID,
+        scopeID: frame.scopeID,
+        generation: selected.generation,
+        signal,
+      })
+      const membership = (manifest: string, hash: string) => [
+        "organization",
+        "cloud",
+        "handoff-source-objects",
+        frame.proof.handoffID,
+        manifest,
+        hash,
+      ]
+      if (!snapshot) {
+        if (operation.action !== "source") fail("HANDOFF_BLOCKED", "Workspace source has no completed snapshot")
+        const saved = await WorkspaceArchive.saved({
+          workspaceID: info.id,
+          scopeID: info.scopeID,
+          expectedRevision: info.revision,
+        })
+        snapshot = await WorkspaceArchive.subtree(saved, selected.path, signal)
+        for await (const object of WorkspaceArchive.subtreeObjects(snapshot)) {
+          frame.assert()
+          await Storage.write(membership(snapshot.manifest, object.hash), { hash: object.hash, bytes: object.bytes })
+        }
+        await frame.recheck()
+        snapshot = await frame.retain(snapshot)
+      }
+      if (operation.action === "source-object") {
+        const [raw] = await Storage.readMany([membership(snapshot.manifest, operation.hash)])
+        const metadata = z
+          .strictObject({ hash: WorkspaceTree.Hash, bytes: z.number().int().nonnegative().max(Cloud.chunkBytes) })
+          .parse(raw)
+        if (metadata.hash !== operation.hash || metadata.bytes > operation.maximumBytes)
+          fail("INVALID_REQUEST", "Workspace source object exceeds its original bound")
+        const bytes = WorkspaceTree.verify(
+          operation.hash,
+          await store.get(operation.hash, operation.maximumBytes),
+          operation.maximumBytes,
+        )
+        if (bytes.byteLength !== metadata.bytes) fail("SERVICE_UNAVAILABLE", "Workspace source object is incomplete")
+        await frame.recheck()
+        return { action: "source-object", hash: operation.hash, data: Buffer.from(bytes).toString("base64") }
+      }
+      await frame.recheck()
+      return Cloud.HandoffWorkspaceResult.parse({ action: operation.action, snapshot })
+    }
+    const request = frame.request
+    if (!request) fail("PROTOCOL_MISMATCH", "Workspace handoff has no original move request")
     if (operation.action === "put") {
       const bytes = Buffer.from(operation.data, "base64")
       if (bytes.toString("base64") !== operation.data || bytes.byteLength > Cloud.chunkBytes)
         fail("INVALID_REQUEST", "Workspace transfer bytes must complete their canonical window")
       WorkspaceTree.verify(operation.hash, bytes, Cloud.chunkBytes)
-      const { store } = await WorkspaceContent.resolve({ ...frame.request.target, signal })
+      const { store } = await WorkspaceContent.resolve({ ...request.target, signal })
       frame.assert()
       await store.put(operation.hash, bytes)
       await frame.recheck()
       return { action: "put", hash: operation.hash }
     }
     if (operation.action === "inspect") {
-      const status = await WorkspaceMove.inspect(frame.request)
+      const status = await WorkspaceMove.inspect(request)
       await frame.recheck()
       return Cloud.HandoffWorkspaceResult.parse({ action: "inspect", status })
     }
     const receipt =
       operation.action === "validate"
-        ? await WorkspaceMove.validate(frame.request)
-        : await moveSource.run(frame, () =>
-            WorkspaceMove.runCaptured(frame.request, "organization-handoff", { signal }),
-          )
+        ? await WorkspaceMove.validate(request)
+        : await moveSource.run(frame, () => WorkspaceMove.runCaptured(request, "organization-handoff", { signal }))
     await frame.recheck()
     return Cloud.HandoffWorkspaceResult.parse({ action: operation.action, receipt })
   }
