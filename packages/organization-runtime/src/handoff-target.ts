@@ -20,6 +20,7 @@ import type { MemberResourceClient } from "./resource-client"
 import { OrganizationRuntimeError } from "./error"
 import { RuntimeIdentity } from "./home"
 import { assertHandoffHome } from "./handoff-home"
+import { OrganizationHandoffWorkspaceTarget as WorkspaceTarget } from "./handoff-workspace-target"
 
 export namespace OrganizationHandoffTarget {
   type Mapping = Owners.TargetContext["mapping"]
@@ -28,6 +29,7 @@ export namespace OrganizationHandoffTarget {
     connection: z.infer<typeof Runtime.Connected>
     mapping(session: Readonly<Session.Info>): Promise<Mapping>
     signal: AbortSignal
+    resources?: Partial<Pick<MemberResourceClient, "handoffWorkspace">>
   }
   const Receipt = z.strictObject({ version: z.literal(1), plan: Handoff.MachinePlan, fact: Handoff.Proof })
   const Mapping = z.record(z.string(), z.json())
@@ -37,6 +39,9 @@ export namespace OrganizationHandoffTarget {
       connection: Runtime.Connected.parse(input.connection),
       signal: input.signal,
       mapping: input.mapping.bind(input),
+      resources: input.resources?.handoffWorkspace
+        ? { handoffWorkspace: input.resources.handoffWorkspace.bind(input.resources) }
+        : undefined,
     }
   }
   const identity = [
@@ -135,7 +140,10 @@ export namespace OrganizationHandoffTarget {
       )
         fail("Destination controller belongs to another Runtime or storage owner")
     }
-    async function authorize(input: Input, operation: "prepare-target" | "activate-target" | "inspect-target") {
+    async function authorize(
+      input: Input,
+      operation: "prepare-target" | "activate-target" | "inspect-target" | "retire-target",
+    ) {
       assertOwner(input.signal)
       const { plan, signature } = Handoff.SignedMachinePlan.parse(input.authorization)
       const connection = Runtime.Connected.parse(input.connection)
@@ -163,24 +171,32 @@ export namespace OrganizationHandoffTarget {
         fail("Destination preparation requires the authoritative frozen source fact")
       return { plan, manifestHash, frozen }
     }
-    const key = (plan: Handoff.MachinePlan, kind: "prepared" | "activated") => [
+    const key = (plan: Handoff.MachinePlan, kind: "prepared" | "activated" | "retired") => [
       "organization_handoff_target",
       plan.orgID,
       plan.deploymentIncarnation,
       plan.handoffID,
       kind,
     ]
-    async function receipt(plan: Handoff.MachinePlan, kind: "prepared" | "activated") {
+    async function receipt(plan: Handoff.MachinePlan, kind: "prepared" | "activated" | "retired") {
       const [raw] = await Storage.readMany([key(plan, kind)])
       if (raw === undefined) return
       const saved = Receipt.parse(raw)
       if (!same(plan, saved.plan) || saved.plan.manifestHash !== plan.manifestHash)
         fail("Destination receipt belongs to another immutable handoff")
-      if (saved.fact.purpose !== (kind === "prepared" ? "target-prepared" : "target-activated"))
+      if (
+        saved.fact.purpose !==
+        (kind === "prepared" ? "target-prepared" : kind === "activated" ? "target-activated" : "target-never-activate")
+      )
         fail("Destination receipt has another native purpose")
       return saved
     }
-    async function contexts(input: Input, plan: Handoff.MachinePlan, manifestHash: string, retain: boolean) {
+    function contexts(input: Input, plan: Handoff.MachinePlan, manifestHash: string, retain: boolean) {
+      return WorkspaceTarget.run(plan, input.resources, input.signal, () =>
+        nativeContexts(input, plan, manifestHash, retain),
+      )
+    }
+    async function nativeContexts(input: Input, plan: Handoff.MachinePlan, manifestHash: string, retain: boolean) {
       const core: { ownerID: string; context: Owners.TargetContext }[] = []
       const remaining: typeof core = []
       const bindings: Epochs.Binding[] = []
@@ -206,6 +222,13 @@ export namespace OrganizationHandoffTarget {
           })
         const selected = Mapping.parse(await input.mapping(member.session))
         const frozen = plan.frozen?.proof
+        const moveHash =
+          member.session.id === plan.sessionID && frozen?.purpose === "source-frozen"
+            ? frozen.workspaceMoveReceiptHash
+            : null
+        if (selected.workspaceMoveReceiptHash !== undefined && selected.workspaceMoveReceiptHash !== moveHash)
+          fail("Destination mapping conflicts with its frozen WorkspaceMove receipt")
+        selected.workspaceMoveReceiptHash = moveHash
         if (frozen?.purpose === "source-frozen" && frozen.fileClosureHash !== null) {
           const native = await Files.targetMapping({
             handoffID: plan.handoffID,
@@ -256,7 +279,8 @@ export namespace OrganizationHandoffTarget {
         const input = snapshot(value)
         const { plan, manifestHash } = await authorize(input, "inspect-target")
         const activated = await receipt(plan, "activated")
-        const prepared = activated ?? (await receipt(plan, "prepared"))
+        const retired = await receipt(plan, "retired")
+        const prepared = activated ?? retired ?? (await receipt(plan, "prepared"))
         const fact = prepared?.fact
         const job = jobs.get(plan.handoffID)
         if (job && (!same(plan, job.plan) || job.plan.manifestHash !== manifestHash))
@@ -266,7 +290,7 @@ export namespace OrganizationHandoffTarget {
           if (
             epoch.role !== "target" ||
             epoch.manifestHash !== manifestHash ||
-            epoch.phase !== (activated ? "activated" : "prepared")
+            epoch.phase !== (activated ? "activated" : retired ? "never_activate" : "prepared")
           )
             fail("Destination inspection has no matching permanent native outcome")
         }
@@ -350,11 +374,13 @@ export namespace OrganizationHandoffTarget {
           if (Boolean(root.owners["session-workspaces"]) !== (frozen.fileClosureHash !== null))
             fail("Destination Workspace owner does not match the frozen file closure")
           if (frozen.fileClosureHash !== null)
-            await Files.prepareTarget({
-              binding: binding(plan),
-              expectedReceiptHash: frozen.fileClosureHash,
-              signal: input.signal,
-            })
+            await WorkspaceTarget.run(plan, input.resources, input.signal, () =>
+              Files.prepareTarget({
+                binding: binding(plan),
+                expectedReceiptHash: frozen.fileClosureHash!,
+                signal: input.signal,
+              }),
+            )
           const prepared = await contexts(input, plan, manifestHash, false)
           const fact = Handoff.Proof.parse({
             ...factBinding(plan),
@@ -445,11 +471,51 @@ export namespace OrganizationHandoffTarget {
               },
             })
           if (preparedFact.fileClosureHash !== null)
-            await Files.withTargetPublication({ handoffID: plan.handoffID, signal: input.signal }, publish)
+            await WorkspaceTarget.run(plan, input.resources, input.signal, () =>
+              Files.withTargetPublication({ handoffID: plan.handoffID, signal: input.signal }, publish),
+            )
           else await publish()
           assertOwner(input.signal)
           return fact
         })
+      },
+      async retire(value: Input): Promise<Handoff.Proof> {
+        const input = snapshot(value)
+        const { plan, manifestHash } = await authorize(input, "retire-target")
+        const saved = await receipt(plan, "prepared")
+        if (
+          !saved ||
+          saved.fact.purpose !== "target-prepared" ||
+          plan.preparedHash !== (await Handoff.proofHash(saved.fact)) ||
+          jobs.has(plan.handoffID)
+        )
+          fail("Destination retirement requires its exact completed preparation")
+        await Staging.verify(plan.handoffID, input.signal)
+        const retired = await receipt(plan, "retired")
+        if (retired) return retired.fact
+        const prepared = await contexts(input, plan, manifestHash, true)
+        return Storage.transaction(
+          async () => {
+            if (await receipt(plan, "activated")) fail("An activated destination cannot be retired")
+            const previous = await receipt(plan, "retired")
+            if (previous) return previous.fact
+            for (const member of prepared.bindings) {
+              assertOwner(input.signal)
+              await Epochs.neverActivate(member, manifestHash)
+            }
+            const fact = Handoff.Proof.parse({
+              ...factBinding(plan),
+              purpose: "target-never-activate",
+              manifestHash,
+              preparedHash: plan.preparedHash,
+              tombstonePersisted: true,
+            })
+            await Storage.write(key(plan, "retired"), Receipt.parse({ version: 1, plan, fact }))
+            assertOwner(input.signal)
+            return fact
+          },
+          { commitGuard: () => assertOwner(input.signal) },
+        )
       },
     }
   }

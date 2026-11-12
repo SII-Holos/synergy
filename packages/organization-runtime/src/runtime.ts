@@ -23,6 +23,9 @@ import { OrganizationLocalProjects } from "./local-project"
 import { OrganizationSessionReads } from "./session-reads"
 import { registerOrganizationTransferOwner } from "./session-transfer"
 import { OrganizationRuntimeNative } from "./backup/native"
+import { createRuntimeHandoff } from "./handoff-runtime"
+import { OrganizationHandoffWorkspaceTarget } from "./handoff-workspace-target"
+import { OrganizationWorkspaceFileSource } from "./workspace-file-source"
 import {
   SessionTransferCore,
   SessionTransferEvidence,
@@ -49,6 +52,7 @@ export type MemberRuntimeOptions = Pick<
   ca?: string | string[]
   listen?: z.infer<typeof MemberListener>
   desktop?: z.infer<typeof MemberDesktop>
+  handoff?: true
 }
 
 export async function openMemberRuntime(input: MemberRuntimeOptions) {
@@ -67,6 +71,8 @@ async function openOrganizationRuntime(input: MemberRuntimeOptions) {
   const listener = MemberListener.optional().safeParse(input.listen)
   if (!listener.success)
     throw new MemberHomeError("Member Runtime listener requires an explicit port and private credential")
+  if (input.handoff !== undefined && (input.handoff !== true || !listener.data))
+    throw new MemberHomeError("Mapped handoff controllers require an explicit listening Runtime composition")
   const desktop = MemberDesktop.optional().safeParse(input.desktop)
   if (!desktop.success || (desktop.data && (!listener.data || !MemberDesktopEntry.safeParse(input.entry).success)))
     throw new MemberHomeError("Member Desktop capabilities require a managed Desktop listener and private credential")
@@ -83,12 +89,14 @@ async function openOrganizationRuntime(input: MemberRuntimeOptions) {
       workers: { agent: new URL("./worker.ts", import.meta.url), policy: new URL("./worker.ts", import.meta.url) },
       register() {
         registerMemberSources(member.identity)
+        OrganizationWorkspaceFileSource.register(member.identity)
         OrganizationLocalProjects.register(member.identity)
         OrganizationSessionReads.register(member.identity, registration.runtimeID)
         SessionTransferCore.register()
         SessionTransferEvidence.register()
         SessionTransferSnapshots.register()
         SessionTransferWorkspaces.register()
+        OrganizationHandoffWorkspaceTarget.register()
         SessionTransferEnvironments.register()
         registerOrganizationTransferOwner()
         if (!("accountID" in member.identity))
@@ -96,10 +104,14 @@ async function openOrganizationRuntime(input: MemberRuntimeOptions) {
       },
       services() {
         let bridge: ReturnType<typeof startMemberBridge> | undefined
+        let handoff: ReturnType<typeof createRuntimeHandoff> | undefined
         return {
           resident: {
             async start() {
               const context = RuntimeContext.current()
+              handoff = input.handoff
+                ? createRuntimeHandoff({ identity: member.identity, runtimeID: registration.runtimeID })
+                : undefined
               bridge = startMemberBridge({
                 home: member.home,
                 identity: member.identity,
@@ -127,6 +139,7 @@ async function openOrganizationRuntime(input: MemberRuntimeOptions) {
                   }
                 }),
                 sync: true,
+                ...(handoff ? { handoff: context.bind(handoff.dispatch), handoffVersion: 2 as const } : {}),
                 notifications: true,
                 read: context.bind(OrganizationSessionReads.remote),
                 interactions: context.bind(OrganizationSessionReads.interactions),
@@ -150,6 +163,7 @@ async function openOrganizationRuntime(input: MemberRuntimeOptions) {
             },
             async stop() {
               await bridge?.close()
+              await handoff?.close()
             },
           },
         }

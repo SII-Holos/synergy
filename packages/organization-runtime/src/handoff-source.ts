@@ -25,6 +25,10 @@ import { RuntimeIdentity } from "./home"
 import { assertHandoffHome } from "./handoff-home"
 import { OrganizationRuntimeError } from "./error"
 import type { MemberResourceClient } from "./resource-client"
+import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
+import { WorkspaceMove } from "@ericsanchezok/synergy-harness/workspace/move"
+import { WorkspaceArchive } from "@ericsanchezok/synergy-harness/workspace/archive"
+import { OrganizationSessionTransfer as Transfer } from "./session-transfer"
 
 export namespace OrganizationHandoffSource {
   interface Input {
@@ -70,7 +74,7 @@ export namespace OrganizationHandoffSource {
       authorization: Handoff.SignedMachinePlan.parse(input.authorization),
       connection: Runtime.Connected.parse(input.connection),
       signal: input.signal,
-      resources: input.resources,
+      resources: input.resources && { ...input.resources },
     }
   }
   export function create(options: { identity: RuntimeIdentity; runtimeID: string }) {
@@ -196,7 +200,71 @@ export namespace OrganizationHandoffSource {
       await Physical.release(lease)
       leases.delete(handoffID)
     }
-    async function capture(plan: Handoff.MachinePlan, signal: AbortSignal) {
+    async function moveWorkspace(
+      plan: Handoff.MachinePlan,
+      resources: MemberResourceClient | undefined,
+      signal: AbortSignal,
+    ) {
+      const mapping = plan.workspacePlan?.mapping
+      if (!mapping || mapping.kind === "native") return
+      if (!resources) fail("Workspace move requires the original machine resource client")
+      const send = resources.handoffWorkspace.bind(resources)
+      const session = await Session.get(plan.sessionID)
+      if (session.workspaceID !== mapping.source.workspaceID)
+        fail("Consented move has another current Working location")
+      for await (const member of NativeSource.members(binding(plan), signal)) {
+        const child = await Session.get(member.binding.sessionID)
+        if (child.workspaceID && child.workspaceID !== mapping.source.workspaceID)
+          fail("This mapping cannot transfer additional current Working locations")
+      }
+      const previous = await Transfer.workspaceMoveSource(binding(plan))
+      if (previous) {
+        await Files.withCaptured({ binding: binding(plan), ...mapping.source, signal }, async (snapshot) => {
+          if (snapshot.manifest !== previous.source.manifest)
+            fail("The original uncertain Workspace move cannot recapture different final bytes")
+          snapshot.assert()
+        })
+        const inspected = await send(plan, { action: "inspect" }, signal)
+        const receipt =
+          inspected.action === "inspect" && inspected.status !== undefined
+            ? WorkspaceMove.Status.parse(inspected.status).receipt
+            : undefined
+        if (!receipt || JSON.stringify(receipt.source) !== JSON.stringify(previous.source))
+          fail("Inspect the original uncertain Workspace move before continuing its source freeze")
+        await Transfer.retainWorkspaceMove(binding(plan), receipt, signal)
+        return
+      }
+      await Files.withCaptured({ binding: binding(plan), ...mapping.source, signal }, async (snapshot) => {
+        const catalog = await WorkspaceCatalog.get(mapping.source.workspaceID, plan.sourceBinding.projectID)
+        if (!catalog.binding.physicalID || catalog.binding.generation !== mapping.source.generation)
+          fail("Consented Workspace move lost its original native identity")
+        snapshot.assert()
+        await WorkspaceArchive.copyManifest(
+          { manifest: snapshot.manifest, source: snapshot.store },
+          {
+            async put(hash, bytes) {
+              snapshot.assert()
+              await send(plan, { action: "put", hash, data: Buffer.from(bytes).toString("base64") }, signal)
+              snapshot.assert()
+            },
+          },
+          signal,
+        )
+        const source = WorkspaceMove.CapturedSource.parse({
+          ...mapping.source,
+          scopeID: plan.sourceBinding.projectID,
+          hostID: catalog.binding.hostID,
+          physicalID: catalog.binding.physicalID,
+          manifest: snapshot.manifest,
+        })
+        await Transfer.retainWorkspaceMoveSource(binding(plan), source, signal)
+        const result = await send(plan, { action: "publish", source }, signal)
+        snapshot.assert()
+        if (result.action !== "publish") fail("Workspace move returned another operation")
+        await Transfer.retainWorkspaceMove(binding(plan), WorkspaceMove.Receipt.parse(result.receipt), signal)
+      })
+    }
+    async function capture(plan: Handoff.MachinePlan, signal: AbortSignal, resources?: MemberResourceClient) {
       await supportedCohort(plan, signal)
       await release(plan.handoffID)
       const lease = await Physical.begin({ ...binding(plan), rootSessionID: plan.sessionID }, { signal })
@@ -205,6 +273,7 @@ export namespace OrganizationHandoffSource {
         await supportedCohort(plan, signal)
         if (!Owners.compatibility({ "session-workspaces": 1 }).length)
           await Files.capture({ binding: binding(plan), signal })
+        await moveWorkspace(plan, resources, signal)
       })
       Physical.assertCurrent(lease)
       return lease
@@ -419,10 +488,10 @@ export namespace OrganizationHandoffSource {
               signal,
               verify,
               async beforeFreeze() {
-                lease = await capture(plan, signal)
+                lease = await capture(plan, signal, input.resources)
               },
             })
-            if (!lease) lease = await capture(plan, signal)
+            if (!lease) lease = await capture(plan, signal, input.resources)
             await source.sealSource()
             await verify()
             const files = prepared.root.owners["session-workspaces"] ? await Files.receipt(binding(plan)) : undefined
@@ -437,7 +506,9 @@ export namespace OrganizationHandoffSource {
               compatibilityHash: Target.compatibilityHash(prepared.root.owners),
               closureHash: prepared.closureHash,
               fileClosureHash: files?.hash ?? null,
-              workspaceMoveReceiptHash: null,
+              workspaceMoveReceiptHash: await Transfer.workspaceMove(binding(plan)).then((receipt) =>
+                receipt ? WorkspaceMove.receiptHash(receipt) : null,
+              ),
               paused: true,
               drained: true,
             })
@@ -510,7 +581,7 @@ export namespace OrganizationHandoffSource {
           fn: async () => {
             const prior = await NativeSource.surrendered(binding(plan))
             if (!prior) {
-              const lease = await capture(plan, signal)
+              const lease = await capture(plan, signal, input.resources)
               const commands = intake({ ...input, signal })
               await closeResources(input, commands, signal)
               await resourceClosure(plan)

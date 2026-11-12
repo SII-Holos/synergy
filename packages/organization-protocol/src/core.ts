@@ -104,4 +104,7 @@ export namespace OrganizationProtocol {
       protocolVersion: z.literal(version),
     })
     .meta({ ref: "OrgHealth" })
+  export const Liveness = z
+    .strictObject({ alive: z.boolean(), protocolVersion: z.literal(version) })
+    .meta({ ref: "OrgLiveness" })
 }

@@ -12,8 +12,19 @@ import {
 } from "@ericsanchezok/synergy-organization-protocol"
 import { createOrganizationClient } from "@ericsanchezok/synergy-sdk/organization"
 import { OrganizationRuntimeError } from "./error"
+import { WorkspaceMove } from "@ericsanchezok/synergy-harness/workspace/move"
 
 export interface MemberResourceClient {
+  inspectWorkspaceFile(
+    proof: Execution.InspectionProof,
+    input: { reference: Cloud.FileReference; operation: Cloud.FileInspectionProof["operation"] },
+    signal?: AbortSignal,
+  ): Promise<Cloud.FileResult>
+  handoffWorkspace(
+    plan: Handoff.MachinePlan,
+    operation: Cloud.HandoffWorkspaceOperation,
+    signal?: AbortSignal,
+  ): Promise<Cloud.HandoffWorkspaceResult>
   workspaceFiles(
     proof: Execution.BindingProof,
     input: Cloud.LocalFileRequest,
@@ -98,6 +109,7 @@ type Proof =
   | Execution.InspectionProof
   | Gateway.Proof
   | Objects.Proof
+  | Cloud.HandoffWorkspaceProof
 
 function failure(
   code: OrganizationProtocol.Error["code"],
@@ -342,6 +354,132 @@ export function createMemberResourceClient(options: {
     return permit
   }
   const resources: MemberResourceClient = {
+    async inspectWorkspaceFile(value, input, signal) {
+      const proof = Execution.InspectionProof.parse(value)
+      const selected = Cloud.LocalFileRequest.parse(input)
+      if (selected.operation.action !== "receipt" && selected.operation.action !== "acknowledge")
+        throw failure("PROTOCOL_MISMATCH", "File inspection cannot dispatch an operation", "not_dispatched")
+      const file = Cloud.FileInspectionProof.parse({
+        purpose: "organization-workspace-file-inspection",
+        authority: { proof, signature: await Execution.signInspection(proof, options.key) },
+        ...selected,
+      })
+      const request = Cloud.FileInspectionRequest.parse({
+        proof: file,
+        signature: await Cloud.signFileInspection(file, options.key),
+      })
+      return invoke(
+        proof,
+        Cloud.FileResult,
+        (signal) => client.orgCloudFiles.inspect({ orgCloudFileInspectionRequest: request }, { signal }),
+        (result) => {
+          if (
+            JSON.stringify(result.reference) !== JSON.stringify(selected.reference) ||
+            result.result.action !== selected.operation.action
+          )
+            throw failure("PROTOCOL_MISMATCH", "File inspection returned another original receipt")
+          const answer = result.result
+          const matches = (mount: z.infer<typeof Cloud.FileCheckpoint>["mount"]) =>
+            mount.id === file.reference.workspaceID &&
+            mount.workspaceID === file.reference.workspaceID &&
+            mount.generation === file.reference.generation
+          if (
+            answer.action === "receipt" &&
+            answer.status &&
+            (answer.status.id !== file.operation.id ||
+              !matches(answer.status.mount) ||
+              (answer.status.checkpoint &&
+                (answer.status.checkpoint.id !== file.operation.id || !matches(answer.status.checkpoint.mount))) ||
+              (answer.status.state === "saved" && !answer.status.checkpoint))
+          )
+            throw failure("PROTOCOL_MISMATCH", "File inspection returned another original checkpoint")
+          if (answer.action === "acknowledge" && answer.id !== file.operation.id)
+            throw failure("PROTOCOL_MISMATCH", "File inspection acknowledged another operation")
+        },
+        signal,
+      )
+    },
+    async handoffWorkspace(value, input, signal) {
+      const plan = Handoff.MachinePlan.parse(value)
+      const operation = Cloud.HandoffWorkspaceOperation.parse(input)
+      const workspace = plan.workspacePlan
+      if (
+        !workspace ||
+        workspace.mapping.kind !== "organization-object" ||
+        !workspace.targetScopeID ||
+        !workspace.selectionActor
+      )
+        throw failure("HANDOFF_BLOCKED", "Workspace transfer requires its complete original mapping", "not_dispatched")
+      const mapping = workspace.mapping
+      const original = WorkspaceMove.Request.parse({
+        id: mapping.moveID,
+        source: { ...mapping.source, scopeID: plan.sourceBinding.projectID },
+        target: {
+          workspaceID: mapping.target.workspaceID,
+          generation: mapping.target.generation,
+          scopeID: workspace.targetScopeID,
+          path: mapping.target.path,
+          expectedRevision: mapping.target.expectedRevision,
+        },
+        mappingRevision: plan.mappingPlanRevision,
+        acceptedDiffHash: mapping.acceptedDiffHash,
+        actor: workspace.selectionActor,
+      })
+      const issuedAt = Date.now()
+      const proof = Cloud.HandoffWorkspaceProof.parse({
+        ...Object.fromEntries(
+          Object.keys(Handoff.Binding.shape).map((key) => [key, plan[key as keyof Handoff.MachinePlan]]),
+        ),
+        purpose: "handoff-workspace",
+        runtimeID: connection.runtimeID,
+        connectionEpoch: connection.connectionEpoch,
+        mappingHash: workspace.hash,
+        operation,
+        issuedAt,
+        expiresAt: issuedAt + 30_000,
+      })
+      const request = Cloud.HandoffWorkspaceRequest.parse({
+        proof,
+        signature: await Cloud.signHandoffWorkspace(proof, options.key),
+      })
+      return invoke(
+        proof,
+        Cloud.HandoffWorkspaceResult,
+        (signal) => client.orgHandoffWorkspace.request({ orgHandoffWorkspaceRequest: request }, { signal }),
+        (result) => {
+          if (
+            result.action !== operation.action ||
+            (result.action === "put" && (operation.action !== "put" || result.hash !== operation.hash))
+          )
+            throw failure("PROTOCOL_MISMATCH", "Workspace transfer returned another original operation")
+          const receipt =
+            result.action === "publish" || result.action === "validate"
+              ? WorkspaceMove.Receipt.parse(result.receipt)
+              : result.action === "inspect" && result.status !== undefined
+                ? WorkspaceMove.Status.parse(result.status).receipt
+                : undefined
+          if (result.action === "inspect" && result.status !== undefined) {
+            const status = WorkspaceMove.Status.parse(result.status)
+            if (
+              JSON.stringify(status.request) !== JSON.stringify(original) ||
+              status.digest !== WorkspaceMove.requestHash(original)
+            )
+              throw failure("PROTOCOL_MISMATCH", "Workspace transfer status has another original request")
+          }
+          if (
+            receipt &&
+            (receipt.id !== original.id ||
+              receipt.requestHash !== WorkspaceMove.requestHash(original) ||
+              (operation.action === "publish" &&
+                receipt.source.manifest !== WorkspaceMove.CapturedSource.parse(operation.source).manifest) ||
+              (plan.frozen?.proof.purpose === "source-frozen" &&
+                WorkspaceMove.receiptHash(receipt) !== plan.frozen.proof.workspaceMoveReceiptHash))
+          )
+            throw failure("PROTOCOL_MISMATCH", "Workspace transfer receipt has another original publication")
+        },
+        signal,
+      )
+    },
     async workspaceFiles(value, input, signal) {
       const proof = Execution.BindingProof.parse(value)
       const selected = Cloud.LocalFileRequest.parse(input)
@@ -365,7 +503,8 @@ export function createMemberResourceClient(options: {
             (expected &&
               (ref.resourceID !== expected.resourceID ||
                 ref.workspaceID !== expected.workspaceID ||
-                ref.generation !== expected.generation))
+                ref.generation !== expected.generation ||
+                ref.rootPath !== expected.rootPath))
           )
             throw failure("PROTOCOL_MISMATCH", "Workspace file response belongs to another original resource")
           const operation = selected.operation

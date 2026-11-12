@@ -12,7 +12,7 @@ import { assertRuntimeConnection, runtimeAuthority } from "./runtime-authority"
 import { OrganizationRecord as Record } from "./storage/records"
 import { OrganizationStoragePath as Keys } from "./storage/path"
 import { fail } from "./error"
-import { projectView, projectExecutionRole } from "./authorization"
+import { projectView, projectExecutionRole, sessionView } from "./authorization"
 import type { CommandAdmissions } from "./command-admission"
 import type { RuntimeConnections } from "./runtime-connection"
 import type { createHandoffs } from "./handoff"
@@ -26,8 +26,9 @@ async function saveGrant(grant: Execution.Grant) {
   await Index.update(grant)
 }
 interface WorkspaceAuthorityFrame {
-  grant: Execution.BoundGrant
-  request: Cloud.FileProof
+  grant: Execution.Grant
+  rootID: string
+  request: Cloud.LocalFileRequest
   assert(): void
   recheck(): Promise<void>
 }
@@ -42,8 +43,9 @@ export namespace OrganizationExecutionGrants {
     if (!frame) fail("PERMISSION_DENIED", "Workspace files require their original accepted authority")
     frame.assert()
     return {
-      grant: Execution.BoundGrant.parse(frame.grant),
-      request: Cloud.FileProof.parse(frame.request),
+      grant: Execution.Grant.parse(frame.grant),
+      rootID: frame.rootID,
+      request: Cloud.LocalFileRequest.parse(frame.request),
       assert: frame.assert,
       recheck: frame.recheck,
     }
@@ -260,13 +262,19 @@ export function createExecutionGrants(options: {
         assertResourcesDrained(predecessor.grantID)
         predecessorID = predecessor.grantID
         const contract = await Resources.read(session)
-        if (
-          !contract ||
-          contract.revision !== predecessor.selectionRevision ||
-          !same(contract.selection, predecessor.selection)
-        )
-          fail("REVISION_CONFLICT", "Execution continuation resource selection changed")
-        await Resources.enabled(session, predecessor.selection)
+        const mapped = authority.workspaceContinuation
+        const exact =
+          !!contract &&
+          contract.revision === predecessor.selectionRevision &&
+          same(contract.selection, predecessor.selection)
+        const consented =
+          !!contract &&
+          !!mapped &&
+          predecessor.selectionRevision === mapped.before.revision &&
+          same(predecessor.selection, mapped.before.selection) &&
+          same(contract, mapped.after)
+        if (!exact && !consented) fail("REVISION_CONFLICT", "Execution continuation resource selection changed")
+        await Resources.enabled(session, contract!.selection!)
         const grant = Execution.Grant.parse({
           schemaVersion: 5,
           state: "provisional",
@@ -275,8 +283,8 @@ export function createExecutionGrants(options: {
           deploymentIncarnation: predecessor.deploymentIncarnation,
           sessionID: predecessor.sessionID,
           projectID: predecessor.projectID,
-          selectionRevision: predecessor.selectionRevision,
-          selection: predecessor.selection,
+          selectionRevision: contract!.revision,
+          selection: contract!.selection,
           limits: predecessor.limits,
           actor: predecessor.actor,
           admissionID: predecessor.admissionID,
@@ -590,6 +598,96 @@ export function createExecutionGrants(options: {
     })
   }
   return {
+    async withWorkspaceInspection<T>(
+      value: Cloud.FileInspectionRequest,
+      signal: AbortSignal | undefined,
+      body: (authority: OrganizationExecutionGrants.WorkspaceAuthority) => Promise<T>,
+    ): Promise<T> {
+      if (Storage.inTransaction()) fail("INVALID_REQUEST", "Workspace receipt inspection must own its read boundary")
+      const request = Cloud.FileInspectionRequest.parse(value)
+      const { proof, signature } = request.proof.authority
+      const owner = WorkspaceContent.captureOwner(signal)
+      window(proof)
+      const registered = await Storage.snapshot(() => machine(proof))
+      owner()
+      if (
+        !(await Execution.verifyInspection(proof, signature, registered.runtime.publicKey)) ||
+        !(await Cloud.verifyFileInspection(request.proof, request.signature, registered.runtime.publicKey))
+      )
+        fail("PERMISSION_DENIED", "Workspace receipt inspection requires its original signed operation")
+      const connection = capture(proof, registered.runtime)
+      let open = true
+      let retained: Execution.Grant | undefined
+      const assert = () => {
+        owner()
+        window(proof)
+        connection.assertCurrent()
+        if (!open) fail("PERMISSION_DENIED", "Workspace receipt inspection has ended")
+      }
+      const recheck = async () => {
+        assert()
+        await Storage.snapshot(async () => {
+          const { session, account } = await receivedSession(proof, registered.runtime.publicKey)
+          const accepted = await original(proof)
+          const selector = proof.grantID ?? accepted.permit.provisionalGrantID!
+          const grant = receivedGrant(
+            proof,
+            await Record.read(Record.ExecutionGrant, Keys.executionGrant(selector)),
+            "retention",
+          )
+          if (
+            grant.grantID !== selector ||
+            (proof.generation !== undefined &&
+              proof.generation > (grant.state === "bound" ? grant.retention.generation : 0))
+          )
+            fail("PROTOCOL_MISMATCH", "Workspace receipt inspection has another original grant")
+          const project = await Record.read(Record.Project, Keys.project(session.projectID))
+          if (!project) fail("NOT_FOUND", "Workspace receipt project is unavailable")
+          if (account) {
+            const membership = await Record.read(
+              Record.ProjectMember,
+              Keys.projectMember(project.projectID, account.accountID),
+            )
+            sessionView(account, session, projectView(account, project, membership, "project.read"), "session.read")
+          }
+          const selected = grant.selection.infrastructure.workspace
+          if (!selected) fail("RESOURCE_UNAVAILABLE", "Original execution has no organization Workspace")
+          const resource = await Record.read(Record.Resource, Keys.resource(grant.orgID, selected.resourceID))
+          if (
+            !resource ||
+            resource.orgID !== grant.orgID ||
+            resource.resourceID !== selected.resourceID ||
+            resource.state !== "enabled" ||
+            resource.configuration.protocol !== "workspace-storage" ||
+            (resource.scope.kind === "project" && resource.scope.projectID !== session.projectID)
+          )
+            fail("RESOURCE_UNAVAILABLE", "Original Workspace resource is unavailable")
+          if (retained && (retained.grantID !== grant.grantID || !same(retained.selection, grant.selection)))
+            fail("PROTOCOL_MISMATCH", "Original Workspace grant selection changed")
+          retained ??= grant
+          assert()
+        })
+        assert()
+      }
+      try {
+        await recheck()
+        const evidence: OrganizationExecutionGrants.WorkspaceAuthority = Object.freeze({
+          kind: "organization-workspace-authority",
+        })
+        workspaceAuthorities.set(evidence, {
+          grant: Execution.Grant.parse(retained),
+          rootID: proof.rootID,
+          request: { reference: request.proof.reference, operation: request.proof.operation },
+          assert,
+          recheck,
+        })
+        const result = await body(evidence)
+        await recheck()
+        return result
+      } finally {
+        open = false
+      }
+    },
     async withWorkspace<T>(
       value: Cloud.FileRequest,
       signal: AbortSignal | undefined,
@@ -645,7 +743,13 @@ export function createExecutionGrants(options: {
       const evidence: OrganizationExecutionGrants.WorkspaceAuthority = Object.freeze({
         kind: "organization-workspace-authority",
       })
-      workspaceAuthorities.set(evidence, { grant, request: request.proof, assert, recheck })
+      workspaceAuthorities.set(evidence, {
+        grant,
+        rootID: proof.rootID,
+        request: { reference: request.proof.reference, operation: request.proof.operation },
+        assert,
+        recheck,
+      })
       fileCalls.set(grant.grantID, (fileCalls.get(grant.grantID) ?? 0) + 1)
       try {
         return await body(evidence)

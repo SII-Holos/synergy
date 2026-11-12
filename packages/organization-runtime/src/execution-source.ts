@@ -21,6 +21,7 @@ import type { createCommandIntake } from "./command-intake"
 import { OrganizationRuntimeError } from "./error"
 import { OrganizationExecutionLeases as Leases } from "./execution-leases"
 import { createMemberModelProvider, MemberModelContext } from "./model-provider"
+import { EnvironmentOrigin } from "@ericsanchezok/synergy-harness/environment/origin"
 
 interface Connection {
   connection: MemberConnection["connected"]
@@ -130,21 +131,91 @@ export async function withMemberExecution<T>(
 }
 
 export async function withMemberFiles<T>(
-  input: { sessionID: string; scopeID?: string; parentSessionID?: string; signal?: AbortSignal },
-  fn: (resolution: MemberExecutionResolution, signal: AbortSignal) => Promise<T>,
+  input: {
+    sessionID: string
+    scopeID?: string
+    parentSessionID?: string
+    origin?: EnvironmentOrigin.Captured
+    signal?: AbortSignal
+  },
+  fn: (resolution: MemberExecutionResolution & { assertCaller(): Promise<void> }, signal: AbortSignal) => Promise<T>,
 ): Promise<T> {
+  input = { ...input }
+  const origin = input.origin
   const identity = state().identity
   if (!identity) throw denied("Organization Workspace file resolution is not registered")
+  const selectedIdentity = RuntimeIdentity.parse(identity)
   return withMemberResolution(
     identity,
     input,
     async (resolution, signal) => {
       if (!resolution.description.grant.selection.infrastructure.workspace)
         throw denied("The accepted Session has no organization Workspace file owner")
-      return fn(resolution, signal)
+      const original = resolution.session
+      const sessionID = original.id
+      const scopeID = original.scope.id
+      const lineage = JSON.stringify(resolution.lineage)
+      const accepted = { sessionID: resolution.accepted.sessionID, rootID: resolution.accepted.rootID }
+      const cortex = (session: typeof original) =>
+        session.cortex && {
+          taskID: session.cortex.taskID,
+          parentSessionID: session.cortex.parentSessionID,
+          parentMessageID: session.cortex.parentMessageID,
+        }
+      const caller = JSON.stringify({
+        parentID: original.parentID,
+        organization: original.organization,
+        cortex: cortex(original),
+      })
+      async function assertCaller() {
+        signal.throwIfAborted()
+        if (state().connection !== resolution.source) throw denied("Workspace file connection changed")
+        if (!origin) return
+        origin.assertCurrent()
+        const selected = origin.value
+        if (selected.kind !== "session" || selected.sessionID !== sessionID || selected.scopeID !== scopeID)
+          throw denied("Workspace files require their original native caller")
+        await EnvironmentOrigin.assertAdmission(origin, { scopeID })
+        const current = await sessionFor(sessionID, selectedIdentity, resolution.source)
+        if (
+          JSON.stringify({
+            parentID: current.parentID,
+            organization: current.organization,
+            cortex: cortex(current),
+          }) !== caller ||
+          JSON.stringify(await executionLineage(current, selectedIdentity, resolution.source)) !== lineage ||
+          (!lineage && (accepted.sessionID !== selected.sessionID || accepted.rootID !== selected.rootID))
+        )
+          throw denied("Workspace files cannot replace their original caller or accepted lineage")
+        origin.assertCurrent()
+        signal.throwIfAborted()
+        if (state().connection !== resolution.source) throw denied("Workspace file connection changed")
+      }
+      await assertCaller()
+      return fn({ ...resolution, assertCaller }, signal)
     },
     false,
   )
+}
+
+export async function inspectMemberFiles(
+  authority: Leases.Authority,
+  selector: { grantID: string; generation: number },
+  input: Parameters<MemberConnection["resources"]["inspectWorkspaceFile"]>[1],
+  signal?: AbortSignal,
+) {
+  const original = Leases.Authority.parse(authority)
+  const selected = { grantID: selector.grantID, generation: selector.generation }
+  const file = structuredClone(input)
+  const source = current()
+  const cancellation = AbortSignal.any([source.signal, ...(signal ? [signal] : [])])
+  const proof = await source.intake.cleanupProof(original, selected)
+  cancellation.throwIfAborted()
+  if (state().connection !== source) throw denied("Workspace inspection connection changed")
+  const result = await source.resources.inspectWorkspaceFile(proof, file, cancellation)
+  cancellation.throwIfAborted()
+  if (state().connection !== source) throw denied("Workspace inspection connection changed")
+  return result
 }
 
 async function withMemberResolution<T>(

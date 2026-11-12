@@ -19,13 +19,15 @@ import {
 import { OrganizationCommandRecords as Records } from "./command-records"
 import { OrganizationIntakePath as Keys } from "./storage/path"
 import { OrganizationSessionAdoption as Adoption } from "./session-adoption"
+import { WorkspaceMove } from "@ericsanchezok/synergy-harness/workspace/move"
+import { WorkspaceContent } from "@ericsanchezok/synergy-harness/workspace/content"
 
 export namespace OrganizationSessionTransfer {
   export const id = "organization-runtime"
-  export const version = 3
+  export const version = 4
   const ID = z.string().min(1)
   const Count = z.number().int().nonnegative().safe()
-  const Header = z.strictObject({
+  const LegacyHeader = z.strictObject({
     version: z.literal(3),
     capabilities: z.strictObject({
       adoption: z.literal(1),
@@ -40,6 +42,95 @@ export namespace OrganizationSessionTransfer {
     commandSeq: Count,
     records: Count,
   })
+  const CurrentHeader = LegacyHeader.extend({
+    version: z.literal(4),
+    workspaceMoveReceipt: WorkspaceMove.Receipt.nullable(),
+  })
+  const Header = z.union([LegacyHeader, CurrentHeader])
+  const moveKey = (handoffID: string, sessionID: string) => [
+    "organization-session-transfer",
+    ID.parse(handoffID),
+    ID.parse(sessionID),
+    "workspace-move",
+  ]
+  const Move = z.strictObject({
+    version: z.literal(1),
+    binding: Epochs.Binding,
+    source: WorkspaceMove.CapturedSource,
+    receipt: WorkspaceMove.Receipt.optional(),
+  })
+  export async function workspaceMoveSource(value: Epochs.Binding) {
+    const binding = Epochs.Binding.parse(value)
+    const [raw] = await Storage.readMany([moveKey(binding.handoffID, binding.sessionID)])
+    if (raw === undefined) return
+    const stored = Move.parse(raw)
+    if (!same(stored.binding, binding)) fail("Workspace move belongs to another source aggregate")
+    return stored
+  }
+  export async function workspaceMove(value: Epochs.Binding) {
+    return (await workspaceMoveSource(value))?.receipt ?? null
+  }
+  export async function retainWorkspaceMoveSource(
+    value: Epochs.Binding,
+    source: z.infer<typeof WorkspaceMove.CapturedSource>,
+    signal: AbortSignal,
+  ) {
+    const binding = Epochs.Binding.parse(value)
+    const selected = WorkspaceMove.CapturedSource.parse(source)
+    const assert = WorkspaceContent.captureOwner(signal)
+    await Storage.transaction(
+      async () => {
+        const actual = await Epochs.ownerPreparationBinding({
+          sessionID: binding.sessionID,
+          handoffID: binding.handoffID,
+        })
+        if (!same(actual, binding) || selected.scopeID !== binding.scopeID)
+          fail("Workspace dispatch has another source aggregate")
+        const previous = await workspaceMoveSource(binding)
+        if (previous && !same(previous.source, selected)) fail("Workspace dispatch cannot replace its original source")
+        if (!previous)
+          await Storage.write(
+            moveKey(binding.handoffID, binding.sessionID),
+            Move.parse({ version: 1, binding, source: selected }),
+          )
+        assert()
+      },
+      { commitGuard: assert },
+    )
+  }
+  export async function retainWorkspaceMove(
+    value: Epochs.Binding,
+    receipt: WorkspaceMove.Receipt,
+    signal: AbortSignal,
+  ) {
+    const binding = Epochs.Binding.parse(value)
+    const selected = WorkspaceMove.Receipt.parse(receipt)
+    const assert = WorkspaceContent.captureOwner(signal)
+    if (
+      (binding.rootSessionID ?? binding.sessionID) !== binding.sessionID ||
+      selected.source.scopeID !== binding.scopeID
+    )
+      fail("Workspace move requires its canonical source aggregate")
+    await Storage.transaction(
+      async () => {
+        const actual = await Epochs.ownerPreparationBinding({
+          sessionID: binding.sessionID,
+          handoffID: binding.handoffID,
+        })
+        if (!same(actual, binding)) fail("Workspace move source epoch changed")
+        const previous = await workspaceMoveSource(binding)
+        if (!previous || !same(previous.source, selected.source)) fail("Workspace move has another dispatched source")
+        if (previous.receipt && !same(previous.receipt, selected))
+          fail("Workspace move cannot replace its original receipt")
+        await Storage.write(
+          moveKey(binding.handoffID, binding.sessionID),
+          Move.parse({ ...previous, receipt: selected }),
+        )
+        assert()
+      },
+      { commitGuard: assert },
+    )
+  }
   const Row = z.strictObject({ key: z.array(ID).min(1), value: z.unknown() })
   const headerKey = (context: Pick<Owners.SourceContext, "handoffID" | "session">) => [
     "organization-session-transfer",
@@ -146,9 +237,9 @@ export namespace OrganizationSessionTransfer {
   function current(session: Readonly<Session.Info>) {
     return OrganizationProtocol.SessionBinding.parse(session.organization)
   }
-  function sourceHeader(context: Owners.SourceContext, value: unknown) {
-    return Header.parse({
-      version: 3,
+  function sourceHeader(context: Owners.SourceContext, value: unknown, receipt: WorkspaceMove.Receipt | null = null) {
+    return CurrentHeader.parse({
+      version: 4,
       capabilities: { adoption: 1, commandClosure: 1, executionContinuation: 1, corePublication: 1 },
       handoffID: context.handoffID,
       rootSessionID: context.rootSessionID,
@@ -156,6 +247,7 @@ export namespace OrganizationSessionTransfer {
       sourceBinding: current(context.session),
       commandSeq: value === undefined ? 0 : Records.State.parse(value).commandSeq,
       records: 0,
+      workspaceMoveReceipt: receipt,
     })
   }
   async function closedPosition(
@@ -186,7 +278,15 @@ export namespace OrganizationSessionTransfer {
       let records = 0
       const state = await Storage.snapshot(async () => {
         const [value] = await Storage.readMany([Keys.state(binding.orgID, context.session.id)])
-        const header = sourceHeader(context, value)
+        const header = sourceHeader(
+          context,
+          value,
+          context.session.id === context.rootSessionID
+            ? await workspaceMove(
+                await Epochs.ownerPreparationBinding({ sessionID: context.session.id, handoffID: context.handoffID }),
+              )
+            : null,
+        )
         const file = await fs.open(filename, "wx", 0o600)
         try {
           for await (const row of Storage.records({ prefix: prefix(header), limit: 128 })) {
@@ -246,10 +346,31 @@ export namespace OrganizationSessionTransfer {
     Owners.TargetContext,
     { runtime: RuntimeContext.Instance; header: z.infer<typeof Header> }
   >()
+  export async function stagedWorkspaceMove(context: Owners.TargetContext) {
+    const row = await context.staged.record(headerKey(context))
+    const header = Header.parse(row?.value)
+    if (
+      header.version !== context.sourceVersion ||
+      header.handoffID !== context.handoffID ||
+      header.sessionID !== context.session.id ||
+      header.rootSessionID !== context.rootSessionID ||
+      !same(header.sourceBinding, current(context.session))
+    )
+      fail("Workspace receipt has another source header")
+    return header.version === 4 ? header.workspaceMoveReceipt : null
+  }
   async function validate(context: Owners.TargetContext) {
     const row = await context.staged.record(headerKey(context))
     if (!row) fail("Portable organization owner proof is missing")
     const header = Header.parse(row.value)
+    if (header.version !== context.sourceVersion) fail("Portable organization header has another reader version")
+    const move = header.version === 4 ? header.workspaceMoveReceipt : null
+    const expectedMove = context.mapping.workspaceMoveReceiptHash ?? null
+    if (
+      (move ? WorkspaceMove.receiptHash(move) : null) !== expectedMove ||
+      (move && (header.sessionID !== header.rootSessionID || move.source.scopeID !== header.sourceBinding.projectID))
+    )
+      fail("Portable organization header has another complete WorkspaceMove receipt")
     const core = await context.staged.relatedRecord?.("session-core", [
       "sessions",
       context.session.scope.id,
@@ -430,7 +551,7 @@ export namespace OrganizationSessionTransfer {
   export function register() {
     Owners.register(id, {
       version,
-      reads: [version],
+      reads: [3, version],
       stagedDependencies: ["session-core"],
       publicationAfter: ["session-core"],
       applies: (session) => !!session.organization,

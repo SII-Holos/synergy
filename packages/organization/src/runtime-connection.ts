@@ -142,7 +142,7 @@ export function createRuntimeConnections(input: {
       fail("PROTOCOL_MISMATCH", "Runtime does not support live work notifications")
     if (
       requireCommands === "handoffs" &&
-      (!handshake.capabilities.includes("handoffs") || handshake.schemas.handoffs !== 1)
+      (!handshake.capabilities.includes("handoffs") || ![1, 2].includes(handshake.schemas.handoffs))
     )
       fail("PROTOCOL_MISMATCH", "Runtime does not support the native handoff reader contract")
     Object.freeze(handshake.capabilities)

@@ -9,6 +9,7 @@ import { SessionTransferFreezeAuthority } from "./transfer-freeze-authority"
 import type { SessionTransferStream } from "./transfer-stream"
 import { SessionSchemaRegistry } from "./schema-registry"
 import { EnvironmentExecution } from "../environment/execution"
+import { WorkspaceContent } from "../workspace/content"
 
 export namespace SessionTransferOwners {
   export type FreezeReceipt = SessionTransferFreezeAuthority.Receipt
@@ -77,6 +78,7 @@ export namespace SessionTransferOwners {
     publicationAfter?: readonly string[]
     inspect(context: SourceContext): Promise<Inspection>
     freeze(context: SourceContext): Promise<void>
+    sealAggregate?(input: { root: SourceContext; members(): AsyncIterable<SourceContext> }): Promise<void>
     export(context: SourceContext): AsyncIterable<SessionTransferStream.Input>
     dependencies?(context: SourceContext): AsyncIterable<Dependency>
     validate(context: TargetContext): Promise<void>
@@ -280,6 +282,51 @@ export namespace SessionTransferOwners {
       handoffID: context.handoffID,
       owners: ids,
     })
+  }
+
+  export async function sealAggregate(
+    root: SourceContext,
+    ids: readonly string[],
+    members: () => AsyncIterable<SourceContext>,
+  ) {
+    const selected = [...ids]
+    const input = { ...root, session: structuredClone(root.session) }
+    const source = members
+    const assert = WorkspaceContent.captureOwner(input.signal)
+    let open = true
+    function current() {
+      assert()
+      if (!open) throw new Rejected({ message: "Aggregate sealing callback has ended" })
+    }
+    try {
+      await SessionTransferEpochs.assertFrozen(input.session.id, input.handoffID)
+      for (const id of selected) {
+        current()
+        const seal = require(id).sealAggregate
+        if (!seal) continue
+        await seal({
+          root: input,
+          members: () =>
+            (async function* () {
+              current()
+              for await (const member of source()) {
+                current()
+                if (
+                  member.handoffID !== input.handoffID ||
+                  member.rootSessionID !== input.rootSessionID ||
+                  member.session.scope.id !== input.session.scope.id
+                )
+                  throw new Rejected({ message: "Aggregate sealing member belongs to another frozen cohort" })
+                yield { ...member, session: structuredClone(member.session) }
+              }
+              current()
+            })(),
+        })
+        current()
+      }
+    } finally {
+      open = false
+    }
   }
 
   export async function* entries(

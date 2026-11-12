@@ -2,23 +2,13 @@ import { z } from "zod"
 import { OrganizationIdentity as Identity } from "./identity.js"
 import { OrganizationExecutionProtocol as Execution } from "./execution.js"
 import { SigningSignature, signedProtocol } from "./signature.js"
+import { WorkspacePath } from "./workspace-path.js"
+import { OrganizationHandoffProtocol as Handoff } from "./handoff.js"
 
 export namespace OrganizationCloudProtocol {
   export const chunkBytes = 4 * 1024 * 1024
   export const Hash = z.string().regex(/^[a-f0-9]{64}$/)
-  export const Path = z
-    .string()
-    .min(1)
-    .max(4096)
-    .refine(
-      (value) =>
-        !value.includes("\\") &&
-        !/[\x00-\x1f]/.test(value) &&
-        !value.startsWith("/") &&
-        !value.split("/").some((part) => !part || part === "." || part === "..") &&
-        !/^[a-zA-Z]:/.test(value),
-      "Expected a relative Workspace path",
-    )
+  export const Path = WorkspacePath
   export const Workspace = z
     .strictObject({
       workspaceID: Identity.ID,
@@ -106,9 +96,24 @@ export namespace OrganizationCloudProtocol {
       workspaceID: Identity.ID,
       generation: z.number().int().positive().safe(),
       revision: z.number().int().positive().safe(),
+      rootPath: Path.optional(),
     })
     .meta({ ref: "OrgCloudFileReference" })
   export type FileReference = z.infer<typeof FileReference>
+  export const FileLocator = z.strictObject({
+    version: z.literal(1),
+    orgID: Identity.ID,
+    deploymentIncarnation: Identity.ID,
+    projectID: Identity.ID,
+    resourceID: Identity.ID,
+    workspaceID: Identity.ID,
+    generation: z.number().int().positive().safe(),
+    path: Path,
+    moveID: Identity.ID,
+    mappingRevision: z.number().int().positive().safe(),
+    workspaceMoveReceiptHash: Hash,
+  })
+  export type FileLocator = z.infer<typeof FileLocator>
   export const FileItem = z.strictObject({
     path: RootPath,
     entryVersion: z.string(),
@@ -208,6 +213,26 @@ export namespace OrganizationCloudProtocol {
   const signedFiles = signedProtocol(FileProof, "synergy.organization.workspace.file.v1\n")
   export const signFile = signedFiles.sign
   export const verifyFile = signedFiles.verify
+  export const FileInspectionProof = z.strictObject({
+    purpose: z.literal("organization-workspace-file-inspection"),
+    authority: Execution.InspectionRequest,
+    reference: FileReference,
+    operation: z.discriminatedUnion("action", [
+      z.strictObject({ action: z.literal("receipt"), id: Identity.ID }),
+      z.strictObject({ action: z.literal("acknowledge"), id: Identity.ID }),
+    ]),
+  })
+  export type FileInspectionProof = z.infer<typeof FileInspectionProof>
+  export const FileInspectionRequest = z
+    .strictObject({ proof: FileInspectionProof, signature: SigningSignature })
+    .meta({ ref: "OrgCloudFileInspectionRequest" })
+  export type FileInspectionRequest = z.infer<typeof FileInspectionRequest>
+  const signedFileInspection = signedProtocol(
+    FileInspectionProof,
+    "synergy.organization.workspace.file.inspection.v1\n",
+  )
+  export const signFileInspection = signedFileInspection.sign
+  export const verifyFileInspection = signedFileInspection.verify
   const FileMount = z.strictObject({
     id: Identity.ID,
     workspaceID: Identity.ID,
@@ -255,4 +280,50 @@ export namespace OrganizationCloudProtocol {
     })
     .meta({ ref: "OrgCloudFileResult" })
   export type FileResult = z.infer<typeof FileResult>
+  export const HandoffWorkspaceOperation = z.discriminatedUnion("action", [
+    z.strictObject({ action: z.literal("put"), hash: Hash, data: z.string().max(Math.ceil(chunkBytes / 3) * 4) }),
+    z.strictObject({ action: z.literal("publish"), source: z.json() }),
+    z.strictObject({ action: z.literal("inspect") }),
+    z.strictObject({ action: z.literal("validate") }),
+  ])
+  export type HandoffWorkspaceOperation = z.infer<typeof HandoffWorkspaceOperation>
+  export const HandoffWorkspaceProof = Handoff.Binding.extend({
+    purpose: z.literal("handoff-workspace"),
+    runtimeID: Identity.ID,
+    connectionEpoch: z.number().int().positive().safe(),
+    mappingHash: Hash,
+    operation: HandoffWorkspaceOperation,
+    issuedAt: z.number().int().nonnegative().safe(),
+    expiresAt: z.number().int().nonnegative().safe(),
+  })
+    .refine(
+      (value) => value.expiresAt > value.issuedAt && value.expiresAt - value.issuedAt <= 30_000,
+      "Workspace handoff requests have a finite signing window",
+    )
+    .refine(
+      (value) =>
+        value.operation.action === "validate"
+          ? value.runtimeID === value.targetRuntimeID
+          : value.operation.action === "inspect"
+            ? [value.sourceRuntimeID, value.targetRuntimeID].includes(value.runtimeID)
+            : value.runtimeID === value.sourceRuntimeID,
+      "Workspace handoff requests bind their actual participant",
+    )
+  export type HandoffWorkspaceProof = z.infer<typeof HandoffWorkspaceProof>
+  export const HandoffWorkspaceRequest = z
+    .strictObject({ proof: HandoffWorkspaceProof, signature: SigningSignature })
+    .meta({ ref: "OrgHandoffWorkspaceRequest" })
+  export type HandoffWorkspaceRequest = z.infer<typeof HandoffWorkspaceRequest>
+  const signedHandoffWorkspace = signedProtocol(HandoffWorkspaceProof, "synergy.organization.handoff.workspace.v1\n")
+  export const signHandoffWorkspace = signedHandoffWorkspace.sign
+  export const verifyHandoffWorkspace = signedHandoffWorkspace.verify
+  export const HandoffWorkspaceResult = z
+    .discriminatedUnion("action", [
+      z.strictObject({ action: z.literal("put"), hash: Hash }),
+      z.strictObject({ action: z.literal("publish"), receipt: z.json() }),
+      z.strictObject({ action: z.literal("inspect"), status: z.json().optional() }),
+      z.strictObject({ action: z.literal("validate"), receipt: z.json() }),
+    ])
+    .meta({ ref: "OrgHandoffWorkspaceResult" })
+  export type HandoffWorkspaceResult = z.infer<typeof HandoffWorkspaceResult>
 }

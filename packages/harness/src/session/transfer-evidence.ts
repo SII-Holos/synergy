@@ -540,6 +540,9 @@ export namespace SessionTransferEvidence {
         }
       },
       async freeze() {},
+      async sealAggregate({ root, members }) {
+        await seal({ root, sessions: members() })
+      },
       export: entries,
       validate,
       publish,

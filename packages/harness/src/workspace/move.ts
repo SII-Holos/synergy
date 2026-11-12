@@ -48,6 +48,23 @@ export namespace WorkspaceMove {
     publishedAt: z.number().int().nonnegative().safe(),
   })
   export type Receipt = z.infer<typeof Receipt>
+  export const CapturedSource = Selection.extend({
+    hostID: ID,
+    physicalID: z.string().min(1),
+    manifest: WorkspaceTree.Hash,
+  })
+  export interface CapturedSourceHost {
+    capture<T>(
+      request: Readonly<Request>,
+      store: BlobStore,
+      consume: (
+        source: z.infer<typeof CapturedSource>,
+        assertCurrent: () => void,
+        recheck: () => Promise<void>,
+      ) => Promise<T>,
+      signal?: AbortSignal,
+    ): Promise<T>
+  }
   const Record = z.strictObject({
     version: z.literal(1),
     digest: WorkspaceTree.Hash,
@@ -78,7 +95,8 @@ export namespace WorkspaceMove {
   }
   const state = RuntimeContext.state(() => ({
     host: undefined as SourceHost | undefined,
-    jobs: new Map<string, { digest: string; promise: Promise<Receipt>; assertOwner(): void }>(),
+    captured: new Map<string, CapturedSourceHost>(),
+    jobs: new Map<string, { digest: string; source: string; promise: Promise<Receipt>; assertOwner(): void }>(),
   }))
   const running = RuntimeContext.createAsyncContext<() => void>()
   const publication = RuntimeContext.createAsyncContext<{
@@ -93,6 +111,9 @@ export namespace WorkspaceMove {
   const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex")
   export function receiptHash(value: Receipt) {
     return hash(Receipt.parse(value))
+  }
+  export function requestHash(value: Request) {
+    return hash(Request.parse(value))
   }
   const nativeID = (request: Request) =>
     "workspace-move:" +
@@ -117,6 +138,13 @@ export namespace WorkspaceMove {
     RuntimeContext.assertCompositionOpen("Workspace move source")
     if (state().host) throw new Error("Workspace move source Host is already registered")
     state().host = Object.freeze({ hold: value.hold.bind(value), release: value.release.bind(value) })
+  }
+  export function registerCapturedSourceHost(id: string, value: CapturedSourceHost) {
+    RuntimeContext.assertCompositionOpen("Captured Workspace move source")
+    ID.parse(id)
+    if (id === "native" || state().captured.has(id))
+      throw new Error("Captured Workspace move source is already registered")
+    state().captured.set(id, Object.freeze({ capture: value.capture.bind(value) }))
   }
   export function register() {
     RuntimeMaintenance.register("workspace-moves", {
@@ -214,6 +242,18 @@ export namespace WorkspaceMove {
       return record
     })
   }
+  export async function reserve(value: Request, signal?: AbortSignal) {
+    const request = Request.parse(value)
+    const assert = WorkspaceContent.captureOwner(signal)
+    return Storage.transaction(
+      async () => {
+        const record = await prepare(request)
+        assert()
+        return Status.parse(record)
+      },
+      { commitGuard: assert },
+    )
+  }
   async function releaseNative(request: Request) {
     const assert = WorkspaceContent.captureOwner()
     const id = nativeID(request)
@@ -271,6 +311,26 @@ export namespace WorkspaceMove {
   export async function run(value: Request, options: { signal?: AbortSignal } = {}): Promise<Receipt> {
     const request = Request.parse(value)
     const signal = options.signal
+    return runOwned(request, signal, "native", (assert) => execute(request, signal, assert))
+  }
+  export async function runCaptured(
+    value: Request,
+    sourceID: string,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<Receipt> {
+    const request = Request.parse(value)
+    const signal = options.signal
+    const source = state().captured.get(ID.parse(sourceID))
+    if (!source) reject(request, "Captured Workspace move source is not registered")
+    const capture = source.capture.bind(source)
+    return runOwned(request, signal, sourceID, (assert) => executeCaptured(request, signal, assert, capture))
+  }
+  async function runOwned(
+    request: Request,
+    signal: AbortSignal | undefined,
+    source: string,
+    execute: (assert: () => void) => Promise<Receipt>,
+  ): Promise<Receipt> {
     const assert = WorkspaceContent.captureOwner(signal)
     assert()
     const jobKey = JSON.stringify(key(request))
@@ -278,12 +338,13 @@ export namespace WorkspaceMove {
     const existing = state().jobs.get(jobKey)
     if (existing) {
       existing.assertOwner()
-      if (existing.digest !== digest) reject(request, "Workspace move identity already has different input")
+      if (existing.digest !== digest || existing.source !== source)
+        reject(request, "Workspace move identity already has different input or source")
       return existing.promise
     }
     const assertOwner = WorkspaceContent.captureOwner()
-    const promise = running.run(assertOwner, () => execute(request, signal, assert))
-    state().jobs.set(jobKey, { digest, promise, assertOwner })
+    const promise = running.run(assertOwner, () => execute(assert))
+    state().jobs.set(jobKey, { digest, source, promise, assertOwner })
     try {
       return await promise
     } finally {
@@ -355,101 +416,193 @@ export namespace WorkspaceMove {
       const bytes = new TextEncoder().encode(JSON.stringify(Portable.Root.parse(root)))
       const manifest = WorkspaceTree.hash(bytes)
       await store.put(manifest, bytes)
-      await WorkspaceArchive.copyManifest({ manifest, source: store }, { async put() {} }, signal)
-      check()
-      const retained = await read(request)
-      if (retained?.candidate && retained.candidate !== manifest)
-        reject(request, "Workspace move final captured tree changed")
-      await Storage.transaction(
-        async () => {
-          const current = await read(request)
-          if (!current || !held(current) || (current.candidate && current.candidate !== manifest))
-            reject(request, "Workspace move final capture belongs to another attempt")
-          await Storage.write(key(request), Record.parse({ ...current, candidate: manifest }))
-        },
-        { commitGuard: check },
+      return publishCaptured(
+        request,
+        store,
+        { ...request.source, hostID: info.binding.hostID, physicalID: info.binding.physicalID, manifest },
+        signal,
+        check,
       )
-      const prepared = await WorkspaceContent.prepareTreeImport(request.target, { path: request.target.path, manifest })
-      check()
-      const proposed = WorkspaceCatalog.Info.parse({
-        ...prepared.info,
-        content: { revision: (prepared.info.content?.revision ?? 0) + 1, manifest: prepared.manifest },
-      })
-      const subtreeHash = await subtree(proposed, store, request.target.path)
-      check()
-      await Storage.transaction(
-        async () => {
-          await RuntimeMaintenance.assertAdmission()
-          const current = await read(request)
-          if (!current || current.state !== "preparing" || current.candidate !== manifest)
-            reject(request, "Workspace move final publication attempt changed")
-          await Storage.write(key(request), Record.parse({ ...current, state: "publishing" }))
-        },
-        { commitGuard: check },
-      )
-      const permit = { request, digest: hash(request), open: true, assert: check }
-      try {
-        return await publication.run(permit, () =>
-          Storage.transaction(
-            async () => {
-              check()
-              await RuntimeMaintenance.assertAdmission()
-              const current = await read(request)
-              if (current?.receipt) return Receipt.parse(current.receipt)
-              if (!current || !held(current)) reject(request, "Workspace move lost its target reservation")
-              const latest = await WorkspaceCatalog.get(request.target.workspaceID, request.target.scopeID)
-              if (
-                latest.activeMount ||
-                latest.binding.generation !== request.target.generation ||
-                latest.revision !== request.target.expectedRevision
-              )
-                reject(request, "Workspace move target changed before publication")
-              const published = await prepared.publish()
-              const receipt = Receipt.parse({
-                version: 1,
-                id: request.id,
-                requestHash: current.digest,
-                mappingRevision: request.mappingRevision,
-                acceptedDiffHash: request.acceptedDiffHash,
-                source: {
-                  ...request.source,
-                  hostID: info.binding.hostID,
-                  physicalID: info.binding.physicalID,
-                  manifest,
-                },
-                target: {
-                  workspaceID: latest.id,
-                  scopeID: latest.scopeID,
-                  generation: latest.binding.generation,
-                  path: request.target.path,
-                  before: latest.content ?? { revision: 0, manifest: null },
-                  after: published.content,
-                  revision: published.revision,
-                  mount: null,
-                  mountGeneration: latest.mountGeneration ?? 0,
-                },
-                subtreeHash,
-                publishedAt: Date.now(),
-              })
-              await Storage.write(key(request), Record.parse({ ...current, receipt, state: "published" }))
-              return receipt
-            },
-            { commitGuard: check },
-          ),
-        )
-      } catch (error) {
-        check()
-        const observed = await read(request)
-        if (observed?.receipt) return Receipt.parse(observed.receipt)
-        throw error
-      } finally {
-        permit.open = false
-      }
     })
     assert()
     await releaseNative(request)
     assert()
     return result
+  }
+  async function publishCaptured(
+    request: Request,
+    store: BlobStore,
+    source: z.infer<typeof CapturedSource>,
+    signal: AbortSignal | undefined,
+    check: () => void,
+    recheck?: () => Promise<void>,
+  ) {
+    const manifest = source.manifest
+    await WorkspaceArchive.copyManifest({ manifest, source: store }, { async put() {} }, signal)
+    check()
+    const retained = await read(request)
+    if (retained?.candidate && retained.candidate !== manifest)
+      reject(request, "Workspace move final captured tree changed")
+    await Storage.transaction(
+      async () => {
+        const current = await read(request)
+        if (!current || !held(current) || (current.candidate && current.candidate !== manifest))
+          reject(request, "Workspace move final capture belongs to another attempt")
+        await Storage.write(key(request), Record.parse({ ...current, candidate: manifest }))
+      },
+      { commitGuard: check },
+    )
+    const prepared = await WorkspaceContent.prepareTreeImport(request.target, { path: request.target.path, manifest })
+    check()
+    const proposed = WorkspaceCatalog.Info.parse({
+      ...prepared.info,
+      content: { revision: (prepared.info.content?.revision ?? 0) + 1, manifest: prepared.manifest },
+    })
+    const subtreeHash = await subtree(proposed, store, request.target.path)
+    check()
+    await Storage.transaction(
+      async () => {
+        await RuntimeMaintenance.assertAdmission()
+        const current = await read(request)
+        if (!current || current.state !== "preparing" || current.candidate !== manifest)
+          reject(request, "Workspace move final publication attempt changed")
+        await Storage.write(key(request), Record.parse({ ...current, state: "publishing" }))
+      },
+      { commitGuard: check },
+    )
+    const permit = { request, digest: hash(request), open: true, assert: check }
+    try {
+      return await publication.run(permit, () =>
+        Storage.transaction(
+          async () => {
+            check()
+            await recheck?.()
+            check()
+            await RuntimeMaintenance.assertAdmission()
+            const current = await read(request)
+            if (current?.receipt) return Receipt.parse(current.receipt)
+            if (!current || !held(current)) reject(request, "Workspace move lost its target reservation")
+            const latest = await WorkspaceCatalog.get(request.target.workspaceID, request.target.scopeID)
+            if (
+              latest.activeMount ||
+              latest.binding.generation !== request.target.generation ||
+              latest.revision !== request.target.expectedRevision
+            )
+              reject(request, "Workspace move target changed before publication")
+            const published = await prepared.publish()
+            const receipt = Receipt.parse({
+              version: 1,
+              id: request.id,
+              requestHash: current.digest,
+              mappingRevision: request.mappingRevision,
+              acceptedDiffHash: request.acceptedDiffHash,
+              source: {
+                ...request.source,
+                hostID: source.hostID,
+                physicalID: source.physicalID,
+                manifest,
+              },
+              target: {
+                workspaceID: latest.id,
+                scopeID: latest.scopeID,
+                generation: latest.binding.generation,
+                path: request.target.path,
+                before: latest.content ?? { revision: 0, manifest: null },
+                after: published.content,
+                revision: published.revision,
+                mount: null,
+                mountGeneration: latest.mountGeneration ?? 0,
+              },
+              subtreeHash,
+              publishedAt: Date.now(),
+            })
+            await Storage.write(key(request), Record.parse({ ...current, receipt, state: "published" }))
+            return receipt
+          },
+          { commitGuard: check },
+        ),
+      )
+    } catch (error) {
+      check()
+      const observed = await read(request)
+      if (observed?.receipt) return Receipt.parse(observed.receipt)
+      throw error
+    } finally {
+      permit.open = false
+    }
+  }
+  async function executeCaptured(
+    request: Request,
+    signal: AbortSignal | undefined,
+    assert: () => void,
+    capture: CapturedSourceHost["capture"],
+  ): Promise<Receipt> {
+    const record = await prepare(request)
+    assert()
+    if (record.nativeRequested || record.native !== undefined)
+      reject(request, "Workspace move retains an original native dispatch")
+    if (!held(record)) reject(request, "Workspace move was permanently cancelled or retired")
+    if (record.state === "publishing" && !record.receipt)
+      reject(request, "Workspace move publication is unresolved; inspect the original moveID")
+    const selected = await WorkspaceContent.resolve(request.target)
+    assert()
+    const get = selected.store.get.bind(selected.store),
+      put = selected.store.put.bind(selected.store)
+    const store: BlobStore = {
+      async get(hash, maximum) {
+        assert()
+        const bytes = await get(hash, maximum)
+        assert()
+        return bytes
+      },
+      async put(hash, bytes) {
+        assert()
+        await put(hash, bytes)
+        assert()
+      },
+    }
+    let open = true
+    let accepted: Promise<Receipt> | undefined
+    try {
+      await capture(
+        Request.parse(request),
+        store,
+        (value, assertSource, recheckSource) => {
+          if (!open || accepted) reject(request, "Captured Workspace move source callback has ended or repeated")
+          const source = CapturedSource.parse(value)
+          const verify = recheckSource.bind(undefined)
+          const check = () => {
+            assert()
+            if (!open) reject(request, "Captured Workspace move source callback has ended")
+            assertSource()
+          }
+          check()
+          if (
+            source.workspaceID !== request.source.workspaceID ||
+            source.scopeID !== request.source.scopeID ||
+            source.generation !== request.source.generation
+          )
+            reject(request, "Captured Workspace move source binding changed")
+          accepted = (async () => {
+            if (record.receipt) {
+              if (JSON.stringify(record.receipt.source) !== JSON.stringify(source))
+                reject(request, "Captured Workspace move source differs from its original receipt")
+              check()
+              return Receipt.parse(record.receipt)
+            }
+            return publishCaptured(request, store, source, signal, check, verify)
+          })()
+          return accepted
+        },
+        signal,
+      )
+      assert()
+      if (!accepted) reject(request, "Captured Workspace move source did not provide its original snapshot")
+      return await accepted
+    } finally {
+      open = false
+      if (accepted) await Promise.allSettled([accepted])
+    }
   }
   export async function release(value: Request, outcome: "activated" | "cancelled" | "retired") {
     const request = Request.parse(value)

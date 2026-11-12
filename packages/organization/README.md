@@ -41,7 +41,7 @@ const server = Bun.serve({ hostname: "127.0.0.1", port: 4080, fetch: service.fet
 await server.stop(true)
 ```
 
-The health endpoint is `/org/v1/health`. Clients use the independent `@ericsanchezok/synergy-sdk/organization` entry. See [organization architecture](../../docs/architecture/organization.md) for storage ownership.
+`/org/v1/live` checks process liveness without storage; `/org/v1/ready` and compatible `/org/v1/health` check admission readiness. Maintenance holds return typed readiness 503 while liveness stays available. See [probe ownership](../../docs/decisions/implemented/bug-fix/2026-11-12-separate-service-liveness-from-maintenance-readiness.md). Clients use the independent `@ericsanchezok/synergy-sdk/organization` entry. See [organization architecture](../../docs/architecture/organization.md) for storage ownership.
 
 The generated `orgSessions.get` and `orgSessions.list` methods read authorized directory metadata. Private entries require the creator's current project access; organization administrators receive no private-entry exception. `orgOrganization.sessionCapacity` returns anonymous counts. Directory entries contain ownership and resource references, not conversation content. They do not establish Runtime acceptance or execution permission. See [Session directory](../../docs/architecture/organization.md#session-directory).
 

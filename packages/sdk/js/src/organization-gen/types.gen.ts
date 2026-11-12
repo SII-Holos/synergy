@@ -2093,6 +2093,7 @@ export type OrgCloudFileReference = {
   workspaceID: string
   generation: number
   revision: number
+  rootPath?: string
 }
 
 export type OrgCloudFileResult = {
@@ -2482,6 +2483,138 @@ export type OrgCloudFileRequest = {
   signature: string
 }
 
+export type OrgExecutionInspectionProof = {
+  schemaVersion: 1
+  orgID: string
+  deploymentIncarnation: string
+  runtimeID: string
+  connectionEpoch: number
+  receipt: {
+    attempt:
+      | {
+          schemaVersion: 1
+          permit: OrgCommandPermit
+          receivedAt: number
+          status: "accepted"
+          acceptedAttemptID: string
+        }
+      | {
+          schemaVersion: 1
+          permit: OrgCommandPermit
+          receivedAt: number
+          status: "rejected"
+          reason:
+            | "EXPIRED_PERMIT"
+            | "STALE_CONNECTION"
+            | "STALE_BINDING"
+            | "SESSION_UNAVAILABLE"
+            | "TRANSFER_BLOCKED"
+            | "SEQUENCE_GAP"
+            | "SEQUENCE_CLOSED"
+            | "REQUEST_CONFLICT"
+            | "PAYLOAD_MISMATCH"
+            | "CONTROL_CONFLICT"
+        }
+      | {
+          schemaVersion: 1
+          permit: OrgCommandPermit
+          receivedAt: number
+          status: "skipped"
+        }
+    accepted?: OrgCommandInputAccepted
+    skip?: {
+      schemaVersion: 1
+      permit: {
+        schemaVersion: 1
+        purpose: "session-command-skip"
+        command: OrgCommandPermit
+        connectionEpoch: number
+        authorizedAt: number
+        deadline: number
+      }
+      receivedAt: number
+    }
+  }
+  continuation?: {
+    handoffID: string
+    receipt: {
+      attempt:
+        | {
+            schemaVersion: 1
+            permit: OrgCommandPermit
+            receivedAt: number
+            status: "accepted"
+            acceptedAttemptID: string
+          }
+        | {
+            schemaVersion: 1
+            permit: OrgCommandPermit
+            receivedAt: number
+            status: "rejected"
+            reason:
+              | "EXPIRED_PERMIT"
+              | "STALE_CONNECTION"
+              | "STALE_BINDING"
+              | "SESSION_UNAVAILABLE"
+              | "TRANSFER_BLOCKED"
+              | "SEQUENCE_GAP"
+              | "SEQUENCE_CLOSED"
+              | "REQUEST_CONFLICT"
+              | "PAYLOAD_MISMATCH"
+              | "CONTROL_CONFLICT"
+          }
+        | {
+            schemaVersion: 1
+            permit: OrgCommandPermit
+            receivedAt: number
+            status: "skipped"
+          }
+      accepted?: OrgCommandControlAccepted
+      skip?: {
+        schemaVersion: 1
+        permit: {
+          schemaVersion: 1
+          purpose: "session-command-skip"
+          command: OrgCommandPermit
+          connectionEpoch: number
+          authorizedAt: number
+          deadline: number
+        }
+        receivedAt: number
+      }
+    }
+  }
+  issuedAt: number
+  expiresAt: number
+  purpose: "execution-retention-inspection"
+  rootID: string
+  grantID?: string
+  generation?: number
+}
+
+export type OrgExecutionInspectionRequest = {
+  proof: OrgExecutionInspectionProof
+  signature: string
+}
+
+export type OrgCloudFileInspectionRequest = {
+  proof: {
+    purpose: "organization-workspace-file-inspection"
+    authority: OrgExecutionInspectionRequest
+    reference: OrgCloudFileReference
+    operation:
+      | {
+          action: "receipt"
+          id: string
+        }
+      | {
+          action: "acknowledge"
+          id: string
+        }
+  }
+  signature: string
+}
+
 export type OrgHandoffView = {
   schemaVersion: 1
   orgID: string
@@ -2517,24 +2650,78 @@ export type OrgHandoffView = {
   canContinue: boolean
   currentDriver: string
   bindingEpoch: number
+  workspaceMapping:
+    | {
+        kind: "native"
+      }
+    | {
+        kind: "organization-object"
+        moveID: string
+        source: {
+          workspaceID: string
+          generation: number
+        }
+        target: {
+          resourceID: string
+          workspaceID: string
+          generation: number
+          path: string
+          expectedRevision: number
+        }
+        acceptedDiffHash: null
+      }
+  mappingHash: string
 }
 
-export type OrgHandoffPrepare = {
-  handoffID: string
-  targetRuntimeID: string
-  expectedBindingEpoch: number
-  expectedControlRevision: number
-  mappingPlanRevision: number
-}
+export type OrgHandoffPrepare =
+  | {
+      handoffID: string
+      targetRuntimeID: string
+      expectedBindingEpoch: number
+      expectedControlRevision: number
+      mappingPlanRevision: number
+      workspaceMapping:
+        | {
+            kind: "native"
+          }
+        | {
+            kind: "organization-object"
+            moveID: string
+            source: {
+              workspaceID: string
+              generation: number
+            }
+            target: {
+              resourceID: string
+              workspaceID: string
+              generation: number
+              path: string
+              expectedRevision: number
+            }
+            acceptedDiffHash: null
+          }
+    }
+  | {
+      handoffID: string
+      targetRuntimeID: string
+      expectedBindingEpoch: number
+      expectedControlRevision: number
+      mappingPlanRevision: number
+    }
 
 export type OrgHandoffPage = {
   items: Array<OrgHandoffView>
   cursor?: string
 }
 
-export type OrgHandoffAccept = {
-  mappingPlanRevision: number
-}
+export type OrgHandoffAccept =
+  | {
+      mappingPlanRevision: number
+      mappingHash: string
+    }
+  | {
+      mappingPlanRevision: number
+    }
 
 export type OrgHandoffPermit = {
   schemaVersion: 1
@@ -2779,6 +2966,93 @@ export type OrgHandoffObjectProof = {
 
 export type OrgHandoffObjectRequest = {
   proof: OrgHandoffObjectProof
+  signature: string
+}
+
+export type Schema0 =
+  | string
+  | number
+  | boolean
+  | null
+  | Array<Schema0>
+  | {
+      [key: string]: Schema0
+    }
+
+export type Schema1 =
+  | string
+  | number
+  | boolean
+  | null
+  | Array<Schema1>
+  | {
+      [key: string]: Schema1
+    }
+
+export type Schema2 =
+  | string
+  | number
+  | boolean
+  | null
+  | Array<Schema2>
+  | {
+      [key: string]: Schema2
+    }
+
+export type OrgHandoffWorkspaceResult =
+  | {
+      action: "put"
+      hash: string
+    }
+  | {
+      action: "publish"
+      receipt: Schema0
+    }
+  | {
+      action: "inspect"
+      status?: Schema1
+    }
+  | {
+      action: "validate"
+      receipt: Schema2
+    }
+
+export type OrgHandoffWorkspaceRequest = {
+  proof: {
+    schemaVersion: 1
+    orgID: string
+    deploymentIncarnation: string
+    handoffID: string
+    sessionID: string
+    sourceRuntimeID: string
+    targetRuntimeID: string
+    fromEpoch: number
+    toEpoch: number
+    mappingPlanRevision: number
+    shareGeneration: number
+    purpose: "handoff-workspace"
+    runtimeID: string
+    connectionEpoch: number
+    mappingHash: string
+    operation:
+      | {
+          action: "put"
+          hash: string
+          data: string
+        }
+      | {
+          action: "publish"
+          source: Schema0
+        }
+      | {
+          action: "inspect"
+        }
+      | {
+          action: "validate"
+        }
+    issuedAt: number
+    expiresAt: number
+  }
   signature: string
 }
 
@@ -3818,120 +4092,6 @@ export type OrgExecutionInspection =
 
 export type OrgExecutionRetentionResult = OrgExecutionGrant | OrgExecutionInspection
 
-export type OrgExecutionInspectionProof = {
-  schemaVersion: 1
-  orgID: string
-  deploymentIncarnation: string
-  runtimeID: string
-  connectionEpoch: number
-  receipt: {
-    attempt:
-      | {
-          schemaVersion: 1
-          permit: OrgCommandPermit
-          receivedAt: number
-          status: "accepted"
-          acceptedAttemptID: string
-        }
-      | {
-          schemaVersion: 1
-          permit: OrgCommandPermit
-          receivedAt: number
-          status: "rejected"
-          reason:
-            | "EXPIRED_PERMIT"
-            | "STALE_CONNECTION"
-            | "STALE_BINDING"
-            | "SESSION_UNAVAILABLE"
-            | "TRANSFER_BLOCKED"
-            | "SEQUENCE_GAP"
-            | "SEQUENCE_CLOSED"
-            | "REQUEST_CONFLICT"
-            | "PAYLOAD_MISMATCH"
-            | "CONTROL_CONFLICT"
-        }
-      | {
-          schemaVersion: 1
-          permit: OrgCommandPermit
-          receivedAt: number
-          status: "skipped"
-        }
-    accepted?: OrgCommandInputAccepted
-    skip?: {
-      schemaVersion: 1
-      permit: {
-        schemaVersion: 1
-        purpose: "session-command-skip"
-        command: OrgCommandPermit
-        connectionEpoch: number
-        authorizedAt: number
-        deadline: number
-      }
-      receivedAt: number
-    }
-  }
-  continuation?: {
-    handoffID: string
-    receipt: {
-      attempt:
-        | {
-            schemaVersion: 1
-            permit: OrgCommandPermit
-            receivedAt: number
-            status: "accepted"
-            acceptedAttemptID: string
-          }
-        | {
-            schemaVersion: 1
-            permit: OrgCommandPermit
-            receivedAt: number
-            status: "rejected"
-            reason:
-              | "EXPIRED_PERMIT"
-              | "STALE_CONNECTION"
-              | "STALE_BINDING"
-              | "SESSION_UNAVAILABLE"
-              | "TRANSFER_BLOCKED"
-              | "SEQUENCE_GAP"
-              | "SEQUENCE_CLOSED"
-              | "REQUEST_CONFLICT"
-              | "PAYLOAD_MISMATCH"
-              | "CONTROL_CONFLICT"
-          }
-        | {
-            schemaVersion: 1
-            permit: OrgCommandPermit
-            receivedAt: number
-            status: "skipped"
-          }
-      accepted?: OrgCommandControlAccepted
-      skip?: {
-        schemaVersion: 1
-        permit: {
-          schemaVersion: 1
-          purpose: "session-command-skip"
-          command: OrgCommandPermit
-          connectionEpoch: number
-          authorizedAt: number
-          deadline: number
-        }
-        receivedAt: number
-      }
-    }
-  }
-  issuedAt: number
-  expiresAt: number
-  purpose: "execution-retention-inspection"
-  rootID: string
-  grantID?: string
-  generation?: number
-}
-
-export type OrgExecutionInspectionRequest = {
-  proof: OrgExecutionInspectionProof
-  signature: string
-}
-
 export type OrgExecutionRetentionRequest = OrgExecutionDescriptionRequest | OrgExecutionInspectionRequest
 
 export type OrgExecutionDescription = {
@@ -4099,6 +4259,11 @@ export type OrgRuntimeConnectionStatus = {
   state: "online" | "offline"
   connectionEpoch: number
   lastSeen?: number
+}
+
+export type OrgLiveness = {
+  alive: boolean
+  protocolVersion: 1
 }
 
 export type OrgHealth = {
@@ -8861,6 +9026,51 @@ export type OrgCloudFilesRequestResponses = {
 
 export type OrgCloudFilesRequestResponse = OrgCloudFilesRequestResponses[keyof OrgCloudFilesRequestResponses]
 
+export type OrgCloudFilesInspectData = {
+  body: OrgCloudFileInspectionRequest
+  path?: never
+  query?: never
+  url: "/runtime/v1/workspaces/files/inspection"
+}
+
+export type OrgCloudFilesInspectErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgCloudFilesInspectError = OrgCloudFilesInspectErrors[keyof OrgCloudFilesInspectErrors]
+
+export type OrgCloudFilesInspectResponses = {
+  /**
+   * Success
+   */
+  200: OrgCloudFileResult
+}
+
+export type OrgCloudFilesInspectResponse = OrgCloudFilesInspectResponses[keyof OrgCloudFilesInspectResponses]
+
 export type OrgHandoffListData = {
   body?: never
   path: {
@@ -9336,6 +9546,52 @@ export type OrgHandoffProofResponses = {
 }
 
 export type OrgHandoffProofResponse = OrgHandoffProofResponses[keyof OrgHandoffProofResponses]
+
+export type OrgHandoffWorkspaceRequestData = {
+  body: OrgHandoffWorkspaceRequest
+  path?: never
+  query?: never
+  url: "/runtime/v1/handoffs/workspace"
+}
+
+export type OrgHandoffWorkspaceRequestErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgHandoffWorkspaceRequestError = OrgHandoffWorkspaceRequestErrors[keyof OrgHandoffWorkspaceRequestErrors]
+
+export type OrgHandoffWorkspaceRequestResponses = {
+  /**
+   * Success
+   */
+  200: OrgHandoffWorkspaceResult
+}
+
+export type OrgHandoffWorkspaceRequestResponse =
+  OrgHandoffWorkspaceRequestResponses[keyof OrgHandoffWorkspaceRequestResponses]
 
 export type OrgKnowledgeExecutionSelectionData = {
   body: OrgKnowledgeExecutionQuery
@@ -10753,6 +11009,56 @@ export type OrgRuntimeConnectionResponses = {
 
 export type OrgRuntimeConnectionResponse = OrgRuntimeConnectionResponses[keyof OrgRuntimeConnectionResponses]
 
+export type OrgHealthLiveData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/org/v1/live"
+}
+
+export type OrgHealthLiveErrors = {
+  /**
+   * Unavailable
+   */
+  503: OrgLiveness
+}
+
+export type OrgHealthLiveError = OrgHealthLiveErrors[keyof OrgHealthLiveErrors]
+
+export type OrgHealthLiveResponses = {
+  /**
+   * Available
+   */
+  200: OrgLiveness
+}
+
+export type OrgHealthLiveResponse = OrgHealthLiveResponses[keyof OrgHealthLiveResponses]
+
+export type OrgHealthReadyData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/org/v1/ready"
+}
+
+export type OrgHealthReadyErrors = {
+  /**
+   * Unavailable
+   */
+  503: OrgHealth
+}
+
+export type OrgHealthReadyError = OrgHealthReadyErrors[keyof OrgHealthReadyErrors]
+
+export type OrgHealthReadyResponses = {
+  /**
+   * Available
+   */
+  200: OrgHealth
+}
+
+export type OrgHealthReadyResponse = OrgHealthReadyResponses[keyof OrgHealthReadyResponses]
+
 export type OrgHealthGetData = {
   body?: never
   path?: never
@@ -10762,7 +11068,7 @@ export type OrgHealthGetData = {
 
 export type OrgHealthGetErrors = {
   /**
-   * Not ready
+   * Unavailable
    */
   503: OrgHealth
 }
@@ -10771,7 +11077,7 @@ export type OrgHealthGetError = OrgHealthGetErrors[keyof OrgHealthGetErrors]
 
 export type OrgHealthGetResponses = {
   /**
-   * Ready
+   * Available
    */
   200: OrgHealth
 }

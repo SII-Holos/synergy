@@ -19,6 +19,8 @@ import { withStorageQueueOptions } from "../storage/queue"
 import { WorkspacePortableSchema as Schema } from "./workspace-portable-schema"
 import { Global } from "../global"
 import { initializeSqliteEngine } from "../storage/sqlite-engine"
+import { WorkspaceContent } from "../workspace/content"
+import { WorkspaceTree } from "../workspace/tree"
 
 export namespace WorkspacePortableSource {
   const Hash = z.string().regex(/^[a-f0-9]{64}$/)
@@ -378,6 +380,82 @@ export namespace WorkspacePortableSource {
     const retained = Receipt.parse(raw)
     if (!same(retained.binding, binding)) fail("Workspace capture belongs to another source binding")
     return retained
+  }
+  export async function withCaptured<T>(
+    input: { binding: Epochs.Binding; workspaceID: string; generation: number; signal: AbortSignal },
+    body: (snapshot: { captured: Schema.Captured; manifest: string; store: BlobStore; assert(): void }) => Promise<T>,
+  ): Promise<T> {
+    const binding = Epochs.Binding.parse(input.binding)
+    const workspaceID = Schema.Reference.shape.id.parse(input.workspaceID)
+    const generation = z.number().int().positive().safe().parse(input.generation)
+    const signal = input.signal
+    const owner = WorkspaceContent.captureOwner(signal)
+    const proof = proofs().get(proofKey(binding))
+    let open = true
+    const pending = new Set<Promise<unknown>>()
+    function assert() {
+      owner()
+      if (!open || !proof || proofs().get(proofKey(binding)) !== proof || !same(proof.binding, binding))
+        fail("Workspace graph requires its original native capture callback")
+      proof.assert()
+    }
+    try {
+      assert()
+      using lock = await Lock.writeWithSignal("session-workspace-capture:" + binding.sessionID, signal)
+      assert()
+      if (!lock) fail("Workspace graph could not retain its original capture")
+      const retained = await receipt(binding)
+      assert()
+      if (!retained || retained.hash !== proof!.hash) fail("Workspace graph has another native capture receipt")
+      const verified = await inventory(binding, assert, (rows) => Schema.digest(binding, rows(), signal))
+      assert()
+      if (JSON.stringify(verified) !== JSON.stringify(retained))
+        fail("Workspace graph no longer matches its original native capture")
+      const root = workspace(binding, workspaceID)
+      const captured = Captured.parse(await Storage.read([...root, "tree"]))
+      assert()
+      if (
+        captured.workspaceID !== workspaceID ||
+        captured.scopeID !== binding.scopeID ||
+        captured.generation !== generation
+      )
+        fail("Workspace graph has another native source binding")
+      const bytes = new TextEncoder().encode(JSON.stringify(WorkspacePortableTree.Root.parse(captured.files)))
+      const manifest = WorkspaceTree.hash(bytes)
+      const store: BlobStore = {
+        async put() {
+          fail("Captured Workspace graph is read-only")
+        },
+        get(hash, maximum) {
+          assert()
+          const read = (async () => {
+            if (hash === manifest) {
+              if (bytes.byteLength > maximum) fail("Workspace root exceeds its requested bound")
+              return Uint8Array.from(bytes)
+            }
+            const frame = Frame.parse(await Storage.read([...root, "frames", Hash.parse(hash)]))
+            assert()
+            if (frame.hash !== hash || frame.bytes > maximum) fail("Workspace frame has another identity or size")
+            const content = await Storage.readBinary([...root, "bytes", hash], { maxBytes: maximum })
+            assert()
+            if (content.byteLength !== frame.bytes) fail("Workspace frame is incomplete")
+            return WorkspaceTree.verify(hash, content, maximum)
+          })()
+          pending.add(read)
+          void read.then(
+            () => pending.delete(read),
+            () => pending.delete(read),
+          )
+          return read
+        },
+      }
+      const result = await body({ captured, manifest, store, assert })
+      assert()
+      return result
+    } finally {
+      open = false
+      await Promise.allSettled([...pending])
+    }
   }
   export function capture(input: { binding: Epochs.Binding; signal: AbortSignal }): Promise<Receipt> {
     const binding = Object.freeze(Epochs.Binding.parse(input.binding))

@@ -1,6 +1,6 @@
 import { OrganizationCloudProtocol as Cloud } from "@ericsanchezok/synergy-organization-protocol"
 import { WorkspaceContent } from "@ericsanchezok/synergy-harness/workspace/content"
-import type { WorkspaceFileHost, WorkspaceProtocol } from "@ericsanchezok/synergy-harness/workspace/protocol"
+import { createWorkspaceFileHost } from "./workspace-file-host"
 import { withMemberFiles } from "./execution-source"
 import { OrganizationRuntimeError } from "./error"
 
@@ -61,100 +61,12 @@ export namespace OrganizationWorkspaceFiles {
         )
         return work
       }
-      const reference = input.reference
-      const mount = reference && {
-        id: reference.workspaceID,
-        workspaceID: reference.workspaceID,
-        generation: reference.generation,
+      const mount = input.reference && {
+        id: input.reference.workspaceID,
+        workspaceID: input.reference.workspaceID,
+        generation: input.reference.generation,
       }
-      function selected(value: WorkspaceProtocol.Reference) {
-        assert()
-        if (
-          !mount ||
-          value.id !== mount.id ||
-          value.workspaceID !== mount.workspaceID ||
-          value.generation !== mount.generation
-        )
-          unavailable("Workspace file handle belongs to another original selection")
-      }
-      const unsupported = async (): Promise<never> =>
-        unavailable("This dormant file owner does not provide mounts, compute or blob imports")
-      const files: WorkspaceFileHost = {
-        mount: unsupported,
-        inspect: unsupported,
-        detach: unsupported,
-        checkpoint: unsupported,
-        putBlob: unsupported,
-        getBlob: unsupported,
-        async canonical(value, path, follow) {
-          selected(value)
-          const result = (await perform({ action: "canonical", path, follow })).result
-          if (result.action !== "canonical") unavailable("Workspace canonical response changed")
-          return result.path
-        },
-        async stat(value, path, follow) {
-          selected(value)
-          const result = (await perform({ action: "stat", path, follow })).result
-          if (result.action !== "stat") unavailable("Workspace metadata response changed")
-          return result.item
-        },
-        async list(value, path) {
-          selected(value)
-          const items: WorkspaceProtocol.Item[] = []
-          let cursor: string | undefined, revision: number | undefined
-          for (;;) {
-            const result = (await perform({ action: "list", path, cursor, revision, limit: 128 })).result
-            if (result.action !== "list") unavailable("Workspace directory response changed")
-            items.push(...result.items)
-            if (!result.cursor) return items
-            cursor = result.cursor
-            revision = result.revision
-          }
-        },
-        async read(value) {
-          selected(value.mount)
-          const result = (
-            await perform({
-              action: "read",
-              path: value.path,
-              offset: value.offset ?? 0,
-              maximumBytes: value.maximumBytes,
-              expectedVersion: value.expectedVersion,
-            })
-          ).result
-          if (result.action !== "read") unavailable("Workspace bytes response changed")
-          return result
-        },
-        async write(value) {
-          selected(value.mount)
-          const { mount: _, ...write } = value
-          const result = (await perform({ action: "write", ...write })).result
-          if (result.action !== "write") unavailable("Workspace write response changed")
-          return result.checkpoint
-        },
-        async mutate(value) {
-          selected(value.mount)
-          if (value.change.kind === "import") unavailable("Workspace import requires its canonical move owner")
-          const result = (
-            await perform({
-              action: "mutate",
-              id: value.id,
-              change: Cloud.FileChange.parse(value.change),
-              protectSensitive: value.protectSensitive,
-            })
-          ).result
-          if (result.action !== "mutate") unavailable("Workspace mutation response changed")
-          return result.checkpoint
-        },
-        async checkpointStatus(id) {
-          const result = (await perform({ action: "receipt", id })).result
-          if (result.action !== "receipt") unavailable("Workspace receipt response changed")
-          return result.status
-        },
-        async acknowledge(id) {
-          await perform({ action: "acknowledge", id })
-        },
-      }
+      const files = createWorkspaceFileHost(mount, perform, assert)
       try {
         const operation = input.operation
         if (operation.action === "describe" || operation.action === "list") await perform(operation)

@@ -128,6 +128,9 @@ test("file signatures bind the complete operation, original reference and accept
       p.reference!.generation++
     },
     (p: Cloud.FileProof) => {
+      p.reference!.rootPath = "another-directory"
+    },
+    (p: Cloud.FileProof) => {
       p.operation = { action: "write", id: "write", path: "b", data: "eQ==", expectedVersion: "another-version" }
     },
     (p: Cloud.FileProof) => {
@@ -142,6 +145,49 @@ test("file signatures bind the complete operation, original reference and accept
     await Cloud.verifyFile(
       original,
       await signedProtocol(Cloud.FileProof, "different-file-purpose\n").sign(original, keys.privateKey),
+      publicKey,
+    ),
+  ).toBeFalse()
+})
+
+test("handoff Workspace signatures bind their exact mapping and source descriptor independently from file execution", async () => {
+  const keys = await crypto.subtle.generateKey("Ed25519", true, ["sign", "verify"])
+  const publicKey = await Runtime.publicKey(keys.publicKey)
+  const proof = Cloud.HandoffWorkspaceProof.parse({
+    schemaVersion: 1,
+    orgID: "org",
+    deploymentIncarnation: "deployment",
+    handoffID: "handoff",
+    sessionID: "session",
+    sourceRuntimeID: "source",
+    targetRuntimeID: "target",
+    fromEpoch: 1,
+    toEpoch: 2,
+    mappingPlanRevision: 1,
+    shareGeneration: 0,
+    purpose: "handoff-workspace",
+    runtimeID: "source",
+    connectionEpoch: 1,
+    mappingHash: "a".repeat(64),
+    issuedAt: 1,
+    expiresAt: 30001,
+    operation: { action: "publish", source: { workspaceID: "native", manifest: "b".repeat(64) } },
+  })
+  const signature = await Cloud.signHandoffWorkspace(proof, keys.privateKey)
+  expect(await Cloud.verifyHandoffWorkspace(proof, signature, publicKey)).toBeTrue()
+  for (const changed of [
+    { ...proof, mappingHash: "c".repeat(64) },
+    { ...proof, mappingPlanRevision: 2 },
+    { ...proof, operation: { action: "publish", source: { workspaceID: "other", manifest: "b".repeat(64) } } },
+    { ...proof, operation: { action: "inspect" } },
+  ])
+    expect(await Cloud.verifyHandoffWorkspace(changed, signature, publicKey)).toBeFalse()
+  expect(Cloud.HandoffWorkspaceProof.safeParse({ ...proof, runtimeID: "target" }).success).toBeFalse()
+  expect(Cloud.HandoffWorkspaceProof.safeParse({ ...proof, expiresAt: 30002 }).success).toBeFalse()
+  expect(
+    await Cloud.verifyHandoffWorkspace(
+      proof,
+      await signedProtocol(Cloud.HandoffWorkspaceProof, "another-domain\n").sign(proof, keys.privateKey),
       publicKey,
     ),
   ).toBeFalse()

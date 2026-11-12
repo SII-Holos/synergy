@@ -1,6 +1,7 @@
 import { Hono } from "hono"
-import { describeRoute, generateSpecs, resolver } from "hono-openapi"
+import { generateSpecs } from "hono-openapi"
 import { OrganizationProtocol } from "@ericsanchezok/synergy-organization-protocol"
+import { OrganizationHealth } from "./health"
 import { bodyLimit } from "hono/body-limit"
 import { HTTPException } from "hono/http-exception"
 import { z } from "zod"
@@ -30,6 +31,7 @@ import { knowledgeRoutes } from "./routes/knowledge"
 import { artifactRoutes } from "./routes/artifacts"
 import { cloudRoutes } from "./routes/cloud"
 import { cloudFileRoutes } from "./routes/cloud-files"
+import { handoffWorkspaceRoutes } from "./routes/handoff-workspaces"
 import { handoffRoutes, handoffMachineRoutes } from "./routes/handoff"
 import type { Handoffs } from "./handoff"
 import { knowledgeExecutionRoutes } from "./routes/knowledge-execution"
@@ -121,7 +123,9 @@ export function organizationApp(
               ? 6 * 1024 * 1024
               : c.req.method === "POST" && c.req.path === "/runtime/v1/workspaces/files"
                 ? 12 * 1024 * 1024
-                : 64 * 1024
+                : c.req.method === "POST" && c.req.path === "/runtime/v1/handoffs/workspace"
+                  ? 6 * 1024 * 1024
+                  : 64 * 1024
       return bodyLimit({ maxSize, onError: () => fail("INVALID_REQUEST", "Request body is too large") })(c, next)
     })
     .onError((error, c) => {
@@ -206,6 +210,13 @@ export function organizationApp(
     )
     .route(
       "/runtime/v1",
+      handoffWorkspaceRoutes(() => {
+        if (!handoffs) fail("SERVICE_UNAVAILABLE", "Workspace handoff authority is unavailable")
+        return handoffs
+      }),
+    )
+    .route(
+      "/runtime/v1",
       knowledgeExecutionRoutes(() => {
         if (!execution) fail("SERVICE_UNAVAILABLE", "Execution binding is unavailable")
         return execution
@@ -247,22 +258,5 @@ export function organizationApp(
         return connections
       }, publicOrigin),
     )
-    .get(
-      "/org/v1/health",
-      describeRoute({
-        operationId: "orgHealth.get",
-        summary: "Read organization service readiness",
-        responses: {
-          200: {
-            description: "Ready",
-            content: { "application/json": { schema: resolver(OrganizationProtocol.Health) } },
-          },
-          503: {
-            description: "Not ready",
-            content: { "application/json": { schema: resolver(OrganizationProtocol.Health) } },
-          },
-        },
-      }),
-      (c) => c.json({ ready: ready(), protocolVersion: OrganizationProtocol.version }, ready() ? 200 : 503),
-    )
+    .route("/", OrganizationHealth.routes(ready))
 }

@@ -3,6 +3,7 @@ import { OrganizationIdentity as Identity } from "./identity.js"
 import { OrganizationProtocol } from "./core.js"
 import { SigningSignature, digestProtocol, signedProtocol } from "./signature.js"
 import { ActorStamp } from "@ericsanchezok/synergy-util/actor-stamp"
+import { WorkspacePath } from "./workspace-path.js"
 
 export namespace OrganizationHandoffProtocol {
   export const Hash = z.string().regex(/^[a-f0-9]{64}$/)
@@ -121,21 +122,48 @@ export namespace OrganizationHandoffProtocol {
     .strictObject({ purpose: z.enum(["handoff-surrender", "handoff-activation"]) })
     .meta({ ref: "OrgHandoffPermitRequest" })
   export type PermitRequest = z.infer<typeof PermitRequest>
+  export const WorkspaceMapping = z.discriminatedUnion("kind", [
+    z.strictObject({ kind: z.literal("native") }),
+    z.strictObject({
+      kind: z.literal("organization-object"),
+      moveID: Identity.ID,
+      source: z.strictObject({ workspaceID: Identity.ID, generation: OrganizationProtocol.Epoch }),
+      target: z.strictObject({
+        resourceID: Identity.ID,
+        workspaceID: Identity.ID,
+        generation: OrganizationProtocol.Epoch,
+        path: WorkspacePath,
+        expectedRevision: z.number().int().positive().safe(),
+      }),
+      acceptedDiffHash: z.null(),
+    }),
+  ])
+  export type WorkspaceMapping = z.infer<typeof WorkspaceMapping>
+  export const mappingHash = (mapping: WorkspaceMapping) =>
+    digestProtocol(WorkspaceMapping, "synergy.organization.handoff.workspace-mapping.v1\n", mapping)
+  export const LegacyPrepare = z.strictObject({
+    handoffID: Identity.ID,
+    targetRuntimeID: Identity.ID,
+    expectedBindingEpoch: OrganizationProtocol.Epoch,
+    expectedControlRevision: Identity.Revision,
+    mappingPlanRevision: z.number().int().positive().safe(),
+  })
+  export const CurrentPrepare = LegacyPrepare.extend({ workspaceMapping: WorkspaceMapping })
   export const Prepare = z
-    .strictObject({
-      handoffID: Identity.ID,
-      targetRuntimeID: Identity.ID,
-      expectedBindingEpoch: OrganizationProtocol.Epoch,
-      expectedControlRevision: Identity.Revision,
-      mappingPlanRevision: z.number().int().positive().safe(),
-    })
+    .union([CurrentPrepare, LegacyPrepare])
+    .transform((value) =>
+      "workspaceMapping" in value ? value : { ...value, workspaceMapping: { kind: "native" as const } },
+    )
     .meta({ ref: "OrgHandoffPrepare" })
-  export type Prepare = z.infer<typeof Prepare>
+  export type Prepare = z.input<typeof Prepare>
   export const Accept = z
-    .strictObject({ mappingPlanRevision: z.number().int().positive().safe() })
+    .union([
+      z.strictObject({ mappingPlanRevision: z.number().int().positive().safe(), mappingHash: Hash }),
+      z.strictObject({ mappingPlanRevision: z.number().int().positive().safe() }),
+    ])
     .meta({ ref: "OrgHandoffAccept" })
   export type Accept = z.infer<typeof Accept>
-  export const View = Binding.extend({
+  export const LegacyView = Binding.extend({
     phase: Phase,
     initiator: Identity.ID,
     targetAccepted: z.boolean(),
@@ -147,7 +175,10 @@ export namespace OrganizationHandoffProtocol {
     canContinue: z.boolean(),
     currentDriver: Identity.ID,
     bindingEpoch: OrganizationProtocol.Epoch,
-  }).meta({ ref: "OrgHandoffView" })
+  })
+  export const View = LegacyView.extend({ workspaceMapping: WorkspaceMapping, mappingHash: Hash }).meta({
+    ref: "OrgHandoffView",
+  })
   export type View = z.infer<typeof View>
   export const Page = z
     .strictObject({ items: z.array(View), cursor: Identity.ID.optional() })
@@ -208,6 +239,19 @@ export namespace OrganizationHandoffProtocol {
     frozen: SignedProof.optional(),
     authorization: SignedPermit.optional(),
     object: ObjectRange.optional(),
+    workspacePlan: z
+      .strictObject({
+        mapping: WorkspaceMapping,
+        hash: Hash,
+        selectionActor: ActorStamp.Info.nullable(),
+        targetScopeID: Identity.ID.optional(),
+      })
+      .refine(
+        (value) =>
+          value.mapping.kind === "native" || (value.selectionActor?.kind === "account" && !!value.targetScopeID),
+        "Object mapping requires its actual selection actor and target namespace",
+      )
+      .optional(),
   })
     .refine(
       (value) =>

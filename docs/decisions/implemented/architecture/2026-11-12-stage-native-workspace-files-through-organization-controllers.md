@@ -14,7 +14,7 @@ The target verifies that the selected file owner and frozen file hash agree, rec
 
 Paused activation runs the epoch and canonical publication transaction inside `SessionTransferWorkspaces.withTargetPublication()`. Native directories remain privately prepared until their catalogs and the canonical aggregate publish together. The controller never sends input or Continue. Lost responses reconcile the original native facts without repeating publication.
 
-Portability contributions declare `publicationAfter` separately from staged dependencies and `publicationBefore`. Both publication directions form one deduplicated graph, validated before body receive and before publication. The organization owner declares `publicationAfter: ["session-core"]` and emits only reader/header 3, including its Core-publication capability. Older organization readers reject that package before reading body objects.
+Portability contributions declare `publicationAfter` separately from staged dependencies and `publicationBefore`. Both publication directions form one deduplicated graph, validated before body receive and before publication. The organization owner declares `publicationAfter: ["session-core"]` and preserves its reader/header 3 Core-publication capability in reader 4, which adds complete object-mapping receipts. Incoming reader 3 remains an explicit native-history format; readers unable to consume the declared version reject before body access.
 
 ## Alternatives considered
 
@@ -26,7 +26,7 @@ Portability contributions declare `publicationAfter` separately from staged depe
 
 ## Consequences
 
-Fresh native directory preparation supports the signed controller primitives without advertising Main's overall handoff capability. Environment transfer, object Workspace/live-view mapping, additional writable locations, existing-directory difference acceptance and independent WorkspaceMove publication retain their separate blocking owners. Cancellation preserves the original directory and paused Session; it does not authorize execution or undo an independent directory publication.
+Fresh native directory preparation supports the signed controller primitives without advertising Main's overall handoff capability. Environment mapping, additional writable locations and existing-directory difference acceptance retain separate blocking owners. [Cross-Realm receipt consumption](2026-11-12-consume-cross-realm-workspace-move-receipts-before-paused-handoff.md) connects the independent object WorkspaceMove owner without replacing native destination preparation. Cancellation preserves the original directory and paused Session; it does not authorize execution or undo an independent directory publication.
 
 ## Verification
 

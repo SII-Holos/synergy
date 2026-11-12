@@ -21,6 +21,17 @@ import { enrollMemberRuntime } from "../src/enrollment"
 import { readCredentials } from "../src/credentials"
 import { openMemberRuntime } from "../src/runtime"
 import { fixture } from "./support/organization"
+import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
+import { EnvironmentResources } from "@ericsanchezok/synergy-harness/environment/resources"
+import { EnvironmentOrigin } from "@ericsanchezok/synergy-harness/environment/origin"
+import { SessionExecutionOwners } from "@ericsanchezok/synergy-harness/session/execution-owners"
+import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
+import { SaveFileTool } from "@ericsanchezok/synergy-local-runtime/tools/save-file"
+import { ViewFileTool } from "@ericsanchezok/synergy-local-runtime/tools/view-file"
+import { FileView } from "@ericsanchezok/synergy-local-runtime/file/view"
+import { WorkspaceOperations } from "@ericsanchezok/synergy-harness/workspace/operations"
+import { Cortex } from "@ericsanchezok/synergy-harness/cortex"
+import { EditTool } from "@ericsanchezok/synergy-local-runtime/tools/edit"
 
 async function availablePort() {
   const probe = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() })
@@ -228,6 +239,7 @@ async function sharedFilesFixture() {
       })
       const credentials = (await readCredentials(home.root))!
       return {
+        registration,
         get runtime() {
           return runtime
         },
@@ -686,3 +698,461 @@ test("a final actual transaction guard rolls back the cloud head and file receip
       .status,
   ).toBe(404)
 }, 30_000)
+
+test("ordinary file tools resolve the registered organization provider under the original native tool origin", async () => {
+  await using f = await sharedFilesFixture()
+  const alice = await f.member("files-tools", "c".repeat(64))
+  f.interceptFrames(undefined)
+  const initial = Cloud.FileResult.parse(await (await alice.request({ operation: { action: "describe" } })).json())
+  const mkdir = await alice.request({
+    reference: initial.reference,
+    operation: { action: "mutate", id: "mapped-directory", change: { kind: "mkdir", path: "mapped" } },
+  })
+  expect(mkdir.status).toBe(200)
+  const current = Cloud.FileResult.parse(
+    await (await alice.request({ operation: { action: "describe" } })).json(),
+  ).reference
+  let unknownDispatches = 0
+  await alice.runtime.run(async () => {
+    const session = await Session.get(alice.sessionID)
+    await ScopeContext.provide({
+      scope: session.scope,
+      workspace: null,
+      fn: async () => {
+        const root = (await SessionExecutionOwners.latestRoot(session.id))!
+        const messageID = Identifier.ascending("message")
+        await Session.updateMessage({
+          id: messageID,
+          sessionID: session.id,
+          role: "assistant",
+          parentID: root.id,
+          rootID: root.id,
+          agent: "general",
+          modelID: "test",
+          providerID: "test",
+          mode: "default",
+          path: { cwd: null, root: null },
+          cost: 0,
+          tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+          time: { created: Date.now() },
+        })
+        await RolloutLedger.beginTool({
+          owner: RolloutLifecycle.owner(session),
+          runID: root.id,
+          messageID,
+          toolCallID: "real-files",
+          tool: "save_file",
+          args: {},
+        })
+        const workspace = WorkspaceCatalog.Info.parse({
+          id: "wsp_remote_tools",
+          scopeID: session.scope.id,
+          type: "directory",
+          revision: 1,
+          binding: { state: "bound", hostID: "organization:" + current.orgID, path: null, generation: 1 },
+          backend: {
+            provider: "organization",
+            spec: Cloud.FileLocator.parse({
+              version: 1,
+              orgID: current.orgID,
+              deploymentIncarnation: alice.registration.deploymentIncarnation,
+              projectID: current.projectID,
+              resourceID: current.resourceID,
+              workspaceID: current.workspaceID,
+              generation: current.generation,
+              path: "mapped",
+              moveID: "fixture-owned-locator",
+              mappingRevision: 1,
+              workspaceMoveReceiptHash: "a".repeat(64),
+            }),
+          },
+          metadata: {},
+          sharedWritableWorkspaceIDs: [],
+          lifecycle: "active",
+          createdAt: 1,
+          updatedAt: 1,
+        })
+        await Storage.transaction((tx) => WorkspaceCatalog.writeImportedFiles(workspace, tx))
+        const origin = EnvironmentOrigin.selected({
+          kind: "session",
+          scopeID: session.scope.id,
+          sessionID: session.id,
+          rootID: root.id,
+          runID: root.id,
+          messageID,
+          callID: "real-files",
+          tool: "save_file",
+        })
+        await using resources = await EnvironmentResources.resolve({
+          scopeID: session.scope.id,
+          workspaceID: workspace.id,
+          workspaceGeneration: 1,
+          origin,
+          needs: { workspace: true },
+        })
+        expect(resources.kind).toBe("files")
+        const context = {
+          sessionID: session.id,
+          messageID,
+          callID: "real-files",
+          agent: "general",
+          abort: AbortSignal.any([]),
+          ask: async () => {},
+          metadata() {},
+          resources,
+        }
+        await (await SaveFileTool.init()).execute({ filePath: "note.txt", content: "real remote tool\n" }, context)
+        expect((await (await ViewFileTool.init()).execute({ filePath: "note.txt" }, context)).output).toContain(
+          "real remote tool",
+        )
+        await EnvironmentResources.provide(resources, "stale-tool-cas", async () => {
+          await expect(
+            FileView.write("stale.txt", Buffer.from("no"), null, undefined, true, "known-stale"),
+          ).rejects.toThrow("changed")
+          expect((await WorkspaceOperations.get("known-stale", session.scope.id)).state).toBe("failed")
+        })
+        const unchanged = await WorkspaceCatalog.get(workspace.id, session.scope.id)
+        expect(unchanged.content).toBeUndefined()
+        expect(unchanged.activeMount).toBeUndefined()
+        await resources.release()
+        await using next = await EnvironmentResources.resolve({
+          scopeID: session.scope.id,
+          workspaceID: workspace.id,
+          workspaceGeneration: 1,
+          origin,
+          needs: { workspace: true },
+        })
+        f.interceptHTTP(async (request) => {
+          if (new URL(request.url).pathname !== "/runtime/v1/workspaces/files") return
+          const input = Cloud.FileRequest.parse(await request.clone().json())
+          if (input.proof.operation.action !== "write" || input.proof.operation.id !== "real-unknown") return
+          unknownDispatches++
+          expect((await f.service.fetch(request)).status).toBe(200)
+          return Response.json(
+            { code: "SERVICE_UNAVAILABLE", message: "Original file reply lost", outcome: "unknown", retryable: false },
+            { status: 503 },
+          )
+        })
+        await expect(
+          EnvironmentResources.provide(next, "unknown-file", () =>
+            FileView.write("once.txt", Buffer.from("once"), null, undefined, true, "real-unknown"),
+          ),
+        ).rejects.toThrow("lost")
+        expect((await WorkspaceOperations.get("real-unknown", session.scope.id)).state).toBe("unknown")
+        f.interceptHTTP(undefined)
+      },
+    })
+  })
+  const read = await alice.request({
+    reference: current,
+    operation: { action: "read", path: "mapped/note.txt", offset: 0, maximumBytes: 1024 },
+  })
+  expect(Cloud.FileResult.parse(await read.json()).result).toMatchObject({
+    action: "read",
+    data: Buffer.from("real remote tool\n").toString("base64"),
+  })
+  expect(f.allocations()).toBe(0)
+  await alice.reopen()
+  await alice.runtime.run(async () => {
+    expect((await WorkspaceOperations.reconcile("real-unknown", current.projectID)).state).toBe("completed")
+    expect(await WorkspaceOperations.listActive(current.projectID)).toEqual([])
+  })
+  expect(unknownDispatches).toBe(1)
+}, 20000)
+
+test("a signed mapped directory confines canonical reads and writes inside the same service tree", async () => {
+  await using f = await sharedFilesFixture()
+  const member = await f.member("files-prefix", "e".repeat(64))
+  f.interceptFrames(undefined)
+  let reference = Cloud.FileResult.parse(
+    await (await member.request({ operation: { action: "describe" } })).json(),
+  ).reference
+  async function publish(operation: Cloud.FileOperation) {
+    const response = await member.request({ reference, operation })
+    expect(response.status).toBe(200)
+    reference = Cloud.FileResult.parse(await response.json()).reference
+  }
+  await publish({ action: "mutate", id: "prefix-dir", change: { kind: "mkdir", path: "mapped" } })
+  await publish({
+    action: "write",
+    id: "outside-file",
+    path: "outside.txt",
+    data: Buffer.from("outside").toString("base64"),
+    expectedVersion: null,
+  })
+  await publish({
+    action: "mutate",
+    id: "outside-link",
+    change: {
+      kind: "replace",
+      path: "mapped/escape",
+      data: Buffer.from("../outside.txt").toString("base64"),
+      mode: "120000",
+      expectedVersion: null,
+    },
+  })
+  const rooted = { ...reference, rootPath: "mapped" }
+  for (const operation of [
+    { action: "read", path: "outside.txt", offset: 0, maximumBytes: 128 },
+    { action: "read", path: "mapped/escape", offset: 0, maximumBytes: 128 },
+    { action: "canonical", path: "mapped/escape", follow: true },
+    { action: "write", id: "escaping-write", path: "mapped/escape", data: "eA==", expectedVersion: null },
+  ] as const)
+    expect((await member.request({ reference: rooted, operation })).status).toBe(403)
+  const stat = await member.request({
+    reference: rooted,
+    operation: { action: "stat", path: "mapped/escape", follow: false },
+  })
+  expect(Cloud.FileResult.parse(await stat.json())).toMatchObject({
+    reference: { rootPath: "mapped" },
+    result: { action: "stat", item: { kind: "symlink" } },
+  })
+  const read = await member.request({
+    reference,
+    operation: { action: "read", path: "outside.txt", offset: 0, maximumBytes: 128 },
+  })
+  expect(Cloud.FileResult.parse(await read.json()).result).toMatchObject({
+    action: "read",
+    data: Buffer.from("outside").toString("base64"),
+  })
+})
+
+test("Cortex child View/Edit/Save retain the child's native tool origin and the ancestor's accepted file grant", async () => {
+  await using f = await sharedFilesFixture()
+  const member = await f.member("files-child", "f".repeat(64))
+  f.interceptFrames(undefined)
+  let remote = Cloud.FileResult.parse(
+    await (await member.request({ operation: { action: "describe" } })).json(),
+  ).reference
+  for (const operation of [
+    { action: "mutate", id: "child-directory", change: { kind: "mkdir", path: "child" } },
+    {
+      action: "write",
+      id: "child-seed",
+      path: "child/note.txt",
+      data: Buffer.from("ancestor bytes\n").toString("base64"),
+      expectedVersion: null,
+    },
+  ] as const)
+    remote = Cloud.FileResult.parse(await (await member.request({ reference: remote, operation })).json()).reference
+  let childID = "",
+    childRootID = "",
+    parentRootID = "",
+    writes = 0
+  const requests: Cloud.FileRequest[] = []
+  f.interceptHTTP(async (request) => {
+    if (new URL(request.url).pathname !== "/runtime/v1/workspaces/files") return
+    const input = Cloud.FileRequest.parse(await request.clone().json())
+    requests.push(input)
+    if (input.proof.operation.action !== "write" || input.proof.operation.id !== "child-lost-ack") return
+    writes++
+    expect((await f.service.fetch(request)).status).toBe(200)
+    return Response.json(
+      { code: "SERVICE_UNAVAILABLE", message: "Child write reply lost", outcome: "unknown", retryable: false },
+      { status: 503 },
+    )
+  })
+  await member.runtime.run(async () => {
+    const parent = await Session.get(member.sessionID)
+    await ScopeContext.provide({
+      scope: parent.scope,
+      workspace: null,
+      fn: async () => {
+        const ancestor = (await SessionExecutionOwners.latestRoot(parent.id))!
+        parentRootID = ancestor.id
+        const task = await Cortex.prepare({
+          description: "Read and edit organization files",
+          prompt: "Use the accepted ancestor files",
+          agent: ancestor.agent,
+          parentSessionID: parent.id,
+          parentMessageID: ancestor.id,
+        })
+        const child = await Session.get(task.sessionID)
+        childID = child.id
+        await Session.update(child.id, (draft) => {
+          draft.modelOverride = { providerID: "test", modelID: "test" }
+        })
+        await SessionInbox.deliver({
+          sessionID: child.id,
+          mode: "task",
+          message: {
+            role: "user",
+            agent: ancestor.agent,
+            model: { providerID: "test", modelID: "test" },
+            origin: { type: "system" },
+            parts: [{ type: "text", text: "Child native file task" }],
+          },
+        })
+        const item = (await SessionInbox.list(child.id))[0]!
+        expect((await SessionInbox.materializeNextTask(child.id)).status).toBe("materialized")
+        childRootID = item.messageID
+        await RolloutLedger.beginRun(RolloutLifecycle.owner(child), childRootID)
+        expect(childRootID).not.toBe(parentRootID)
+        const messageID = Identifier.ascending("message")
+        await Session.updateMessage({
+          id: messageID,
+          sessionID: child.id,
+          role: "assistant",
+          parentID: childRootID,
+          rootID: childRootID,
+          agent: ancestor.agent,
+          modelID: "test",
+          providerID: "test",
+          mode: "default",
+          path: { cwd: null, root: null },
+          cost: 0,
+          tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+          time: { created: Date.now() },
+        })
+        const workspace = WorkspaceCatalog.Info.parse({
+          id: "wsp_child_files",
+          scopeID: child.scope.id,
+          type: "directory",
+          revision: 1,
+          binding: { state: "bound", hostID: "organization:" + remote.orgID, path: null, generation: 1 },
+          backend: {
+            provider: "organization",
+            spec: Cloud.FileLocator.parse({
+              version: 1,
+              orgID: remote.orgID,
+              deploymentIncarnation: member.registration.deploymentIncarnation,
+              projectID: remote.projectID,
+              resourceID: remote.resourceID,
+              workspaceID: remote.workspaceID,
+              generation: remote.generation,
+              path: "child",
+              moveID: "child-fixture-locator",
+              mappingRevision: 1,
+              workspaceMoveReceiptHash: "b".repeat(64),
+            }),
+          },
+          metadata: {},
+          sharedWritableWorkspaceIDs: [],
+          lifecycle: "active",
+          createdAt: 1,
+          updatedAt: 1,
+        })
+        await Storage.transaction((tx) => WorkspaceCatalog.writeImportedFiles(workspace, tx))
+        let call = 0
+        async function invoke(
+          tool: string,
+          body: (context: {
+            sessionID: string
+            messageID: string
+            callID: string
+            agent: string
+            abort: AbortSignal
+            ask(): Promise<void>
+            metadata(): void
+            resources: EnvironmentResources.Resolved
+          }) => Promise<void>,
+        ) {
+          const callID = "child-files-" + ++call
+          await RolloutLedger.beginTool({
+            owner: RolloutLifecycle.owner(child),
+            runID: childRootID,
+            messageID,
+            toolCallID: callID,
+            tool,
+            args: {},
+          })
+          const origin = EnvironmentOrigin.selected({
+            kind: "session",
+            scopeID: child.scope.id,
+            sessionID: child.id,
+            rootID: childRootID,
+            runID: childRootID,
+            messageID,
+            callID,
+            tool,
+          })
+          await using resources = await EnvironmentResources.resolve({
+            scopeID: child.scope.id,
+            workspaceID: workspace.id,
+            workspaceGeneration: 1,
+            origin,
+            needs: { workspace: true },
+          })
+          expect(resources.origin).toBe(origin)
+          expect(resources.origin!.value).toMatchObject({
+            sessionID: child.id,
+            rootID: childRootID,
+            runID: childRootID,
+            messageID,
+            callID,
+            tool,
+          })
+          expect(resources.files!.binding).toMatchObject({ authority: { sessionID: parent.id, rootID: parentRootID } })
+          await body({
+            sessionID: child.id,
+            messageID,
+            callID,
+            agent: ancestor.agent,
+            abort: AbortSignal.any([]),
+            ask: async () => {},
+            metadata() {},
+            resources,
+          })
+        }
+        await invoke("view_file", async (context) => {
+          expect((await (await ViewFileTool.init()).execute({ filePath: "note.txt" }, context)).output).toContain(
+            "ancestor bytes",
+          )
+        })
+        await invoke("edit", async (context) => {
+          await (
+            await EditTool.init()
+          ).execute({ filePath: "note.txt", oldString: "ancestor bytes", newString: "child edited" }, context)
+        })
+        await invoke("save_file", async (context) => {
+          await (await SaveFileTool.init()).execute({ filePath: "new.txt", content: "child saved\n" }, context)
+        })
+        await invoke("save_file", async (context) => {
+          await expect(
+            EnvironmentResources.provide(context.resources, "child-unknown", () =>
+              FileView.write("once.txt", Buffer.from("child once"), null, undefined, true, "child-lost-ack"),
+            ),
+          ).rejects.toThrow("lost")
+          const operation = await WorkspaceOperations.get("child-lost-ack", child.scope.id)
+          expect(operation.state).toBe("unknown")
+          expect(operation.input).toMatchObject({
+            source: { binding: { authority: { sessionID: parent.id, rootID: parentRootID } } },
+          })
+        })
+        await invoke("view_file", async (context) => {
+          const before = requests.length
+          await Cortex.cancel(task.id)
+          await expect((await ViewFileTool.init()).execute({ filePath: "note.txt" }, context)).rejects.toThrow()
+          expect(requests.length).toBe(before)
+        })
+      },
+    })
+  })
+  f.interceptHTTP(undefined)
+  for (const request of requests) {
+    expect(request.proof.authority.proof.receipt.accepted!.permit.sessionID).toBe(member.sessionID)
+    expect(request.proof.authority.proof.rootID).toBe(parentRootID)
+  }
+  const read = Cloud.FileResult.parse(
+    await (
+      await member.request({
+        reference: remote,
+        operation: { action: "read", path: "child/note.txt", offset: 0, maximumBytes: 128 },
+      })
+    ).json(),
+  )
+  expect(read.result).toMatchObject({ action: "read", data: Buffer.from("child edited\n").toString("base64") })
+  await member.reopen()
+  await member.runtime.run(async () => {
+    const operation = await WorkspaceOperations.reconcile("child-lost-ack", remote.projectID)
+    expect(operation.state).toBe("completed")
+    expect(operation.input).toMatchObject({
+      source: { binding: { authority: { sessionID: member.sessionID, rootID: parentRootID } } },
+    })
+    expect((await RolloutLedger.getRun(RolloutLifecycle.owner(await Session.get(childID)), childRootID)).id).toBe(
+      childRootID,
+    )
+  })
+  expect(writes).toBe(1)
+  expect(f.allocations()).toBe(0)
+}, 20000)

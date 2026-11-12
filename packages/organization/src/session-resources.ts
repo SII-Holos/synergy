@@ -12,6 +12,37 @@ import { OrganizationAuthorityHistory as History } from "./authority-history"
 import { OrganizationCloud as Cloud } from "./cloud"
 
 export namespace OrganizationSessionResources {
+  export function mappedWorkspace(
+    contract: Record.SessionResources,
+    target: { resourceID: string; workspaceID: string },
+  ) {
+    return Record.SessionResources.parse({
+      ...contract,
+      revision: contract.revision + 1,
+      selection: {
+        ...contract.selection,
+        infrastructure: {
+          ...contract.selection!.infrastructure,
+          workspace: { resourceID: target.resourceID, workspaceID: target.workspaceID },
+        },
+      },
+    })
+  }
+  export async function rebindHandoff(
+    session: Record.SessionDirectory,
+    original: Record.SessionResources,
+    target: { resourceID: string; workspaceID: string },
+  ) {
+    if (!Storage.inTransaction() || !session.handoffID || session.retainedExecutionGrants)
+      fail("HANDOFF_BLOCKED", "Mapped resources require their drained original handoff transaction")
+    const current = await read(session)
+    if (JSON.stringify(current) !== JSON.stringify(original))
+      fail("REVISION_CONFLICT", "The consented resource contract changed")
+    const mapped = mappedWorkspace(original, target)
+    await enabled({ ...session, resourceIDs: Execution.resourceIDs(mapped.selection!) }, mapped.selection!)
+    await Storage.write(Keys.sessionResources(session.sessionID), mapped)
+    return mapped
+  }
   export async function read(session: Record.SessionDirectory) {
     const contract = await Record.read(Record.SessionResources, Keys.sessionResources(session.sessionID))
     if (!contract) {

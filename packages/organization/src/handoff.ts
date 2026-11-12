@@ -6,9 +6,10 @@ import {
   OrganizationIdentity as Identity,
   OrganizationRuntimeProtocol as Runtime,
   OrganizationExecutionProtocol as Execution,
+  OrganizationCloudProtocol as Cloud,
 } from "@ericsanchezok/synergy-organization-protocol"
 import type { Credentials } from "./auth/session"
-import { authorize, projectView } from "./authorization"
+import { authorize, projectView, resourceView } from "./authorization"
 import { OrganizationRecord as Record } from "./storage/records"
 import { OrganizationStoragePath as Keys } from "./storage/path"
 import { OrganizationSessionResources } from "./session-resources"
@@ -22,8 +23,13 @@ import { createHash } from "node:crypto"
 import type { Migration } from "@ericsanchezok/synergy-harness/migration/types"
 import { UpgradeWork } from "@ericsanchezok/synergy-harness/storage/upgrade-work"
 import { OrganizationAuthorityHistory as History } from "./authority-history"
+import { ActorStamp } from "@ericsanchezok/synergy-util/actor-stamp"
+import { upgradeAccessRecord } from "@ericsanchezok/synergy-harness/migration/import"
+import { OrganizationCloud } from "./cloud"
+import { WorkspaceMove } from "@ericsanchezok/synergy-harness/workspace/move"
+import { WorkspaceContent } from "@ericsanchezok/synergy-harness/workspace/content"
 
-const Stored = Handoff.View.omit({
+const LegacyStored = Handoff.LegacyView.omit({
   missingRequirements: true,
   canCancel: true,
   canAccept: true,
@@ -32,7 +38,7 @@ const Stored = Handoff.View.omit({
   bindingEpoch: true,
 }).extend({
   version: z.literal(1),
-  request: Handoff.Prepare,
+  request: Handoff.LegacyPrepare,
   source: Runtime.Registration,
   target: Runtime.Registration,
   cancelRequested: z.boolean(),
@@ -45,13 +51,54 @@ const Stored = Handoff.View.omit({
   surrenderPermit: Handoff.SignedPermit.optional(),
   activationPermit: Handoff.SignedPermit.optional(),
 })
+const Stored = LegacyStored.extend({
+  version: z.literal(2),
+  request: Handoff.CurrentPrepare,
+  selectionActor: ActorStamp.Info.nullable(),
+  workspaceContract: Record.SessionResources.optional(),
+}).refine(
+  (record) =>
+    record.request.workspaceMapping.kind === "native" ||
+    (record.selectionActor?.kind === "account" &&
+      record.selectionActor.subjectID === record.initiator &&
+      record.selectionActor.orgID === record.orgID &&
+      record.selectionActor.requestID === record.handoffID),
+  "Object mappings require their original authenticated selection actor",
+)
+const RawStored = z.union([LegacyStored, Stored])
 type Stored = z.infer<typeof Stored>
 const key = (id: string) => ["organization", "handoffs", id]
 const sessionKey = (sessionID: string) => ["organization", "session-handoffs", sessionID]
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
+interface WorkspaceFrame {
+  request: WorkspaceMove.Request
+  proof: Cloud.HandoffWorkspaceProof
+  assert(): void
+  recheck(): Promise<void>
+}
+const workspaceFrames = new WeakMap<OrganizationHandoffExecution.WorkspaceAuthority, WorkspaceFrame>()
 function publicRuntime(record: Record.RuntimeRegistration) {
   const { schemaVersion: _, ...value } = record
   return Runtime.Registration.parse(value)
+}
+function workspaceRequest(record: Stored, projectID: string) {
+  const mapping = record.request.workspaceMapping
+  if (mapping.kind === "native") return
+  if (!record.selectionActor) fail("HANDOFF_BLOCKED", "Workspace mapping has no original authenticated selector")
+  return WorkspaceMove.Request.parse({
+    id: mapping.moveID,
+    source: { ...mapping.source, scopeID: projectID },
+    target: {
+      workspaceID: mapping.target.workspaceID,
+      generation: mapping.target.generation,
+      path: mapping.target.path,
+      expectedRevision: mapping.target.expectedRevision,
+      scopeID: OrganizationCloud.scopeID(record.orgID, projectID),
+    },
+    mappingRevision: record.mappingPlanRevision,
+    acceptedDiffHash: mapping.acceptedDiffHash,
+    actor: record.selectionActor,
+  })
 }
 const bindingFields = [
   "orgID",
@@ -72,7 +119,7 @@ export function registerHandoffAuthorityHistory() {
     version: 1,
     prefixes: [["organization", "handoffs"]],
     project(_key, value) {
-      const record = Stored.parse(value)
+      const record = RawStored.parse(value)
       return {
         handoffID: record.handoffID,
         sessionID: record.sessionID,
@@ -91,6 +138,8 @@ export function registerHandoffAuthorityHistory() {
           .update(
             JSON.stringify([
               record.request,
+              ...(record.version === 2 ? [record.selectionActor] : []),
+              ...(record.version === 2 && record.workspaceContract ? [record.workspaceContract] : []),
               record.frozen,
               record.prepared,
               record.surrendered,
@@ -108,6 +157,20 @@ export function registerHandoffAuthorityHistory() {
 }
 
 export namespace OrganizationHandoffExecution {
+  export interface WorkspaceAuthority {
+    readonly kind: "handoff-workspace-authority"
+  }
+  export function workspaceAuthority(value: WorkspaceAuthority) {
+    const frame = workspaceFrames.get(value)
+    if (!frame) fail("PERMISSION_DENIED", "Workspace moves require their original handoff authority")
+    frame.assert()
+    return {
+      request: WorkspaceMove.Request.parse(frame.request),
+      proof: Cloud.HandoffWorkspaceProof.parse(frame.proof),
+      assert: frame.assert,
+      recheck: frame.recheck,
+    }
+  }
   const root = ["organization", "session-handoff-epochs"]
   const Entry = z.strictObject({ version: z.literal(1), handoffID: Identity.ID })
   const epochKey = (sessionID: string, epoch: number) => [
@@ -132,7 +195,7 @@ export namespace OrganizationHandoffExecution {
     if (raw === undefined) fail("HANDOFF_BLOCKED", "Handoff epoch index requires its owning migration")
     const entry = Entry.parse(raw)
     const [value] = await Storage.readMany([key(entry.handoffID)])
-    const record = Stored.parse(value)
+    const record = Stored.parse(upgradeAccessRecord(key(entry.handoffID), value))
     const cancelled = record.cancelled?.proof
     if (
       record.handoffID !== entry.handoffID ||
@@ -202,6 +265,21 @@ export namespace OrganizationHandoffExecution {
         "Source cancellation requires an independently accepted control or new task after its exact barrier",
       )
   }
+  export const workspaceMigration: Migration = {
+    id: "20261112-organization-handoff-workspace-mapping",
+    description: "Retain explicit native semantics for version-one Workspace handoffs",
+    scope: "global",
+    execution: "record",
+    async up() {},
+    upgradeRecord(key, record) {
+      if (key.length !== 3 || key[0] !== "organization" || key[1] !== "handoffs" || record.version !== 1) return
+      const legacy = LegacyStored.parse(record)
+      record.version = 2
+      record.request = { ...legacy.request, workspaceMapping: { kind: "native" } }
+      record.selectionActor = null
+      Stored.parse(record)
+    },
+  }
   export const migration: Migration = {
     id: "20261112-organization-handoff-epoch-index",
     description: "Index canonical reserved handoff epochs for execution fences",
@@ -213,7 +291,7 @@ export namespace OrganizationHandoffExecution {
       let count = 0
       for await (const row of Storage.records({ prefix: ["organization", "handoffs"], limit: 128 })) {
         UpgradeWork.signal()?.throwIfAborted()
-        const record = Stored.parse(row.value)
+        const record = Stored.parse(upgradeAccessRecord(row.key, row.value))
         if (row.key.length !== 3 || row.key[2] !== record.handoffID)
           fail("SERVICE_UNAVAILABLE", "Handoff history has another canonical key")
         await Storage.transaction(() => index(record))
@@ -238,7 +316,7 @@ export function createHandoffs(options: {
   async function load(id: string) {
     const [value] = await Storage.readMany([key(Identity.ID.parse(id))])
     if (!value) fail("NOT_FOUND", "Handoff not found")
-    const record = Stored.parse(value)
+    const record = Stored.parse(upgradeAccessRecord(key(id), value))
     if (
       record.handoffID !== id ||
       record.orgID !== options.signing.identity.orgID ||
@@ -277,6 +355,8 @@ export function createHandoffs(options: {
       })
     return Handoff.View.strip().parse({
       ...record,
+      workspaceMapping: record.request.workspaceMapping,
+      mappingHash: await Handoff.mappingHash(record.request.workspaceMapping),
       missingRequirements,
       canCancel:
         !record.surrendered &&
@@ -299,7 +379,8 @@ export function createHandoffs(options: {
     const membership = await Record.read(Record.ProjectMember, Keys.projectMember(current.projectID, accountID))
     if (!account || !project || account.orgID !== current.orgID)
       fail("PERMISSION_DENIED", "Handoff account is unavailable")
-    projectView(account, project, membership, "project.execute")
+    const view = projectView(account, project, membership, "project.execute")
+    return { account, view }
   }
 
   async function eligible(record: Stored) {
@@ -341,6 +422,38 @@ export function createHandoffs(options: {
     if (!record.targetAccepted) fail("HANDOFF_BLOCKED", "The destination member has not accepted this mapping plan")
     const contract = await OrganizationSessionResources.read(current)
     if (contract?.selection) await OrganizationSessionResources.enabled(current, contract.selection)
+    const mapping = record.request.workspaceMapping
+    if (mapping.kind === "organization-object") {
+      const resource = await Record.read(Record.Resource, Keys.resource(record.orgID, mapping.target.resourceID))
+      if (
+        !resource ||
+        resource.orgID !== record.orgID ||
+        resource.resourceID !== mapping.target.resourceID ||
+        resource.state !== "enabled" ||
+        resource.configuration.protocol !== "workspace-storage" ||
+        (resource.scope.kind === "project" && resource.scope.projectID !== current.projectID)
+      )
+        fail("RESOURCE_UNAVAILABLE", "The mapped Workspace storage resource is unavailable")
+      const selector = record.selectionActor
+      if (selector?.kind !== "account") fail("PERMISSION_DENIED", "Workspace mapping has no authenticated selector")
+      const { account, view } = await accountExecution(selector.subjectID, current)
+      const [personal, shared] = await Promise.all([
+        Record.read(
+          Record.ResourceGrant,
+          Keys.resourceGrant(record.orgID, resource.resourceID, { kind: "account", id: selector.subjectID }),
+        ),
+        Record.read(
+          Record.ResourceGrant,
+          Keys.resourceGrant(record.orgID, resource.resourceID, { kind: "project", id: current.projectID }),
+        ),
+      ])
+      if (!resourceView(account, resource, view, personal, shared).permissions.use)
+        fail("PERMISSION_DENIED", "The original Workspace selector cannot use its mapped storage resource")
+      await OrganizationCloud.assertInfrastructure(record.orgID, current.projectID, {
+        workspace: { resourceID: mapping.target.resourceID, workspaceID: mapping.target.workspaceID },
+        environment: null,
+      })
+    }
     return {
       current,
       guard() {
@@ -401,6 +514,80 @@ export function createHandoffs(options: {
   }
 
   const api = {
+    async withWorkspace<T>(
+      value: Cloud.HandoffWorkspaceRequest,
+      signal: AbortSignal | undefined,
+      body: (evidence: OrganizationHandoffExecution.WorkspaceAuthority) => Promise<T>,
+    ): Promise<T> {
+      if (Storage.inTransaction()) fail("INVALID_REQUEST", "Workspace handoff authority must precede publication")
+      const request = Cloud.HandoffWorkspaceRequest.parse(value)
+      const proof = request.proof
+      const owner = WorkspaceContent.captureOwner(signal)
+      const window = () => {
+        owner()
+        if (proof.issuedAt > Date.now() || proof.expiresAt <= Date.now())
+          fail("PERMISSION_DENIED", "Workspace handoff proof is outside its signing window")
+      }
+      window()
+      const authority = await Storage.snapshot(() => runtimeAuthority(proof))
+      if (!(await Cloud.verifyHandoffWorkspace(proof, request.signature, authority.runtime.publicKey)))
+        fail("PERMISSION_DENIED", "Workspace handoff requires its complete signed operation")
+      window()
+      const connection = options.connections.captureHandoff(proof.runtimeID)
+      assertRuntimeConnection(authority.runtime, connection.handshake)
+      if (connection.handshake.schemas.handoffs !== 2)
+        fail("PROTOCOL_MISMATCH", "Workspace handoff requires the complete mapped file reader")
+      let open = true
+      let retained: WorkspaceMove.Request | undefined
+      const assert = () => {
+        window()
+        connection.assertCurrent()
+        if (!open) fail("PERMISSION_DENIED", "Workspace handoff callback has ended")
+      }
+      const recheck = async () => {
+        assert()
+        await Storage.snapshot(async () => {
+          const record = await load(proof.handoffID)
+          if (
+            bindingFields.some((field) => record[field] !== proof[field]) ||
+            record.request.workspaceMapping.kind !== "organization-object" ||
+            proof.mappingHash !== (await Handoff.mappingHash(record.request.workspaceMapping))
+          )
+            fail("PROTOCOL_MISMATCH", "Workspace handoff belongs to another original mapping")
+          const publishing = proof.operation.action === "put" || proof.operation.action === "publish"
+          if (
+            record.cancelRequested ||
+            (publishing
+              ? record.phase !== "preparing" || !!record.frozen
+              : !["preparing", "prepared", "surrendered", "committed", "activation_permitted"].includes(record.phase))
+          )
+            fail("HANDOFF_BLOCKED", "Workspace handoff is unavailable in this phase")
+          const participant = proof.runtimeID === record.sourceRuntimeID ? record.source : record.target
+          if (participant.publicKey !== authority.runtime.publicKey)
+            fail("PERMISSION_DENIED", "Workspace handoff machine changed")
+          const access = await eligible(record)
+          const selected = workspaceRequest(record, access.current.projectID)
+          if (!selected || (retained && !same(selected, retained)))
+            fail("PROTOCOL_MISMATCH", "Workspace handoff target changed")
+          retained ??= selected
+          access.guard()
+          assert()
+        })
+        assert()
+      }
+      try {
+        await recheck()
+        const evidence: OrganizationHandoffExecution.WorkspaceAuthority = Object.freeze({
+          kind: "handoff-workspace-authority",
+        })
+        workspaceFrames.set(evidence, { request: WorkspaceMove.Request.parse(retained), proof, assert, recheck })
+        const result = await body(evidence)
+        assert()
+        return result
+      } finally {
+        open = false
+      }
+    },
     async continuationAuthority(input: {
       handoffID: string
       sessionID: string
@@ -428,7 +615,21 @@ export function createHandoffs(options: {
           "HANDOFF_BLOCKED",
           "Execution continuation requires the latest permanent handoff outcome and a fresh control",
         )
-      return { current, sourceRuntimeID: record.sourceRuntimeID, sourceBindingEpoch: record.fromEpoch, cancelled }
+      const mapping = record.request.workspaceMapping
+      const workspaceContinuation =
+        !cancelled && mapping.kind === "organization-object" && record.workspaceContract
+          ? {
+              before: record.workspaceContract,
+              after: OrganizationSessionResources.mappedWorkspace(record.workspaceContract, mapping.target),
+            }
+          : undefined
+      return {
+        current,
+        sourceRuntimeID: record.sourceRuntimeID,
+        sourceBindingEpoch: record.fromEpoch,
+        cancelled,
+        workspaceContinuation,
+      }
     },
     async executionAuthority(proof: Execution.HandoffCloseProof | Execution.HandoffInventoryProof) {
       if (!Storage.inTransaction()) fail("INVALID_REQUEST", "Handoff resource closure must join its grant transaction")
@@ -559,6 +760,11 @@ export function createHandoffs(options: {
         }
         const runtime = role === "source" ? record.source : record.target
         const connection = options.connections.captureHandoff(runtime.runtimeID)
+        if (
+          record.request.workspaceMapping.kind === "organization-object" &&
+          connection.handshake.schemas.handoffs !== 2
+        )
+          fail("HANDOFF_BLOCKED", "Object Workspace handoff requires the complete mapped file reader")
         const authority = await runtimeAuthority({
           runtimeID: runtime.runtimeID,
           orgID: record.orgID,
@@ -574,6 +780,18 @@ export function createHandoffs(options: {
         const plan = Handoff.MachinePlan.strip().parse({
           ...record,
           ...request,
+          workspacePlan:
+            connection.handshake.schemas.handoffs === 2
+              ? {
+                  mapping: record.request.workspaceMapping,
+                  hash: await Handoff.mappingHash(record.request.workspaceMapping),
+                  selectionActor: record.selectionActor,
+                  targetScopeID:
+                    record.request.workspaceMapping.kind === "organization-object"
+                      ? OrganizationCloud.scopeID(record.orgID, access.session.projectID)
+                      : undefined,
+                }
+              : undefined,
           purpose: "handoff-machine",
           keyID: options.signing.identity.keyID,
           runtimeID: runtime.runtimeID,
@@ -638,7 +856,7 @@ export function createHandoffs(options: {
           await authorize(credentials, "project.execute", { projectID: access.session.projectID })
           const [existing] = await Storage.readMany([key(request.handoffID)])
           if (existing) {
-            const previous = Stored.parse(existing)
+            const previous = Stored.parse(upgradeAccessRecord(key(request.handoffID), existing))
             if (
               previous.sessionID !== sessionID ||
               previous.initiator !== access.account.accountID ||
@@ -651,6 +869,24 @@ export function createHandoffs(options: {
           if (current.handoffID) fail("HANDOFF_BLOCKED", "Another handoff owns this Session")
           revision(request.expectedBindingEpoch, current.bindingEpoch)
           revision(request.expectedControlRevision, current.controlRevision)
+          if (request.workspaceMapping.kind === "organization-object") {
+            const mapping = request.workspaceMapping
+            const selected = await authorize(credentials, "resource.use", {
+              resourceID: mapping.target.resourceID,
+              projectID: current.projectID,
+            })
+            if (selected.resource.configuration.protocol !== "workspace-storage")
+              fail("INVALID_REQUEST", "Workspace mapping requires its storage resource")
+            const workspace = await OrganizationCloud.getWorkspace(credentials, mapping.target.workspaceID)
+            if (
+              workspace.resourceID !== mapping.target.resourceID ||
+              workspace.projectID !== current.projectID ||
+              workspace.activeMount
+            )
+              fail("HANDOFF_BLOCKED", "Workspace mapping requires its dormant target resource")
+            revision(mapping.target.generation, workspace.generation)
+            revision(mapping.target.expectedRevision, workspace.revision)
+          }
           const source = await Record.read(Record.RuntimeRegistration, Keys.runtime(current.driverRuntimeID))
           const target = await Record.read(Record.RuntimeRegistration, Keys.runtime(request.targetRuntimeID))
           if (
@@ -672,7 +908,16 @@ export function createHandoffs(options: {
           const command = await Record.read(Record.CommandState, Keys.commandState(sessionID))
           const record = Stored.parse({
             schemaVersion: 1,
-            version: 1,
+            version: 2,
+            selectionActor: {
+              kind: "account",
+              orgID: access.account.orgID,
+              subjectID: access.account.accountID,
+              displayName: access.account.displayName,
+              clientKind: access.clientKind,
+              requestID: request.handoffID,
+              ...("tokenID" in access ? { tokenID: access.tokenID } : {}),
+            },
             orgID: current.orgID,
             deploymentIncarnation: options.signing.identity.deploymentIncarnation,
             handoffID: request.handoffID,
@@ -690,6 +935,10 @@ export function createHandoffs(options: {
             source: publicRuntime(source),
             target: publicRuntime(target),
             request,
+            workspaceContract:
+              request.workspaceMapping.kind === "organization-object"
+                ? await OrganizationSessionResources.read(current)
+                : undefined,
             cancelRequested: false,
           })
           const sourceLease = options.connections.capture(source.runtimeID)
@@ -698,7 +947,10 @@ export function createHandoffs(options: {
             [source, sourceLease],
             [target, targetLease],
           ] as const) {
-            options.connections.captureHandoff(runtime.runtimeID).assertCurrent()
+            const files = options.connections.captureHandoff(runtime.runtimeID)
+            files.assertCurrent()
+            if (request.workspaceMapping.kind === "organization-object" && files.handshake.schemas.handoffs !== 2)
+              fail("HANDOFF_BLOCKED", "Both participants must support complete mapped Workspace files")
             await runtimeAuthority({
               runtimeID: runtime.runtimeID,
               orgID: current.orgID,
@@ -720,6 +972,8 @@ export function createHandoffs(options: {
             }),
           )
           await save(record)
+          const move = workspaceRequest(record, current.projectID)
+          if (move) await WorkspaceMove.reserve(move)
           await Storage.write([...sessionKey(sessionID), record.handoffID], { handoffID: record.handoffID })
           await OrganizationHandoffExecution.index(record)
           return view(record, access.account.accountID)
@@ -767,6 +1021,12 @@ export function createHandoffs(options: {
         if (record.target.runtimeKind !== "member" || record.target.accountID !== account.accountID)
           fail("PERMISSION_DENIED", "Only the destination Runtime's member can accept")
         revision(input.mappingPlanRevision, record.mappingPlanRevision)
+        if (
+          ("mappingHash" in input &&
+            input.mappingHash !== (await Handoff.mappingHash(record.request.workspaceMapping))) ||
+          (record.request.workspaceMapping.kind !== "native" && !("mappingHash" in input))
+        )
+          fail("REVISION_CONFLICT", "Destination consent must bind the complete original Workspace mapping")
         if (record.phase !== "preparing" || record.cancelRequested)
           fail("HANDOFF_BLOCKED", "This handoff cannot accept a target")
         record.targetAccepted = true
@@ -857,8 +1117,28 @@ export function createHandoffs(options: {
           guards.push(allowed.guard)
           if (allowed.current.retainedExecutionGrants)
             fail("HANDOFF_BLOCKED", "Source execution resources have not drained")
+          const mapping = record.request.workspaceMapping
+          let resourceIDs = allowed.current.resourceIDs
+          if (mapping.kind === "organization-object") {
+            if (!record.workspaceContract)
+              fail("HANDOFF_BLOCKED", "Workspace mapping has no original resource contract")
+            const move = workspaceRequest(record, allowed.current.projectID)!
+            const receipt = await WorkspaceMove.validate(move)
+            if (
+              record.prepared.proof.purpose !== "target-prepared" ||
+              record.prepared.proof.workspaceMoveReceiptHash !== WorkspaceMove.receiptHash(receipt)
+            )
+              fail("HANDOFF_BLOCKED", "Workspace mapping has no matching prepared CAS receipt")
+            const mapped = await OrganizationSessionResources.rebindHandoff(
+              allowed.current,
+              record.workspaceContract,
+              mapping.target,
+            )
+            resourceIDs = Execution.resourceIDs(mapped.selection!)
+          }
           const rebound = Record.SessionDirectory.parse({
             ...allowed.current,
+            resourceIDs,
             driverRuntimeID: record.targetRuntimeID,
             bindingEpoch: record.toEpoch,
             controlRevision: allowed.current.controlRevision + 1,
@@ -889,7 +1169,7 @@ export function createHandoffs(options: {
         ))
       )
         fail("PERMISSION_DENIED", "Handoff proof signature is invalid")
-      return History.system("handoff.proof", async (identify, actionID) => {
+      const result = await History.system("handoff.proof", async (identify, actionID) => {
         const current = await load(record.handoffID)
         const proof = signed.proof
         if (bindingFields.some((field) => current[field] !== proof[field]))
@@ -932,6 +1212,13 @@ export function createHandoffs(options: {
             proof.receivedSeq !== current.commandSeq
           )
             fail("HANDOFF_BLOCKED", "Source command barrier is incomplete")
+          const move = workspaceRequest(current, directory.projectID)
+          if (move) {
+            const receipt = await WorkspaceMove.validate(move)
+            if (proof.workspaceMoveReceiptHash !== WorkspaceMove.receiptHash(receipt))
+              fail("HANDOFF_BLOCKED", "Source fact omits its complete consented Workspace move receipt")
+          } else if (proof.workspaceMoveReceiptHash !== null)
+            fail("PROTOCOL_MISMATCH", "Native mapping cannot claim an unrelated Workspace move")
           current.manifestHash = proof.manifestHash
         } else if (proof.purpose === "target-prepared") {
           const frozen = current.frozen?.proof
@@ -1004,6 +1291,21 @@ export function createHandoffs(options: {
         await save(current)
         return view(current)
       })
+      if (["source-cancelled", "target-activated", "target-never-activate"].includes(signed.proof.purpose)) {
+        const current = await Storage.snapshot(() => load(record.handoffID))
+        const directory = await Storage.snapshot(() => session(current))
+        const move = workspaceRequest(current, directory.projectID)
+        if (move)
+          await WorkspaceMove.release(
+            move,
+            signed.proof.purpose === "source-cancelled"
+              ? "cancelled"
+              : signed.proof.purpose === "target-activated"
+                ? "activated"
+                : "retired",
+          )
+      }
+      return result
     },
   }
   return api

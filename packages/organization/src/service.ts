@@ -50,6 +50,7 @@ import { OrganizationServiceNative } from "./backup/service-native"
 import { OrganizationSourceRetirement } from "./backup/source-retirement"
 import { OrganizationRecoveryPublication } from "./backup/publication"
 import { readOrganizationConfiguration } from "./configuration"
+import { OrganizationHealth } from "./health"
 
 export interface OrganizationServiceOptions {
   home: string
@@ -368,6 +369,10 @@ async function openOrganizationNamespace(
         home,
         bootstrapToken: () => run(() => authentication.bootstrapToken()),
         async fetch(request: Request, server?: Server<RuntimeSocket>) {
+          if (OrganizationHealth.kind(request)) {
+            if (!ready) return OrganizationHealth.response(request, () => false)
+            return context.run(() => app.fetch(request, { server }))
+          }
           try {
             return await run(() => app.fetch(request, { server }))
           } catch (error) {

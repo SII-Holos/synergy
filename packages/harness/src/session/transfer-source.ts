@@ -542,6 +542,17 @@ export namespace SessionTransferSource {
         }
         count++
       }
+      await Owners.sealAggregate(
+        context(binding, await Session.get(root.id), input.signal),
+        z.array(z.string()).parse(JSON.parse(find.get(root.id)!.owners!)),
+        () =>
+          (async function* () {
+            for (const row of ordered.iterate()) {
+              input.signal.throwIfAborted()
+              yield context(binding, await Session.get(row.id), input.signal)
+            }
+          })(),
+      )
       const closure = await Aggregate.validate({
         handoffID: binding.handoffID,
         rootSessionID: root.id,

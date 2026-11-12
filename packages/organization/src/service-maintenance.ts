@@ -186,4 +186,13 @@ export namespace OrganizationServiceMaintenance {
       },
     })
   }
+  export async function ready() {
+    try {
+      if (!state().installed || state().suspended || state().store !== Storage.current().store) return false
+      await Storage.snapshot(() => RuntimeMaintenance.assertAdmission())
+      return !state().suspended
+    } catch {
+      return false
+    }
+  }
 }

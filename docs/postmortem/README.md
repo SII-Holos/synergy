@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0154](0154-cortex-files-confused-caller-and-ancestor-roots.md)
+- [0153](0153-service-maintenance-obscured-health-probes.md)
 - [0152](0152-remote-file-lease-used-mutated-call-inputs.md)
 - [0151](0151-native-recovery-config-wrote-a-replacement-root.md)
 - [0150](0150-space-selection-left-mobile-navigation-open.md)

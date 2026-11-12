@@ -22,7 +22,7 @@ The existing cloud receipt owner keys file receipts by accepted Session/root, bi
 
 **Authorize files from enrollment or an unsigned root label.** Neither establishes the selected Session's accepted task, current retention or complete operation. The existing signed root proof and callback-bound request owner provide those checks without another authority ledger.
 
-**Enable all cloud execution through the file adapter.** Dormant object files do not implement compute, mounts, blob imports or WorkspaceMove publication. These operations reject explicitly. Handoff mapping, complete remote move receipts and Session activation remain separate required integration work; Main handoff capability remains disabled.
+**Enable all cloud execution through the file adapter.** Dormant object files do not implement compute, mounts, blob imports or WorkspaceMove publication. These operations reject explicitly. [Cross-Realm receipt consumption](2026-11-12-consume-cross-realm-workspace-move-receipts-before-paused-handoff.md) supplies separate owning integration for mapped move publication, paused Session activation and the provenance-bound generic file source; Main handoff capability remains disabled.
 
 ## Consequences
 

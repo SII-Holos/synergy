@@ -76,6 +76,7 @@ export interface MemberConnectionOptions {
     signal: AbortSignal,
     resources: MemberResourceClient,
   ) => Promise<Handoff.MachineExecution>
+  handoffVersion?: 1 | 2
   read?: (authorization: Read.SignedPermit, connection: Connected, signal: AbortSignal) => Promise<Read.Result>
   interactions?: (
     authorization: Interactions.SignedPermit,
@@ -141,7 +142,7 @@ async function attempt(input: {
         ...(options.commands ? { commands: 1 } : {}),
         ...(options.sync ? { sync: 1 } : {}),
         ...(options.notifications ? { notifications: Notification.Version } : {}),
-        ...(options.handoff ? { handoffs: 1 } : {}),
+        ...(options.handoff ? { handoffs: options.handoffVersion ?? 1 } : {}),
         ...(options.read ? { reads: 1 } : {}),
         ...(options.interactions ? { interactions: 1 } : {}),
       },

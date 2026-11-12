@@ -107,3 +107,5 @@ Controller fixtures must open the prepared/enrolled Homes supplying their machin
 Report route and operation ID, Scope ownership, schema/errors, generated method, event/snapshot behavior, consumers migrated, generated files, and tests.
 
 Verify optional schema fields from both the full product and a minimal consumer type graph. An unavailable exact field must match its runtime rejection type; do not import an unrelated optional owner, cast the generated SDK call or drop input merely to satisfy an augmentation-dependent type.
+
+Verify service probes through the real transport and outer admission layer during maintenance, release and close. Liveness must not depend on storage admission; readiness reads must retain their declared response without creating an accepted-operation tail. Restrict admission exceptions to exact read-only probe paths.

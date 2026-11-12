@@ -4987,6 +4987,48 @@
         }
       }
     },
+    "/runtime/v1/workspaces/files/inspection": {
+      "post": {
+        "operationId": "orgCloudFiles.inspect",
+        "summary": "Inspect only the original file receipt without binding or reacquiring execution",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/OrgCloudFileInspectionRequest" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgCloudFileResult" } } }
+          },
+          "400": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "404": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        }
+      }
+    },
     "/org/v1/sessions/{sessionID}/handoffs": {
       "post": {
         "operationId": "orgHandoff.prepare",
@@ -5437,6 +5479,48 @@
           "200": {
             "description": "Success",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgHandoffView" } } }
+          },
+          "400": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "404": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        }
+      }
+    },
+    "/runtime/v1/handoffs/workspace": {
+      "post": {
+        "operationId": "orgHandoffWorkspace.request",
+        "summary": "Transfer and validate the exact consented Workspace through its original move owner",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgHandoffWorkspaceRequest" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/OrgHandoffWorkspaceResult" } }
+            }
           },
           "400": {
             "description": "Organization error",
@@ -6787,17 +6871,49 @@
         ]
       }
     },
+    "/org/v1/live": {
+      "get": {
+        "operationId": "orgHealth.live",
+        "summary": "Read process liveness without storage admission",
+        "responses": {
+          "200": {
+            "description": "Available",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgLiveness" } } }
+          },
+          "503": {
+            "description": "Unavailable",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgLiveness" } } }
+          }
+        }
+      }
+    },
+    "/org/v1/ready": {
+      "get": {
+        "operationId": "orgHealth.ready",
+        "summary": "Read organization service readiness",
+        "responses": {
+          "200": {
+            "description": "Available",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgHealth" } } }
+          },
+          "503": {
+            "description": "Unavailable",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgHealth" } } }
+          }
+        }
+      }
+    },
     "/org/v1/health": {
       "get": {
         "operationId": "orgHealth.get",
         "summary": "Read organization service readiness",
         "responses": {
           "200": {
-            "description": "Ready",
+            "description": "Available",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgHealth" } } }
           },
           "503": {
-            "description": "Not ready",
+            "description": "Unavailable",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgHealth" } } }
           }
         }
@@ -11032,7 +11148,8 @@
           "resourceID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
           "workspaceID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
           "generation": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
-          "revision": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 }
+          "revision": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+          "rootPath": { "type": "string", "minLength": 1, "maxLength": 4096 }
         },
         "required": ["orgID", "projectID", "resourceID", "workspaceID", "generation", "revision"],
         "additionalProperties": false
@@ -11859,6 +11976,280 @@
         "required": ["proof", "signature"],
         "additionalProperties": false
       },
+      "OrgExecutionInspectionProof": {
+        "type": "object",
+        "properties": {
+          "schemaVersion": { "type": "number", "const": 1 },
+          "orgID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "deploymentIncarnation": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[a-zA-Z0-9_-]+$"
+          },
+          "runtimeID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "connectionEpoch": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+          "receipt": {
+            "type": "object",
+            "properties": {
+              "attempt": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "schemaVersion": { "type": "number", "const": 1 },
+                      "permit": { "$ref": "#/components/schemas/OrgCommandPermit" },
+                      "receivedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                      "status": { "type": "string", "const": "accepted" },
+                      "acceptedAttemptID": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 128,
+                        "pattern": "^[a-zA-Z0-9_-]+$"
+                      }
+                    },
+                    "required": ["schemaVersion", "permit", "receivedAt", "status", "acceptedAttemptID"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "schemaVersion": { "type": "number", "const": 1 },
+                      "permit": { "$ref": "#/components/schemas/OrgCommandPermit" },
+                      "receivedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                      "status": { "type": "string", "const": "rejected" },
+                      "reason": {
+                        "type": "string",
+                        "enum": [
+                          "EXPIRED_PERMIT",
+                          "STALE_CONNECTION",
+                          "STALE_BINDING",
+                          "SESSION_UNAVAILABLE",
+                          "TRANSFER_BLOCKED",
+                          "SEQUENCE_GAP",
+                          "SEQUENCE_CLOSED",
+                          "REQUEST_CONFLICT",
+                          "PAYLOAD_MISMATCH",
+                          "CONTROL_CONFLICT"
+                        ]
+                      }
+                    },
+                    "required": ["schemaVersion", "permit", "receivedAt", "status", "reason"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "schemaVersion": { "type": "number", "const": 1 },
+                      "permit": { "$ref": "#/components/schemas/OrgCommandPermit" },
+                      "receivedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                      "status": { "type": "string", "const": "skipped" }
+                    },
+                    "required": ["schemaVersion", "permit", "receivedAt", "status"],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              "accepted": { "$ref": "#/components/schemas/OrgCommandInputAccepted" },
+              "skip": {
+                "type": "object",
+                "properties": {
+                  "schemaVersion": { "type": "number", "const": 1 },
+                  "permit": {
+                    "type": "object",
+                    "properties": {
+                      "schemaVersion": { "type": "number", "const": 1 },
+                      "purpose": { "type": "string", "const": "session-command-skip" },
+                      "command": { "$ref": "#/components/schemas/OrgCommandPermit" },
+                      "connectionEpoch": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+                      "authorizedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                      "deadline": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+                    },
+                    "required": ["schemaVersion", "purpose", "command", "connectionEpoch", "authorizedAt", "deadline"],
+                    "additionalProperties": false
+                  },
+                  "receivedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+                },
+                "required": ["schemaVersion", "permit", "receivedAt"],
+                "additionalProperties": false
+              }
+            },
+            "required": ["attempt"],
+            "additionalProperties": false
+          },
+          "continuation": {
+            "type": "object",
+            "properties": {
+              "handoffID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "receipt": {
+                "type": "object",
+                "properties": {
+                  "attempt": {
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "schemaVersion": { "type": "number", "const": 1 },
+                          "permit": { "$ref": "#/components/schemas/OrgCommandPermit" },
+                          "receivedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                          "status": { "type": "string", "const": "accepted" },
+                          "acceptedAttemptID": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 128,
+                            "pattern": "^[a-zA-Z0-9_-]+$"
+                          }
+                        },
+                        "required": ["schemaVersion", "permit", "receivedAt", "status", "acceptedAttemptID"],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "schemaVersion": { "type": "number", "const": 1 },
+                          "permit": { "$ref": "#/components/schemas/OrgCommandPermit" },
+                          "receivedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                          "status": { "type": "string", "const": "rejected" },
+                          "reason": {
+                            "type": "string",
+                            "enum": [
+                              "EXPIRED_PERMIT",
+                              "STALE_CONNECTION",
+                              "STALE_BINDING",
+                              "SESSION_UNAVAILABLE",
+                              "TRANSFER_BLOCKED",
+                              "SEQUENCE_GAP",
+                              "SEQUENCE_CLOSED",
+                              "REQUEST_CONFLICT",
+                              "PAYLOAD_MISMATCH",
+                              "CONTROL_CONFLICT"
+                            ]
+                          }
+                        },
+                        "required": ["schemaVersion", "permit", "receivedAt", "status", "reason"],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "schemaVersion": { "type": "number", "const": 1 },
+                          "permit": { "$ref": "#/components/schemas/OrgCommandPermit" },
+                          "receivedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                          "status": { "type": "string", "const": "skipped" }
+                        },
+                        "required": ["schemaVersion", "permit", "receivedAt", "status"],
+                        "additionalProperties": false
+                      }
+                    ]
+                  },
+                  "accepted": { "$ref": "#/components/schemas/OrgCommandControlAccepted" },
+                  "skip": {
+                    "type": "object",
+                    "properties": {
+                      "schemaVersion": { "type": "number", "const": 1 },
+                      "permit": {
+                        "type": "object",
+                        "properties": {
+                          "schemaVersion": { "type": "number", "const": 1 },
+                          "purpose": { "type": "string", "const": "session-command-skip" },
+                          "command": { "$ref": "#/components/schemas/OrgCommandPermit" },
+                          "connectionEpoch": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+                          "authorizedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                          "deadline": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+                        },
+                        "required": [
+                          "schemaVersion",
+                          "purpose",
+                          "command",
+                          "connectionEpoch",
+                          "authorizedAt",
+                          "deadline"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "receivedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+                    },
+                    "required": ["schemaVersion", "permit", "receivedAt"],
+                    "additionalProperties": false
+                  }
+                },
+                "required": ["attempt"],
+                "additionalProperties": false
+              }
+            },
+            "required": ["handoffID", "receipt"],
+            "additionalProperties": false
+          },
+          "issuedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "expiresAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "purpose": { "type": "string", "const": "execution-retention-inspection" },
+          "rootID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "grantID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "generation": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+        },
+        "required": [
+          "schemaVersion",
+          "orgID",
+          "deploymentIncarnation",
+          "runtimeID",
+          "connectionEpoch",
+          "receipt",
+          "issuedAt",
+          "expiresAt",
+          "purpose",
+          "rootID"
+        ],
+        "additionalProperties": false
+      },
+      "OrgExecutionInspectionRequest": {
+        "type": "object",
+        "properties": {
+          "proof": { "$ref": "#/components/schemas/OrgExecutionInspectionProof" },
+          "signature": { "type": "string", "pattern": "^[a-f0-9]{128}$" }
+        },
+        "required": ["proof", "signature"],
+        "additionalProperties": false
+      },
+      "OrgCloudFileInspectionRequest": {
+        "type": "object",
+        "properties": {
+          "proof": {
+            "type": "object",
+            "properties": {
+              "purpose": { "type": "string", "const": "organization-workspace-file-inspection" },
+              "authority": { "$ref": "#/components/schemas/OrgExecutionInspectionRequest" },
+              "reference": { "$ref": "#/components/schemas/OrgCloudFileReference" },
+              "operation": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "action": { "type": "string", "const": "receipt" },
+                      "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
+                    },
+                    "required": ["action", "id"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "action": { "type": "string", "const": "acknowledge" },
+                      "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
+                    },
+                    "required": ["action", "id"],
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            },
+            "required": ["purpose", "authority", "reference", "operation"],
+            "additionalProperties": false
+          },
+          "signature": { "type": "string", "pattern": "^[a-f0-9]{128}$" }
+        },
+        "required": ["proof", "signature"],
+        "additionalProperties": false
+      },
       "OrgHandoffView": {
         "type": "object",
         "properties": {
@@ -11912,7 +12303,64 @@
           "canAccept": { "type": "boolean" },
           "canContinue": { "type": "boolean" },
           "currentDriver": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
-          "bindingEpoch": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 }
+          "bindingEpoch": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+          "workspaceMapping": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": { "kind": { "type": "string", "const": "native" } },
+                "required": ["kind"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": { "type": "string", "const": "organization-object" },
+                  "moveID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+                  "source": {
+                    "type": "object",
+                    "properties": {
+                      "workspaceID": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 128,
+                        "pattern": "^[a-zA-Z0-9_-]+$"
+                      },
+                      "generation": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 }
+                    },
+                    "required": ["workspaceID", "generation"],
+                    "additionalProperties": false
+                  },
+                  "target": {
+                    "type": "object",
+                    "properties": {
+                      "resourceID": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 128,
+                        "pattern": "^[a-zA-Z0-9_-]+$"
+                      },
+                      "workspaceID": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 128,
+                        "pattern": "^[a-zA-Z0-9_-]+$"
+                      },
+                      "generation": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+                      "path": { "type": "string", "minLength": 1, "maxLength": 4096 },
+                      "expectedRevision": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 }
+                    },
+                    "required": ["resourceID", "workspaceID", "generation", "path", "expectedRevision"],
+                    "additionalProperties": false
+                  },
+                  "acceptedDiffHash": { "type": "null" }
+                },
+                "required": ["kind", "moveID", "source", "target", "acceptedDiffHash"],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "mappingHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
         },
         "required": [
           "schemaVersion",
@@ -11935,27 +12383,108 @@
           "canAccept",
           "canContinue",
           "currentDriver",
-          "bindingEpoch"
+          "bindingEpoch",
+          "workspaceMapping",
+          "mappingHash"
         ],
         "additionalProperties": false
       },
       "OrgHandoffPrepare": {
-        "type": "object",
-        "properties": {
-          "handoffID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
-          "targetRuntimeID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
-          "expectedBindingEpoch": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
-          "expectedControlRevision": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
-          "mappingPlanRevision": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 }
-        },
-        "required": [
-          "handoffID",
-          "targetRuntimeID",
-          "expectedBindingEpoch",
-          "expectedControlRevision",
-          "mappingPlanRevision"
-        ],
-        "additionalProperties": false
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "handoffID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "targetRuntimeID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "expectedBindingEpoch": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+              "expectedControlRevision": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "mappingPlanRevision": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+              "workspaceMapping": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": { "kind": { "type": "string", "const": "native" } },
+                    "required": ["kind"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": { "type": "string", "const": "organization-object" },
+                      "moveID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+                      "source": {
+                        "type": "object",
+                        "properties": {
+                          "workspaceID": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 128,
+                            "pattern": "^[a-zA-Z0-9_-]+$"
+                          },
+                          "generation": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 }
+                        },
+                        "required": ["workspaceID", "generation"],
+                        "additionalProperties": false
+                      },
+                      "target": {
+                        "type": "object",
+                        "properties": {
+                          "resourceID": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 128,
+                            "pattern": "^[a-zA-Z0-9_-]+$"
+                          },
+                          "workspaceID": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 128,
+                            "pattern": "^[a-zA-Z0-9_-]+$"
+                          },
+                          "generation": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+                          "path": { "type": "string", "minLength": 1, "maxLength": 4096 },
+                          "expectedRevision": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 }
+                        },
+                        "required": ["resourceID", "workspaceID", "generation", "path", "expectedRevision"],
+                        "additionalProperties": false
+                      },
+                      "acceptedDiffHash": { "type": "null" }
+                    },
+                    "required": ["kind", "moveID", "source", "target", "acceptedDiffHash"],
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            },
+            "required": [
+              "handoffID",
+              "targetRuntimeID",
+              "expectedBindingEpoch",
+              "expectedControlRevision",
+              "mappingPlanRevision",
+              "workspaceMapping"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "handoffID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "targetRuntimeID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "expectedBindingEpoch": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+              "expectedControlRevision": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "mappingPlanRevision": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 }
+            },
+            "required": [
+              "handoffID",
+              "targetRuntimeID",
+              "expectedBindingEpoch",
+              "expectedControlRevision",
+              "mappingPlanRevision"
+            ],
+            "additionalProperties": false
+          }
+        ]
       },
       "OrgHandoffPage": {
         "type": "object",
@@ -11967,12 +12496,25 @@
         "additionalProperties": false
       },
       "OrgHandoffAccept": {
-        "type": "object",
-        "properties": {
-          "mappingPlanRevision": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 }
-        },
-        "required": ["mappingPlanRevision"],
-        "additionalProperties": false
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "mappingPlanRevision": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+              "mappingHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+            },
+            "required": ["mappingPlanRevision", "mappingHash"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "mappingPlanRevision": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 }
+            },
+            "required": ["mappingPlanRevision"],
+            "additionalProperties": false
+          }
+        ]
       },
       "OrgHandoffPermit": {
         "type": "object",
@@ -12523,6 +13065,179 @@
         "type": "object",
         "properties": {
           "proof": { "$ref": "#/components/schemas/OrgHandoffObjectProof" },
+          "signature": { "type": "string", "pattern": "^[a-f0-9]{128}$" }
+        },
+        "required": ["proof", "signature"],
+        "additionalProperties": false
+      },
+      "__schema0": {
+        "anyOf": [
+          { "type": "string" },
+          { "type": "number" },
+          { "type": "boolean" },
+          { "type": "null" },
+          { "type": "array", "items": { "$ref": "#/components/schemas/__schema0" } },
+          {
+            "type": "object",
+            "propertyNames": { "type": "string" },
+            "additionalProperties": { "$ref": "#/components/schemas/__schema0" }
+          }
+        ]
+      },
+      "__schema1": {
+        "anyOf": [
+          { "type": "string" },
+          { "type": "number" },
+          { "type": "boolean" },
+          { "type": "null" },
+          { "type": "array", "items": { "$ref": "#/components/schemas/__schema1" } },
+          {
+            "type": "object",
+            "propertyNames": { "type": "string" },
+            "additionalProperties": { "$ref": "#/components/schemas/__schema1" }
+          }
+        ]
+      },
+      "__schema2": {
+        "anyOf": [
+          { "type": "string" },
+          { "type": "number" },
+          { "type": "boolean" },
+          { "type": "null" },
+          { "type": "array", "items": { "$ref": "#/components/schemas/__schema2" } },
+          {
+            "type": "object",
+            "propertyNames": { "type": "string" },
+            "additionalProperties": { "$ref": "#/components/schemas/__schema2" }
+          }
+        ]
+      },
+      "OrgHandoffWorkspaceResult": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "action": { "type": "string", "const": "put" },
+              "hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+            },
+            "required": ["action", "hash"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "action": { "type": "string", "const": "publish" },
+              "receipt": { "$ref": "#/components/schemas/__schema0" }
+            },
+            "required": ["action", "receipt"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "action": { "type": "string", "const": "inspect" },
+              "status": { "$ref": "#/components/schemas/__schema1" }
+            },
+            "required": ["action"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "action": { "type": "string", "const": "validate" },
+              "receipt": { "$ref": "#/components/schemas/__schema2" }
+            },
+            "required": ["action", "receipt"],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "OrgHandoffWorkspaceRequest": {
+        "type": "object",
+        "properties": {
+          "proof": {
+            "type": "object",
+            "properties": {
+              "schemaVersion": { "type": "number", "const": 1 },
+              "orgID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "deploymentIncarnation": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[a-zA-Z0-9_-]+$"
+              },
+              "handoffID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "sessionID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "sourceRuntimeID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "targetRuntimeID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "fromEpoch": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+              "toEpoch": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+              "mappingPlanRevision": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+              "shareGeneration": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "purpose": { "type": "string", "const": "handoff-workspace" },
+              "runtimeID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "connectionEpoch": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+              "mappingHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+              "operation": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "action": { "type": "string", "const": "put" },
+                      "hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+                      "data": { "type": "string", "maxLength": 5592408 }
+                    },
+                    "required": ["action", "hash", "data"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "action": { "type": "string", "const": "publish" },
+                      "source": { "$ref": "#/components/schemas/__schema0" }
+                    },
+                    "required": ["action", "source"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": { "action": { "type": "string", "const": "inspect" } },
+                    "required": ["action"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": { "action": { "type": "string", "const": "validate" } },
+                    "required": ["action"],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              "issuedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "expiresAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+            },
+            "required": [
+              "schemaVersion",
+              "orgID",
+              "deploymentIncarnation",
+              "handoffID",
+              "sessionID",
+              "sourceRuntimeID",
+              "targetRuntimeID",
+              "fromEpoch",
+              "toEpoch",
+              "mappingPlanRevision",
+              "shareGeneration",
+              "purpose",
+              "runtimeID",
+              "connectionEpoch",
+              "mappingHash",
+              "operation",
+              "issuedAt",
+              "expiresAt"
+            ],
+            "additionalProperties": false
+          },
           "signature": { "type": "string", "pattern": "^[a-f0-9]{128}$" }
         },
         "required": ["proof", "signature"],
@@ -14735,240 +15450,6 @@
           { "$ref": "#/components/schemas/OrgExecutionInspection" }
         ]
       },
-      "OrgExecutionInspectionProof": {
-        "type": "object",
-        "properties": {
-          "schemaVersion": { "type": "number", "const": 1 },
-          "orgID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
-          "deploymentIncarnation": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 128,
-            "pattern": "^[a-zA-Z0-9_-]+$"
-          },
-          "runtimeID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
-          "connectionEpoch": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
-          "receipt": {
-            "type": "object",
-            "properties": {
-              "attempt": {
-                "oneOf": [
-                  {
-                    "type": "object",
-                    "properties": {
-                      "schemaVersion": { "type": "number", "const": 1 },
-                      "permit": { "$ref": "#/components/schemas/OrgCommandPermit" },
-                      "receivedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
-                      "status": { "type": "string", "const": "accepted" },
-                      "acceptedAttemptID": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 128,
-                        "pattern": "^[a-zA-Z0-9_-]+$"
-                      }
-                    },
-                    "required": ["schemaVersion", "permit", "receivedAt", "status", "acceptedAttemptID"],
-                    "additionalProperties": false
-                  },
-                  {
-                    "type": "object",
-                    "properties": {
-                      "schemaVersion": { "type": "number", "const": 1 },
-                      "permit": { "$ref": "#/components/schemas/OrgCommandPermit" },
-                      "receivedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
-                      "status": { "type": "string", "const": "rejected" },
-                      "reason": {
-                        "type": "string",
-                        "enum": [
-                          "EXPIRED_PERMIT",
-                          "STALE_CONNECTION",
-                          "STALE_BINDING",
-                          "SESSION_UNAVAILABLE",
-                          "TRANSFER_BLOCKED",
-                          "SEQUENCE_GAP",
-                          "SEQUENCE_CLOSED",
-                          "REQUEST_CONFLICT",
-                          "PAYLOAD_MISMATCH",
-                          "CONTROL_CONFLICT"
-                        ]
-                      }
-                    },
-                    "required": ["schemaVersion", "permit", "receivedAt", "status", "reason"],
-                    "additionalProperties": false
-                  },
-                  {
-                    "type": "object",
-                    "properties": {
-                      "schemaVersion": { "type": "number", "const": 1 },
-                      "permit": { "$ref": "#/components/schemas/OrgCommandPermit" },
-                      "receivedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
-                      "status": { "type": "string", "const": "skipped" }
-                    },
-                    "required": ["schemaVersion", "permit", "receivedAt", "status"],
-                    "additionalProperties": false
-                  }
-                ]
-              },
-              "accepted": { "$ref": "#/components/schemas/OrgCommandInputAccepted" },
-              "skip": {
-                "type": "object",
-                "properties": {
-                  "schemaVersion": { "type": "number", "const": 1 },
-                  "permit": {
-                    "type": "object",
-                    "properties": {
-                      "schemaVersion": { "type": "number", "const": 1 },
-                      "purpose": { "type": "string", "const": "session-command-skip" },
-                      "command": { "$ref": "#/components/schemas/OrgCommandPermit" },
-                      "connectionEpoch": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
-                      "authorizedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
-                      "deadline": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
-                    },
-                    "required": ["schemaVersion", "purpose", "command", "connectionEpoch", "authorizedAt", "deadline"],
-                    "additionalProperties": false
-                  },
-                  "receivedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
-                },
-                "required": ["schemaVersion", "permit", "receivedAt"],
-                "additionalProperties": false
-              }
-            },
-            "required": ["attempt"],
-            "additionalProperties": false
-          },
-          "continuation": {
-            "type": "object",
-            "properties": {
-              "handoffID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
-              "receipt": {
-                "type": "object",
-                "properties": {
-                  "attempt": {
-                    "oneOf": [
-                      {
-                        "type": "object",
-                        "properties": {
-                          "schemaVersion": { "type": "number", "const": 1 },
-                          "permit": { "$ref": "#/components/schemas/OrgCommandPermit" },
-                          "receivedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
-                          "status": { "type": "string", "const": "accepted" },
-                          "acceptedAttemptID": {
-                            "type": "string",
-                            "minLength": 1,
-                            "maxLength": 128,
-                            "pattern": "^[a-zA-Z0-9_-]+$"
-                          }
-                        },
-                        "required": ["schemaVersion", "permit", "receivedAt", "status", "acceptedAttemptID"],
-                        "additionalProperties": false
-                      },
-                      {
-                        "type": "object",
-                        "properties": {
-                          "schemaVersion": { "type": "number", "const": 1 },
-                          "permit": { "$ref": "#/components/schemas/OrgCommandPermit" },
-                          "receivedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
-                          "status": { "type": "string", "const": "rejected" },
-                          "reason": {
-                            "type": "string",
-                            "enum": [
-                              "EXPIRED_PERMIT",
-                              "STALE_CONNECTION",
-                              "STALE_BINDING",
-                              "SESSION_UNAVAILABLE",
-                              "TRANSFER_BLOCKED",
-                              "SEQUENCE_GAP",
-                              "SEQUENCE_CLOSED",
-                              "REQUEST_CONFLICT",
-                              "PAYLOAD_MISMATCH",
-                              "CONTROL_CONFLICT"
-                            ]
-                          }
-                        },
-                        "required": ["schemaVersion", "permit", "receivedAt", "status", "reason"],
-                        "additionalProperties": false
-                      },
-                      {
-                        "type": "object",
-                        "properties": {
-                          "schemaVersion": { "type": "number", "const": 1 },
-                          "permit": { "$ref": "#/components/schemas/OrgCommandPermit" },
-                          "receivedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
-                          "status": { "type": "string", "const": "skipped" }
-                        },
-                        "required": ["schemaVersion", "permit", "receivedAt", "status"],
-                        "additionalProperties": false
-                      }
-                    ]
-                  },
-                  "accepted": { "$ref": "#/components/schemas/OrgCommandControlAccepted" },
-                  "skip": {
-                    "type": "object",
-                    "properties": {
-                      "schemaVersion": { "type": "number", "const": 1 },
-                      "permit": {
-                        "type": "object",
-                        "properties": {
-                          "schemaVersion": { "type": "number", "const": 1 },
-                          "purpose": { "type": "string", "const": "session-command-skip" },
-                          "command": { "$ref": "#/components/schemas/OrgCommandPermit" },
-                          "connectionEpoch": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
-                          "authorizedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
-                          "deadline": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
-                        },
-                        "required": [
-                          "schemaVersion",
-                          "purpose",
-                          "command",
-                          "connectionEpoch",
-                          "authorizedAt",
-                          "deadline"
-                        ],
-                        "additionalProperties": false
-                      },
-                      "receivedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
-                    },
-                    "required": ["schemaVersion", "permit", "receivedAt"],
-                    "additionalProperties": false
-                  }
-                },
-                "required": ["attempt"],
-                "additionalProperties": false
-              }
-            },
-            "required": ["handoffID", "receipt"],
-            "additionalProperties": false
-          },
-          "issuedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
-          "expiresAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
-          "purpose": { "type": "string", "const": "execution-retention-inspection" },
-          "rootID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
-          "grantID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
-          "generation": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
-        },
-        "required": [
-          "schemaVersion",
-          "orgID",
-          "deploymentIncarnation",
-          "runtimeID",
-          "connectionEpoch",
-          "receipt",
-          "issuedAt",
-          "expiresAt",
-          "purpose",
-          "rootID"
-        ],
-        "additionalProperties": false
-      },
-      "OrgExecutionInspectionRequest": {
-        "type": "object",
-        "properties": {
-          "proof": { "$ref": "#/components/schemas/OrgExecutionInspectionProof" },
-          "signature": { "type": "string", "pattern": "^[a-f0-9]{128}$" }
-        },
-        "required": ["proof", "signature"],
-        "additionalProperties": false
-      },
       "OrgExecutionRetentionRequest": {
         "anyOf": [
           { "$ref": "#/components/schemas/OrgExecutionDescriptionRequest" },
@@ -15341,6 +15822,12 @@
           "lastSeen": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
         },
         "required": ["runtimeID", "state", "connectionEpoch"],
+        "additionalProperties": false
+      },
+      "OrgLiveness": {
+        "type": "object",
+        "properties": { "alive": { "type": "boolean" }, "protocolVersion": { "type": "number", "const": 1 } },
+        "required": ["alive", "protocolVersion"],
         "additionalProperties": false
       },
       "OrgHealth": {

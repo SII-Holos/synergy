@@ -62,7 +62,10 @@ import type {
   OrgCloudEnvironmentsCreateResponses,
   OrgCloudEnvironmentsGetErrors,
   OrgCloudEnvironmentsGetResponses,
+  OrgCloudFileInspectionRequest,
   OrgCloudFileRequest,
+  OrgCloudFilesInspectErrors,
+  OrgCloudFilesInspectResponses,
   OrgCloudFilesRequestErrors,
   OrgCloudFilesRequestResponses,
   OrgCloudWorkspaceCreate,
@@ -150,8 +153,15 @@ import type {
   OrgHandoffProofErrors,
   OrgHandoffProofResponses,
   OrgHandoffSignedProof,
+  OrgHandoffWorkspaceRequest,
+  OrgHandoffWorkspaceRequestErrors,
+  OrgHandoffWorkspaceRequestResponses,
   OrgHealthGetErrors,
   OrgHealthGetResponses,
+  OrgHealthLiveErrors,
+  OrgHealthLiveResponses,
+  OrgHealthReadyErrors,
+  OrgHealthReadyResponses,
   OrgHostedRuntimeRegistration,
   OrgInteractionQuery,
   OrgInviteConsume,
@@ -3669,6 +3679,32 @@ export class OrgCloudFiles extends HeyApiClient {
       },
     })
   }
+
+  /**
+   * Inspect only the original file receipt without binding or reacquiring execution
+   */
+  public inspect<ThrowOnError extends boolean = false>(
+    parameters: {
+      orgCloudFileInspectionRequest: OrgCloudFileInspectionRequest
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "orgCloudFileInspectionRequest", map: "body" }] }])
+    return (options?.client ?? this.client).post<
+      OrgCloudFilesInspectResponses,
+      OrgCloudFilesInspectErrors,
+      ThrowOnError
+    >({
+      url: "/runtime/v1/workspaces/files/inspection",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
 }
 
 export class OrgHandoff extends HeyApiClient {
@@ -3937,6 +3973,34 @@ export class OrgHandoffObject extends HeyApiClient {
       ThrowOnError
     >({
       url: "/runtime/v1/handoffs/object",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
+export class OrgHandoffWorkspace extends HeyApiClient {
+  /**
+   * Transfer and validate the exact consented Workspace through its original move owner
+   */
+  public request<ThrowOnError extends boolean = false>(
+    parameters: {
+      orgHandoffWorkspaceRequest: OrgHandoffWorkspaceRequest
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "orgHandoffWorkspaceRequest", map: "body" }] }])
+    return (options?.client ?? this.client).post<
+      OrgHandoffWorkspaceRequestResponses,
+      OrgHandoffWorkspaceRequestErrors,
+      ThrowOnError
+    >({
+      url: "/runtime/v1/handoffs/workspace",
       ...options,
       ...params,
       headers: {
@@ -4515,6 +4579,26 @@ export class OrgExecution extends HeyApiClient {
 
 export class OrgHealth extends HeyApiClient {
   /**
+   * Read process liveness without storage admission
+   */
+  public live<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<OrgHealthLiveResponses, OrgHealthLiveErrors, ThrowOnError>({
+      url: "/org/v1/live",
+      ...options,
+    })
+  }
+
+  /**
+   * Read organization service readiness
+   */
+  public ready<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<OrgHealthReadyResponses, OrgHealthReadyErrors, ThrowOnError>({
+      url: "/org/v1/ready",
+      ...options,
+    })
+  }
+
+  /**
    * Read organization service readiness
    */
   public get<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
@@ -4584,6 +4668,8 @@ export class OrganizationClient extends HeyApiClient {
   orgHandoff = new OrgHandoff({ client: this.client })
 
   orgHandoffObject = new OrgHandoffObject({ client: this.client })
+
+  orgHandoffWorkspace = new OrgHandoffWorkspace({ client: this.client })
 
   orgKnowledgeExecution = new OrgKnowledgeExecution({ client: this.client })
 

@@ -20,6 +20,8 @@ import { fail, revision } from "./error"
 import { AuthorityJournal } from "@ericsanchezok/synergy-harness/storage/authority-journal"
 import { OrganizationAuthorityHistory as History } from "./authority-history"
 import { OrganizationExecutionGrants } from "./execution-grants"
+import { OrganizationHandoffExecution } from "./handoff"
+import { WorkspaceMove } from "@ericsanchezok/synergy-harness/workspace/move"
 
 export interface OrganizationCloudOptions {
   blobStores?: Record<string, BlobStore>
@@ -29,6 +31,8 @@ export interface OrganizationCloudOptions {
 }
 
 export namespace OrganizationCloud {
+  const moveSource =
+    RuntimeContext.createAsyncContext<ReturnType<typeof OrganizationHandoffExecution.workspaceAuthority>>()
   const configuration = RuntimeContext.state(() => ({ profiles: undefined as OrganizationCloudOptions | undefined }))
   const Locator = z.strictObject({
     schemaVersion: z.literal(1),
@@ -77,6 +81,20 @@ export namespace OrganizationCloud {
   export function register(options: OrganizationCloudOptions = {}) {
     RuntimeContext.assertCompositionOpen("Organization cloud resources")
     if (configuration().profiles) throw new Error("Organization cloud resources are already registered")
+    WorkspaceMove.registerCapturedSourceHost("organization-handoff", {
+      async capture(request, _store, consume) {
+        const frame = moveSource.getStore()
+        if (!frame) fail("PERMISSION_DENIED", "Workspace move requires its original source handoff callback")
+        frame.assert()
+        if (JSON.stringify(request) !== JSON.stringify(frame.request) || frame.proof.operation.action !== "publish")
+          fail("PERMISSION_DENIED", "Workspace move source belongs to another complete operation")
+        const source = WorkspaceMove.CapturedSource.parse(frame.proof.operation.source)
+        await frame.recheck()
+        const result = await consume(source, frame.assert, frame.recheck)
+        frame.assert()
+        return result
+      },
+    })
     for (const [id, store] of Object.entries(options.blobStores ?? {})) WorkspaceBlobs.register(id, store)
     for (const provider of options.environmentProviders ?? []) EnvironmentProviders.register(provider)
     for (const spec of Object.values(options.workspaceProfiles ?? {})) {
@@ -350,6 +368,7 @@ export namespace OrganizationCloud {
     if (!selected) fail("RESOURCE_UNAVAILABLE", "The accepted Session has no organization Workspace")
     const grant = authority.grant
     const ref = input.reference
+    const receiptOnly = input.operation.action === "receipt" || input.operation.action === "acknowledge"
     if (
       ref &&
       (ref.orgID !== grant.orgID ||
@@ -371,10 +390,12 @@ export namespace OrganizationCloud {
         locator.id !== selected!.workspaceID
       )
         fail("PERMISSION_DENIED", "Workspace file resource attribution changed")
-      const info = await WorkspaceCatalog.assertActive(locator.id, scope)
-      if (info.backend?.provider !== "objects" || info.activeMount || info.binding.state !== "bound")
+      const info = await (receiptOnly
+        ? WorkspaceCatalog.get(locator.id, scope)
+        : WorkspaceCatalog.assertActive(locator.id, scope))
+      if (!receiptOnly && (info.backend?.provider !== "objects" || info.activeMount || info.binding.state !== "bound"))
         fail("RESOURCE_UNAVAILABLE", "Workspace files require their dormant object owner")
-      if (ref && ref.generation !== info.binding.generation)
+      if (!receiptOnly && ref && ref.generation !== info.binding.generation)
         fail("REVISION_CONFLICT", "Workspace binding generation changed")
       authority.assert()
       return info
@@ -387,6 +408,7 @@ export namespace OrganizationCloud {
         workspaceID: info.id,
         generation: info.binding.generation,
         revision: info.revision,
+        rootPath: ref?.rootPath,
       })
     }
     function item(info: WorkspaceCatalog.Info, header: WorkspaceTree.Header, path: string) {
@@ -401,11 +423,15 @@ export namespace OrganizationCloud {
       })
     }
     const operation = input.operation
+    function within(path: string) {
+      if (ref?.rootPath && path !== ref.rootPath && !path.startsWith(ref.rootPath + "/"))
+        fail("PERMISSION_DENIED", "File path escapes its original mapped Workspace directory")
+    }
     const info = await current()
     const finish = async (result: Cloud.FileResult["result"]) => {
       await current()
       authority.assert()
-      return Cloud.FileResult.parse({ reference: reference(info), result })
+      return Cloud.FileResult.parse({ reference: receiptOnly ? ref : reference(info), result })
     }
     if (operation.action === "describe") return finish({ action: "describe" })
     if (!ref) fail("INVALID_REQUEST", "File operations require their original Workspace version")
@@ -420,7 +446,7 @@ export namespace OrganizationCloud {
             grant.bindingEpoch,
             grant.admissionID,
             grant.attemptID,
-            grant.rootID,
+            authority.rootID,
             operation.id,
           ])
         : undefined
@@ -454,6 +480,29 @@ export namespace OrganizationCloud {
       }
       revision(ref.revision, info.revision)
       const selection = { workspaceID: info.id, scopeID: scope, generation: ref.generation, signal }
+      if (ref.rootPath) {
+        const { store } = await WorkspaceContent.resolve(selection)
+        await WorkspaceContent.withTree(
+          info,
+          store,
+          async (tree) => {
+            const paths =
+              operation.action === "write"
+                ? [{ path: operation.path, follow: true }]
+                : "path" in operation.change
+                  ? [{ path: operation.change.path, follow: false }]
+                  : [
+                      { path: operation.change.from, follow: false },
+                      { path: operation.change.to, follow: false },
+                    ]
+            for (const path of paths) {
+              within(path.path)
+              within((await tree.resolve(path.path, path.follow)).path)
+            }
+          },
+          { signal },
+        )
+      }
       let prepared: WorkspaceContent.Prepared
       try {
         if (operation.action === "write") {
@@ -519,10 +568,12 @@ export namespace OrganizationCloud {
       info,
       store,
       async (tree) => {
+        within(operation.path)
         const resolved = await tree.resolve(
           operation.path,
           operation.action === "canonical" ? operation.follow : operation.action === "stat" ? operation.follow : true,
         )
+        within(resolved.path)
         const header = resolved.path ? resolved.entry : { kind: "directory" as const, path: "", mode: tree.mode }
         if (operation.action === "canonical") return { action: "canonical" as const, path: resolved.path }
         if (operation.action === "stat")
@@ -572,6 +623,39 @@ export namespace OrganizationCloud {
       { signal },
     )
     return finish(result)
+  }
+
+  export async function handoffWorkspace(
+    evidence: OrganizationHandoffExecution.WorkspaceAuthority,
+    signal?: AbortSignal,
+  ): Promise<Cloud.HandoffWorkspaceResult> {
+    const frame = OrganizationHandoffExecution.workspaceAuthority(evidence)
+    const operation = frame.proof.operation
+    await frame.recheck()
+    if (operation.action === "put") {
+      const bytes = Buffer.from(operation.data, "base64")
+      if (bytes.toString("base64") !== operation.data || bytes.byteLength > Cloud.chunkBytes)
+        fail("INVALID_REQUEST", "Workspace transfer bytes must complete their canonical window")
+      WorkspaceTree.verify(operation.hash, bytes, Cloud.chunkBytes)
+      const { store } = await WorkspaceContent.resolve({ ...frame.request.target, signal })
+      frame.assert()
+      await store.put(operation.hash, bytes)
+      await frame.recheck()
+      return { action: "put", hash: operation.hash }
+    }
+    if (operation.action === "inspect") {
+      const status = await WorkspaceMove.inspect(frame.request)
+      await frame.recheck()
+      return Cloud.HandoffWorkspaceResult.parse({ action: "inspect", status })
+    }
+    const receipt =
+      operation.action === "validate"
+        ? await WorkspaceMove.validate(frame.request)
+        : await moveSource.run(frame, () =>
+            WorkspaceMove.runCaptured(frame.request, "organization-handoff", { signal }),
+          )
+    await frame.recheck()
+    return Cloud.HandoffWorkspaceResult.parse({ action: operation.action, receipt })
   }
 
   export async function createEnvironment(credentials: Credentials, value: Cloud.CreateEnvironment) {

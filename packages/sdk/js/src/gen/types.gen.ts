@@ -3189,6 +3189,7 @@ export type OrgCloudFileReference = {
   workspaceID: string
   generation: number
   revision: number
+  rootPath?: string
 }
 
 export type OrgCloudFileResult = {

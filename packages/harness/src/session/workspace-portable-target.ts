@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto"
+import { AsyncLocalStorage } from "node:async_hooks"
 import { z } from "zod"
 import { RuntimeContext } from "../lifecycle/context"
 import { Storage } from "../storage/storage"
@@ -38,11 +39,26 @@ export namespace WorkspacePortableTarget {
     withPublication<T>(values: readonly Native[], signal: AbortSignal, body: () => Promise<T>): Promise<T>
     assertPublication(value: Native): Native
   }
+  export interface Provider {
+    prepare(input: {
+      handoffID: string
+      captured: Schema.Captured
+      signal: AbortSignal
+    }): Promise<WorkspaceCatalog.Info>
+    validate(catalog: WorkspaceCatalog.Info, signal: AbortSignal): Promise<void>
+    withPublication<T>(
+      values: readonly WorkspaceCatalog.Info[],
+      signal: AbortSignal,
+      body: () => Promise<T>,
+    ): Promise<T>
+    assertPublication(catalog: WorkspaceCatalog.Info): void
+  }
   const Workspace = z.strictObject({
     version: z.literal(1),
     sourceWorkspaceID: ID,
     catalog: WorkspaceCatalog.Info,
     native: Native.optional(),
+    provider: ID.optional(),
   })
   const Mapping = z.object({ workspaceIDs: z.record(z.string(), ID), workspaceReceiptHash: Hash })
   export const Prepared = z.strictObject({
@@ -53,7 +69,11 @@ export namespace WorkspacePortableTarget {
     hash: Hash,
   })
   export type Prepared = z.infer<typeof Prepared>
-  const state = RuntimeContext.state(() => ({ host: undefined as Host | undefined }))
+  const state = RuntimeContext.state(() => ({
+    host: undefined as Host | undefined,
+    providers: new Map<string, Provider>(),
+  }))
+  const selectedProvider = new AsyncLocalStorage<string>()
   const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex")
   const prefix = (handoffID: string) => ["workspace_portable_target", ID.parse(handoffID)]
   const workspaceKey = (handoffID: string, workspaceID: string) => [
@@ -76,6 +96,30 @@ export namespace WorkspacePortableTarget {
       assertPublication: input.assertPublication.bind(input),
     })
   }
+  export function registerProvider(id: string, input: Provider) {
+    RuntimeContext.assertCompositionOpen("Workspace target providers")
+    id = ID.parse(id)
+    if (state().providers.has(id)) fail("Workspace target provider is already registered")
+    state().providers.set(
+      id,
+      Object.freeze({
+        prepare: input.prepare.bind(input),
+        validate: input.validate.bind(input),
+        withPublication: input.withPublication.bind(input),
+        assertPublication: input.assertPublication.bind(input),
+      }),
+    )
+  }
+  export function withProvider<T>(id: string, body: () => Promise<T>) {
+    if (!state().providers.has(id)) fail("Workspace target provider is unavailable")
+    return selectedProvider.run(id, body)
+  }
+  function provider(id = selectedProvider.getStore()) {
+    if (!id || id !== selectedProvider.getStore()) fail("Workspace target requires its original provider callback")
+    const value = state().providers.get(id)
+    if (!value) fail("Workspace target provider is unavailable")
+    return value
+  }
   function host() {
     const selected = state().host
     if (!selected) fail("This Runtime has no native Workspace target")
@@ -92,6 +136,8 @@ export namespace WorkspacePortableTarget {
     const writerID = objects?.writerID
     const now = objects?.now
     const selectedHost = host()
+    const providerID = selectedProvider.getStore()
+    const source = providerID && provider(providerID)
     return () => {
       signal.throwIfAborted()
       const current = Storage.current()
@@ -103,7 +149,9 @@ export namespace WorkspacePortableTarget {
         objects?.blobs !== blobs ||
         objects?.writerID !== writerID ||
         objects?.now !== now ||
-        state().host !== selectedHost
+        state().host !== selectedHost ||
+        selectedProvider.getStore() !== providerID ||
+        (providerID && state().providers.get(providerID) !== source)
       )
         fail("Workspace target requires its original storage owner")
     }
@@ -158,45 +206,77 @@ export namespace WorkspacePortableTarget {
           for await (const captured of graph.workspaces()) {
             assert()
             await graph.verify(captured)
-            const selected = Native.parse(
-              await host().prepare({ handoffID: binding.handoffID, captured, store: graph.store(captured), signal }),
-            )
+            const remote = selectedProvider.getStore()
+            const selected = remote
+              ? undefined
+              : Native.parse(
+                  await host().prepare({
+                    handoffID: binding.handoffID,
+                    captured,
+                    store: graph.store(captured),
+                    signal,
+                  }),
+                )
             assert()
-            if (selected.scopeID !== binding.scopeID) fail("Native Workspace target belongs to another Scope")
+            if (selected && selected.scopeID !== binding.scopeID)
+              fail("Native Workspace target belongs to another Scope")
             const previous = await readWorkspace(binding.handoffID, captured.workspaceID)
             assert()
             if (previous?.native && digest(previous.native) !== digest(selected))
               fail("Native Workspace preparation changed")
             const now = previous?.catalog.createdAt ?? Date.now()
-            const catalog = WorkspaceCatalog.Info.parse({
-              id: selected.workspaceID,
-              scopeID: binding.scopeID,
-              type: "directory",
-              revision: 1,
-              binding: {
-                state: "bound",
-                hostID: selected.hostID,
-                path: selected.path,
-                physicalID: selected.physicalID,
-                generation: 1,
-              },
-              backend: { provider: "directory", spec: {} },
-              metadata: {},
-              sharedWritableWorkspaceIDs: [],
-              lifecycle: "active",
-              createdAt: now,
-              updatedAt: now,
-            })
+            const catalog = remote
+              ? WorkspaceCatalog.Info.parse(
+                  await provider(remote).prepare({ handoffID: binding.handoffID, captured, signal }),
+                )
+              : WorkspaceCatalog.Info.parse({
+                  id: selected!.workspaceID,
+                  scopeID: binding.scopeID,
+                  type: "directory",
+                  revision: 1,
+                  binding: {
+                    state: "bound",
+                    hostID: selected!.hostID,
+                    path: selected!.path,
+                    physicalID: selected!.physicalID,
+                    generation: 1,
+                  },
+                  backend: { provider: "directory", spec: {} },
+                  metadata: {},
+                  sharedWritableWorkspaceIDs: [],
+                  lifecycle: "active",
+                  createdAt: now,
+                  updatedAt: now,
+                })
+            assert()
+            if (
+              catalog.scopeID !== binding.scopeID ||
+              (remote &&
+                (catalog.content ||
+                  catalog.activeMount ||
+                  catalog.binding.state !== "bound" ||
+                  catalog.binding.path !== null ||
+                  catalog.binding.physicalID ||
+                  catalog.backend?.provider !== remote))
+            )
+              fail("Workspace provider preparation cannot carry local file authority")
+            if (previous && digest(previous.catalog) !== digest(catalog)) fail("Workspace provider preparation changed")
             await Storage.write(
               workspaceKey(binding.handoffID, captured.workspaceID),
-              Workspace.parse({ version: 1, sourceWorkspaceID: captured.workspaceID, catalog, native: selected }),
+              Workspace.parse({
+                version: 1,
+                sourceWorkspaceID: captured.workspaceID,
+                catalog,
+                native: selected,
+                provider: remote,
+              }),
             )
           }
           for await (const sessionID of graph.memberIDs()) {
             for await (const reference of graph.references(sessionID)) {
               assert()
               const previous = await readWorkspace(binding.handoffID, reference.id)
-              if (previous?.native) continue
+              if (previous?.native || previous?.provider) continue
               const now = previous?.catalog.createdAt ?? Date.now()
               const catalog = WorkspaceCatalog.Info.parse({
                 id: "wsp_" + digest([binding.handoffID, binding.scopeID, reference.id]),
@@ -279,16 +359,26 @@ export namespace WorkspacePortableTarget {
     return withStorageQueueOptions({ signal }, async () => {
       Prepared.parse(await Storage.read(preparedKey(handoffID)))
       const values: Native[] = []
+      const remote: WorkspaceCatalog.Info[] = []
       for await (const workspace of workspaces(handoffID)) {
         assert()
         if (workspace.native) values.push(workspace.native)
+        if (workspace.provider) {
+          provider(workspace.provider)
+          remote.push(workspace.catalog)
+        }
       }
-      return host().withPublication(values, signal, async () => {
+      const publish = async () => {
         assert()
         const value = await body()
         assert()
         return value
-      })
+      }
+      if (remote.length) {
+        if (values.length) fail("Workspace aggregate cannot mix publication providers")
+        return provider().withPublication(remote, signal, publish)
+      }
+      return host().withPublication(values, signal, publish)
     })
   }
   export async function validate(context: Owners.TargetContext): Promise<void> {
@@ -308,6 +398,10 @@ export namespace WorkspacePortableTarget {
         fail("Portable Workspace mapping has no prepared identity")
       if (workspace.native) {
         await host().validate(workspace.native, context.signal)
+        assert()
+      }
+      if (workspace.provider) {
+        await provider(workspace.provider).validate(workspace.catalog, context.signal)
         assert()
       }
     }
@@ -345,6 +439,7 @@ export namespace WorkspacePortableTarget {
       const guard = () => {
         assert()
         if (native) host().assertPublication(native)
+        if (workspace.provider) provider(workspace.provider).assertPublication(workspace.catalog)
       }
       guard()
       await Storage.transaction(
@@ -355,6 +450,7 @@ export namespace WorkspacePortableTarget {
               fail("Prepared Workspace catalog identity was occupied")
           } else {
             if (native) await WorkspaceCatalog.writeRelocated(workspace.catalog, tx)
+            else if (workspace.provider) await WorkspaceCatalog.writeImportedFiles(workspace.catalog, tx)
             else await WorkspaceCatalog.writeImported(workspace.catalog, tx)
             Storage.afterCommit(() => WorkspaceCatalog.publishUpdated(workspace.catalog))
           }

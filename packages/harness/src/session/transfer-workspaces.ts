@@ -8,7 +8,10 @@ export namespace SessionTransferWorkspaces {
   export const registerHost = WorkspacePortableSource.registerHost
   export const capture = WorkspacePortableSource.capture
   export const receipt = WorkspacePortableSource.receipt
+  export const withCaptured = WorkspacePortableSource.withCaptured
   export const registerTargetHost = WorkspacePortableTarget.registerHost
+  export const registerTargetProvider = WorkspacePortableTarget.registerProvider
+  export const withTargetProvider = WorkspacePortableTarget.withProvider
   export const prepareTarget = WorkspacePortableTarget.prepare
   export const targetMapping = WorkspacePortableTarget.mapping
   export const withTargetPublication = WorkspacePortableTarget.withPublication

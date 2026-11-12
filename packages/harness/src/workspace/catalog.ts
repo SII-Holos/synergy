@@ -498,6 +498,29 @@ export namespace WorkspaceCatalog {
     await tx.write(scopeKey(info.scopeID, info.id), info.id)
   }
 
+  export async function writeImportedFiles(value: Info, tx: StoreTransaction) {
+    const info = Info.parse(value)
+    if (
+      info.binding.state !== "bound" ||
+      info.binding.path !== null ||
+      info.binding.physicalID ||
+      info.content ||
+      info.activeMount ||
+      info.sharedWritableWorkspaceIDs.length ||
+      info.lifecycle !== "active" ||
+      !info.backend ||
+      ["objects", "directory"].includes(info.backend.provider)
+    )
+      throw new Invalid({ message: "Remote file Locator cannot carry local file authority", workspaceID: info.id })
+    if ((await tx.readMany([recordKey(info.id)]))[0] !== undefined)
+      throw new BindingChanged({
+        message: "Workspace identity was occupied during remote publication",
+        workspaceID: info.id,
+      })
+    await tx.write(recordKey(info.id), info)
+    await tx.write(scopeKey(info.scopeID, info.id), info.id)
+  }
+
   export async function writeRelocated(info: Info, tx: StoreTransaction) {
     if (info.binding.state !== "bound" || !info.binding.path || !info.binding.physicalID || info.lifecycle !== "active")
       throw new Invalid({ message: "Relocated Workspace requires verified local authority", workspaceID: info.id })
