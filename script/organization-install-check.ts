@@ -40,7 +40,15 @@ export async function checkOrganizationInstallation(archives: string) {
       if (code || !stdout.includes("synergy-org serve"))
         throw new Error(`The installed executable failed direct dispatch: ${stderr}`)
       const acceptance = Bun.spawn(
-        [process.execPath, "test", "--timeout", "30000", "test/entry.test.ts", "test/cli-invite.test.ts"],
+        [
+          process.execPath,
+          "test",
+          "--timeout",
+          "30000",
+          "test/entry.test.ts",
+          "test/cli-invite.test.ts",
+          "test/cli-backup.test.ts",
+        ],
         {
           cwd: path.resolve(import.meta.dir, "../packages/organization"),
           env: { ...env, SYNERGY_TEST_ORGANIZATION_INSTALL: directory },

@@ -700,6 +700,16 @@ list all available models
 initialize, administer or serve a dedicated organization
 
 
+## org backup
+
+capture an encrypted native namespace cohort in a new directory; print verified JSON metadata
+
+| Option | Description |
+| --- | --- |
+| `--output` (string) | absolute new encrypted archive directory |
+| `--key-file` (string) | absolute private version-one recovery key file |
+| `--origin` (string) | exact public HTTPS origin when the service has registered clients |
+
 ## org init
 
 create a single-use initialization token in a new private file; print JSON metadata
@@ -720,6 +730,16 @@ create one invitation over HTTPS and retain its token in a new private file
 | `--ca-file` (string) | absolute private file containing an additional trusted CA |
 | `--role` | role granted when the invitation is consumed |
 | `--output` (string) | absolute new private token file; existing files are never reused |
+
+## org restore
+
+verify and install archived service bytes into an independent recovery-held Home; never enable execution
+
+| Option | Description |
+| --- | --- |
+| `--input` (string) | absolute encrypted archive directory |
+| `--key-file` (string) | absolute private version-one recovery key file |
+| `--restore-id` (string) | stable UUID for this exact restoration and its retries |
 
 ## org serve
 

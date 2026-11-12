@@ -5,15 +5,8 @@ import { openOrganizationService } from "../service"
 import { readOrganizationConfiguration } from "../configuration"
 import { loadOrganizationInfrastructure } from "../infrastructure"
 import { OrganizationInviteCommand } from "./invite"
-
-function explicitHome() {
-  const home = process.env.SYNERGY_HOME
-  if (!home || !path.isAbsolute(home)) throw new Error("Set SYNERGY_HOME to an absolute dedicated organization Home")
-  const root = process.env.SYNERGY_RUNTIME_ROOT
-  if (root && path.resolve(root) !== path.join(path.resolve(home), ".synergy"))
-    throw new Error("Organization commands require SYNERGY_RUNTIME_ROOT to match SYNERGY_HOME/.synergy")
-  return path.resolve(home)
-}
+import { OrganizationBackupCommand, OrganizationRestoreCommand } from "./backup"
+import { explicitOrganizationHome as explicitHome } from "./home"
 
 export const OrganizationCommand = cmd({
   command: "org",
@@ -146,4 +139,6 @@ export const organizationCommands = [
   OrganizationInitCommand,
   OrganizationServeCommand,
   OrganizationInviteCommand,
+  OrganizationBackupCommand,
+  OrganizationRestoreCommand,
 ] as unknown as CommandModule[]

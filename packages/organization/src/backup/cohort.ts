@@ -165,6 +165,13 @@ export namespace OrganizationBackupCohort {
   export interface Source {
     readonly kind: "organization-backup-namespace"
   }
+  export const Inventory = z.strictObject({
+    version: z.literal(2),
+    ...deployment,
+    namespaces: z.number().int().positive().safe(),
+    memberCoverage: z.literal("uploaded-service-data-only"),
+    restoredExecution: z.literal("blocked-until-reconciled"),
+  })
   export const NamespaceInventory = z
     .strictObject({
       version: z.literal(2),
@@ -376,14 +383,16 @@ export namespace OrganizationBackupCohort {
           })
         await Bun.write(
           path.join(temporary, "cohort.json"),
-          JSON.stringify({
-            version: 2,
-            orgID: initial.identity.orgID,
-            deploymentIncarnation: initial.identity.deploymentIncarnation,
-            namespaces: sources.length,
-            memberCoverage: "uploaded-service-data-only",
-            restoredExecution: "blocked-until-reconciled",
-          }),
+          JSON.stringify(
+            Inventory.parse({
+              version: 2,
+              orgID: initial.identity.orgID,
+              deploymentIncarnation: initial.identity.deploymentIncarnation,
+              namespaces: sources.length,
+              memberCoverage: "uploaded-service-data-only",
+              restoredExecution: "blocked-until-reconciled",
+            }),
+          ),
         )
         const archive = await OrganizationRecoveryArchive.seal({
           directory: directory,

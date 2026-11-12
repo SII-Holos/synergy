@@ -30,6 +30,8 @@ Use the service's owning configuration schema and canonical domain file when its
 
 For a supervised service, validate a bounded, versioned private stdin or IPC request before opening storage. Keep transient credentials out of arguments, readiness and logs. Reuse the CLI server lifecycle through its runtime factory, including startup reporters and parent-death handling. Test absent/truncated input, identity mismatch, shutdown and restart, and preserve only the selected Home's verified installation metadata for workers.
 
+For administrative backup and restoration, compose the original native owners through the domain instead of implementing installation in the parser. Authenticate private input and archive inventories before target initialization. Keep scoped Runtimes alive until asynchronous capture/import settles, including `await using` return paths. Verify actual bytes, exact retries, held execution, competing locks and rejected archives through the packed executable. See [organization administration](../../../docs/decisions/implemented/feature/2026-11-13-install-organization-backups-through-original-native-owners.md).
+
 For core Agent and policy runners, register the pinned component composition before global path initialization. A dedicated Home's owner must be selected before its ownership guard runs; never bypass that guard for workers. Exercise a real marked Home and a mismatched identity through both CLI worker roles, then verify the packed launcher outside the checkout.
 
 ## Command Contract

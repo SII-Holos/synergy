@@ -81,7 +81,31 @@ The Home's `.synergy` directory contains its native identity, configuration, sto
 
 Retain the old image digest and package lockfile before replacement. Stop admission at the proxy, stop the service gracefully, and preserve its persistent volume. Install both packages at the same selected version or replace the image without changing the volume, then wait for readiness and verify the retained organization identity. Home reader upgrades require the service owner's frozen maintenance flow; an unsupported reader fails closed instead of reinitializing storage. Never run `init` to repair a retained deployment.
 
-Consistent encrypted backup and recovery use the [native maintenance and recovery owners](../architecture/organization.md), including current-policy reconciliation and source retirement. The minimal executable has no administrative backup/restore command; filesystem copying a live SQL database does not establish a recoverable deployment. Do not use `docker compose down --volumes` during an upgrade. The Compose acceptance script uses that operation only for its own temporary test project.
+Consistent encrypted backup and recovery use the [native maintenance and recovery owners](../architecture/organization.md), including current-policy reconciliation and source retirement. The [administrative commands](#encrypted-backup-and-held-restoration) capture encrypted native checkpoints and install a held target. Filesystem copying a live SQL database does not establish a recoverable deployment. Do not use `docker compose down --volumes` during an upgrade. The Compose acceptance script uses that operation only for its own temporary test project.
+
+## Encrypted backup and held restoration
+
+Create a private recovery key file with permissions `0600`. Its version-one JSON contains a current key version and a map of canonical base64-encoded 32-byte keys. Retain older versions for archives encrypted with those keys; keep this file independently of the archive:
+
+```json
+{ "version": 1, "current": "recovery-1", "keys": { "recovery-1": "<base64-encoded-32-byte-key>" } }
+```
+
+Stop the selected service through its normal supervisor before taking exclusive ownership. Backup opens its established Home, freezes native participants and seals a new encrypted directory. Supply the service's exact public `--origin` when registered client authentication requires it:
+
+```sh
+SYNERGY_HOME=/absolute/service-home ./node_modules/.bin/synergy-org backup --output /absolute/new-backup --key-file /absolute/private/recovery-keys.json --origin https://organization.example.org
+```
+
+Output reports verified archive metadata and namespace checkpoint coverage. A registered Hosted namespace without its actual capture participant, or unsupported external-resource data, blocks the operation; it does not produce a complete archive. The original Home and archive remain separate. Restart the service through its normal supervisor after capture finishes.
+
+Restore service-only archive bytes into an independent target Home. Choose one UUID as `--restore-id` and retain it for exact retries:
+
+```sh
+SYNERGY_HOME=/absolute/restoration-home ./node_modules/.bin/synergy-org restore --input /absolute/new-backup --key-file /absolute/private/recovery-keys.json --restore-id 267aa4b3-4872-4308-b842-472f7d595b6f
+```
+
+Archive authentication and supported inventory checks precede target initialization. Output `state: recovery-held` means native bytes and inactive signing material are installed; `executionEnabled` remains false. The target cannot serve or Continue until original current-policy, source-retirement and writer owners complete fresh publication. Exact retries preserve the same installation and key. This command refuses multi-namespace archives without their original installation participants; it cannot recover missing key material or bypass unknown writers. See [administrative ownership](../decisions/implemented/feature/2026-11-13-install-organization-backups-through-original-native-owners.md).
 
 ## Additional infrastructure
 
