@@ -109,6 +109,36 @@ function publicFile(file: z.infer<typeof File>): Publication.File {
   return Publication.File.parse(Publication.File.strip().parse(file))
 }
 
+async function chunkTarget(
+  credentials: Credentials,
+  uploadID: string,
+  fileID: string,
+  offset: number,
+  chunk: z.infer<typeof Chunk>,
+) {
+  const upload = await access(credentials, uploadID, true)
+  const file = await read(File, keys.file(uploadID, fileID))
+  if (!file) fail("NOT_FOUND", "Publication file not found")
+  if (chunk.bytes !== Math.min(Publication.chunkBytes, file.bytes - offset))
+    fail("INVALID_REQUEST", "Publication chunk does not match its declared file range")
+  const previous = await read(Chunk, keys.chunk(uploadID, fileID, offset))
+  if (previous) {
+    if (previous.sha256 !== chunk.sha256 || previous.bytes !== chunk.bytes)
+      fail("REVISION_CONFLICT", "An uploaded chunk cannot be overwritten")
+  } else if (upload.state !== "open") fail("REVISION_CONFLICT", "Publication upload is sealed or being verified")
+  return { file, previous }
+}
+
+function chunkStatus(uploadID: string, file: z.infer<typeof File>, added = 0) {
+  return Publication.ChunkStatus.parse({
+    uploadID,
+    fileID: file.fileID,
+    receivedBytes: file.receivedBytes + added,
+    bytes: file.bytes,
+    chunkBytes: Publication.chunkBytes,
+  })
+}
+
 export namespace OrganizationPublications {
   export async function create(credentials: Credentials, value: Publication.Create) {
     const input = Publication.Create.parse(value)
@@ -205,32 +235,18 @@ export namespace OrganizationPublications {
       bytes.byteLength > Publication.chunkBytes
     )
       fail("INVALID_REQUEST", "Publication chunks require an aligned offset and at most 4 MiB")
-    await Storage.snapshot(() => access(credentials, uploadID, true))
     const chunk = Chunk.parse({ bytes: bytes.byteLength, sha256: hash(bytes) })
+    const original = await Storage.snapshot(() => chunkTarget(credentials, uploadID, fileID, offset, chunk))
+    if (original.previous) return chunkStatus(uploadID, original.file)
     using prepared = await Storage.prepareBinary(keys.bytes(uploadID, fileID, offset), bytes)
     return await Storage.transaction(async () => {
-      const upload = await access(credentials, uploadID, true)
-      const file = await read(File, keys.file(uploadID, fileID))
-      if (!file) fail("NOT_FOUND", "Publication file not found")
-      if (bytes.byteLength !== Math.min(Publication.chunkBytes, file.bytes - offset))
-        fail("INVALID_REQUEST", "Publication chunk does not match its declared file range")
-      const previous = await read(Chunk, keys.chunk(uploadID, fileID, offset))
-      if (previous) {
-        if (previous.sha256 !== chunk.sha256 || previous.bytes !== chunk.bytes)
-          fail("REVISION_CONFLICT", "An uploaded chunk cannot be overwritten")
-      } else {
-        if (upload.state !== "open") fail("REVISION_CONFLICT", "Publication upload is sealed or being verified")
+      const { file, previous } = await chunkTarget(credentials, uploadID, fileID, offset, chunk)
+      if (!previous) {
         await Storage.publishPreparedBinary(prepared)
         await Storage.write(keys.chunk(uploadID, fileID, offset), chunk)
         await Storage.write(keys.file(uploadID, fileID), { ...file, receivedBytes: file.receivedBytes + bytes.length })
       }
-      return Publication.ChunkStatus.parse({
-        uploadID,
-        fileID,
-        receivedBytes: file.receivedBytes + (previous ? 0 : bytes.length),
-        bytes: file.bytes,
-        chunkBytes: Publication.chunkBytes,
-      })
+      return chunkStatus(uploadID, file, previous ? 0 : bytes.length)
     })
   }
 

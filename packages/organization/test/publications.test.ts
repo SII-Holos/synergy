@@ -1,7 +1,9 @@
-import { expect, test } from "bun:test"
+import { expect, spyOn, test } from "bun:test"
 import { createHash } from "node:crypto"
 import { OrganizationPublications, publicationMigration } from "../src/publications"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { OrganizationRecord } from "../src/storage/records"
+import { OrganizationStoragePath } from "../src/storage/path"
 import { directoryFixture } from "./support/session-directory"
 import { fixture } from "./support/organization"
 import {
@@ -215,4 +217,187 @@ test("publication directory migration covers fresh and pre-index uploads without
       file,
     ])
   })
+})
+
+test("rejected publication chunks and cold receipts do not prepare native artifact bytes", async () => {
+  await using f = await directoryFixture()
+  const bytes = new TextEncoder().encode("abc")
+  const { upload, file } = await f.run(async () => {
+    const upload = await OrganizationPublications.create(f.credentials.alice, {
+      requestID: "chunk-preparation",
+      purpose: "knowledge",
+      scope: { kind: "project", projectID: "project" },
+    })
+    const file = await OrganizationPublications.putFile(f.credentials.alice, upload.uploadID, {
+      path: "content.txt",
+      bytes: bytes.length,
+      sha256: hash("abc"),
+      mediaType: "text/plain",
+    })
+    await OrganizationPublications.putChunk(f.credentials.alice, upload.uploadID, file.fileID, 0, bytes)
+    await OrganizationPublications.seal(f.credentials.alice, upload.uploadID, {
+      fileCount: 1,
+      totalBytes: bytes.length,
+    })
+    return { upload, file }
+  })
+  await f.restart()
+  const prepare = Storage.prepareBinary
+  let preparations = 0
+  const observed = spyOn(Storage, "prepareBinary").mockImplementation((key, value) => {
+    preparations++
+    return prepare(key, value)
+  })
+  try {
+    await expect(
+      f.run(() =>
+        OrganizationPublications.putChunk(f.credentials.alice, upload.uploadID, hash("missing-file"), 0, bytes),
+      ),
+    ).rejects.toMatchObject({ data: { code: "NOT_FOUND" } })
+    expect(preparations).toBe(0)
+    expect(
+      await f.run(() => OrganizationPublications.putChunk(f.credentials.alice, upload.uploadID, file.fileID, 0, bytes)),
+    ).toMatchObject({ receivedBytes: bytes.length })
+    await expect(
+      f.run(() =>
+        OrganizationPublications.putChunk(
+          f.credentials.alice,
+          upload.uploadID,
+          file.fileID,
+          0,
+          new TextEncoder().encode("abd"),
+        ),
+      ),
+    ).rejects.toMatchObject({ data: { code: "REVISION_CONFLICT" } })
+    await expect(
+      f.run(() =>
+        OrganizationPublications.putChunk(
+          f.credentials.alice,
+          upload.uploadID,
+          file.fileID,
+          Publication.chunkBytes,
+          bytes,
+        ),
+      ),
+    ).rejects.toMatchObject({ data: { code: "INVALID_REQUEST" } })
+    expect(preparations).toBe(0)
+    expect(await f.run(() => OrganizationPublications.readChunk(upload.uploadID, file.fileID, 0))).toEqual(bytes)
+  } finally {
+    observed.mockRestore()
+  }
+})
+
+async function pendingUpload(f: Awaited<ReturnType<typeof directoryFixture>>, requestID: string) {
+  return f.run(async () => {
+    const upload = await OrganizationPublications.create(f.credentials.alice, {
+      requestID,
+      purpose: "knowledge",
+      scope: { kind: "project", projectID: "project" },
+    })
+    const file = await OrganizationPublications.putFile(f.credentials.alice, upload.uploadID, {
+      path: "content.txt",
+      bytes: 3,
+      sha256: hash("abc"),
+      mediaType: "text/plain",
+    })
+    return { upload, file }
+  })
+}
+
+test("a held preparation reconciles a concurrent sealed receipt without another publication", async () => {
+  await using f = await directoryFixture()
+  const { upload, file } = await pendingUpload(f, "held-seal")
+  const bytes = new TextEncoder().encode("abc")
+  const entered = Promise.withResolvers<void>()
+  const proceed = Promise.withResolvers<void>()
+  const prepare = Storage.prepareBinary
+  const publish = Storage.publishPreparedBinary
+  let retained: Storage.PreparedBinary | undefined
+  let publications = 0
+  const preparation = spyOn(Storage, "prepareBinary").mockImplementation(async (key, value) => {
+    const original = await prepare(key, value)
+    if (!retained) {
+      retained = original
+      entered.resolve()
+      await proceed.promise
+    }
+    return original
+  })
+  const publishing = spyOn(Storage, "publishPreparedBinary").mockImplementation((value) => {
+    publications++
+    return publish(value)
+  })
+  const pending = f.run(() =>
+    OrganizationPublications.putChunk(f.credentials.alice, upload.uploadID, file.fileID, 0, bytes),
+  )
+  try {
+    await entered.promise
+    await f.run(() => OrganizationPublications.putChunk(f.credentials.alice, upload.uploadID, file.fileID, 0, bytes))
+    expect(
+      (
+        await f.run(() =>
+          OrganizationPublications.seal(f.credentials.alice, upload.uploadID, {
+            fileCount: 1,
+            totalBytes: bytes.length,
+          }),
+        )
+      ).state,
+    ).toBe("sealed")
+    proceed.resolve()
+    expect(await pending).toMatchObject({ receivedBytes: bytes.length })
+    expect(publications).toBe(1)
+    expect(await f.run(() => OrganizationPublications.readChunk(upload.uploadID, file.fileID, 0))).toEqual(bytes)
+    await expect(f.run(() => Storage.preparedBinaryReceipt(retained!))).rejects.toThrow("not available")
+  } finally {
+    proceed.resolve()
+    await Promise.allSettled([pending])
+    preparation.mockRestore()
+    publishing.mockRestore()
+  }
+})
+
+test("a prepared chunk cannot publish after its author's current access is revoked", async () => {
+  await using f = await directoryFixture()
+  const { upload, file } = await pendingUpload(f, "held-revocation")
+  const entered = Promise.withResolvers<void>()
+  const proceed = Promise.withResolvers<void>()
+  const prepare = Storage.prepareBinary
+  let retained: Storage.PreparedBinary | undefined
+  const preparation = spyOn(Storage, "prepareBinary").mockImplementation(async (key, value) => {
+    const original = await prepare(key, value)
+    retained = original
+    entered.resolve()
+    await proceed.promise
+    return original
+  })
+  const pending = f.run(() =>
+    OrganizationPublications.putChunk(
+      f.credentials.alice,
+      upload.uploadID,
+      file.fileID,
+      0,
+      new TextEncoder().encode("abc"),
+    ),
+  )
+  try {
+    await entered.promise
+    await f.run(() =>
+      Storage.update<OrganizationRecord.Account>(OrganizationStoragePath.account("alice"), (account) => {
+        account.state = "removed"
+        account.authRevision++
+      }),
+    )
+    proceed.resolve()
+    await expect(pending).rejects.toMatchObject({ data: { code: "AUTHENTICATION_REQUIRED" } })
+    expect(
+      await f.run(() =>
+        Storage.artifactReferences({ prefix: ["organization-publications", "bytes", upload.uploadID] }),
+      ),
+    ).toEqual([])
+    await expect(f.run(() => Storage.preparedBinaryReceipt(retained!))).rejects.toThrow("not available")
+  } finally {
+    proceed.resolve()
+    await Promise.allSettled([pending])
+    preparation.mockRestore()
+  }
 })

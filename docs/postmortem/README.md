@@ -19,6 +19,7 @@
 
 ## Index
 
+- [0159](0159-publication-chunks-prepared-bytes-before-qualification.md)
 - [0158](0158-invitation-output-lost-private-or-durable-state.md)
 - [0157](0157-private-credentials-trusted-preopen-permissions.md)
 - [0156](0156-surrendered-sync-source-disconnected-return-target.md)
