@@ -18,6 +18,7 @@ import { createCommandIntake } from "./command-intake"
 import { attachMemberExecution } from "./execution-source"
 import { startExecutionReleaseObserver } from "./release-observer"
 import { startMemberSyncExporter } from "./sync-exporter"
+import { startMemberNotifications } from "./notifications"
 import { OrganizationLocalProjects } from "./local-project"
 import { OrganizationSessionReads } from "./session-reads"
 import { registerOrganizationTransferOwner } from "./session-transfer"
@@ -124,12 +125,17 @@ async function openOrganizationRuntime(input: MemberRuntimeOptions) {
                   }
                 }),
                 sync: true,
+                notifications: true,
                 read: context.bind(OrganizationSessionReads.remote),
                 interactions: context.bind(OrganizationSessionReads.interactions),
                 onConnected: context.bind((connection, signal) => {
                   const exporter = startMemberSyncExporter({ identity: member.identity, connection, signal })
+                  const stopNotifications = startMemberNotifications(connection, signal)
                   void exporter.flush()
-                  return () => exporter.close()
+                  return () => {
+                    stopNotifications()
+                    return exporter.close()
+                  }
                 }),
               })
               void bridge.closed.then((result) => {

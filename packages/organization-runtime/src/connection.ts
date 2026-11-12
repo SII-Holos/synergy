@@ -8,6 +8,7 @@ import {
   OrganizationReadProtocol as Read,
   OrganizationInteractionProtocol as Interactions,
   OrganizationHandoffProtocol as Handoff,
+  OrganizationNotificationProtocol as Notification,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { readRuntimeHome, type RuntimeHome, type RuntimeIdentity } from "./home"
 import { readRuntimeRegistration } from "./registration"
@@ -30,6 +31,7 @@ export interface MemberConnection {
   close(): Promise<void>
   syncState(sessionID: string, signal?: AbortSignal): Promise<Sync.Share>
   sync(batch: Sync.Batch, signal?: AbortSignal): Promise<Sync.Ack>
+  notify(notice: Notification.Observation): void
   uploadBlob(
     input: {
       sessionID: string
@@ -67,6 +69,7 @@ export interface MemberConnectionOptions {
     close?(): void | Promise<void>
   }
   sync?: boolean
+  notifications?: boolean
   handoff?: (
     authorization: Handoff.SignedMachinePlan,
     connection: Connected,
@@ -128,6 +131,7 @@ async function attempt(input: {
         "bridge",
         ...(options.commands ? ["commands"] : []),
         ...(options.sync ? ["sync"] : []),
+        ...(options.notifications ? ["notifications"] : []),
         ...(options.read ? ["reads"] : []),
         ...(options.interactions ? ["interactions"] : []),
         ...(options.handoff ? ["handoffs"] : []),
@@ -136,6 +140,7 @@ async function attempt(input: {
         bridge: 1,
         ...(options.commands ? { commands: 1 } : {}),
         ...(options.sync ? { sync: 1 } : {}),
+        ...(options.notifications ? { notifications: Notification.Version } : {}),
         ...(options.handoff ? { handoffs: 1 } : {}),
         ...(options.read ? { reads: 1 } : {}),
         ...(options.interactions ? { interactions: 1 } : {}),
@@ -714,6 +719,10 @@ async function attempt(input: {
       signal: work.signal,
       connected: handshake,
       resources: resources!.resources,
+      notify(notice) {
+        if (work.signal.aborted || handshake.notifications !== Notification.Version) return
+        send({ type: "notification", connectionEpoch: epoch, notice: Notification.Observation.parse(notice) })
+      },
       closed: closed.promise.then(async (result) => {
         await drain()
         return result

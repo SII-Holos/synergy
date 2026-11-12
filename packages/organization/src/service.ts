@@ -13,6 +13,7 @@ import { OrganizationProtocol } from "@ericsanchezok/synergy-organization-protoc
 import { registerOrganizationMigrations } from "./migration"
 import { OrganizationStoragePath } from "./storage/path"
 import { organizationApp } from "./http"
+import { createOrganizationNotifications, type OrganizationNotifications } from "./notifications"
 import { createAuthentication } from "./auth"
 import { createClientAuthentication } from "./auth/client"
 import {
@@ -118,6 +119,7 @@ async function openOrganizationNamespace(options: OrganizationServiceOptions, mo
     let ready = false
     let closing: Promise<void> | undefined
     let connections: RuntimeConnections | undefined
+    let notifications: OrganizationNotifications | undefined
     let modelGateway: ModelGateway | undefined
     let connectionGateway: ConnectionGateway | undefined
     const active = new Set<Promise<unknown>>()
@@ -136,6 +138,7 @@ async function openOrganizationNamespace(options: OrganizationServiceOptions, mo
       ready = false
       closing = context.run(async () => {
         RuntimeContext.setReady(false)
+        notifications?.close()
         connections?.close()
         await modelGateway?.close()
         await connectionGateway?.close()
@@ -250,6 +253,7 @@ async function openOrganizationNamespace(options: OrganizationServiceOptions, mo
           [Symbol.asyncDispose]: close,
         }
       }
+      notifications = createOrganizationNotifications({ run })
       connections = createRuntimeConnections({
         run,
         captureTail: OrganizationServiceMaintenance.captureTail,
@@ -258,6 +262,7 @@ async function openOrganizationNamespace(options: OrganizationServiceOptions, mo
         onResult: (connection, result) => admissions.observe(connection, result),
         onSyncState: (connection, sessionID) => OrganizationSharing.getFromRuntime(connection.handshake, sessionID),
         onSyncBatch: (connection, batch) => OrganizationSharing.applyBatchFromRuntime(connection.handshake, batch),
+        onNotification: (connection, notice) => notifications!.publish(connection, notice),
         onBlobChunk: (connection, input) => OrganizationSharing.uploadBlobFromRuntime(connection.handshake, input),
       })
       const admissions = createCommandAdmissions({ connections, signing })
@@ -299,6 +304,7 @@ async function openOrganizationNamespace(options: OrganizationServiceOptions, mo
         { calls: gatewayCalls, models: modelGateway, connections: connectionGateway },
         handoffs,
         reads,
+        notifications,
       )
       if (web) app.route("/", web)
       ready = true

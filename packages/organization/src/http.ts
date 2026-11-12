@@ -34,6 +34,8 @@ import type { Handoffs } from "./handoff"
 import { knowledgeExecutionRoutes } from "./routes/knowledge-execution"
 import { sessionReadRoutes } from "./routes/session-read"
 import type { SessionReadForwarder } from "./session-read"
+import type { OrganizationNotifications } from "./notifications"
+import { notificationRoutes } from "./routes/notifications"
 
 export function organizationOpenApi() {
   return generateSpecs(
@@ -58,6 +60,7 @@ export function organizationApp(
   gateway?: { calls: GatewayCalls; models: ModelGateway; connections: ConnectionGateway },
   handoffs?: Handoffs,
   reads?: SessionReadForwarder,
+  notifications?: OrganizationNotifications,
 ) {
   function registry() {
     if (!registrations) fail("SERVICE_UNAVAILABLE", "Runtime registration is unavailable")
@@ -155,6 +158,13 @@ export function organizationApp(
       }, publicOrigin),
     )
     .route("/org/v1", apiTokenRoutes(publicOrigin))
+    .route(
+      "/org/v1",
+      notificationRoutes(() => {
+        if (!notifications) fail("SERVICE_UNAVAILABLE", "Notifications are unavailable")
+        return notifications
+      }, publicOrigin),
+    )
     .route("/org/v1", registrationRoutes(registry, publicOrigin))
     .route("/org/v1", sessionDirectoryRoutes(publicOrigin))
     .route("/org/v1", sharingRoutes(publicOrigin))

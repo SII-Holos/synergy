@@ -3,6 +3,7 @@ import { OrganizationIdentity as Identity } from "./identity.js"
 import { OrganizationProtocol as Protocol } from "./core.js"
 import { OrganizationCommandProtocol as Command } from "./command.js"
 import { OrganizationSyncProtocol as Sync } from "./sync.js"
+import { OrganizationNotificationProtocol as Notification } from "./notification.js"
 import { SigningPublicKey, SigningSignature, signedProtocol } from "./signature.js"
 
 export namespace OrganizationRuntimeProtocol {
@@ -156,6 +157,11 @@ export namespace OrganizationRuntimeProtocol {
     SyncStateRequest,
     SyncBatch,
     BlobChunk,
+    z.strictObject({
+      type: z.literal("notification"),
+      connectionEpoch: Protocol.Epoch,
+      notice: Notification.Observation,
+    }),
   ])
   export type ClientFrame = z.infer<typeof ClientFrame>
   export const Connected = z.strictObject({
@@ -168,6 +174,7 @@ export namespace OrganizationRuntimeProtocol {
     signingIdentity: Command.SigningIdentity,
     heartbeatMs: z.number().int().positive(),
     offlineMs: z.number().int().positive(),
+    notifications: z.literal(Notification.Version).optional(),
   })
   export const ServerFrame = z.discriminatedUnion("type", [
     Connected,

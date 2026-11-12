@@ -6,6 +6,7 @@ import {
   OrganizationRuntimeProtocol as Runtime,
   OrganizationCommandProtocol as Command,
   OrganizationSyncProtocol as Sync,
+  OrganizationNotificationProtocol as Notification,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { OrganizationRecord as Record } from "./storage/records"
 import { OrganizationStoragePath as Keys } from "./storage/path"
@@ -47,6 +48,7 @@ export function createRuntimeConnections(input: {
   onResult?: (connection: RuntimeConnectionLease, result: Command.Result) => Promise<unknown>
   onSyncState?: (connection: RuntimeConnectionLease, sessionID: string) => Promise<Sync.Share>
   onSyncBatch?: (connection: RuntimeConnectionLease, batch: Sync.Batch) => Promise<Sync.Ack>
+  onNotification?: (connection: RuntimeConnectionLease, notice: Notification.Observation) => Promise<void>
   onBlobChunk?: (
     connection: RuntimeConnectionLease,
     input: {
@@ -124,12 +126,20 @@ export function createRuntimeConnections(input: {
       fail("AUTHENTICATION_REQUIRED", "Authenticate the Runtime connection first")
     return handshake
   }
-  function captureSocket(socket: Socket, requireCommands: boolean | "handoffs" = true): RuntimeConnectionLease {
+  function captureSocket(
+    socket: Socket,
+    requireCommands: boolean | "handoffs" | "notifications" = true,
+  ): RuntimeConnectionLease {
     const handshake = structuredClone(current(socket))
     if (requireCommands === true && (!handshake.capabilities.includes("commands") || handshake.schemas.commands !== 1))
       fail("PROTOCOL_MISMATCH", "Runtime does not support organization command intake")
     if (requireCommands === false && (!handshake.capabilities.includes("sync") || handshake.schemas.sync !== 1))
       fail("PROTOCOL_MISMATCH", "Runtime does not support shared Session sync")
+    if (
+      requireCommands === "notifications" &&
+      (!handshake.capabilities.includes("notifications") || handshake.schemas.notifications !== Notification.Version)
+    )
+      fail("PROTOCOL_MISMATCH", "Runtime does not support live work notifications")
     if (
       requireCommands === "handoffs" &&
       (!handshake.capabilities.includes("handoffs") || handshake.schemas.handoffs !== 1)
@@ -196,6 +206,11 @@ export function createRuntimeConnections(input: {
           fail("PROTOCOL_MISMATCH", "This Runtime does not support the organization bridge protocol")
         if (handshake.capabilities.includes("sync") !== (handshake.schemas.sync === 1))
           fail("PROTOCOL_MISMATCH", "Runtime sync capabilities and schema are inconsistent")
+        if (
+          handshake.capabilities.includes("notifications") !==
+          (handshake.schemas.notifications === Notification.Version)
+        )
+          fail("PROTOCOL_MISMATCH", "Runtime notification capabilities and schema are inconsistent")
         if (handshake.connectionEpoch !== runtime.connectionEpoch + 1) stale(runtime.connectionEpoch)
         const now = Date.now()
         await Storage.write(Keys.runtime(runtime.runtimeID), {
@@ -246,6 +261,11 @@ export function createRuntimeConnections(input: {
       signingIdentity: input.signingIdentity,
       heartbeatMs: settings.heartbeatMs,
       offlineMs: settings.offlineMs,
+      ...(input.onNotification &&
+      handshake.capabilities.includes("notifications") &&
+      handshake.schemas.notifications === Notification.Version
+        ? { notifications: Notification.Version }
+        : {}),
     })
   }
   async function receive(socket: Socket, message: string) {
@@ -261,6 +281,15 @@ export function createRuntimeConnections(input: {
     if (!socket.data.handshake) {
       if (frame.data.type !== "handshake") fail("AUTHENTICATION_REQUIRED", "Authenticate the Runtime connection first")
       return authenticate(socket, frame.data)
+    }
+    if (frame.data.type === "notification") {
+      const connection = captureSocket(socket, "notifications")
+      if (frame.data.connectionEpoch !== connection.handshake.connectionEpoch)
+        stale(connection.handshake.connectionEpoch)
+      if (!input.onNotification) fail("SERVICE_UNAVAILABLE", "Notifications are unavailable")
+      await input.onNotification(connection, frame.data.notice)
+      connection.assertCurrent()
+      return
     }
     if (frame.data.type === "receipt") {
       const connection = captureSocket(socket, frame.data.reply.kind === "handoff" ? "handoffs" : true)

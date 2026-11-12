@@ -279,6 +279,45 @@ export type OrgApiTokenRevoke = {
   expectedRevision: number
 }
 
+export type OrgSessionBinding = {
+  schemaVersion: 1
+  orgID: string
+  projectID: string
+  creatorID: string
+  driverRuntimeID: string
+  bindingEpoch: number
+}
+
+export type OrgNotificationObservation = {
+  noticeID: string
+  kind: "completion" | "error"
+  sessionID: string
+  binding: OrgSessionBinding
+  occurredAt: number
+}
+
+export type OrgNotificationFrame =
+  | {
+      orgID: string
+      accountID: string
+      deploymentIncarnation: string
+      authRevision: number
+      type: "ready"
+      streamID: string
+      sequence: 0
+    }
+  | {
+      type: "notice"
+      streamID: string
+      sequence: number
+      notice: OrgNotificationObservation
+    }
+  | {
+      type: "heartbeat"
+      streamID: string
+      sequence: number
+    }
+
 export type OrgRuntimePublicKey = string
 
 export type OrgRuntimeRegistration =
@@ -909,15 +948,6 @@ export type OrgSyncBlobStatus = {
   receivedBytes: number
   complete: boolean
   nextOffset?: number
-}
-
-export type OrgSessionBinding = {
-  schemaVersion: 1
-  orgID: string
-  projectID: string
-  creatorID: string
-  driverRuntimeID: string
-  bindingEpoch: number
 }
 
 export type OrgCommandDecisionWinner = {
@@ -5062,6 +5092,43 @@ export type OrgApiTokensRevokeResponses = {
 }
 
 export type OrgApiTokensRevokeResponse = OrgApiTokensRevokeResponses[keyof OrgApiTokensRevokeResponses]
+
+export type OrgNotificationsStreamData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/org/v1/notifications"
+}
+
+export type OrgNotificationsStreamErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgNotificationsStreamError = OrgNotificationsStreamErrors[keyof OrgNotificationsStreamErrors]
+
+export type OrgNotificationsStreamResponses = {
+  /**
+   * Ephemeral metadata frames
+   */
+  200: OrgNotificationFrame
+}
+
+export type OrgNotificationsStreamResponse = OrgNotificationsStreamResponses[keyof OrgNotificationsStreamResponses]
 
 export type OrgRuntimeRegisterHostedData = {
   body: OrgHostedRuntimeRegistration

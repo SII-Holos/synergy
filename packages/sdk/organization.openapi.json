@@ -1145,6 +1145,34 @@
         ]
       }
     },
+    "/org/v1/notifications": {
+      "get": {
+        "operationId": "orgNotifications.stream",
+        "summary": "Observe currently authorized live work notifications without retaining an inbox",
+        "responses": {
+          "200": {
+            "description": "Ephemeral metadata frames",
+            "content": { "text/event-stream": { "schema": { "$ref": "#/components/schemas/OrgNotificationFrame" } } }
+          },
+          "400": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        }
+      }
+    },
     "/org/v1/runtimes/hosted": {
       "post": {
         "operationId": "orgRuntime.registerHosted",
@@ -7084,6 +7112,91 @@
         "required": ["expectedRevision"],
         "additionalProperties": false
       },
+      "OrgSessionBinding": {
+        "type": "object",
+        "properties": {
+          "schemaVersion": { "type": "number", "const": 1 },
+          "orgID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "projectID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "creatorID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "driverRuntimeID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "bindingEpoch": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 }
+        },
+        "required": ["schemaVersion", "orgID", "projectID", "creatorID", "driverRuntimeID", "bindingEpoch"],
+        "additionalProperties": false
+      },
+      "OrgNotificationObservation": {
+        "type": "object",
+        "properties": {
+          "noticeID": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "kind": { "type": "string", "enum": ["completion", "error"] },
+          "sessionID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "binding": { "$ref": "#/components/schemas/OrgSessionBinding" },
+          "occurredAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+        },
+        "required": ["noticeID", "kind", "sessionID", "binding", "occurredAt"],
+        "additionalProperties": false
+      },
+      "OrgNotificationFrame": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "orgID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "accountID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "deploymentIncarnation": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[a-zA-Z0-9_-]+$"
+              },
+              "authRevision": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "type": { "type": "string", "const": "ready" },
+              "streamID": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              "sequence": { "type": "number", "const": 0 }
+            },
+            "required": ["orgID", "accountID", "deploymentIncarnation", "authRevision", "type", "streamID", "sequence"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": { "type": "string", "const": "notice" },
+              "streamID": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              "sequence": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+              "notice": { "$ref": "#/components/schemas/OrgNotificationObservation" }
+            },
+            "required": ["type", "streamID", "sequence", "notice"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": { "type": "string", "const": "heartbeat" },
+              "streamID": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              "sequence": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 }
+            },
+            "required": ["type", "streamID", "sequence"],
+            "additionalProperties": false
+          }
+        ]
+      },
       "OrgRuntimePublicKey": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
       "OrgRuntimeRegistration": {
         "oneOf": [
@@ -8303,19 +8416,6 @@
           "nextOffset": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
         },
         "required": ["sessionID", "shareGeneration", "hash", "bytes", "chunkBytes", "receivedBytes", "complete"],
-        "additionalProperties": false
-      },
-      "OrgSessionBinding": {
-        "type": "object",
-        "properties": {
-          "schemaVersion": { "type": "number", "const": 1 },
-          "orgID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
-          "projectID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
-          "creatorID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
-          "driverRuntimeID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
-          "bindingEpoch": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 }
-        },
-        "required": ["schemaVersion", "orgID", "projectID", "creatorID", "driverRuntimeID", "bindingEpoch"],
         "additionalProperties": false
       },
       "OrgCommandDecisionWinner": {

@@ -214,6 +214,8 @@ import type {
   OrgLeave,
   OrgLoginInput,
   OrgMemberRuntimeRegistration,
+  OrgNotificationsStreamErrors,
+  OrgNotificationsStreamResponses,
   OrgOrganizationGetErrors,
   OrgOrganizationGetResponses,
   OrgOrganizationLeaveErrors,
@@ -1172,6 +1174,19 @@ export class OrgApiTokens extends HeyApiClient {
         ...params.headers,
       },
     })
+  }
+}
+
+export class OrgNotifications extends HeyApiClient {
+  /**
+   * Observe currently authorized live work notifications without retaining an inbox
+   */
+  public stream<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).sse.get<
+      OrgNotificationsStreamResponses,
+      OrgNotificationsStreamErrors,
+      ThrowOnError
+    >({ url: "/org/v1/notifications", ...options })
   }
 }
 
@@ -4408,6 +4423,8 @@ export class OrganizationClient extends HeyApiClient {
   orgProjects = new OrgProjects({ client: this.client })
 
   orgApiTokens = new OrgApiTokens({ client: this.client })
+
+  orgNotifications = new OrgNotifications({ client: this.client })
 
   orgRuntime = new OrgRuntime({ client: this.client })
 

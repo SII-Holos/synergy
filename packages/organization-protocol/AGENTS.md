@@ -1,8 +1,8 @@
 # Organization Protocol
 
-Own versioned service, Runtime and client DTOs. Exclude execution, storage, HTTP and UI. Reject unknown versions/fields; build strings never decide compatibility.
+Own versioned service/Runtime/client DTOs; exclude execution, storage, HTTP and UI. Reject unknown versions/fields; build strings never decide compatibility.
 
-Run `bun run typecheck` and `bun run test`; verify mounted OpenAPI and regenerate the SDK when a schema becomes API-visible.
+Run `bun run typecheck` and `bun run test`; verify mounted OpenAPI and regenerate SDKs when a schema becomes API-visible.
 
 Handoff proofs/plans bind purpose, ownership, operations, watermarks and connections. Validate signature domains. Distinguish file hashes from directory CAS receipts. Refresh authority; reject system-driven human controls. Test tampering/completion. Ranges never authorize arbitrary content.
 
@@ -24,7 +24,7 @@ Resource-description proofs establish accepted intake before materialization. Ke
 
 Gateway capabilities bind one call and finite resource limits. Keep machine request and worker invocation signatures separate. Verify token bounds, altered targets and signature separation in `test/gateway.test.ts`.
 
-Shared synchronization DTOs are strict and generation-bound. Explicitly shared transcripts carry portable message/part DTOs and content references; private bodies remain Runtime-owned. Reject local paths, credentials and permanent asset URLs. Keep batches contiguous and payload-hashed, with explicit cursor/checkpoint semantics. API-visible changes require mounted OpenAPI and organization SDK regeneration.
+Shared synchronization DTOs are strict and generation-bound. Notifications bound frames/audience/sequences; reconnect never replays. Explicitly shared transcripts carry portable message/part DTOs and content references; private bodies remain Runtime-owned. Reject local paths, credentials and permanent asset URLs. Keep batches contiguous and payload-hashed, with explicit cursor/checkpoint semantics. API changes require mounted OpenAPI and SDK regeneration.
 
 Private field consumption validates the same wire identities, versions, offsets and original-content state through `Read.matches`. Keep `read-content` stateless and transport-independent: typed read, awaited append and incremental hash ports only. Bound each chunk, propagate cancellation and retain partial-original status through completion. Preparation returns its progress and verified prefix offset without polling or finalizing the digest; resumption retains the same sink and hash state. Sinks publish only after the final digest succeeds.
 
