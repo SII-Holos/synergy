@@ -2,10 +2,11 @@ import { expect, spyOn, test } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { RuntimeMaintenance } from "../../src/storage/runtime-maintenance"
+import { MaintenanceRetirementRecords } from "../../src/storage/maintenance-retirement-records"
 import { Storage } from "../../src/storage/storage"
 import {
   TransactionalStore,
-  type StoreTransaction,
+  StoreTransaction,
   type TransactionOptions,
 } from "../../src/storage/transactional-store"
 import { StorageCommitUnknownError } from "../../src/storage/errors"
@@ -117,6 +118,109 @@ test("native owner release validates the actual opaque lease and releasing phase
     await RuntimeMaintenance.release(lease)
     expect(releases).toBe(1)
     await expect(RuntimeMaintenance.assertReleasing(lease)).rejects.toThrow()
+  })
+})
+
+test("an immutable retirement reservation permanently retains its original frozen source operation", async () => {
+  await using f = await fixture()
+  const frozen = await f.run(async () => {
+    let released = 0
+    RuntimeMaintenance.configure({ required: ["writer"] })
+    RuntimeMaintenance.register("writer", {
+      version: 1,
+      async suspend() {},
+      async drain() {},
+      async inspect() {
+        return []
+      },
+      async release() {
+        released++
+      },
+    })
+    const lease = await RuntimeMaintenance.begin({ purpose: "organization-backup", requestID: actor.requestID, actor })
+    await RuntimeMaintenance.freeze(lease, await RuntimeMaintenance.drain(lease))
+    const frozen = await RuntimeMaintenance.status()
+    if (!frozen) throw new Error("Frozen source operation is absent")
+    const referenceHash = "a".repeat(64)
+    const transaction = f.store.transaction.bind(f.store)
+    const unknown = new StorageCommitUnknownError("source-retirement", new Error("Retirement acknowledgement lost"))
+    let lost = false
+    using fault = spyOn(f.store, "transaction").mockImplementation(
+      async <T>(body: (tx: StoreTransaction) => Promise<T>, options?: TransactionOptions) => {
+        const result = await transaction(body, options)
+        if (!lost && MaintenanceRetirementRecords.Info.safeParse(result).success) {
+          lost = true
+          throw unknown
+        }
+        return result
+      },
+    )
+    await expect(RuntimeMaintenance.reserveRetirement(lease, referenceHash)).rejects.toThrow("callback")
+    await RuntimeMaintenance.withFrozen(lease, async () => {
+      await expect(RuntimeMaintenance.reserveRetirement({ ...lease }, referenceHash)).rejects.toThrow()
+      await expect(RuntimeMaintenance.reserveRetirement(lease, referenceHash)).rejects.toBe(unknown)
+      const record = await RuntimeMaintenance.retirement(lease.maintenanceID)
+      if (!record) throw new Error("Committed source retirement reservation is absent")
+      expect(record.source).toEqual(frozen)
+      expect(record.referenceHash).toBe(referenceHash)
+      expect(await RuntimeMaintenance.reserveRetirement(lease, referenceHash)).toEqual(record)
+      await expect(RuntimeMaintenance.reserveRetirement(lease, "b".repeat(64))).rejects.toThrow("another")
+    })
+    expect(await RuntimeMaintenance.status()).toEqual(frozen)
+    await expect(RuntimeMaintenance.release(lease)).rejects.toThrow("retirement")
+    expect(released).toBe(0)
+    await expect(Storage.write(["canonical", "retired-source"], { resumed: true })).rejects.toThrow()
+    expect((await RuntimeMaintenance.retirement(lease.maintenanceID))?.referenceHash).toBe(referenceHash)
+    return frozen
+  })
+  await f.restart()
+  await f.run(async () => {
+    RuntimeMaintenance.registerProtection()
+    await expect(RuntimeMaintenance.assertAdmission()).rejects.toThrow()
+    expect((await RuntimeMaintenance.retirement(frozen.maintenanceID))?.source).toEqual(frozen)
+    await f.store.remove(["runtime_maintenance", "current"])
+    await f.store.removeTree(["runtime_maintenance", "operations"])
+    await expect(RuntimeMaintenance.assertAdmission()).rejects.toThrow("current operation pointer")
+    expect((await RuntimeMaintenance.retirement(frozen.maintenanceID))?.source).toEqual(frozen)
+  })
+})
+
+test("cancelling a source reservation after its actual write rolls back the permanent hold", async () => {
+  await using f = await fixture()
+  await f.run(async () => {
+    RuntimeMaintenance.configure({ required: ["writer"] })
+    RuntimeMaintenance.register("writer", {
+      version: 1,
+      async suspend() {},
+      async drain() {},
+      async inspect() {
+        return []
+      },
+      async release() {},
+    })
+    const lease = await RuntimeMaintenance.begin({ purpose: "organization-backup", requestID: actor.requestID, actor })
+    await RuntimeMaintenance.freeze(lease, await RuntimeMaintenance.drain(lease))
+    const controller = new AbortController()
+    const reason = new Error("Source retirement cancelled at final write")
+    const write = StoreTransaction.prototype.write
+    using barrier = spyOn(StoreTransaction.prototype, "write").mockImplementation(async function (
+      this: StoreTransaction,
+      key,
+      value,
+    ) {
+      const result = await write.call(this, key, value)
+      if (key[0] === "runtime_maintenance" && key[1] === "retirements") controller.abort(reason)
+      return result
+    })
+    await expect(
+      RuntimeMaintenance.withFrozen(lease, () => RuntimeMaintenance.reserveRetirement(lease, "a".repeat(64)), {
+        signal: controller.signal,
+      }),
+    ).rejects.toBe(reason)
+    expect(await RuntimeMaintenance.retirement(lease.maintenanceID)).toBeUndefined()
+    expect((await RuntimeMaintenance.status())?.phase).toBe("frozen")
+    await RuntimeMaintenance.release(lease)
+    await RuntimeMaintenance.assertAdmission()
   })
 })
 
@@ -295,8 +399,12 @@ test("native admission reopens only after the original released commit is confir
       version: 1,
       async suspend() {},
       async drain() {},
-      async inspect() { return [] },
-      async release() { releases++ },
+      async inspect() {
+        return []
+      },
+      async release() {
+        releases++
+      },
       async released(context) {
         await RuntimeMaintenance.assertReleased(context.lease)
         await expect(RuntimeMaintenance.assertReleased({ ...context.lease })).rejects.toThrow()
@@ -313,7 +421,10 @@ test("native admission reopens only after the original released commit is confir
         const info = RuntimeMaintenance.Info.safeParse(result)
         if (!lost && info.success && info.data.phase === "released") {
           lost = true
-          throw new StorageCommitUnknownError("runtime-maintenance-release", new Error("Fixture released acknowledgement lost"))
+          throw new StorageCommitUnknownError(
+            "runtime-maintenance-release",
+            new Error("Fixture released acknowledgement lost"),
+          )
         }
         return result
       },

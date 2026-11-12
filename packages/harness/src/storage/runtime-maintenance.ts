@@ -8,6 +8,8 @@ import { Lock } from "../util/lock"
 import { Storage } from "./storage"
 import { StorageMutationGuard } from "./mutation-guard"
 import { StorageCheckpoint } from "./checkpoint"
+import { RuntimeMaintenanceSchema as Schema } from "./runtime-maintenance-schema"
+import { MaintenanceRetirementRecords as Retirements } from "./maintenance-retirement-records"
 import type { StoreTransaction, TransactionOptions } from "./transactional-store"
 
 const ID = z.string().min(1).max(128)
@@ -22,10 +24,7 @@ const restorationKey = (installationID: string) => [...root, "restorations", ins
 const startsWith = (key: readonly string[], prefix: readonly string[]) =>
   prefix.every((part, index) => key[index] === part)
 const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex")
-const Operator = ActorStamp.Info.refine(
-  (actor) => actor.kind !== "account",
-  "Maintenance requires trusted Host authority",
-)
+const Operator = Schema.Operator
 const mutation = RuntimeContext.createAsyncContext<{
   runtime: RuntimeContext.Instance
   store: Storage.Handle["store"]
@@ -38,6 +37,13 @@ const restorationWrites = RuntimeContext.createAsyncContext<{
   request: HomeRestoration.Request
   open: boolean
 }>()
+const frozenWork = RuntimeContext.createAsyncContext<{
+  runtime: RuntimeContext.Instance
+  store: Storage.Handle["store"]
+  lease: RuntimeMaintenance.Lease
+  signal: AbortSignal
+  open: boolean
+}>()
 function mutate<T>(body: (tx: StoreTransaction) => Promise<T>, options?: TransactionOptions) {
   return mutation.run({ runtime: RuntimeContext.current(), store: Storage.current().store }, () =>
     Storage.transaction(body, options),
@@ -45,7 +51,7 @@ function mutate<T>(body: (tx: StoreTransaction) => Promise<T>, options?: Transac
 }
 
 export namespace RuntimeMaintenance {
-  export const Purpose = z.enum(["organization-backup", "organization-restore"])
+  export const Purpose = Schema.Purpose
   export type Purpose = z.infer<typeof Purpose>
   export const Requirement = z.strictObject({
     code: ID,
@@ -58,21 +64,7 @@ export namespace RuntimeMaintenance {
     "RuntimeMaintenanceBlocked",
     z.object({ message: z.string(), maintenanceID: ID.optional(), requirements: z.array(Requirement).optional() }),
   )
-  export const Info = z.strictObject({
-    version: z.literal(1),
-    maintenanceID: ID,
-    requestID: ID,
-    requestHash: Hash,
-    purpose: Purpose,
-    sourceRuntimeID: ID,
-    cohortHash: Hash,
-    phase: z.enum(["draining", "frozen", "releasing", "released", "recovery-held"]),
-    revision: Count.positive(),
-    tailRevision: Count,
-    actor: Operator,
-    createdAt: Count,
-    updatedAt: Count,
-  })
+  export const Info = Schema.Info
   export type Info = z.infer<typeof Info>
   export const Restoration = z.strictObject({
     version: z.literal(1),
@@ -133,13 +125,22 @@ export namespace RuntimeMaintenance {
   async function current(tx: StoreTransaction) {
     const pointer = await read(tx, z.strictObject({ maintenanceID: ID }), currentKey)
     if (!pointer) {
-      if ((await tx.queryKeys({ prefix: [...root, "operations"], limit: 1 })).length)
+      if ((await tx.queryKeys({ prefix: root, limit: 1 })).length)
         throw new Blocked({ message: "Maintenance history has no current operation pointer" })
       return
     }
-    const info = await read(tx, Info, operationKey(pointer.maintenanceID))
+    const [value, retirement] = await tx.readMany([
+      operationKey(pointer.maintenanceID),
+      Retirements.key(pointer.maintenanceID),
+    ])
+    const info = value === undefined ? undefined : Info.parse(value)
     if (!info || info.maintenanceID !== pointer.maintenanceID)
       throw new Blocked({ message: "Maintenance operation is missing or inconsistent" })
+    if (
+      retirement !== undefined &&
+      digest(Retirements.parse(Retirements.key(pointer.maintenanceID), retirement).source) !== digest(info)
+    )
+      throw new Blocked({ message: "Source retirement no longer matches its frozen maintenance history" })
     return info
   }
   function owners() {
@@ -272,6 +273,45 @@ export namespace RuntimeMaintenance {
   export function restoration(installationID: string) {
     z.uuid().parse(installationID)
     return Storage.snapshot((tx) => read(tx, Restoration, restorationKey(installationID)))
+  }
+  export function retirement(maintenanceID: string) {
+    ID.parse(maintenanceID)
+    return Retirements.read(maintenanceID)
+  }
+  export async function reserveRetirement(lease: Lease, value: string) {
+    const referenceHash = Hash.parse(value)
+    const frame = frozenWork.getStore()
+    const assert = () => {
+      if (
+        !frame?.open ||
+        frame.lease !== lease ||
+        frame.runtime !== RuntimeContext.current() ||
+        frame.store !== Storage.current().store
+      )
+        throw new Blocked({ message: "Source retirement requires its original frozen callback" })
+      frame.signal.throwIfAborted()
+      identity(lease)
+    }
+    assert()
+    return mutate(
+      async (tx) => {
+        assert()
+        const source = await requireCurrent(tx, lease)
+        if (source.purpose !== "organization-backup" || source.phase !== "frozen")
+          throw new Blocked({ message: "Source retirement requires its actual frozen operation" })
+        const expected = Retirements.Info.parse({ version: 1, source, referenceHash })
+        const retained = await Retirements.read(lease.maintenanceID)
+        assert()
+        if (retained) {
+          if (digest(retained) !== digest(expected))
+            throw new Blocked({ message: "Source retirement is reserved for another original reference" })
+          return retained
+        }
+        await Storage.write(Retirements.key(lease.maintenanceID), expected)
+        return expected
+      },
+      { commitGuard: assert },
+    )
   }
   async function requireRestoration(tx: StoreTransaction, target: HomeRestoration.Info) {
     const retained = await read(tx, Restoration, restorationKey(target.installationID))
@@ -499,10 +539,21 @@ export namespace RuntimeMaintenance {
     await assertFrozen()
     const currentContext = context(lease, options.signal)
     currentContext.signal.throwIfAborted()
-    const result = await body(currentContext)
-    currentContext.signal.throwIfAborted()
-    await assertFrozen()
-    return result
+    const frame = {
+      runtime: RuntimeContext.current(),
+      store: Storage.current().store,
+      lease,
+      signal: currentContext.signal,
+      open: true,
+    }
+    try {
+      const result = await frozenWork.run(frame, () => body(currentContext))
+      currentContext.signal.throwIfAborted()
+      await assertFrozen()
+      return result
+    } finally {
+      frame.open = false
+    }
   }
   export async function assertAdmission() {
     const info = await status()
@@ -697,6 +748,8 @@ export namespace RuntimeMaintenance {
       ? await Lock.writeWithSignal("runtime-maintenance", options.signal)
       : await Lock.write("runtime-maintenance")
     const initial = await Storage.snapshot((tx) => requireCurrent(tx, lease))
+    if (await Retirements.read(initial.maintenanceID))
+      throw new Blocked({ message: "Source retirement permanently retains its native maintenance hold" })
     if (initial.phase === "released") {
       await reopen(context(lease, options.signal))
       return initial

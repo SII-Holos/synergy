@@ -1,5 +1,7 @@
 import path from "node:path"
 import { createReadStream } from "node:fs"
+import fs from "node:fs/promises"
+import { createHash } from "node:crypto"
 import { z } from "zod"
 import { AtomicFile } from "@ericsanchezok/synergy-util/atomic-file"
 import { withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
@@ -25,7 +27,19 @@ export namespace HomeOwnershipFile {
     incarnation: z.uuid(),
   })
   export type RestorationInfo = z.infer<typeof RestorationInfo>
-  export const Info = z.discriminatedUnion("schemaVersion", [LegacyInfo, FencedInfo, RestorationInfo])
+  const Source = z.discriminatedUnion("schemaVersion", [FencedInfo, RestorationInfo])
+  export const RetirementInfo = FencedInfo.extend({
+    schemaVersion: z.literal(4),
+    maintenanceID: z.string().min(1).max(128),
+    referenceHash: z.string().regex(/^[a-f0-9]{64}$/),
+    physicalHash: z.string().regex(/^[a-f0-9]{64}$/),
+    source: Source,
+  }).refine(
+    (value) => value.owner === value.source.owner && value.identity === value.source.identity,
+    "Source retirement must retain its original Home identity",
+  )
+  export type RetirementInfo = z.infer<typeof RetirementInfo>
+  export const Info = z.discriminatedUnion("schemaVersion", [LegacyInfo, FencedInfo, RestorationInfo, RetirementInfo])
   export type Info = z.infer<typeof Info>
 
   export class Error extends globalThis.Error {
@@ -42,6 +56,23 @@ export namespace HomeOwnershipFile {
     assertIsolatedTestHome(root, entry, process.argv, input.env)
     const selected = input.selected ? Info.parse(input.selected) : undefined
     const filename = path.join(root, "home-ownership.json")
+    async function physicalHash() {
+      const info = await fs.lstat(root)
+      const canonical = await fs.realpath(root)
+      const after = await fs.lstat(root)
+      if (
+        !info.isDirectory() ||
+        info.isSymbolicLink() ||
+        !after.isDirectory() ||
+        after.isSymbolicLink() ||
+        after.dev !== info.dev ||
+        after.ino !== info.ino
+      )
+        throw new Error("Native Home physical directory is invalid or changed")
+      return createHash("sha256")
+        .update(JSON.stringify([canonical, info.dev.toString(), info.ino.toString()]))
+        .digest("hex")
+    }
 
     async function read() {
       const chunks: Buffer[] = []
@@ -75,9 +106,17 @@ export namespace HomeOwnershipFile {
           selected.readerContract !== current.readerContract) ||
         (selected.schemaVersion === 3 &&
           current.schemaVersion === 3 &&
-          (selected.installationID !== current.installationID || selected.incarnation !== current.incarnation))
+          (selected.installationID !== current.installationID || selected.incarnation !== current.incarnation)) ||
+        (selected.schemaVersion === 4 &&
+          current.schemaVersion === 4 &&
+          (selected.maintenanceID !== current.maintenanceID ||
+            selected.referenceHash !== current.referenceHash ||
+            selected.physicalHash !== current.physicalHash ||
+            JSON.stringify(selected.source) !== JSON.stringify(current.source)))
       )
         throw new Error("Home owner format requires its explicit migration")
+      if (current.schemaVersion === 4 && current.physicalHash !== (await physicalHash()))
+        throw new Error("Retired Home physical identity does not match its original directory")
       return current
     }
 
@@ -113,6 +152,23 @@ export namespace HomeOwnershipFile {
         },
       )
     }
-    return { read, assert, persist, upgrade }
+    async function retire(expected: z.infer<typeof Source>) {
+      const prior = Source.parse(expected)
+      if (!selected || selected.schemaVersion !== 4 || JSON.stringify(selected.source) !== JSON.stringify(prior))
+        throw new Error("Source retirement requires its original fenced Home identity")
+      await withFileLock({ directory: path.join(root, "state", ".locks"), key: "home-ownership" }, async () => {
+        if (selected.physicalHash !== (await physicalHash()))
+          throw new Error("Source Home physical identity changed before permanent retirement")
+        const info = await fs.lstat(filename)
+        if (!info.isFile() || info.isSymbolicLink()) throw new Error("Source Home ownership is invalid or changed")
+        const current = await read()
+        if (JSON.stringify(current) === JSON.stringify(selected)) return
+        if (JSON.stringify(current) !== JSON.stringify(prior))
+          throw new Error("Source Home owner changed before permanent retirement")
+        await AtomicFile.writeJsonAtomic(filename, JSON.stringify(selected) + "\n", { private: true, durable: true })
+        await assert({ required: true })
+      })
+    }
+    return { read, assert, persist, upgrade, retire, physicalHash }
   }
 }
