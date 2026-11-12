@@ -431,17 +431,24 @@ async function peer(
         controls.push(command.delivery)
         if (dropInput) return
       }
-      const reply = await runtime.run(async (): Promise<Command.Reply> =>
-        command.kind === "create"
-          ? { kind: "result", result: await intake.create(command.delivery) }
-          : command.kind === "control"
-            ? { kind: "result", result: await intake.control(command.delivery) }
-            : command.kind === "input"
-              ? { kind: "result", result: await intake.input(command.delivery) }
-              : command.kind === "skip"
-                ? { kind: "result", result: await intake.skip(command.authorization) }
-                : { kind: "query", query: await intake.query(command.authorization) },
-      )
+      const reply = await runtime.run(async (): Promise<Command.Reply> => {
+        switch (command.kind) {
+          case "create":
+            return { kind: "result", result: await intake.create(command.delivery) }
+          case "control":
+            return { kind: "result", result: await intake.control(command.delivery) }
+          case "input":
+            return { kind: "result", result: await intake.input(command.delivery) }
+          case "decision":
+            return { kind: "result", result: await intake.decision(command.delivery) }
+          case "skip":
+            return { kind: "result", result: await intake.skip(command.authorization) }
+          case "query":
+            return { kind: "query", query: await intake.query(command.authorization) }
+          default:
+            throw new Error(`Unsupported command in the native peer fixture: ${command.kind}`)
+        }
+      })
       const receipt: Runtime.ClientFrame = {
         type: "receipt",
         connectionEpoch: epoch,

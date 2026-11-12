@@ -64,6 +64,7 @@ export function cancellations(input: unknown, targets: Target[] = ["native", "re
             let container: string | undefined
             {
               await using resources = await EnvironmentResources.resolve({
+                origin: host.origin(context.scenario.id),
                 ...selection,
                 needs: { workspace: true, execution: "exec" },
               })

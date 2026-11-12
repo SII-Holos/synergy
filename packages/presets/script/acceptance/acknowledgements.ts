@@ -78,6 +78,7 @@ export function acknowledgements(input: unknown): Driver {
             try {
               try {
                 const unexpected = await Environment.acquire(environmentID, {
+                  ownership: host.origin(context.scenario.id),
                   scopeID: "home",
                   useID: "acceptance",
                   capabilities: ["exec"],
@@ -92,6 +93,7 @@ export function acknowledgements(input: unknown): Driver {
               await atomicJSON(path.join(context.directory, "allocation-uncertain.json"), uncertain)
               await context.checkpoint("reply-lost", [{ path: "allocation-uncertain.json", kind: "product" }])
               const use = await Environment.acquire(environmentID, {
+                ownership: host.origin(context.scenario.id),
                 scopeID: "home",
                 useID: "acceptance",
                 capabilities: ["exec"],
@@ -116,11 +118,13 @@ export function acknowledgements(input: unknown): Driver {
             workspaceID = workspace.id
             const identity = { scopeID: "home", environmentID, workspaceID }
             await using resources = await EnvironmentResources.resolve({
+              origin: host.origin(context.scenario.id),
               ...identity,
               needs: { workspace: true, execution: "exec" },
             })
             operationID = `acceptance_${crypto.randomUUID()}`
             await EnvironmentExecution.start({
+              origin: host.origin(context.scenario.id),
               id: operationID,
               scopeID: "home",
               environmentID,

@@ -92,6 +92,7 @@ export function permissionTargets(input: unknown): Driver {
             await atomicJSON(path.join(directory, "identity.json"), selection)
             let remoteID = ""
             const resources = await EnvironmentResources.resolve({
+              origin: host.origin(context.scenario.id),
               ...selection,
               needs: { workspace: true, execution: "exec" },
             })

@@ -8,6 +8,7 @@ import { PresetRuntimeHandle } from "../../src/server/runtime-handle"
 import { recordedProvider } from "./provider"
 import { atomicJSON } from "./evidence"
 import { type Settings, validateCatalog } from "./settings"
+import { acceptanceOrigins } from "./origin"
 
 export async function prepareRuntime(directory: string, settings: Settings, gateway: { url: string; token: string }) {
   const catalog = await validateCatalog(settings)
@@ -57,6 +58,7 @@ export async function acceptanceRuntime(
   })
   let runtime
   let home: string
+  const origins = acceptanceOrigins()
   try {
     const prepared = await prepareRuntime(directory, settings, gateway)
     home = prepared.home
@@ -77,8 +79,14 @@ export async function acceptanceRuntime(
           storage: options.storage,
           network: { hostname: "127.0.0.1", port },
           webAppDirectory: options.webAppDirectory,
+          additionalComponents: [origins.component],
         })
-      : await PresetRuntimeHandle.openTask({ host: prepared.host, mode: "oneshot", storage: options.storage })
+      : await PresetRuntimeHandle.openTask({
+          host: prepared.host,
+          mode: "oneshot",
+          storage: options.storage,
+          additionalComponents: [origins.component],
+        })
   } catch (error) {
     await gateway[Symbol.asyncDispose]()
     throw error
@@ -87,6 +95,7 @@ export async function acceptanceRuntime(
     runtime,
     recorder: gateway,
     home,
+    origin: origins.capture,
     model: { providerID: settings.providerID, modelID: settings.modelID },
     async [Symbol.asyncDispose]() {
       try {

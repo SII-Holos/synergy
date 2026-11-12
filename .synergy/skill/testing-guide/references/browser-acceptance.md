@@ -33,6 +33,8 @@ When upgrading compiler or patched UI dependencies, resolve the installed transi
 
 ## Local Joint Acceptance
 
+Compose controlled acceptance observers as explicit native Host owners before opening their Runtime. Reuse the canonical Presets component list through typed additional components and forward the returned opaque origin through Resources, Execution and Use admission. Keep model-driven effects under their original Session/Run/tool provenance. Verify that allocation-fault probes actually reach their provider; a missing-origin error before dispatch is uncovered behavior, not the requested fault.
+
 Identify the intended foreground provider request independently of streaming: title and other auxiliary calls can also stream, and journal enumeration is not request chronology. Test both request orders and reject a missing first attachment body even when a later tool response contains its content.
 
 Publish a captured request's bytes and journal entry together before forwarding upstream. Auxiliary requests may begin while an observer enumerates the journal; hold the request-body write in a deterministic regression and require every visible entry to have readable bytes. Preserve unknown accounting for already published incomplete or corrupt records instead of ignoring evidence failures.

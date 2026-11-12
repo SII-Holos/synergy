@@ -108,6 +108,7 @@ export function sharedDelegation(settings: Settings): Driver {
             environmentID: environment.id,
           })
           await using resources = await EnvironmentResources.resolve({
+            origin: host.origin(context.scenario.id),
             scopeID: scope.id,
             environmentID: environment.id,
             workspaceID: parent.workspaceID,

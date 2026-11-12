@@ -1,4 +1,4 @@
-import { openAgentRuntime } from "@ericsanchezok/synergy-agent-runtime"
+import { openAgentRuntime, type RuntimeComponent } from "@ericsanchezok/synergy-agent-runtime"
 import { createLocalHost, type LocalRuntimeOptions } from "@ericsanchezok/synergy-local-runtime"
 import { localRuntime } from "@ericsanchezok/synergy-local-runtime/component"
 import { plugins } from "@ericsanchezok/synergy-plugin-host/component"
@@ -8,13 +8,18 @@ import { webApp } from "@ericsanchezok/synergy-server/web-app"
 export namespace PresetRuntimeHandle {
   export type Handle = Awaited<ReturnType<typeof open>>
 
-  export type Options = LocalRuntimeOptions & { webAppDirectory?: string; configSchemaPath?: string }
+  export type Options = LocalRuntimeOptions & {
+    webAppDirectory?: string
+    configSchemaPath?: string
+    additionalComponents?: readonly RuntimeComponent[]
+  }
 
   const components = (options: Options) => [
     localRuntime({ workers: false, environment: options.environment }),
     plugins(),
     ...fullComponents(),
     ...(options.webAppDirectory ? [webApp({ directory: options.webAppDirectory })] : []),
+    ...(options.additionalComponents ?? []),
   ]
 
   export async function openTask(options: Options) {
