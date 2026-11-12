@@ -11,6 +11,7 @@ import {
   SessionTransferEpochs as Epochs,
   SessionTransferOwners as Owners,
   SessionTransferStaging as Staging,
+  SessionTransferWorkspaces as Files,
 } from "@ericsanchezok/synergy-harness/session/transfer"
 import { OrganizationHandoffObjects as Objects } from "./handoff-objects"
 import { OrganizationHandoffReceive as Receive } from "./handoff-receive"
@@ -204,6 +205,27 @@ export namespace OrganizationHandoffTarget {
             ],
           })
         const selected = Mapping.parse(await input.mapping(member.session))
+        const frozen = plan.frozen?.proof
+        if (frozen?.purpose === "source-frozen" && frozen.fileClosureHash !== null) {
+          const native = await Files.targetMapping({
+            handoffID: plan.handoffID,
+            sessionID: member.session.id,
+            signal: input.signal,
+          })
+          const supplied = selected.workspaceIDs
+          if (supplied !== undefined && (supplied === null || Array.isArray(supplied) || typeof supplied !== "object"))
+            fail("Destination Workspace mapping must name the exact prepared native identities")
+          for (const [sourceID, targetID] of Object.entries(supplied ?? {}))
+            if (native.workspaceIDs[sourceID] !== targetID)
+              fail("Destination Workspace mapping conflicts with its prepared native identity")
+          if (
+            selected.workspaceReceiptHash !== undefined &&
+            selected.workspaceReceiptHash !== native.workspaceReceiptHash
+          )
+            fail("Destination Workspace mapping conflicts with its prepared native receipt")
+          selected.workspaceIDs = native.workspaceIDs
+          selected.workspaceReceiptHash = native.workspaceReceiptHash
+        }
         const mapping = Object.fromEntries(
           Object.entries(selected)
             .sort(([left], [right]) => ordered(left, right))
@@ -325,6 +347,14 @@ export namespace OrganizationHandoffTarget {
           })
           if (aggregate.digest !== frozen.closureHash)
             fail("Destination native cohort differs from its frozen source closure")
+          if (Boolean(root.owners["session-workspaces"]) !== (frozen.fileClosureHash !== null))
+            fail("Destination Workspace owner does not match the frozen file closure")
+          if (frozen.fileClosureHash !== null)
+            await Files.prepareTarget({
+              binding: binding(plan),
+              expectedReceiptHash: frozen.fileClosureHash,
+              signal: input.signal,
+            })
           const prepared = await contexts(input, plan, manifestHash, false)
           const fact = Handoff.Proof.parse({
             ...factBinding(plan),
@@ -333,6 +363,7 @@ export namespace OrganizationHandoffTarget {
             compatibilityHash: compatibilityHash(root.owners),
             convertedHash: prepared.convertedHash,
             closureHash: aggregate.digest,
+            fileClosureHash: frozen.fileClosureHash,
             workspaceMoveReceiptHash: frozen.workspaceMoveReceiptHash,
             paused: true,
           })
@@ -401,17 +432,21 @@ export namespace OrganizationHandoffTarget {
             preparedHash: permit.preparedHash,
             paused: true,
           })
-          await Epochs.activateMany({
-            bindings: prepared.bindings,
-            manifestHash,
-            signal: input.signal,
-            async publish() {
-              assertOwner(input.signal)
-              await Staging.publish({ handoffID: plan.handoffID, contexts: prepared.contexts })
-              await Storage.write(key(plan, "activated"), Receipt.parse({ version: 1, plan, fact }))
-              assertOwner(input.signal)
-            },
-          })
+          const publish = () =>
+            Epochs.activateMany({
+              bindings: prepared.bindings,
+              manifestHash,
+              signal: input.signal,
+              async publish() {
+                assertOwner(input.signal)
+                await Staging.publish({ handoffID: plan.handoffID, contexts: prepared.contexts })
+                await Storage.write(key(plan, "activated"), Receipt.parse({ version: 1, plan, fact }))
+                assertOwner(input.signal)
+              },
+            })
+          if (preparedFact.fileClosureHash !== null)
+            await Files.withTargetPublication({ handoffID: plan.handoffID, signal: input.signal }, publish)
+          else await publish()
           assertOwner(input.signal)
           return fact
         })

@@ -2128,6 +2128,7 @@ export type OrgHandoffProof =
       receivedSeq: number
       compatibilityHash: string
       closureHash: string
+      fileClosureHash: string | null
       workspaceMoveReceiptHash: string | null
       paused: true
       drained: true
@@ -2149,6 +2150,7 @@ export type OrgHandoffProof =
       compatibilityHash: string
       convertedHash: string
       closureHash: string
+      fileClosureHash: string | null
       workspaceMoveReceiptHash: string | null
       paused: true
     }
@@ -3382,6 +3384,175 @@ export type OrgExecutionGrant =
       }
     }
 
+export type OrgExecutionReleaseReceipt = {
+  schemaVersion: 1
+  orgID: string
+  deploymentIncarnation: string
+  runtimeID: string
+  sessionID: string
+  bindingEpoch: number
+  grantID: string
+  rootID: string
+  generation: number
+  outcome: "completed" | "failed" | "cancelled"
+  materialized?: boolean
+  releasedAt: number
+}
+
+export type OrgExecutionInspection =
+  | {
+      schemaVersion: 1
+      orgID: string
+      deploymentIncarnation: string
+      runtimeID: string
+      connectionEpoch: number
+      sessionID: string
+      bindingEpoch: number
+      rootID: string
+      originGrantID: string
+      controlAdmissionID?: string
+      requestedGrantID?: string
+      requestedGeneration?: number
+      inspectedAt: number
+      state: "known"
+      grant: OrgExecutionGrant
+      release?: OrgExecutionReleaseReceipt
+    }
+  | {
+      schemaVersion: 1
+      orgID: string
+      deploymentIncarnation: string
+      runtimeID: string
+      connectionEpoch: number
+      sessionID: string
+      bindingEpoch: number
+      rootID: string
+      originGrantID: string
+      controlAdmissionID?: string
+      requestedGrantID?: string
+      requestedGeneration?: number
+      inspectedAt: number
+      state: "absent"
+    }
+
+export type OrgExecutionRetentionResult = OrgExecutionGrant | OrgExecutionInspection
+
+export type OrgExecutionInspectionProof = {
+  schemaVersion: 1
+  orgID: string
+  deploymentIncarnation: string
+  runtimeID: string
+  connectionEpoch: number
+  receipt: {
+    attempt:
+      | {
+          schemaVersion: 1
+          permit: OrgCommandPermit
+          receivedAt: number
+          status: "accepted"
+          acceptedAttemptID: string
+        }
+      | {
+          schemaVersion: 1
+          permit: OrgCommandPermit
+          receivedAt: number
+          status: "rejected"
+          reason:
+            | "EXPIRED_PERMIT"
+            | "STALE_CONNECTION"
+            | "STALE_BINDING"
+            | "SESSION_UNAVAILABLE"
+            | "TRANSFER_BLOCKED"
+            | "SEQUENCE_GAP"
+            | "SEQUENCE_CLOSED"
+            | "REQUEST_CONFLICT"
+            | "PAYLOAD_MISMATCH"
+            | "CONTROL_CONFLICT"
+        }
+      | {
+          schemaVersion: 1
+          permit: OrgCommandPermit
+          receivedAt: number
+          status: "skipped"
+        }
+    accepted?: OrgCommandInputAccepted
+    skip?: {
+      schemaVersion: 1
+      permit: {
+        schemaVersion: 1
+        purpose: "session-command-skip"
+        command: OrgCommandPermit
+        connectionEpoch: number
+        authorizedAt: number
+        deadline: number
+      }
+      receivedAt: number
+    }
+  }
+  continuation?: {
+    handoffID: string
+    receipt: {
+      attempt:
+        | {
+            schemaVersion: 1
+            permit: OrgCommandPermit
+            receivedAt: number
+            status: "accepted"
+            acceptedAttemptID: string
+          }
+        | {
+            schemaVersion: 1
+            permit: OrgCommandPermit
+            receivedAt: number
+            status: "rejected"
+            reason:
+              | "EXPIRED_PERMIT"
+              | "STALE_CONNECTION"
+              | "STALE_BINDING"
+              | "SESSION_UNAVAILABLE"
+              | "TRANSFER_BLOCKED"
+              | "SEQUENCE_GAP"
+              | "SEQUENCE_CLOSED"
+              | "REQUEST_CONFLICT"
+              | "PAYLOAD_MISMATCH"
+              | "CONTROL_CONFLICT"
+          }
+        | {
+            schemaVersion: 1
+            permit: OrgCommandPermit
+            receivedAt: number
+            status: "skipped"
+          }
+      accepted?: OrgCommandControlAccepted
+      skip?: {
+        schemaVersion: 1
+        permit: {
+          schemaVersion: 1
+          purpose: "session-command-skip"
+          command: OrgCommandPermit
+          connectionEpoch: number
+          authorizedAt: number
+          deadline: number
+        }
+        receivedAt: number
+      }
+    }
+  }
+  issuedAt: number
+  expiresAt: number
+  purpose: "execution-retention-inspection"
+  rootID: string
+  grantID?: string
+  generation?: number
+}
+
+export type OrgExecutionInspectionRequest = {
+  proof: OrgExecutionInspectionProof
+  signature: string
+}
+
+export type OrgExecutionRetentionRequest = OrgExecutionDescriptionRequest | OrgExecutionInspectionRequest
+
 export type OrgExecutionDescription = {
   grant: OrgExecutionGrant
   resources: Array<{
@@ -3536,21 +3707,6 @@ export type OrgExecutionBindingProof = {
 export type OrgExecutionBindingRequest = {
   proof: OrgExecutionBindingProof
   signature: string
-}
-
-export type OrgExecutionReleaseReceipt = {
-  schemaVersion: 1
-  orgID: string
-  deploymentIncarnation: string
-  runtimeID: string
-  sessionID: string
-  bindingEpoch: number
-  grantID: string
-  rootID: string
-  generation: number
-  outcome: "completed" | "failed" | "cancelled"
-  materialized?: boolean
-  releasedAt: number
 }
 
 export type OrgExecutionReleaseProof = {
@@ -9913,7 +10069,7 @@ export type OrgExecutionCloseHandoffResponse =
   OrgExecutionCloseHandoffResponses[keyof OrgExecutionCloseHandoffResponses]
 
 export type OrgExecutionRetentionData = {
-  body: OrgExecutionDescriptionRequest
+  body: OrgExecutionRetentionRequest
   path?: never
   query?: never
   url: "/runtime/v1/execution/retention"
@@ -9952,7 +10108,7 @@ export type OrgExecutionRetentionResponses = {
   /**
    * Success
    */
-  200: OrgExecutionGrant
+  200: OrgExecutionRetentionResult
 }
 
 export type OrgExecutionRetentionResponse = OrgExecutionRetentionResponses[keyof OrgExecutionRetentionResponses]

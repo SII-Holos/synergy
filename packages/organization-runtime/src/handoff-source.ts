@@ -12,6 +12,7 @@ import { Session } from "@ericsanchezok/synergy-harness/session"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import {
   SessionTransferSource as NativeSource,
+  SessionTransferWorkspaces as Files,
   SessionTransferEpochs as Epochs,
   SessionTransferOwners as Owners,
 } from "@ericsanchezok/synergy-harness/session/transfer"
@@ -159,7 +160,7 @@ export namespace OrganizationHandoffSource {
     async function supportedCohort(plan: Handoff.MachinePlan, signal: AbortSignal) {
       for await (const member of NativeSource.members(binding(plan), signal)) {
         const session = await Session.get(member.binding.sessionID)
-        if (session.workspaceID || session.workspace)
+        if ((session.workspaceID || session.workspace) && Owners.compatibility({ "session-workspaces": 1 }).length)
           throw new Owners.Rejected({
             message: "Source Working location needs its final file closure",
             requirements: [
@@ -198,6 +199,8 @@ export namespace OrganizationHandoffSource {
       leases.set(plan.handoffID, lease)
       await Physical.withCapture(lease, async () => {
         await supportedCohort(plan, signal)
+        if (!Owners.compatibility({ "session-workspaces": 1 }).length)
+          await Files.capture({ binding: binding(plan), signal })
       })
       Physical.assertCurrent(lease)
       return lease
@@ -418,6 +421,9 @@ export namespace OrganizationHandoffSource {
             if (!lease) lease = await capture(plan, signal)
             await source.sealSource()
             await verify()
+            const files = prepared.root.owners["session-workspaces"] ? await Files.receipt(binding(plan)) : undefined
+            if (prepared.root.owners["session-workspaces"] && !files)
+              fail("Source frozen Workspace owner has no completed native file closure")
             const fact = Handoff.Proof.parse({
               ...factBinding(plan),
               purpose: "source-frozen",
@@ -426,6 +432,7 @@ export namespace OrganizationHandoffSource {
               receivedSeq: plan.commandSeq,
               compatibilityHash: Target.compatibilityHash(prepared.root.owners),
               closureHash: prepared.closureHash,
+              fileClosureHash: files?.hash ?? null,
               workspaceMoveReceiptHash: null,
               paused: true,
               drained: true,

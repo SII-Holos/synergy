@@ -130,11 +130,21 @@ test("machine replies cannot switch handoff facts or use an object range as arbi
     receivedSeq: 9,
     compatibilityHash: "b".repeat(64),
     closureHash: "c".repeat(64),
+    fileClosureHash: null,
     workspaceMoveReceiptHash: null,
     paused: true,
     drained: true,
   })
   const fact = { proof, signature: await Handoff.signProof(proof, keys.privateKey) }
+  expect(Handoff.Proof.safeParse({ ...proof, fileClosureHash: undefined }).success).toBe(false)
+  expect(Handoff.Proof.safeParse({ ...proof, fileClosureHash: "invalid" }).success).toBe(false)
+  expect(
+    await Handoff.verifyProof(
+      { ...proof, fileClosureHash: "d".repeat(64) },
+      fact.signature,
+      await Runtime.publicKey(keys.publicKey),
+    ),
+  ).toBe(false)
   expect(
     Handoff.matchesMachine(plan, { ...reply, operation: plan.operation, object: undefined, stage: "idle", facts: [] }),
   ).toBe(false)

@@ -78,6 +78,7 @@ async function fixture() {
     receivedSeq: prepared.commandSeq,
     compatibilityHash: "b".repeat(64),
     closureHash: "c".repeat(64),
+    fileClosureHash: null,
     workspaceMoveReceiptHash: null,
     paused: true,
     drained: true,

@@ -33,7 +33,7 @@ Summaries compare Workspace checkpoints; separate tool evidence. Use version-che
 
 Cortex holds preserve task/root/input/budget/deadline/notification identity; never cancel/recreate or auto-resume. Transfer: `session/transfer`, `session/transfer-workspace`; verify `test/session/transfer.test.ts`, `test/cortex/{parent-abort,task-tool-abort}.test.ts`.
 
-Aggregate portability: atomic cohorts/epochs, ordered staging, declared dependencies, permanent surrender/retirement, prepared pins, native `session-workspaces` sources/targets. Verify `test/session/{transfer-*,workspace-*}.test.ts` and `test/storage/{artifact-stream,storage-binary-stream,object-artifacts}.test.ts`.
+Aggregate portability: atomic cohorts/epochs, ordered publication, declared dependencies, permanent surrender/retirement, prepared pins, native `session-workspaces` sources/targets. Verify `test/session/{transfer-*,workspace-*}.test.ts` and `test/storage/{artifact-stream,storage-binary-stream,object-artifacts}.test.ts`.
 
 `SessionHistory`: indexed headers/fields/attachments; page children/Cortex (`test/session/{part-field-header,attachment-content,attachment-index,cortex-index}.test.ts`).
 

@@ -294,6 +294,95 @@ export namespace OrganizationExecutionProtocol {
   export const signRelease = releaseSignatures.sign
   export const verifyRelease = releaseSignatures.verify
 
+  export const InspectionProof = ReceivedProof.safeExtend({
+    purpose: z.literal("execution-retention-inspection"),
+    rootID: Identity.ID,
+    grantID: Identity.ID.optional(),
+    generation: z.number().int().nonnegative().safe().optional(),
+  })
+    .refine(
+      (value) => value.receipt.accepted?.effect.messageID === value.rootID,
+      "Inspection requires its exact accepted task root",
+    )
+    .refine(
+      (value) => value.generation === undefined || value.grantID !== undefined,
+      "A generation selector requires its exact grant",
+    )
+    .meta({ ref: "OrgExecutionInspectionProof" })
+  export type InspectionProof = z.infer<typeof InspectionProof>
+  export const InspectionRequest = z
+    .strictObject({ proof: InspectionProof, signature: SigningSignature })
+    .meta({ ref: "OrgExecutionInspectionRequest" })
+  export type InspectionRequest = z.infer<typeof InspectionRequest>
+  const inspectionSignatures = signedProtocol(
+    InspectionProof,
+    "synergy.organization.execution.retention-inspection.v1\n",
+  )
+  export const signInspection = inspectionSignatures.sign
+  export const verifyInspection = inspectionSignatures.verify
+  const InspectionEnvelope = z.strictObject({
+    schemaVersion: z.literal(1),
+    orgID: Identity.ID,
+    deploymentIncarnation: Identity.ID,
+    runtimeID: Identity.ID,
+    connectionEpoch: Protocol.Epoch,
+    sessionID: Identity.ID,
+    bindingEpoch: Protocol.Epoch,
+    rootID: Identity.ID,
+    originGrantID: Identity.ID,
+    controlAdmissionID: Identity.ID.optional(),
+    requestedGrantID: Identity.ID.optional(),
+    requestedGeneration: z.number().int().nonnegative().safe().optional(),
+    inspectedAt: z.number().int().nonnegative().safe(),
+  })
+  export const Inspection = z
+    .discriminatedUnion("state", [
+      InspectionEnvelope.extend({ state: z.literal("known"), grant: Grant, release: ReleaseReceipt.optional() }),
+      InspectionEnvelope.extend({ state: z.literal("absent") }),
+    ])
+    .refine((value) => {
+      if (value.requestedGeneration !== undefined && value.requestedGrantID === undefined) return false
+      if (value.state === "absent")
+        return value.requestedGrantID === undefined && value.controlAdmissionID !== undefined
+      const grant = value.grant
+      if (
+        grant.orgID !== value.orgID ||
+        grant.deploymentIncarnation !== value.deploymentIncarnation ||
+        grant.runtimeID !== value.runtimeID ||
+        grant.sessionID !== value.sessionID ||
+        grant.bindingEpoch !== value.bindingEpoch ||
+        (grant.state === "bound" && grant.rootID !== value.rootID) ||
+        (grant.state === "closed" &&
+          ((grant.handoffClosure !== undefined && grant.handoffClosure.rootID !== value.rootID) ||
+            (grant.controlClosure !== undefined && grant.controlClosure.rootID !== value.rootID))) ||
+        (grant.provenance?.originGrantID ?? grant.grantID) !== value.originGrantID ||
+        grant.provenance?.control.permit.admissionID !== value.controlAdmissionID ||
+        (value.requestedGrantID !== undefined && grant.grantID !== value.requestedGrantID)
+      )
+        return false
+      const release = value.release
+      return (
+        !release ||
+        (value.requestedGeneration !== undefined &&
+          release.generation === value.requestedGeneration &&
+          release.orgID === value.orgID &&
+          release.deploymentIncarnation === value.deploymentIncarnation &&
+          release.runtimeID === value.runtimeID &&
+          release.sessionID === value.sessionID &&
+          release.bindingEpoch === value.bindingEpoch &&
+          release.grantID === grant.grantID &&
+          release.rootID === value.rootID)
+      )
+    }, "Inspection must echo the exact original root, control and selected resource generation")
+    .meta({ ref: "OrgExecutionInspection" })
+  export type Inspection = z.infer<typeof Inspection>
+  export const RetentionRequest = z
+    .union([DescriptionRequest, InspectionRequest])
+    .meta({ ref: "OrgExecutionRetentionRequest" })
+  export type RetentionRequest = z.infer<typeof RetentionRequest>
+  export const RetentionResult = z.union([Grant, Inspection]).meta({ ref: "OrgExecutionRetentionResult" })
+  export type RetentionResult = z.infer<typeof RetentionResult>
+
   export const HandoffCloseProof = Handoff.Binding.extend({
     purpose: z.literal("execution-handoff-close"),
     runtimeID: Identity.ID,

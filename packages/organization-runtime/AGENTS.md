@@ -4,7 +4,7 @@ Own bindings, bridge, command intake, synchronization and resource adapters. Ser
 
 Compose through Agent Runtime with explicit exclusive sources and fixed gateway SDKs in both worker roles. Personal configuration, credentials, ancestor/global Skills and plugins cannot leak into organization compositions. Hosted execution excludes Desktop and Memory. Authorization derives from accepted Inbox/root evidence and current grants, never enrollment alone. Verify Runtime/execution-source suites.
 
-ProjectConfig reads an explicit field allowlist; missing values never invoke personal loaders. Preserve immutable Session bindings and Cortex inheritance; adopt driver/epoch only during verified activation. Required portability owners carry original reception, actor, command slots and receipts; copied history never authorizes execution. Verify session-binding/adoption/transfer storage/restart tests.
+ProjectConfig reads an explicit field allowlist; missing values never invoke personal loaders. Preserve immutable Session bindings and Cortex inheritance; adopt driver/epoch only during verified activation. Portability reader 3 requires Core publication and retains reception, actor, slots and receipts; history never authorizes execution. Verify binding/adoption/transfer storage/restart tests.
 
 Provision member/hosted Homes by organization/account/device or organization/host. Preserve keys; damaged credentials require recovery. Fence old readers; upgrade through frozen maintenance and the owning migration. Home/registration remain Node-compatible without Agent/Bun. Reuse HomeOwnershipFile, bounded reads and test-home guards. Install namespace identity through actual enrollment readers, never caller labels; verify namespace-identity tests. Tickets stay in memory; snapshots never authorize. Verify Node Home, workers, migrations and HTTPS enrollment without disabling TLS.
 
@@ -24,4 +24,4 @@ Private history and interactions use distinct signed permits, canonical Scope/li
 
 Desktop Browser requires private managed launch data, explicit listener authentication and lazy page creation. Reject inherited native credentials and non-Desktop selection. Hosted/member machines share bridge/intake/worker composition; hosted identities have no human account. Verify desktop, hosted-home and hosted-runtime suites.
 
-Isolate Homes/tests under test/; run focused tests/typecheck. Root owns package/dependency checks; preserve active Runtimes.
+Isolate Homes/tests; run focused tests/typecheck. Native recovery: `./backup`, `test/backup/native.test.ts`. Preserve active Runtimes.

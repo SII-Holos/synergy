@@ -42,7 +42,7 @@ test("current drivers can inspect retained authority after resource and role rev
   await f.run(() => f.execution.release(signed))
   const client = createOrganizationClient({ baseUrl: f.baseUrl })
   const response = await client.orgExecution.retention(
-    { orgExecutionDescriptionRequest: request },
+    { orgExecutionRetentionRequest: request },
     { throwOnError: true },
   )
   expect(response.response.status).toBe(200)

@@ -36,11 +36,19 @@ type Descriptor = z.infer<typeof Descriptor>
 interface Runner {
   run<T>(body: () => Promise<T>): Promise<T>
 }
+type NativeCapture = (input: {
+  archive: SnapshotMaintenance.ArchiveEvidence
+  lease: RuntimeMaintenance.Lease
+  directory: string
+  keys: VaultKeyProvider
+  signal?: AbortSignal
+}) => Promise<{ directory: string; namespace: StorageCheckpoint.Manifest }>
 interface Binding {
   runner: Runner
   kind: "service" | "hosted"
   runtime?: RuntimeContext.Instance
   store?: Storage.Handle["store"]
+  native?: NativeCapture
 }
 class CohortError extends Error {
   override readonly name = "OrganizationBackupCohortBlocked"
@@ -164,10 +172,15 @@ export namespace OrganizationBackupCohort {
       namespace: StorageCheckpoint.Manifest,
       segment: z.strictObject({ namespace: StorageCheckpoint.Manifest }),
       native: StorageCheckpoint.Manifest.optional(),
+      hostedNative: StorageCheckpoint.Manifest.optional(),
     })
     .refine(
       (value) => (value.identity.kind === "service") === !!value.native,
       "Service namespaces require their native Home segment",
+    )
+    .refine(
+      (value) => value.identity.kind === "hosted" || !value.hostedNative,
+      "Hosted native material requires a Hosted namespace",
     )
   export type NamespaceInventory = z.infer<typeof NamespaceInventory>
   export function service(runner: Runner): Source {
@@ -175,9 +188,10 @@ export namespace OrganizationBackupCohort {
     bindings.set(source, { runner, kind: "service" })
     return source
   }
-  export function hosted(runner: Runner): Source {
+  export function hosted(runner: Runner, options: { native?: NativeCapture } = {}): Source {
     const source = Object.freeze({ kind: "organization-backup-namespace" as const })
-    bindings.set(source, { runner, kind: "hosted" })
+    const native = options.native?.bind(options)
+    bindings.set(source, { runner, kind: "hosted", native })
     return source
   }
   export async function capture(input: {
@@ -312,6 +326,19 @@ export namespace OrganizationBackupCohort {
                         signal,
                       })
                     : undefined
+                const hostedCapture = owner(source.source).native
+                const hostedNative =
+                  identity.kind === "hosted" && hostedCapture
+                    ? await hostedCapture({
+                        archive: await capture.validateArchive(namespace, { signal }),
+                        lease: source.lease!,
+                        directory: path.join(base, "hosted-native"),
+                        keys,
+                        signal,
+                      })
+                    : undefined
+                if (hostedNative && hostedNative.directory !== path.join(base, "hosted-native"))
+                  throw new CohortError("Hosted native capture changed its original destination")
                 return NamespaceInventory.parse({
                   version: 2,
                   ordinal,
@@ -319,6 +346,7 @@ export namespace OrganizationBackupCohort {
                   namespace: namespace.namespace,
                   segment: { namespace: segment.namespace },
                   native: native?.namespace,
+                  hostedNative: hostedNative?.namespace,
                 })
               },
               { signal },

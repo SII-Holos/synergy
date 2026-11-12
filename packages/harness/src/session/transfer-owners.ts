@@ -73,6 +73,7 @@ export namespace SessionTransferOwners {
     applies(session: Readonly<Session.Info>): boolean | Promise<boolean>
     stagedDependencies?: readonly string[]
     publicationBefore?: readonly string[]
+    publicationAfter?: readonly string[]
     inspect(context: SourceContext): Promise<Inspection>
     freeze(context: SourceContext): Promise<void>
     export(context: SourceContext): AsyncIterable<SessionTransferStream.Input>
@@ -99,7 +100,8 @@ export namespace SessionTransferOwners {
       if (dependency === id) throw new Rejected({ message: "A staged dependency must name another owner" })
     }
     const before = [...new Set(owner.publicationBefore ?? [])]
-    for (const target of before) {
+    const after = [...new Set(owner.publicationAfter ?? [])]
+    for (const target of [...before, ...after]) {
       ID.parse(target)
       if (target === id) throw new Rejected({ message: "A publication dependency must name another owner" })
     }
@@ -108,6 +110,7 @@ export namespace SessionTransferOwners {
       reads: Object.freeze([...owner.reads]),
       stagedDependencies: Object.freeze(dependencies),
       publicationBefore: Object.freeze(before),
+      publicationAfter: Object.freeze(after),
     })
   }
 
@@ -118,25 +121,31 @@ export namespace SessionTransferOwners {
   export function publicationOrder(ids: readonly string[]) {
     const selected = [...new Set(ids)]
     const incoming = new Map(selected.map((id) => [ID.parse(id), 0]))
-    const edges = new Map<string, readonly string[]>()
-    for (const id of selected) {
-      const before = require(id).publicationBefore ?? []
-      for (const target of before) {
-        if (!incoming.has(target) || !state().has(target))
+    const edges = new Map<string, Set<string>>()
+    const edge = (source: string, target: string) => {
+      for (const dependency of [source, target])
+        if (!incoming.has(dependency) || !state().has(dependency))
           throw new Rejected({
             message: "A required publication dependency is unavailable from this package",
             requirements: [
               {
                 code: "owner_publication_missing",
-                owner: target,
-                label: `Include the required ${target} publication owner`,
+                owner: dependency,
+                label: `Include the required ${dependency} publication owner`,
                 recoverable: true,
               },
             ],
           })
-        incoming.set(target, incoming.get(target)! + 1)
-      }
-      edges.set(id, before)
+      const outgoing = edges.get(source) ?? new Set<string>()
+      if (outgoing.has(target)) return
+      outgoing.add(target)
+      edges.set(source, outgoing)
+      incoming.set(target, incoming.get(target)! + 1)
+    }
+    for (const id of selected) {
+      const owner = require(id)
+      for (const target of owner.publicationBefore ?? []) edge(id, target)
+      for (const source of owner.publicationAfter ?? []) edge(source, id)
     }
     const remaining = new Set(selected)
     const ordered: string[] = []

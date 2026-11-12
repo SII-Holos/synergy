@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0113](0113-native-identity-reader-followed-linked-records.md)
+
 - [0112](0112-cancelled-reader-retained-artifact-pin.md)
 
 - [0111](0111-cancelled-handoff-reenabled-retained-grants.md)

@@ -172,6 +172,7 @@ test("the destination controller prepares actual private owner partitions and re
       receivedSeq: 0,
       compatibilityHash: Target.compatibilityHash(captured.prepared.root.owners),
       closureHash: captured.prepared.closureHash,
+      fileClosureHash: null,
       workspaceMoveReceiptHash: null,
       paused: true,
       drained: true,

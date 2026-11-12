@@ -2,7 +2,7 @@ import { createPrivateKey, createPublicKey } from "node:crypto"
 import path from "node:path"
 import { z } from "zod"
 import { OrganizationRuntimeProtocol as Protocol } from "@ericsanchezok/synergy-organization-protocol"
-import { MemberHomeError, readRecord, writeRecord } from "./record.js"
+import { MemberHomeError, readRecordSnapshot, parseRecord, writeRecord } from "./record.js"
 
 const Credentials = z.strictObject({
   schemaVersion: z.literal(1),
@@ -26,8 +26,23 @@ export async function createCredentials(root: string) {
 }
 
 export async function readCredentials(root: string) {
-  const stored = await readRecord(filename(root), Credentials, "credentials")
-  if (!stored) return
+  const stored = await readRecordSnapshot(filename(root), Credentials, "credentials")
+  return stored ? decode(stored.value) : undefined
+}
+
+export function verifyCredentialRecord(bytes: Uint8Array) {
+  return decode(parseRecord(bytes, Credentials, "credentials"))
+}
+
+export async function captureCredentialRecord(root: string, options: { signal?: AbortSignal } = {}) {
+  const stored = await readRecordSnapshot(filename(root), Credentials, "credentials", options)
+  if (!stored) throw new MemberHomeError("Member Runtime credentials are missing")
+  const verified = await decode(stored.value)
+  options.signal?.throwIfAborted()
+  return { bytes: stored.bytes, publicKey: verified.publicKey }
+}
+
+async function decode(stored: z.infer<typeof Credentials>) {
   try {
     const bytes = Buffer.from(stored.pkcs8, "hex")
     const key = createPrivateKey({ key: bytes, type: "pkcs8", format: "der" })

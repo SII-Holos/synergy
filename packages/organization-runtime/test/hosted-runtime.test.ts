@@ -62,7 +62,8 @@ test("a hosted Runtime receives organization-created Sessions with the signed ac
         "session-core": 2,
         "session-evidence": 1,
         "session-snapshots": 1,
-        "organization-runtime": 1,
+        "organization-runtime": 3,
+        "session-workspaces": 1,
       }),
     ).toEqual([])
   })

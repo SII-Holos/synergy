@@ -21,10 +21,12 @@ import { startMemberSyncExporter } from "./sync-exporter"
 import { OrganizationLocalProjects } from "./local-project"
 import { OrganizationSessionReads } from "./session-reads"
 import { registerOrganizationTransferOwner } from "./session-transfer"
+import { OrganizationRuntimeNative } from "./backup/native"
 import {
   SessionTransferCore,
   SessionTransferEvidence,
   SessionTransferSnapshots,
+  SessionTransferWorkspaces,
 } from "@ericsanchezok/synergy-harness/session/transfer"
 
 export type MemberRuntimeOptions = Pick<
@@ -58,6 +60,7 @@ export async function openHostedRuntime(
 }
 
 async function openOrganizationRuntime(input: MemberRuntimeOptions) {
+  input = { ...input, ca: Array.isArray(input.ca) ? [...input.ca] : input.ca }
   input.signal?.throwIfAborted()
   const listener = MemberListener.optional().safeParse(input.listen)
   if (!listener.success)
@@ -83,7 +86,10 @@ async function openOrganizationRuntime(input: MemberRuntimeOptions) {
         SessionTransferCore.register()
         SessionTransferEvidence.register()
         SessionTransferSnapshots.register()
+        SessionTransferWorkspaces.register()
         registerOrganizationTransferOwner()
+        if (!("accountID" in member.identity))
+          OrganizationRuntimeNative.register({ identity: member.identity, ca: input.ca })
       },
       services() {
         let bridge: ReturnType<typeof startMemberBridge> | undefined

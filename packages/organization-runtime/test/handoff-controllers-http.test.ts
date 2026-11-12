@@ -1,4 +1,5 @@
 import { expect, spyOn, test } from "bun:test"
+import fs from "node:fs/promises"
 import path from "node:path"
 import {
   OrganizationHandoffProtocol as Handoff,
@@ -12,12 +13,15 @@ import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
+import { WorkspaceBinding, WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/ledger"
 import { RolloutLifecycle } from "@ericsanchezok/synergy-harness/session/rollout/lifecycle"
 import {
   SessionTransferCore as Core,
   SessionTransferSource as NativeSource,
+  SessionTransferWorkspaces as Files,
+  SessionTransferStaging as Staging,
 } from "@ericsanchezok/synergy-harness/session/transfer"
 import { WorkspaceCoordinator } from "@ericsanchezok/synergy-local-runtime/workspace/coordinator"
 import { registerWorkspace } from "@ericsanchezok/synergy-local-runtime/register-workspace"
@@ -73,10 +77,16 @@ test.each([
   "resource-cancel-retained",
   "resource-transfer",
   "resource-close-unknown",
+  "workspace-transfer",
+  "workspace-cancel",
+  "workspace-unknown",
+  "workspace-mapping-conflict",
+  "workspace-activation-unknown",
 ] as const)(
   "generated HTTPS and actual enrolled machine Homes preserve %s without input replay",
   async (mode) => {
     const withResources = mode.startsWith("resource-")
+    const withWorkspace = mode.startsWith("workspace-")
     const wake = withResources ? spyOn(SessionManager, "scheduleWake").mockImplementation(() => {}) : undefined
     using restoreWake = {
       [Symbol.dispose]() {
@@ -123,6 +133,7 @@ test.each([
       })
       registerWorkspace(coordinator)
       Core.register()
+      if (withWorkspace) Files.register()
       registerSessionSchema({ orgID: identity.orgID })
       registerOrganizationTransferOwner()
     }
@@ -166,6 +177,9 @@ test.each([
     let mappings = 0
     let sourceSignal: AbortSignal | undefined
     let targetSignal: AbortSignal | undefined
+    let sourceFailure: unknown
+    let targetFailure: unknown
+    let mappingConflict: "identity" | "receipt" = "identity"
     const targetController = await target.run(() =>
       Target.create({ identity: hosted.identity, runtimeID: targetRegistration.runtimeID }),
     )
@@ -214,7 +228,10 @@ test.each([
           if (plan.operation === "inspect-source") return sourceController.inspect(input)
           const fact =
             plan.operation === "prepare-source"
-              ? await sourceController.prepare(input)
+              ? await sourceController.prepare(input).catch((error: unknown) => {
+                  sourceFailure = error
+                  throw error
+                })
               : plan.operation === "cancel-source"
                 ? await sourceController.cancel(input)
                 : plan.operation === "surrender-source"
@@ -252,22 +269,37 @@ test.each([
             connection,
             signal,
             resources,
-            mapping: async () => {
+            mapping: async (session: Readonly<Session.Info>) => {
               mappings++
               if (mode === "observer") {
                 targetEntered.resolve()
                 await targetResume.promise
               }
-              return { workspaceIDs: {}, environmentID: null }
+              return {
+                workspaceIDs:
+                  mode === "workspace-mapping-conflict" && mappingConflict === "identity" && session.workspaceID
+                    ? { [session.workspaceID]: "caller-selected-other-native-location" }
+                    : {},
+                ...(mode === "workspace-mapping-conflict" && mappingConflict === "receipt"
+                  ? { workspaceReceiptHash: "f".repeat(64) }
+                  : {}),
+                environmentID: null,
+              }
             },
           }
           targetSignal = signal
           if (authorization.plan.operation === "inspect-target") return targetController.inspect(input)
           const fact =
             authorization.plan.operation === "prepare-target"
-              ? await targetController.prepare(input)
+              ? await targetController.prepare(input).catch((error: unknown) => {
+                  targetFailure = error
+                  throw error
+                })
               : authorization.plan.operation === "activate-target"
-                ? await targetController.activate(input)
+                ? await targetController.activate(input).catch((error: unknown) => {
+                    targetFailure = error
+                    throw error
+                  })
                 : await unavailable()
           return execution(authorization.plan, fact)
         }),
@@ -296,6 +328,30 @@ test.each([
         )
       ).data
       const sessionID = created.effect.sessionID
+      const sourceDirectory = path.join(f.root, "source-workspace")
+      const workspaceBytes = new Uint8Array([0, 255, 37, 128, 10])
+      let sourceWorkspaceID: string | undefined
+      if (withWorkspace) {
+        await fs.mkdir(sourceDirectory)
+        await Bun.write(path.join(sourceDirectory, "private.bin"), workspaceBytes)
+        await Bun.write(path.join(sourceDirectory, ".gitignore"), "ignored.bin\n")
+        await Bun.write(path.join(sourceDirectory, "ignored.bin"), "ignored work is retained")
+        await source.run(async () => {
+          const session = await Session.get(sessionID)
+          await ScopeContext.provide({
+            scope: session.scope,
+            workspace: session.workspace,
+            fn: async () => {
+              const workspace = await WorkspaceBinding.register(project.projectID, sourceDirectory)
+              sourceWorkspaceID = workspace.id
+              await Session.updateWorkspace(sessionID, null, {
+                reference: { workspaceID: workspace.id, workspaceGeneration: workspace.binding.generation },
+              })
+              expect((await Session.get(sessionID)).environmentID).toBeNull()
+            },
+          })
+        })
+      }
       let original: Command.InputAccepted | undefined
       let originalGrant: Execution.BoundGrant | undefined
       if (withResources) {
@@ -478,17 +534,24 @@ test.each([
         },
         options,
       )
-      const drive = async (operation: Handoff.Drive["operation"]) =>
-        Handoff.MachineResult.parse(
-          (
-            await f.client.orgHandoff.drive(
-              { handoffID, orgHandoffDrive: { operation, requestID: crypto.randomUUID() } },
-              options,
-            )
-          ).data,
-        )
+      const drive = async (operation: Handoff.Drive["operation"]) => {
+        try {
+          return Handoff.MachineResult.parse(
+            (
+              await f.client.orgHandoff.drive(
+                { handoffID, orgHandoffDrive: { operation, requestID: crypto.randomUUID() } },
+                options,
+              )
+            ).data,
+          )
+        } catch (error) {
+          if (sourceFailure) throw sourceFailure
+          if (targetFailure) throw targetFailure
+          throw error
+        }
+      }
       let frozen: Handoff.MachineResult
-      if (mode === "unknown") {
+      if (mode === "unknown" || mode === "workspace-unknown") {
         const arrived = Promise.withResolvers<void>()
         f.interceptFrames((_socket, raw) => {
           const frame = Runtime.ClientFrame.parse(JSON.parse(String(raw)))
@@ -536,14 +599,38 @@ test.each([
       } else frozen = await drive("prepare-source")
       expect(frozen.facts[0]?.proof).toMatchObject({ purpose: "source-frozen", drained: true, paused: true })
       expect(preparations).toBe(1)
-      if (mode === "cancel" || mode === "resource-cancel-retained") {
+      if (withWorkspace) {
+        const proof = frozen.facts[0]?.proof
+        if (proof?.purpose !== "source-frozen") throw new Error("Missing frozen native file fact")
+        expect(proof.fileClosureHash).toMatch(/^[a-f0-9]{64}$/)
+        expect(proof.workspaceMoveReceiptHash).toBeNull()
+        expect((await drive("inspect-source")).facts[0]?.proof).toEqual(frozen.facts[0]?.proof)
+      }
+      if (mode === "workspace-mapping-conflict") {
+        await expect(drive("prepare-target")).rejects.toThrow("conflicts with its prepared native identity")
+        mappingConflict = "receipt"
+        await expect(drive("prepare-target")).rejects.toThrow("conflicts with its prepared native receipt")
+        expect((await f.client.orgHandoff.get({ handoffID }, options)).data.phase).toBe("preparing")
+        await target.run(() => expect(Session.get(sessionID)).rejects.toThrow())
+      }
+      if (
+        mode === "cancel" ||
+        mode === "resource-cancel-retained" ||
+        mode === "workspace-cancel" ||
+        mode === "workspace-mapping-conflict"
+      ) {
         await f.client.orgHandoff.cancel({ handoffID, body: {} }, options)
         expect((await drive("cancel-source")).facts[0]?.proof.purpose).toBe("source-cancelled")
         expect((await drive("inspect-source")).facts[0]?.proof.purpose).toBe("source-cancelled")
         expect((await f.client.orgHandoff.get({ handoffID }, options)).data.phase).toBe("cancelled")
         await source.run(async () => {
           expect((await Session.get(sessionID)).paused).toBeDefined()
+          if (withWorkspace) expect((await Session.get(sessionID)).workspaceID).toBe(sourceWorkspaceID)
         })
+        if (withWorkspace)
+          expect(new Uint8Array(await Bun.file(path.join(sourceDirectory, "private.bin")).arrayBuffer())).toEqual(
+            workspaceBytes,
+          )
         await target.run(async () => {
           await expect(Session.get(sessionID)).rejects.toThrow()
         })
@@ -573,6 +660,14 @@ test.each([
         expect(mappings).toBe(1)
       } else prepared = await drive("prepare-target")
       expect(prepared.facts[0]?.proof.purpose).toBe("target-prepared")
+      if (
+        withWorkspace &&
+        prepared.facts[0]?.proof.purpose === "target-prepared" &&
+        frozen.facts[0]?.proof.purpose === "source-frozen"
+      ) {
+        expect(prepared.facts[0].proof.fileClosureHash).toBe(frozen.facts[0].proof.fileClosureHash)
+        expect(prepared.facts[0].proof.workspaceMoveReceiptHash).toBeNull()
+      }
       await target.run(async () => {
         await expect(Session.get(sessionID)).rejects.toThrow()
       })
@@ -643,7 +738,45 @@ test.each([
         { handoffID, orgHandoffPermitRequest: { purpose: "handoff-activation" } },
         options,
       )
-      expect((await drive("activate-target")).facts[0]?.proof.purpose).toBe("target-activated")
+      if (mode === "workspace-activation-unknown") {
+        const arrived = Promise.withResolvers<void>()
+        let publications = 0
+        const publish = Staging.publish
+        const observed = spyOn(Staging, "publish").mockImplementation(async (input) => {
+          publications++
+          return publish(input)
+        })
+        f.interceptFrames((_socket, raw) => {
+          const frame = Runtime.ClientFrame.parse(JSON.parse(String(raw)))
+          if (
+            frame.type === "receipt" &&
+            frame.reply.kind === "handoff" &&
+            frame.reply.result.operation === "activate-target"
+          ) {
+            arrived.resolve()
+            return true
+          }
+          return false
+        })
+        const observer = new AbortController()
+        const activating = f.client.orgHandoff.drive(
+          { handoffID, orgHandoffDrive: { operation: "activate-target", requestID: "native-publication-reply-lost" } },
+          { ...options, signal: observer.signal },
+        )
+        void activating.catch(() => {})
+        try {
+          await arrived.promise
+          observer.abort(new Error("Stop observing the unknown native publication"))
+          await expect(activating).rejects.toThrow()
+          f.interceptFrames(undefined)
+          expect((await drive("inspect-target")).facts[0]?.proof.purpose).toBe("target-activated")
+          expect((await drive("inspect-target")).facts[0]?.proof.purpose).toBe("target-activated")
+          expect(publications).toBe(1)
+        } finally {
+          f.interceptFrames(undefined)
+          observed.mockRestore()
+        }
+      } else expect((await drive("activate-target")).facts[0]?.proof.purpose).toBe("target-activated")
       expect((await drive("inspect-target")).facts[0]?.proof.purpose).toBe("target-activated")
       expect((await f.client.orgHandoff.get({ handoffID }, options)).data).toMatchObject({
         phase: "completed",
@@ -661,7 +794,27 @@ test.each([
             bindingEpoch: 2,
           },
         })
+        if (withWorkspace) {
+          const session = await Session.get(sessionID)
+          if (!session.workspaceID) throw new Error("Native handoff did not publish a Workspace")
+          expect(session.workspaceID).not.toBe(sourceWorkspaceID)
+          const workspace = await WorkspaceCatalog.get(session.workspaceID, project.projectID)
+          if (workspace.binding.state !== "bound" || !workspace.binding.path)
+            throw new Error("Published native Workspace is unbound")
+          expect(
+            new Uint8Array(await Bun.file(path.join(workspace.binding.path, "private.bin")).arrayBuffer()),
+          ).toEqual(workspaceBytes)
+          expect(await Bun.file(path.join(workspace.binding.path, "ignored.bin")).text()).toBe(
+            "ignored work is retained",
+          )
+          expect(await SessionInbox.list(sessionID)).toEqual([])
+          expect(await Session.messages({ sessionID })).toEqual([])
+        }
       })
+      if (withWorkspace)
+        expect(new Uint8Array(await Bun.file(path.join(sourceDirectory, "private.bin")).arrayBuffer())).toEqual(
+          workspaceBytes,
+        )
       if (withResources) await resumeResources(target, targetIntake!, targetConnection, 2)
     } finally {
       sourceResume.resolve()

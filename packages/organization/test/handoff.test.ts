@@ -134,6 +134,7 @@ test("signed source and target facts commit once and activation remains a separa
       receivedSeq: state.commandSeq,
       compatibilityHash: "b".repeat(64),
       closureHash: "c".repeat(64),
+      fileClosureHash: null,
       workspaceMoveReceiptHash: null,
       paused: true,
       drained: true,
@@ -145,8 +146,15 @@ test("signed source and target facts commit once and activation remains a separa
       compatibilityHash: "b".repeat(64),
       convertedHash: "d".repeat(64),
       closureHash: "c".repeat(64),
+      fileClosureHash: null,
       workspaceMoveReceiptHash: null,
       paused: true,
+    })
+    if (prepared.purpose !== "target-prepared") throw new Error("Fixture requires its target preparation")
+    await expect(
+      publish({ ...prepared, fileClosureHash: "e".repeat(64) }, f.targetKeys.privateKey),
+    ).rejects.toMatchObject({
+      data: { code: "HANDOFF_BLOCKED" },
     })
     await publish(prepared, f.targetKeys.privateKey)
     await expect(f.handoffs.commit(f.credentials.alice, state.handoffID)).rejects.toMatchObject({

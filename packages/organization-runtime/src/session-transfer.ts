@@ -22,15 +22,16 @@ import { OrganizationSessionAdoption as Adoption } from "./session-adoption"
 
 export namespace OrganizationSessionTransfer {
   export const id = "organization-runtime"
-  export const version = 2
+  export const version = 3
   const ID = z.string().min(1)
   const Count = z.number().int().nonnegative().safe()
   const Header = z.strictObject({
-    version: z.literal(2),
+    version: z.literal(3),
     capabilities: z.strictObject({
       adoption: z.literal(1),
       commandClosure: z.literal(1),
       executionContinuation: z.literal(1),
+      corePublication: z.literal(1),
     }),
     handoffID: ID,
     rootSessionID: ID,
@@ -147,8 +148,8 @@ export namespace OrganizationSessionTransfer {
   }
   function sourceHeader(context: Owners.SourceContext, value: unknown) {
     return Header.parse({
-      version: 2,
-      capabilities: { adoption: 1, commandClosure: 1, executionContinuation: 1 },
+      version: 3,
+      capabilities: { adoption: 1, commandClosure: 1, executionContinuation: 1, corePublication: 1 },
       handoffID: context.handoffID,
       rootSessionID: context.rootSessionID,
       sessionID: context.session.id,
@@ -431,6 +432,7 @@ export namespace OrganizationSessionTransfer {
       version,
       reads: [version],
       stagedDependencies: ["session-core"],
+      publicationAfter: ["session-core"],
       applies: (session) => !!session.organization,
       async inspect() {
         return { requirements: [], children: (async function* () {})() }

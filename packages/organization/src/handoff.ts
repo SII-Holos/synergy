@@ -942,6 +942,7 @@ export function createHandoffs(options: {
             current.cancelRequested ||
             proof.compatibilityHash !== frozen.compatibilityHash ||
             proof.closureHash !== frozen.closureHash ||
+            proof.fileClosureHash !== frozen.fileClosureHash ||
             proof.workspaceMoveReceiptHash !== frozen.workspaceMoveReceiptHash
           )
             fail("HANDOFF_BLOCKED", "Destination preparation does not preserve the frozen closure")

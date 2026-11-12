@@ -7,7 +7,7 @@ import {
 } from "@ericsanchezok/synergy-organization-protocol"
 import { withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
 import type { RuntimeHome } from "./home"
-import { MemberHomeError, readRecord, writeRecord } from "./record"
+import { MemberHomeError, readRecordSnapshot, parseRecord, writeRecord } from "./record"
 import { OrganizationRuntimeError } from "./error"
 
 const Checkpoint = z.strictObject({
@@ -18,21 +18,32 @@ const Checkpoint = z.strictObject({
   connectionEpoch: OrganizationProtocol.Revision,
 })
 
+export function verifyConnectionRecord(bytes: Uint8Array, registration: OrganizationRuntimeProtocol.Registration) {
+  const current = parseRecord(bytes, Checkpoint, "connection records")
+  assertIdentity(current, registration)
+  return current
+}
+
+function assertIdentity(current: z.infer<typeof Checkpoint>, registration: OrganizationRuntimeProtocol.Registration) {
+  if (
+    current.orgID !== registration.orgID ||
+    current.deploymentIncarnation !== registration.deploymentIncarnation ||
+    current.runtimeID !== registration.runtimeID
+  )
+    throw new MemberHomeError("Member Runtime connection identity changed; explicit recovery is required")
+}
+
 export function connectionState(member: RuntimeHome, registration: OrganizationRuntimeProtocol.Registration) {
   const filename = path.join(member.root, "organization-connection.json")
-  async function read() {
-    const current = await readRecord(filename, Checkpoint, "connection records")
-    if (
-      current &&
-      (current.orgID !== registration.orgID ||
-        current.deploymentIncarnation !== registration.deploymentIncarnation ||
-        current.runtimeID !== registration.runtimeID)
-    )
-      throw new MemberHomeError("Member Runtime connection identity changed; explicit recovery is required")
-    return Math.max(current?.connectionEpoch ?? 0, registration.connectionEpoch)
+  async function snapshot(options: { signal?: AbortSignal } = {}) {
+    const current = await readRecordSnapshot(filename, Checkpoint, "connection records", options)
+    if (current) assertIdentity(current.value, registration)
+    return { record: current, epoch: Math.max(current?.value.connectionEpoch ?? 0, registration.connectionEpoch) }
   }
+  const read = async () => (await snapshot()).epoch
   return {
     read,
+    snapshot,
     save(epoch: number, signal?: AbortSignal) {
       OrganizationProtocol.Revision.parse(epoch)
       return withFileLock(

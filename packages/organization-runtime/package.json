@@ -14,7 +14,8 @@
     "./error": "./src/error.ts",
     "./component": "./src/component.ts",
     "./launch": "./src/launch.ts",
-    "./environment": "./src/environment.ts"
+    "./environment": "./src/environment.ts",
+    "./backup": "./src/backup/native.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

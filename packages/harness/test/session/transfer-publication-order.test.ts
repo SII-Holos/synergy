@@ -35,6 +35,37 @@ const empty: Owners.Contribution = {
   async publish() {},
 }
 
+test.each(["ordered", "cycle", "omitted", "uninstalled"] as const)(
+  "publication-after dependencies retain the owning %s constraint",
+  async (kind) => {
+    const after = ["session-core"]
+    await using runtime = await testRuntime({
+      register() {
+        if (kind !== "uninstalled")
+          Owners.register("session-core", {
+            ...empty,
+            publicationAfter: kind === "cycle" ? ["organization-runtime"] : [],
+          })
+        Owners.register("organization-runtime", { ...empty, publicationAfter: after })
+        Owners.register("session-workspaces", { ...empty, publicationBefore: ["session-core"] })
+      },
+    })
+    await runtime.run(async () => {
+      after.push("changed-after-registration")
+      if (kind === "ordered") {
+        expect(Owners.publicationOrder(["session-core", "organization-runtime", "session-workspaces"])).toEqual([
+          "session-workspaces",
+          "session-core",
+          "organization-runtime",
+        ])
+        return
+      }
+      const selected = kind === "cycle" ? ["session-core", "organization-runtime"] : ["organization-runtime"]
+      expect(() => Owners.publicationOrder(selected)).toThrow("publication")
+    })
+  },
+)
+
 test.each(["cycle", "omitted", "uninstalled"] as const)(
   "native staging rejects a %s publication dependency before receiving records",
   async (kind) => {

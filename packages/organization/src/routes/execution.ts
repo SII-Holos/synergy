@@ -42,10 +42,10 @@ export function executionRoutes(grants: () => ExecutionGrants) {
       operation(
         "orgExecution.retention",
         "Inspect accepted resource retention without acquiring execution authority",
-        Execution.Grant,
+        Execution.RetentionResult,
         true,
       ),
-      validator("json", Execution.DescriptionRequest, validation),
+      validator("json", Execution.RetentionRequest, validation),
       async (c) => {
         if (c.req.header("origin") || c.req.header("cookie"))
           fail("PERMISSION_DENIED", "Retention inspection requires a machine request")

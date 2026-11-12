@@ -174,6 +174,11 @@ export async function readMemberHome(input: string, expected: MemberIdentity): P
   return { ...home, identity: MemberIdentity.parse(home.identity) }
 }
 
+export async function readHostedHome(input: string, expected: HostedIdentity): Promise<HostedHome> {
+  const home = await readRuntimeHome(input, HostedIdentity.parse(expected))
+  return { ...home, identity: HostedIdentity.parse(home.identity) }
+}
+
 export async function prepareMemberHome(input: {
   baseDirectory: string
   identity: MemberIdentity

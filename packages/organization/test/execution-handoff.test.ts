@@ -129,6 +129,7 @@ for (const mode of ["cancel", "transfer"] as const)
               receivedSeq: view.commandSeq,
               compatibilityHash: "b".repeat(64),
               closureHash: "c".repeat(64),
+              fileClosureHash: null,
               workspaceMoveReceiptHash: null,
               paused: true,
               drained: true,
@@ -140,6 +141,7 @@ for (const mode of ["cancel", "transfer"] as const)
               compatibilityHash: "b".repeat(64),
               convertedHash: "d".repeat(64),
               closureHash: "c".repeat(64),
+              fileClosureHash: null,
               workspaceMoveReceiptHash: null,
               paused: true,
             })
@@ -559,6 +561,7 @@ for (const mode of ["cancel", "transfer"] as const)
                 receivedSeq: third.commandSeq,
                 compatibilityHash: "8".repeat(64),
                 closureHash: "9".repeat(64),
+                fileClosureHash: null,
                 workspaceMoveReceiptHash: null,
                 paused: true,
                 drained: true,
@@ -571,6 +574,7 @@ for (const mode of ["cancel", "transfer"] as const)
                 compatibilityHash: sealed.compatibilityHash,
                 closureHash: sealed.closureHash,
                 convertedHash: "6".repeat(64),
+                fileClosureHash: null,
                 workspaceMoveReceiptHash: null,
                 paused: true,
               })

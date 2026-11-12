@@ -103,6 +103,7 @@ import type {
   OrgExecutionResourcesErrors,
   OrgExecutionResourcesResponses,
   OrgExecutionRetentionErrors,
+  OrgExecutionRetentionRequest,
   OrgExecutionRetentionResponses,
   OrgGatewayChatCompletionsErrors,
   OrgGatewayChatCompletionsResponses,
@@ -4280,11 +4281,11 @@ export class OrgExecution extends HeyApiClient {
    */
   public retention<ThrowOnError extends boolean = false>(
     parameters: {
-      orgExecutionDescriptionRequest: OrgExecutionDescriptionRequest
+      orgExecutionRetentionRequest: OrgExecutionRetentionRequest
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ key: "orgExecutionDescriptionRequest", map: "body" }] }])
+    const params = buildClientParams([parameters], [{ args: [{ key: "orgExecutionRetentionRequest", map: "body" }] }])
     return (options?.client ?? this.client).post<
       OrgExecutionRetentionResponses,
       OrgExecutionRetentionErrors,
