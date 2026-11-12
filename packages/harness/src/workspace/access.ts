@@ -38,6 +38,7 @@ export namespace WorkspaceAccess {
   }
   export interface Host {
     acquire(input: ClaimInput): Promise<Lease>
+    recoverExclusive?(reference: { id: string; token: string }): Promise<{ lease: Lease; input: ClaimInput }>
     contendedProcesses?(): Promise<string[]>
   }
   interface Task {
@@ -315,6 +316,7 @@ export namespace WorkspaceAccess {
     if (state().host) throw new Error("Workspace access is already registered")
     state().host = {
       acquire: (input) => acquire(host, input),
+      ...(host.recoverExclusive ? { recoverExclusive: host.recoverExclusive.bind(host) } : {}),
       ...(host.contendedProcesses ? { contendedProcesses: () => host.contendedProcesses!() } : {}),
     }
     RuntimeMaintenance.register("workspace-access", {
@@ -836,6 +838,15 @@ export namespace WorkspaceAccess {
         throw error
       }
     }, input.signal)
+  }
+
+  export async function recoverExclusive(reference: { id: string; token: string }): Promise<Lease> {
+    const recover = host().recoverExclusive
+    if (!recover) throw new Error("Native exclusive claim recovery is unavailable")
+    const recovered = await recover({ ...reference })
+    if (recovered.input.kind !== "exclusive" || recovered.lease.id !== reference.id)
+      throw new Error("Native recovery did not return its original exclusive claim")
+    return maintenance(() => acquire({ acquire: async () => recovered.lease }, recovered.input))
   }
 
   export async function pin(signal?: AbortSignal): Promise<Lease> {

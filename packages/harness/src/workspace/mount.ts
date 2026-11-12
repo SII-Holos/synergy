@@ -6,6 +6,7 @@ import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
 import { WorkspaceCatalog } from "./catalog"
 import { WorkspaceContent, type BlobStore } from "./content"
+import { WorkspaceMove } from "./move"
 import { WorkspaceArchive } from "./archive"
 import { WorkspaceTree } from "./tree"
 import { WorkspaceProtocol, type WorkspaceFileHost } from "./protocol"
@@ -310,6 +311,7 @@ export namespace WorkspaceMounts {
     try {
       info = await Storage.transaction(async () => {
         const previous = await WorkspaceCatalog.get(input.workspaceID, input.scopeID)
+        await WorkspaceMove.assertLifecycle(previous)
         if (previous.lifecycle !== "active" || previous.binding.state !== "bound")
           throw new WorkspaceCatalog.Unavailable({
             workspaceID: previous.id,

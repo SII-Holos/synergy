@@ -424,6 +424,7 @@ export namespace WorkspaceContent {
     mode: number,
     assert: () => void,
     signal?: AbortSignal,
+    paths: readonly string[] = [""],
   ): Promise<Prepared> {
     const tree = Portable.Root.parse({
       version: 1,
@@ -444,7 +445,7 @@ export namespace WorkspaceContent {
         return Storage.transaction(
           async () => {
             assert()
-            return WorkspaceCatalog.publishContent(original, manifest)
+            return WorkspaceCatalog.publishContent(original, manifest, { paths })
           },
           { commitGuard: assert },
         )
@@ -458,7 +459,7 @@ export namespace WorkspaceContent {
       info: WorkspaceCatalog.Info
       store: BlobStore
       tree: Tree
-      finish(entries: AsyncIterable<Stream.Reference>): Promise<Prepared>
+      finish(entries: AsyncIterable<Stream.Reference>, paths: readonly string[]): Promise<Prepared>
     }) => Promise<Prepared>,
   ) {
     const input = { ...selection }
@@ -475,7 +476,7 @@ export namespace WorkspaceContent {
           ...selected,
           store,
           tree,
-          finish: (entries) => finish(selected.info, store, entries, tree.mode, assert, input.signal),
+          finish: (entries, paths) => finish(selected.info, store, entries, tree.mode, assert, input.signal, paths),
         }),
       { signal: input.signal },
     )
@@ -555,6 +556,7 @@ export namespace WorkspaceContent {
           for (const entry of missing) yield metadata(entry)
           yield file(filename, change.data, change.mode ?? previous?.mode ?? 0o644, store)
         })(),
+        [filename],
       )
     })
   }
@@ -600,6 +602,7 @@ export namespace WorkspaceContent {
             for (const entry of missing) yield metadata(entry)
             yield replacement
           })(),
+          [from.path],
         )
       }
       if (change.kind === "import") {
@@ -625,6 +628,7 @@ export namespace WorkspaceContent {
                   yield { ...entry, id: Portable.path(relocated.path, Portable.Metadata.parse(entry.metadata)) }
                 }
               })(),
+              [from.path],
             )
           },
           { signal: input.signal },
@@ -639,6 +643,7 @@ export namespace WorkspaceContent {
             for (const entry of missing) yield metadata(entry)
             yield metadata({ kind: "directory", path: from.path, mode: change.mode ?? 0o755 })
           })(),
+          [from.path],
         )
       }
       if (!from.entry || WorkspaceTree.entryVersion(from.entry, info.content?.revision) !== change.expectedVersion)
@@ -659,6 +664,7 @@ export namespace WorkspaceContent {
               } else yield entry
             }
           })(),
+          [from.path],
         )
       }
       const to = await tree.resolve(change.to, false)
@@ -681,12 +687,43 @@ export namespace WorkspaceContent {
             yield { ...entry, id: Portable.path(filename, Portable.Metadata.parse(entry.metadata)) }
           }
         })(),
+        change.kind === "move" ? [from.path, to.path] : [to.path],
       )
     })
   }
 
   export async function mutate(input: Selection, change: WorkspaceProtocol.Change) {
     return (await prepareChange(input, change)).publish()
+  }
+
+  export async function prepareTreeImport(selection: Selection, raw: { path: string; manifest: string }) {
+    const input = { ...selection }
+    const change = { path: WorkspaceTree.Path.parse(raw.path), manifest: WorkspaceTree.Hash.parse(raw.manifest) }
+    protectedPath(change.path)
+    return prepare(input, async ({ info, store, tree, finish }) => {
+      const destination = await tree.resolve(change.path, false)
+      if (destination.entry) throw new WorkspaceErrors.ConflictError()
+      const missing = await parents(tree, destination.path, true)
+      const incoming = WorkspaceCatalog.Info.parse({ ...info, content: { revision: 0, manifest: change.manifest } })
+      return withTree(
+        incoming,
+        store,
+        (source) =>
+          finish(
+            (async function* () {
+              yield* tree.references()
+              for (const entry of missing) yield metadata(entry)
+              yield metadata({ kind: "directory", path: destination.path, mode: source.mode })
+              for await (const entry of source.references()) {
+                const filename = destination.path + "/" + entry.id
+                yield { ...entry, id: Portable.path(filename, Portable.Metadata.parse(entry.metadata)) }
+              }
+            })(),
+            [destination.path],
+          ),
+        { signal: input.signal },
+      )
+    })
   }
 
   function protectedPath(filename: string) {

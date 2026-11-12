@@ -19,6 +19,7 @@ import { Environment } from "../environment"
 import { registerEnvironmentMigrations } from "../environment/migration"
 import { registerWorkspaceMigrations } from "../workspace/migration"
 import { WorkspaceMounts } from "../workspace/mount"
+import { WorkspaceMove } from "../workspace/move"
 import { EnvironmentExecution } from "../environment/execution"
 import { registerSnapshotOwnershipMigrations } from "../session/snapshot-ownership-migration"
 import { registerStoredSnapshotMigrations } from "../session/stored-snapshot-maintenance"
@@ -51,6 +52,7 @@ export function registerHarness() {
   WorkspaceMounts.register()
   EnvironmentExecution.registerRecovery()
   WorkspaceOperations.register()
+  WorkspaceMove.register()
   RuntimeMaintenance.registerProtection()
   registerSessionMaintenanceOwner()
   LoopJob.registerMaintenanceOwner()
