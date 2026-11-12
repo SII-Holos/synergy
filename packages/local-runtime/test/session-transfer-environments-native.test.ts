@@ -75,7 +75,7 @@ test("two native Homes map dormant Environments atomically and retain safe evide
           signal,
           async verify() {},
         })
-        expect(prepared.root.owners["session-environments"]).toBe(1)
+        expect(prepared.root.owners["session-environments"]).toBe(2)
         expect(await Environment.get(environment.id, "home")).toMatchObject({ state: "idle", generation: 0 })
         expect((await Session.get(session.id)).paused).toBeDefined()
         return { session: await Session.get(session.id), prepared, binding, environment }
@@ -326,7 +326,7 @@ test("native provider rejects a private spec before pausing or allocating its se
   )
 }, 15_000)
 
-test("completed native execution and saved output remain intact and block the descriptor-only reader", async () => {
+test("an inconsistent terminal native receipt remains intact and blocks history transfer", async () => {
   await using runtime = await testRuntime({ register })
   await runtime.run(() =>
     ScopeContext.provide({
@@ -408,6 +408,10 @@ test("completed native execution and saved output remain intact and block the de
         await EnvironmentExecution.complete(execution.id, "home")
         const before = await EnvironmentExecution.get(execution.id, "home")
         expect(before.state).toBe("completed")
+        const key = ["environment_execution", "home", execution.id]
+        const raw = z.record(z.string(), z.unknown()).parse(await Storage.read(key))
+        const corrupted = { ...raw, execution: { ...before, status: { ...before.status, streamsDrained: false } } }
+        await Storage.write(key, corrupted)
         await expect(
           Source.prepare({
             binding: {
@@ -428,12 +432,11 @@ test("completed native execution and saved output remain intact and block the de
             requirements: [
               expect.objectContaining({
                 code: "environment_portability_unavailable",
-                label: expect.stringContaining("execution history"),
               }),
             ],
           },
         })
-        expect(await EnvironmentExecution.get(execution.id, "home")).toEqual(before)
+        expect(await Storage.read(key)).toEqual(corrupted)
         expect((await Session.get(session.id)).paused).toBeUndefined()
         expect(
           (await EnvironmentExecution.output(execution.id, "home"))

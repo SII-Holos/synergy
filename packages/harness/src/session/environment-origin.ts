@@ -6,21 +6,21 @@ import { PersistedInfo } from "./types"
 import { MessageV2 } from "./message-v2"
 import { RolloutOwner } from "./rollout/owner"
 import { RolloutLedger } from "./rollout/ledger"
+import { SessionEnvironmentOriginEvidence } from "./environment-origin-evidence"
 
 async function validate(
   origin: Readonly<EnvironmentOrigin.Session>,
   admission: boolean,
   target?: Readonly<EnvironmentOrigin.Target>,
 ) {
+  origin = EnvironmentOrigin.Session.parse(origin)
+  target = target && Object.freeze({ ...target })
   const [raw] = await Storage.readMany<Record<string, unknown>>([
     StoragePath.sessionInfo(Identifier.asScopeID(origin.scopeID), Identifier.asSessionID(origin.sessionID)),
   ])
   if (!raw) throw new Error("Environment origin requires its canonical Session")
   const session = PersistedInfo.parse({ ...raw, workspace: null })
-  if (session.id !== origin.sessionID || session.scope.id !== origin.scopeID)
-    throw new Error("Environment origin belongs to another Session or Scope")
-  if (target?.environmentID && session.environmentID !== target.environmentID)
-    throw new Error("Environment origin differs from its Session's selected Environment")
+  SessionEnvironmentOriginEvidence.verifySession(origin, session, target)
   const owner = RolloutOwner.session(session)
   const [root, message, run, tool] = await Promise.all([
     MessageV2.readInfo({ scopeID: origin.scopeID, sessionID: origin.sessionID, messageID: origin.rootID }),
@@ -33,35 +33,12 @@ async function validate(
       tool: origin.tool,
     }),
   ])
-  if (
-    root.role !== "user" ||
-    root.sessionID !== origin.sessionID ||
-    !root.isRoot ||
-    root.rootID !== root.id ||
-    root.id !== origin.rootID ||
-    message.role !== "assistant" ||
-    message.id !== origin.messageID ||
-    message.sessionID !== session.id ||
-    message.rootID !== root.id ||
-    run.id !== origin.runID ||
-    run.id !== root.id ||
-    run.owner.kind !== "session" ||
-    run.owner.scopeID !== origin.scopeID ||
-    run.owner.sessionID !== origin.sessionID ||
-    !tool
-  )
-    throw new Error("Environment origin does not match its canonical native root, Run and tool call")
-  if (
-    admission &&
-    (session.paused ||
-      session.time.archived ||
-      run.status !== "running" ||
-      run.cancelRequestedAt ||
-      run.recording === "failed" ||
-      tool.status !== "running")
-  )
-    throw new Error("Environment origin cannot start another native effect")
+  const evidence = { session, root, message, run, tool }
+  SessionEnvironmentOriginEvidence.verify(origin, evidence, admission, target)
+  return evidence
 }
+
+export const inspectSessionEnvironmentOrigin = (origin: Readonly<EnvironmentOrigin.Session>) => validate(origin, false)
 
 export function registerSessionEnvironmentOrigin(gate: {
   admission(sessionID: string): Promise<void>

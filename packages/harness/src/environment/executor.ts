@@ -150,10 +150,17 @@ export namespace ExecutionProtocol {
     })
     .meta({ ref: "EnvironmentExecutionStatus" })
   export type Status = z.infer<typeof Status>
+  const maxChunkDataLength = 90_000
   export const Chunk = z.object({
     cursor: z.number().int().positive(),
     stream: z.enum(["stdout", "stderr"]),
-    data: z.string().max(90_000),
+    data: z
+      .string()
+      .max(maxChunkDataLength)
+      .refine(
+        (data) => data.length <= maxChunkDataLength && Buffer.from(data, "base64").toString("base64") === data,
+        "Native output must be canonical base64",
+      ),
   })
   export type Chunk = z.infer<typeof Chunk>
 

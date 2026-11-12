@@ -28,6 +28,7 @@ import {
   SessionTransferEvidence,
   SessionTransferSnapshots,
   SessionTransferWorkspaces,
+  SessionTransferEnvironments,
 } from "@ericsanchezok/synergy-harness/session/transfer"
 
 export type MemberRuntimeOptions = Pick<
@@ -88,6 +89,7 @@ async function openOrganizationRuntime(input: MemberRuntimeOptions) {
         SessionTransferEvidence.register()
         SessionTransferSnapshots.register()
         SessionTransferWorkspaces.register()
+        SessionTransferEnvironments.register()
         registerOrganizationTransferOwner()
         if (!("accountID" in member.identity))
           OrganizationRuntimeNative.register({ identity: member.identity, ca: input.ca })

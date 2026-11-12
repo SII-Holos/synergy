@@ -39,6 +39,6 @@ Trusted transfers use `workspace-file/service`: imports accept stable operation 
 
 `environment/profiles` owns global profiles and local/S3/OSS factories. Snapshot settings, fail closed, and keep external mounts read-only. Test `test/environment/profiles.test.ts`; `SYNERGY_TEST_DOCKER_ENVIRONMENT_IMAGE` enables Docker integration.
 
-Explicit `environment: "native"` selects the native provider/default without personal profiles. Hosted compositions supply providers. Descriptor portability requires explicit composition; verify `test/session-transfer-environments-native.test.ts`.
+Explicit `environment: "native"` selects the native provider/default without personal profiles. Hosted compositions supply providers. Descriptor portability requires explicit composition; verify `test/session-transfer-environment*.test.ts`.
 
 Transfers: `session-transfer-workspaces`, `session-transfer-workspace-target`; trees: `workspace/{file-host,portable-tree,portable-git,portable-target}`; claims: `session-transfer-physical`. Paged checkpoints/imports preserve identity/policy. Verify source/target/physical, file-host-paged, mount-paged, tree/Git.

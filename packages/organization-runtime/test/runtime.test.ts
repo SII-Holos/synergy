@@ -18,6 +18,7 @@ import { RolloutLifecycle } from "@ericsanchezok/synergy-harness/session/rollout
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { HomeOwnership } from "@ericsanchezok/synergy-harness/lifecycle/home-ownership"
 import { EnvironmentProviders } from "@ericsanchezok/synergy-harness/environment/provider"
+import { SessionTransferOwners } from "@ericsanchezok/synergy-harness/session/transfer"
 import { SessionExecutionSource } from "@ericsanchezok/synergy-harness/session/execution-source"
 import { InstructionFiles } from "@ericsanchezok/synergy-harness/session/instruction-files"
 import { spawnAgentWorkerProcess } from "@ericsanchezok/synergy-harness/session/agent-turn/process-host"
@@ -444,6 +445,10 @@ test("resident member startup reconnects its outbound bridge without blocking lo
     identity: member.identity,
     ca: service.ca,
     listen: { port: await availablePort(), token: "d".repeat(64) },
+  })
+  await runtime.run(() => {
+    expect(SessionTransferOwners.versions(["session-environments"])).toEqual({ "session-environments": 2 })
+    expect(SessionTransferOwners.compatibility({ "session-environments": 1 })).toEqual([])
   })
   const deadline = setTimeout(() => reconnected.reject(new Error("Resident bridge did not reconnect")), 3_000)
   try {

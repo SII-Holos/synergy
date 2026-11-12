@@ -5,7 +5,10 @@ import { StoragePath } from "../../src/storage/path"
 import { runMigrations, upgradeImportedRecord } from "../../src/migration"
 import { EnvironmentPortableSchema as S } from "../../src/environment/portable-schema"
 import { EnvironmentTransferRecords as Records } from "../../src/environment/transfer-records"
-import { environmentTransferPhysicalMigration } from "../../src/environment/transfer-migration"
+import {
+  environmentTransferPhysicalMigration,
+  environmentTransferHistoryMigration,
+} from "../../src/environment/transfer-migration"
 
 function source(handoffID = "selected-handoff") {
   return S.Source.parse({
@@ -36,6 +39,7 @@ async function rerunPhysicalMigration() {
   const log = await Storage.read<Record<string, number>>(key)
   const next = { ...log }
   delete next[environmentTransferPhysicalMigration.id]
+  delete next[environmentTransferHistoryMigration.id]
   await Storage.write(key, next)
   return runMigrations({ targetDomain: "environment", output: "silent" })
 }
@@ -92,6 +96,11 @@ test("the centrally registered Environment reader rejects foreign addresses and 
       upgradeImportedRecord(key, { ...original, selected: { ...original.selected, spec: { token: "private" } } }),
     ).toThrow()
     expect(() => upgradeImportedRecord(key, { ...original, selected: undefined })).toThrow()
+    const current = S.CurrentSource.parse({ ...original, version: 2, executions: 3 })
+    expect(upgradeImportedRecord(key, current)).toEqual(current)
+    expect(S.LegacySource.safeParse(current).success).toBe(false)
+    expect(() => upgradeImportedRecord(key, { ...current, executions: undefined })).toThrow()
+    expect(() => upgradeImportedRecord(key, { ...current, version: 3 })).toThrow()
   })
 })
 

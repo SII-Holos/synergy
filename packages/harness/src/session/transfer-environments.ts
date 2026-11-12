@@ -11,10 +11,16 @@ import { SessionTransferCore as Core } from "./transfer-core"
 import { SessionTransferEpochs as Epochs } from "./transfer-epochs"
 import { SessionTransferOwners as Owners } from "./transfer-owners"
 import type { SessionTransferStream } from "./transfer-stream"
+import { EnvironmentExecutionPortable as Portable } from "../environment/execution-portable"
+import { inspectSessionEnvironmentOrigin } from "./environment-origin"
+import { StoragePath } from "../storage/path"
+import { createHash } from "node:crypto"
 
 export namespace SessionTransferEnvironments {
   export const receipt = Records.receipt
   const ownerID = "session-environments"
+  const preparations = new WeakMap<Owners.TargetContext, { hash: string; assert(): void }>()
+  const executions = (source: S.Source) => (source.version === 2 ? source.executions : 0)
   function fail(message: string): never {
     throw new Owners.Rejected({ message })
   }
@@ -55,9 +61,19 @@ export namespace SessionTransferEnvironments {
       descriptor: provider.portableDescriptor(info.spec),
     })
   }
-  async function assertNoHistory(scopeID: string, sessionID: string, signal?: AbortSignal) {
-    for await (const _ of EnvironmentExecution.sessionEntries({ scopeID, sessionID }, signal))
-      fail("Environment execution history requires its lossless portability reader")
+  async function historyCount(scopeID: string, sessionID: string, signal: AbortSignal) {
+    let count = 0
+    for await (const { value } of Portable.records({ scopeID, sessionID }, signal)) {
+      await inspectSessionEnvironmentOrigin(value.execution.origin)
+      signal.throwIfAborted()
+      count = z
+        .number()
+        .int()
+        .nonnegative()
+        .safe()
+        .parse(count + 1)
+    }
+    return count
   }
   function requirement(error: unknown): Owners.Requirement {
     return {
@@ -77,7 +93,7 @@ export namespace SessionTransferEnvironments {
     assertOwner()
     const requirements: Owners.Requirement[] = []
     try {
-      await assertNoHistory(session.scope.id, session.id, context.signal)
+      await historyCount(session.scope.id, session.id, context.signal)
       await selection(session.environmentID, session.scope.id)
     } catch (error) {
       assertOwner()
@@ -125,7 +141,7 @@ export namespace SessionTransferEnvironments {
           session.environmentID,
           session.workspaceID,
         )
-        await assertNoHistory(session.scope.id, session.id, context.signal)
+        const count = await historyCount(session.scope.id, session.id, context.signal)
         const current = await Environment.binding(session.scope.id, session.id)
         if ((current?.id ?? null) !== session.environmentID)
           fail("Native Environment binding disagrees with its Session")
@@ -137,14 +153,16 @@ export namespace SessionTransferEnvironments {
         if (existing) {
           if (
             existing.rootSessionID !== context.rootSessionID ||
-            existing.selected?.environmentID !== (session.environmentID ?? undefined)
+            existing.selected?.environmentID !== (session.environmentID ?? undefined) ||
+            executions(existing) !== count
           )
             fail("Sealed Environment selection belongs to another source")
           return
         }
         await Records.save(
           S.Source.parse({
-            version: 1,
+            version: 2,
+            executions: count,
             kind: "source",
             scopeID: session.scope.id,
             sessionID: session.id,
@@ -174,41 +192,97 @@ export namespace SessionTransferEnvironments {
     })
     const session = await Session.get(context.session.id)
     const current = await Environment.binding(session.scope.id, session.id)
-    await assertNoHistory(session.scope.id, session.id, context.signal)
+    const count = await historyCount(session.scope.id, session.id, context.signal)
     assertOwner()
     if (!source || source.rootSessionID !== context.rootSessionID) fail("Frozen Environment source evidence is absent")
     if (
       (source.selected?.environmentID ?? null) !== session.environmentID ||
-      (current?.id ?? null) !== session.environmentID
+      (current?.id ?? null) !== session.environmentID ||
+      executions(source) !== count
     )
       fail("Frozen Environment evidence disagrees with canonical Session selection")
-    const entry = (value: S.Record): SessionTransferStream.Input => ({
-      id: JSON.stringify([ownerID, Records.key(value)]),
+    const entry = (key: string[], value: unknown): SessionTransferStream.Input => ({
+      id: JSON.stringify([ownerID, key]),
       kind: "record",
-      metadata: { key: Records.key(value) },
+      metadata: { key },
       content: (async function* () {
         assertOwner()
         yield new TextEncoder().encode(JSON.stringify(value))
       })(),
     })
-    yield entry(source)
+    yield entry(Records.key(source), source)
     for await (const row of Storage.records({
       prefix: [...Records.prefix, "receipt", source.scopeID, source.sessionID],
       limit: 64,
     })) {
       assertOwner()
-      yield entry(S.Receipt.parse(Records.parse(row.key, row.value)))
+      yield entry(row.key, S.Receipt.parse(Records.parse(row.key, row.value)))
+    }
+    for await (const row of Portable.records({ scopeID: session.scope.id, sessionID: session.id }, context.signal)) {
+      assertOwner()
+      await Portable.outputCount(row.value, context.signal)
+      yield entry(row.key, row.value)
+      for (let cursor = 1; cursor <= row.value.execution.outputCursor; cursor++) {
+        const key = Portable.outputKey(row.value, cursor)
+        const ordinal = cursor
+        yield {
+          id: JSON.stringify([ownerID, key]),
+          kind: "artifact",
+          metadata: { key },
+          content: (async function* () {
+            assertOwner()
+            yield await Portable.validateChunk(
+              Storage.readBinaryStream(key, { signal: context.signal }),
+              ordinal,
+              context.signal,
+            )
+            assertOwner()
+          })(),
+        }
+      }
     }
   }
   async function target(context: Owners.TargetContext) {
     const assertOwner = guard(context.signal)
+    const preparation = preparations.get(context)
+    const publishing = Storage.inWriteTransaction()
+    if (publishing && !preparation) fail("Completed Environment history requires prior native preparation")
+    preparation?.assert()
+    const hash = createHash("sha256")
     const related = context.staged.relatedRecord
     if (!related || (await context.staged.ownerVersion?.("session-core")) !== 2)
       fail("Environment preparation requires its canonical Core reader")
     const core = await Core.stagedInfo(context.session, (key) => related("session-core", key))
     let source: S.Source | undefined
+    let operations = 0
+    let expectedOutputs = 0
     for await (const row of context.staged.records()) {
       assertOwner()
+      hash.update(JSON.stringify([row.key, row.value]) + "\n")
+      if (row.key[0] === "environment_execution") {
+        const record = Portable.parse(row.key, row.value, { scopeID: core.info.scope.id, sessionID: core.info.id })
+        const [previous] = await Storage.readMany([row.key])
+        if (
+          previous !== undefined &&
+          JSON.stringify(
+            Portable.parse(row.key, previous, { scopeID: core.info.scope.id, sessionID: core.info.id }),
+          ) !== JSON.stringify(record)
+        )
+          fail("Portable Environment operation conflicts with retained native history")
+        operations = z
+          .number()
+          .int()
+          .nonnegative()
+          .safe()
+          .parse(operations + 1)
+        expectedOutputs = z
+          .number()
+          .int()
+          .nonnegative()
+          .safe()
+          .parse(expectedOutputs + record.execution.outputCursor)
+        continue
+      }
       const value = Records.parse(row.key, row.value)
       const original = value.kind === "source" ? value : value.source
       if (original.scopeID !== core.info.scope.id || original.sessionID !== core.info.id)
@@ -224,10 +298,47 @@ export namespace SessionTransferEnvironments {
           fail("Environment history conflicts with a retained native receipt")
       }
     }
-    for await (const _ of context.staged.artifacts())
-      fail("Environment descriptor evidence cannot install binary state")
+    let outputs = 0
+    for await (const artifact of context.staged.artifacts()) {
+      assertOwner()
+      const [kind, scopeID, operationID, ordinal] = artifact.key
+      if (kind !== "environment_output" || scopeID !== core.info.scope.id || !operationID || !ordinal)
+        fail("Portable Environment output belongs to another native owner")
+      const key = StoragePath.environmentExecution(scopeID, operationID)
+      const raw = await context.staged.record(key)
+      if (!raw) fail("Portable Environment output has no operation receipt")
+      const record = Portable.parse(raw.key, raw.value, { scopeID, sessionID: core.info.id })
+      const cursor = Number(ordinal)
+      if (JSON.stringify(artifact.key) !== JSON.stringify(Portable.outputKey(record, cursor)))
+        fail("Portable Environment output has another canonical address")
+      hash.update(JSON.stringify([artifact.key, artifact.bytes, artifact.sha256]) + "\n")
+      if (!publishing) await Portable.validateChunk(artifact.read(), cursor, context.signal)
+      outputs = z
+        .number()
+        .int()
+        .nonnegative()
+        .safe()
+        .parse(outputs + 1)
+    }
     if (!source || (source.selected?.environmentID ?? null) !== core.info.environmentID)
       fail("Environment source evidence disagrees with canonical Core selection")
+    if (
+      operations !== executions(source) ||
+      outputs !== expectedOutputs ||
+      (context.sourceVersion === 1 && source.version !== 1)
+    )
+      fail("Portable Environment history omits its declared operation or output closure")
+    if (!publishing)
+      await Core.validateEnvironmentOrigins(
+        context,
+        (async function* () {
+          for await (const row of context.staged.records()) {
+            if (row.key[0] !== "environment_execution") continue
+            yield Portable.parse(row.key, row.value, { scopeID: core.info.scope.id, sessionID: core.info.id }).execution
+              .origin
+          }
+        })(),
+      )
     const mapped = context.mapping.environmentID
     if (mapped !== null && typeof mapped !== "string") fail("Environment requires an explicit destination mapping")
     if ((source.selected === null) !== (mapped === null))
@@ -241,6 +352,11 @@ export namespace SessionTransferEnvironments {
         JSON.stringify(source.selected.descriptor) !== JSON.stringify(selected.descriptor))
     )
       fail("Destination Environment has an incompatible registered provider descriptor")
+    const digest = hash.digest("hex")
+    if (publishing) {
+      preparation?.assert()
+      if (preparation?.hash !== digest) fail("Prepared Environment history changed before publication")
+    } else preparations.set(context, { hash: digest, assert: assertOwner })
     return { source, selected }
   }
   async function publish(context: Owners.TargetContext) {
@@ -253,6 +369,12 @@ export namespace SessionTransferEnvironments {
         ? undefined
         : Session.PersistedInfo.parse({ ...z.record(z.string(), z.unknown()).parse(previous), workspace: null })
     const current = await Environment.binding(source.scopeID, source.sessionID)
+    await EnvironmentExecution.assertSessionDrained(
+      source.scopeID,
+      source.sessionID,
+      selected?.environmentID,
+      prior?.workspaceID,
+    )
     if ((current?.id ?? null) !== (prior?.environmentID ?? null))
       fail("Existing native Environment binding has another Session owner")
     if ((current?.id ?? null) !== (selected?.environmentID ?? null))
@@ -263,30 +385,50 @@ export namespace SessionTransferEnvironments {
         expectedEnvironmentID: current?.id ?? null,
       })
     for await (const row of context.staged.records()) {
+      if (row.key[0] === "environment_execution") {
+        await Portable.install(row.value, { scopeID: source.scopeID, sessionID: source.sessionID })
+        continue
+      }
       const value = Records.parse(row.key, row.value)
       if (value.kind === "receipt") await Records.save(value)
     }
-    await Records.save({ version: 1, kind: "receipt", source, target: selected })
-    await Storage.transaction(async () => assertOwner(), { commitGuard: assertOwner })
+    for await (const artifact of context.staged.artifacts()) await artifact.publish(artifact.key)
+    await Records.save({ version: 2, kind: "receipt", source, target: selected })
+    const preparation = preparations.get(context)
+    if (!preparation) fail("Completed Environment history lost its original preparation")
+    await Storage.transaction(
+      async () => {
+        assertOwner()
+        preparation.assert()
+      },
+      {
+        commitGuard() {
+          assertOwner()
+          preparation.assert()
+        },
+      },
+    )
   }
   export function register() {
     Owners.register(ownerID, {
-      version: 1,
-      reads: [1],
+      version: 2,
+      reads: [1, 2],
       stagedDependencies: ["session-core"],
       publicationBefore: ["session-core"],
-      async applies(session) {
+      async applies(session, signal) {
         const current = await Session.get(session.id)
+        let count = 0
         try {
-          await assertNoHistory(current.scope.id, current.id)
+          count = await historyCount(current.scope.id, current.id, signal)
           await selection(current.environmentID, current.scope.id)
         } catch (error) {
+          signal.throwIfAborted()
           throw new Owners.Rejected({
             message: "Environment portability is unavailable before native pause",
             requirements: [requirement(error)],
           })
         }
-        return !!current.environmentID || Records.hasReceipts(current.scope.id, current.id)
+        return !!current.environmentID || count > 0 || Records.hasReceipts(current.scope.id, current.id)
       },
       inspect,
       freeze,

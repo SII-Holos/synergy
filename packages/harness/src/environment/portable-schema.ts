@@ -18,7 +18,7 @@ export namespace EnvironmentPortableSchema {
     descriptor: Descriptor,
   })
   export type Selection = z.infer<typeof Selection>
-  export const Source = z.strictObject({
+  export const LegacySource = z.strictObject({
     version: z.literal(1),
     kind: z.literal("source"),
     scopeID: ID,
@@ -27,14 +27,20 @@ export namespace EnvironmentPortableSchema {
     handoffID: ID,
     selected: Selection.nullable(),
   })
+  export const CurrentSource = LegacySource.extend({
+    version: z.literal(2),
+    executions: z.number().int().nonnegative().safe(),
+  })
+  export const Source = z.discriminatedUnion("version", [LegacySource, CurrentSource])
   export type Source = z.infer<typeof Source>
+  const ReceiptFields = z.strictObject({
+    version: z.literal(1),
+    kind: z.literal("receipt"),
+    source: LegacySource,
+    target: Selection.nullable(),
+  })
   export const Receipt = z
-    .strictObject({
-      version: z.literal(1),
-      kind: z.literal("receipt"),
-      source: Source,
-      target: Selection.nullable(),
-    })
+    .discriminatedUnion("version", [ReceiptFields, ReceiptFields.extend({ version: z.literal(2), source: Source })])
     .refine(({ source, target }) =>
       source.selected === null
         ? target === null
@@ -43,6 +49,6 @@ export namespace EnvironmentPortableSchema {
           JSON.stringify(source.selected.descriptor) === JSON.stringify(target.descriptor),
     )
   export type Receipt = z.infer<typeof Receipt>
-  export const Record = z.discriminatedUnion("kind", [Source, Receipt])
+  export const Record = z.union([Source, Receipt])
   export type Record = z.infer<typeof Record>
 }

@@ -33,3 +33,10 @@ export const environmentTransferPhysicalMigration: Migration = {
     progress(count, count)
   },
 }
+
+export const environmentTransferHistoryMigration: Migration = {
+  ...environmentTransferPhysicalMigration,
+  id: "20261112-environment-transfer-completed-history",
+  dependsOn: [environmentTransferPhysicalMigration.id],
+  description: "Validate retained descriptor and completed-history Environment reader versions",
+}

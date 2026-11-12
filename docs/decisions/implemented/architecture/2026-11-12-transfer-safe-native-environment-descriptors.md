@@ -8,7 +8,7 @@ A selected Environment is an execution destination owned by its current provider
 
 ## Decision
 
-The explicit `SessionTransferEnvironments` contribution provides version-one descriptor portability for Sessions with no Environment Execution history. The existing provider registry gains an optional pure descriptor callback. The Local Native provider validates its strict empty spec and returns platform, architecture and declared capabilities without allocating compute. Owner discovery rejects unsupported providers, specs and all execution history before native pause; recoverable tool drainage remains separate. The owner rechecks canonical selection during freeze and export.
+The explicit `SessionTransferEnvironments` contribution introduces version-one descriptor portability for Sessions with no Environment Execution history. [Reader 2](2026-11-12-transfer-completed-environment-history-through-native-owners.md) extends this implementation with completed operation and output facts while retaining the original descriptor safeguards. The existing provider registry gains an optional pure descriptor callback. The Local Native provider validates its strict empty spec and returns platform, architecture and declared capabilities without allocating compute. Version-one root discovery rejects unsupported providers, specs and all execution history before native pause; recoverable tool drainage remains separate. The owner rechecks canonical selection during freeze and export.
 
 Source freeze waits for original Session preparation and canonical Use drainage, then seals immutable safe facts against the exact handoff and member. Seals contain only original Environment identity, provider, generation/state observations and the validated descriptor. Prior mapping receipts stream independently in bounded pages, including after restart. Neither growing Session arrays nor a second executable Environment catalog is introduced.
 
@@ -26,10 +26,10 @@ The Environment owner centrally registers strict record and bounded physical mig
 
 **Map missing destinations to null or the local default.** That silently changes a retained execution selection and bypasses explicit mapping.
 
-**Export safe metadata while ignoring execution history.** That would make an incomplete package appear lossless. This reader blocks even completed history until the owning Execution/output extension is implemented.
+**Export safe metadata while ignoring execution history.** That would make an incomplete package appear lossless. Version one blocks completed history; the owning reader-two extension adds complete native records and output instead of silently weakening that gate.
 
 ## Consequences
 
-Explicit hosts can transfer a supported unused Native selection without starting compute, while ordinary catalog and execution admission remain authoritative. Completed and active operation history, cloud resource mapping consent and default organization controller enablement remain unavailable in this unit. The next Environment portability extension must carry exact ended operation and output facts before removing that restriction.
+Explicit hosts can transfer a supported unused Native selection without starting compute, while ordinary catalog and execution admission remain authoritative. Version-one packages remain descriptor-only. Reader two carries exact completed operation/output facts; active operation drainage, cloud resource mapping consent and default organization controller enablement remain separate.
 
 Verification uses Local Runtime `test/session-transfer-environments-native.test.ts` for two actual Native Homes, explicit mappings, hidden-null Core evidence, activation rollback, paused targets, cold receipt re-export, strict specs and unchanged completed command/output refusal. Harness `test/environment/transfer-records.test.ts` exercises immutable collisions, central import validation and a bad physical-migration row beyond the first page. Existing `test/session/transfer-environments.test.ts` verifies complete Use drainage independently of this reader.

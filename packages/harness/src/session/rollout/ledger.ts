@@ -14,6 +14,7 @@ import { ProviderPricing } from "../../provider/pricing"
 import { RolloutUsage } from "./usage"
 import { SessionActivityEvent } from "../activity-events"
 import { RolloutToolPartIndex } from "./tool-part-index"
+import { RolloutRecordKeys } from "./record-keys"
 
 export namespace RolloutLedger {
   export const toolForPart = RolloutToolPartIndex.get
@@ -41,7 +42,7 @@ export namespace RolloutLedger {
   }
 
   function root(owner: Owner, runID: string) {
-    return [...RolloutArtifact.root(owner), "runs", Segment.parse(runID)]
+    return RolloutRecordKeys.run(RolloutArtifact.root(owner), runID)
   }
 
   function lockKey(owner: Owner, runID: string) {

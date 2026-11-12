@@ -28,6 +28,19 @@ import { SessionTransferAggregate as Aggregate } from "./transfer-aggregate"
 import { SessionAttachmentIndex } from "./attachment-index"
 import { SessionPartFieldSource } from "./part-field-source"
 import { RolloutToolPartIndex } from "./rollout/tool-part-index"
+import { RolloutToolPartSelection } from "./rollout/tool-part-selection"
+import { RolloutRecordKeys } from "./rollout/record-keys"
+import { RolloutOwner } from "./rollout/owner"
+import { SessionEnvironmentOriginEvidence } from "./environment-origin-evidence"
+import { EnvironmentOriginSchema } from "../environment/origin-schema"
+import { Identifier } from "../id/id"
+import { StoragePath } from "../storage/path"
+import { upgradeAccessRecord } from "../migration/import"
+import { Global } from "../global"
+import { initializeSqliteEngine } from "../storage/sqlite-engine"
+import fs from "node:fs/promises"
+import path from "node:path"
+import { Database } from "bun:sqlite"
 
 export namespace SessionTransferCore {
   const Mapping = z.object({
@@ -182,6 +195,131 @@ export namespace SessionTransferCore {
 
   async function sourceInfo(context: Owners.TargetContext) {
     return stagedInfo(context.session, (key) => context.staged.record(key))
+  }
+
+  export async function validateEnvironmentOrigins(
+    context: Owners.TargetContext,
+    origins: AsyncIterable<EnvironmentOriginSchema.Session>,
+  ) {
+    const signal = context.signal
+    const relatedRecord = context.staged.relatedRecord
+    const relatedRecords = context.staged.relatedRecords
+    if (!relatedRecord || !relatedRecords || (await context.staged.ownerVersion?.("session-core")) !== 2)
+      fail("Environment origin evidence requires its canonical Core reader")
+    const source = await stagedInfo(context.session, (key) => relatedRecord("session-core", key))
+    const owner = RolloutOwner.session(source.info)
+    const base = RolloutArtifact.root(owner)
+    const cache = Global.Path.cache
+    await fs.mkdir(cache, { recursive: true })
+    const directory = await fs.mkdtemp(path.join(cache, "portable-environment-origins-"))
+    initializeSqliteEngine()
+    let database: Database | undefined
+    try {
+      database = new Database(path.join(directory, "wanted.sqlite"))
+      database.exec(
+        "PRAGMA journal_mode=OFF; PRAGMA synchronous=OFF; PRAGMA temp_store=FILE; PRAGMA cache_size=-2048; CREATE TABLE wanted(run TEXT NOT NULL, digest TEXT NOT NULL, origin TEXT NOT NULL, tool TEXT, started REAL, input_hash TEXT, ambiguous INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(run,digest))",
+      )
+      interface Wanted {
+        run: string
+        digest: string
+        origin: string
+        tool: string | null
+        started: number | null
+        input_hash: string | null
+        ambiguous: number
+      }
+      const insert = database.prepare("INSERT OR IGNORE INTO wanted(run,digest,origin) VALUES (?,?,?)")
+      const find = database.prepare<Wanted, [string, string]>("SELECT * FROM wanted WHERE run=? AND digest=?")
+      const update = database.prepare(
+        "UPDATE wanted SET tool=?,started=?,input_hash=?,ambiguous=? WHERE run=? AND digest=?",
+      )
+      for await (const raw of origins) {
+        signal.throwIfAborted()
+        const origin = EnvironmentOriginSchema.Session.parse(raw)
+        SessionEnvironmentOriginEvidence.verifySession(origin, source.info)
+        const locator = RolloutToolPartIndex.locator({
+          runID: origin.runID,
+          messageID: origin.messageID,
+          toolCallID: origin.callID,
+          tool: origin.tool,
+        })
+        const serialized = JSON.stringify(origin)
+        insert.run(locator.runID, locator.digest, serialized)
+        if (find.get(locator.runID, locator.digest)?.origin !== serialized)
+          fail("Portable Environment origins have conflicting native invocations")
+      }
+      if (!database.prepare<{ count: number }, []>("SELECT COUNT(*) AS count FROM wanted").get()?.count) return
+      for await (const row of relatedRecords("session-core")) {
+        signal.throwIfAborted()
+        const tool = RolloutToolPartIndex.parseRecord(owner, row.key, row.value)
+        if (!tool) continue
+        const locator = RolloutToolPartIndex.locator(tool)
+        const current = find.get(locator.runID, locator.digest)
+        if (!current) continue
+        const selected = RolloutToolPartSelection.select(
+          current.tool !== null && current.started !== null
+            ? {
+                toolID: current.tool,
+                started: current.started,
+                inputHash: current.input_hash,
+                ambiguous: current.ambiguous !== 0,
+              }
+            : undefined,
+          tool,
+        )
+        update.run(
+          selected.toolID,
+          selected.started,
+          selected.inputHash,
+          Number(selected.ambiguous),
+          locator.runID,
+          locator.digest,
+        )
+      }
+      const read = async (key: string[]) => {
+        signal.throwIfAborted()
+        const record = await relatedRecord("session-core", key)
+        signal.throwIfAborted()
+        if (!record || JSON.stringify(record.key) !== JSON.stringify(key))
+          fail("Portable Environment origin evidence is absent or foreign")
+        return record.value
+      }
+      for (const wanted of database.prepare<Wanted, []>("SELECT * FROM wanted ORDER BY run,digest").iterate()) {
+        signal.throwIfAborted()
+        if (!wanted.tool || wanted.ambiguous)
+          fail("Portable Environment origin has missing or ambiguous native tool evidence")
+        const origin = EnvironmentOriginSchema.Session.parse(JSON.parse(wanted.origin))
+        const messageKey = (messageID: string) =>
+          StoragePath.messageInfo(
+            Identifier.asScopeID(origin.scopeID),
+            Identifier.asSessionID(origin.sessionID),
+            Identifier.asMessageID(messageID),
+          )
+        const rootKey = messageKey(origin.rootID)
+        const assistantKey = messageKey(origin.messageID)
+        const [rootRaw, messageRaw, runRaw, toolRaw] = await Promise.all([
+          read(rootKey),
+          read(assistantKey),
+          read(RolloutRecordKeys.runInfo(base, origin.runID)),
+          read(RolloutRecordKeys.tool(base, origin.runID, wanted.tool)),
+        ])
+        const tool = RolloutSchema.ToolExecutionRecord.parse(toolRaw)
+        if (tool.started !== wanted.started || tool.input.sha256 !== wanted.input_hash)
+          fail("Portable Environment tool selection changed")
+        const evidence = {
+          session: source.info,
+          root: MessageV2.canonicalMessage(MessageV2.Info.parse(upgradeAccessRecord(rootKey, rootRaw))),
+          message: MessageV2.canonicalMessage(MessageV2.Info.parse(upgradeAccessRecord(assistantKey, messageRaw))),
+          run: RolloutSchema.RunRecord.parse(runRaw),
+          tool,
+        }
+        SessionEnvironmentOriginEvidence.verify(origin, evidence, false)
+      }
+      signal.throwIfAborted()
+    } finally {
+      database?.close(true)
+      await fs.rm(directory, { recursive: true, force: true })
+    }
   }
 
   function map(context: Owners.TargetContext, key: string[], value: unknown) {

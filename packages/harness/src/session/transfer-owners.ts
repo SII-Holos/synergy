@@ -71,7 +71,7 @@ export namespace SessionTransferOwners {
   export interface Contribution {
     version: number
     reads: readonly number[]
-    applies(session: Readonly<Session.Info>): boolean | Promise<boolean>
+    applies(session: Readonly<Session.Info>, signal: AbortSignal): boolean | Promise<boolean>
     stagedDependencies?: readonly string[]
     publicationBefore?: readonly string[]
     publicationAfter?: readonly string[]
@@ -247,7 +247,9 @@ export namespace SessionTransferOwners {
       }
     for (const [id, owner] of state()) {
       context.signal.throwIfAborted()
-      if (await owner.applies(context.session)) ids.add(id)
+      const applies = await owner.applies(context.session, context.signal)
+      context.signal.throwIfAborted()
+      if (applies) ids.add(id)
     }
     for (const id of ids) require(id)
     return [...ids].sort()

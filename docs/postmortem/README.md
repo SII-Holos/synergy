@@ -19,6 +19,10 @@
 
 ## Index
 
+- [0141](0141-cancelled-portability-discovery-paused-the-session.md)
+
+- [0143](0143-portable-environment-output-accepted-invalid-frames.md)
+
 - [0144](0144-source-retirement-fenced-a-substituted-directory.md)
 
 - [0140](0140-project-publication-used-management-permission.md)

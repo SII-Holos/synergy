@@ -6,6 +6,8 @@ import type { Migration } from "../../migration/types"
 import { RolloutArtifact } from "./artifact"
 import { RolloutSchema } from "./schema"
 import { UpgradeWork } from "../../storage/upgrade-work"
+import { RolloutToolPartSelection } from "./tool-part-selection"
+import { RolloutRecordKeys } from "./record-keys"
 
 export namespace RolloutToolPartIndex {
   export const Query = RolloutSchema.ToolExecutionRecord.pick({
@@ -46,15 +48,10 @@ export namespace RolloutToolPartIndex {
     query.runID,
     digest(query),
   ]
-  const toolKey = (owner: RolloutSchema.Owner, query: Query, id: string) => [
-    ...RolloutArtifact.root(owner),
-    "runs",
-    query.runID,
-    "tools",
-    id,
-  ]
+  const toolKey = (owner: RolloutSchema.Owner, query: Query, id: string) =>
+    RolloutRecordKeys.tool(RolloutArtifact.root(owner), query.runID, id)
 
-  export async function capture(owner: RolloutSchema.Owner, sourceKey: string[], raw: unknown) {
+  export function parseRecord(owner: RolloutSchema.Owner, sourceKey: string[], raw: unknown) {
     const base = RolloutArtifact.root(owner)
     if (
       sourceKey.length !== base.length + 4 ||
@@ -62,14 +59,20 @@ export namespace RolloutToolPartIndex {
       sourceKey[base.length + 2] !== "tools"
     )
       return
-    if (!Storage.inWriteTransaction())
-      throw new StorageIntegrityError("Tool Part index requires the native record transaction")
     const value = RolloutSchema.ToolExecutionRecord.parse(raw)
     if (
       JSON.stringify(RolloutArtifact.root(value.owner)) !== JSON.stringify(base) ||
       JSON.stringify(sourceKey) !== JSON.stringify(toolKey(owner, value, value.id))
     )
       throw new StorageIntegrityError("Tool Part index belongs to another execution owner")
+    return value
+  }
+
+  export async function capture(owner: RolloutSchema.Owner, sourceKey: string[], raw: unknown) {
+    const value = parseRecord(owner, sourceKey, raw)
+    if (!value) return
+    if (!Storage.inWriteTransaction())
+      throw new StorageIntegrityError("Tool Part index requires the native record transaction")
     const destination = key(owner, value)
     const previous = await Storage.read(destination, { silentNotFound: true }).catch((error) => {
       if (error instanceof Storage.NotFoundError) return
@@ -77,24 +80,14 @@ export namespace RolloutToolPartIndex {
     })
     const current = previous === undefined ? undefined : Entry.parse(previous)
     if (current && current.started > value.started) return
-    const equal = current?.started === value.started
-    const ambiguous = !!(
-      equal &&
-      (current.ambiguous ||
-        (current.toolID !== value.id &&
-          (current.inputHash === null || value.input.sha256 === null || current.inputHash !== value.input.sha256)))
-    )
-    const selected = equal && current.toolID > value.id ? current.toolID : value.id
+    const selected = RolloutToolPartSelection.select(current, value)
     await Storage.write(
       destination,
       Entry.parse({
         version: 2,
-        toolID: selected,
-        started: value.started,
-        inputHash: selected === value.id ? value.input.sha256 : current!.inputHash,
-        ambiguous,
+        ...selected,
         input:
-          selected === value.id
+          selected.toolID === value.id
             ? (() => {
                 const { mediaType, ...reference } = value.input
                 return {
