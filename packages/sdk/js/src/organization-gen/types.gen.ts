@@ -2731,6 +2731,7 @@ export type OrgHandoffView = {
         acceptedDiffHash: null
       }
   mappingHash: string
+  cancelRequested: boolean
 }
 
 export type OrgHandoffPrepare =

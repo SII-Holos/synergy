@@ -12651,7 +12651,8 @@
               }
             ]
           },
-          "mappingHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+          "mappingHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "cancelRequested": { "type": "boolean" }
         },
         "required": [
           "schemaVersion",
@@ -12676,7 +12677,8 @@
           "currentDriver",
           "bindingEpoch",
           "workspaceMapping",
-          "mappingHash"
+          "mappingHash",
+          "cancelRequested"
         ],
         "additionalProperties": false
       },

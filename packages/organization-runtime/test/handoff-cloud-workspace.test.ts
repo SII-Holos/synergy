@@ -599,9 +599,37 @@ for (const scenario of [
       },
     })
     if (scenario === "cancel") {
-      await f.client.orgHandoff.cancel({ handoffID, body: {} }, options)
+      expect((await f.client.orgHandoff.get({ handoffID }, options)).data).toMatchObject({
+        phase: "prepared",
+        cancelRequested: false,
+      })
+      f.interceptHTTP(async (request) => {
+        if (new URL(request.url).pathname !== `/org/v1/handoffs/${handoffID}/cancel`) return
+        const response = await f.service.fetch(request)
+        if (response.status !== 200) return response
+        return Response.json(
+          {
+            code: "SERVICE_UNAVAILABLE",
+            message: "Lost committed cancellation acknowledgement",
+            outcome: "unknown",
+            retryable: false,
+          },
+          { status: 503 },
+        )
+      })
+      const cancelled = await f.client.orgHandoff.cancel({ handoffID, body: {} }, { headers: f.headers })
+      expect(cancelled.response.status).toBe(503)
+      expect(cancelled.error).toMatchObject({ outcome: "unknown" })
+      f.interceptHTTP(undefined)
+      expect((await f.client.orgHandoff.get({ handoffID }, options)).data).toMatchObject({
+        phase: "prepared",
+        cancelRequested: true,
+      })
       expect((await drive("cancel-source")).facts[0]?.proof.purpose).toBe("source-cancelled")
-      expect((await f.client.orgHandoff.get({ handoffID }, options)).data.phase).toBe("cancelled")
+      expect((await f.client.orgHandoff.get({ handoffID }, options)).data).toMatchObject({
+        phase: "cancelled",
+        cancelRequested: true,
+      })
       expect((await f.client.orgCloudWorkspaces.get({ workspaceID: cloud.workspaceID }, options)).data.manifest).toBe(
         after.manifest,
       )

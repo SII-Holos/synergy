@@ -19,6 +19,7 @@
 
 ## Index
 
+- [0165](0165-handoff-view-hid-committed-cancellation-requests.md)
 - [0163](0163-hosted-publication-outlived-its-restricted-runtime.md)
 - [0162](0162-recycled-agent-workers-outlived-runtime-shutdown.md)
 - [0161](0161-cli-reference-merged-unrelated-command-names.md)

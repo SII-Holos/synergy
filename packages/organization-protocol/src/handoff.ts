@@ -311,7 +311,11 @@ export namespace OrganizationHandoffProtocol {
     currentDriver: Identity.ID,
     bindingEpoch: OrganizationProtocol.Epoch,
   })
-  export const View = LegacyView.extend({ workspaceMapping: WorkspaceMapping, mappingHash: Hash }).meta({
+  export const View = LegacyView.extend({
+    workspaceMapping: WorkspaceMapping,
+    mappingHash: Hash,
+    cancelRequested: z.boolean(),
+  }).meta({
     ref: "OrgHandoffView",
   })
   export type View = z.infer<typeof View>
