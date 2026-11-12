@@ -73,6 +73,10 @@ interface Frame {
 }
 const targets = new WeakMap<HomeRestoration.Target, Binding>()
 const permits = new WeakMap<HomeRestoration.InstallPermit, Frame>()
+const installedOwners = new WeakMap<
+  HomeRestoration.InstallPermit,
+  { frame: Frame; ownership: Readonly<HomeOwnershipFile.RestorationInfo> }
+>()
 const current = RuntimeContext.createAsyncContext<Frame>()
 const state = RuntimeContext.state(() => ({ installed: false, blocked: false, pending: 0 }))
 
@@ -378,11 +382,49 @@ export namespace HomeRestoration {
     await verify(frame.binding, frame.signal)
     assertCurrent(permit)
   }
+  export function assertInstalledOwner(permit: InstallPermit): Readonly<HomeOwnershipFile.RestorationInfo> {
+    assertCurrent(permit)
+    const frame = permits.get(permit)!
+    const proof = installedOwners.get(permit)
+    if (!proof || proof.frame !== frame)
+      throw new RestorationError("Installation requires its freshly verified native Home owner")
+    return proof.ownership
+  }
+  export async function verifyInstalledOwner(
+    permit: InstallPermit,
+  ): Promise<Readonly<HomeOwnershipFile.RestorationInfo>> {
+    assertCurrent(permit)
+    installedOwners.delete(permit)
+    await verifyCurrent(permit)
+    const frame = permits.get(permit)!
+    const record = frame.binding.record
+    const file = HomeOwnershipFile.open({ root: record.target.root, env: frame.binding.runtime.host.env })
+    const ownership = HomeOwnershipFile.RestorationInfo.parse(await file.read())
+    assertCurrent(permit)
+    if (
+      ownership.owner !== record.owner ||
+      ownership.installationID !== record.installationID ||
+      ownership.incarnation !== record.incarnation
+    )
+      throw new RestorationError("Native Home owner belongs to another installation")
+    const retained = await HomeOwnershipFile.open({
+      root: record.target.root,
+      env: frame.binding.runtime.host.env,
+      selected: ownership,
+    }).assert({ required: true })
+    await verifyCurrent(permit)
+    assertCurrent(permit)
+    if (digest(retained) !== digest(ownership)) throw new RestorationError("Native installation ownership changed")
+    const proof = Object.freeze({ ...ownership })
+    installedOwners.set(permit, { frame, ownership: proof })
+    return proof
+  }
   export async function installOwner(
     permit: InstallPermit,
     input: z.infer<typeof FenceRequest>,
   ): Promise<HomeOwnershipFile.RestorationInfo> {
     assertCurrent(permit)
+    installedOwners.delete(permit)
     const selected = FenceRequest.parse(input)
     const frame = permits.get(permit)!
     const record = frame.binding.record
@@ -404,7 +446,7 @@ export namespace HomeRestoration {
     const retained = await files.assert({ required: true })
     assertCurrent(permit)
     if (digest(retained) !== digest(ownership)) throw new RestorationError("Native installation ownership changed")
-    return Object.freeze(ownership)
+    return verifyInstalledOwner(permit)
   }
   export async function withTarget<T>(
     selected: Target,

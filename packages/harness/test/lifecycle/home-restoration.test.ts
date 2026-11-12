@@ -418,3 +418,57 @@ test("released strict readers refuse installed ownership before real credential 
     await fs.rm(recovered.home, { recursive: true, force: true })
   }
 })
+
+test("native Home owner evidence is freshly verified in each actual installation callback and invalidated by failed verification", async () => {
+  const first = await fixture()
+  let expired: HomeRestoration.InstallPermit | undefined
+  let owner: HomeOwnershipFile.RestorationInfo | undefined
+  try {
+    await first.run(async () => {
+      const selected = await HomeRestoration.begin(request)
+      await HomeRestoration.withTarget(selected, async (permit) => {
+        expect(() => HomeRestoration.assertInstalledOwner(permit)).toThrow("freshly verified")
+        owner = await HomeRestoration.installOwner(permit, {
+          identity: "a".repeat(64),
+          readerContract: "native-recovery-fixture-v1",
+        })
+        expect(HomeRestoration.assertInstalledOwner(permit)).toEqual(owner)
+      })
+      await HomeRestoration.withTarget(selected, async (permit) => {
+        expired = permit
+        if (!owner) throw new Error("Fixture did not install the native owner")
+        await HomeRestoration.assertPendingOwner(owner)
+        expect(() => HomeRestoration.assertInstalledOwner(permit)).toThrow("freshly verified")
+        expect(await HomeRestoration.verifyInstalledOwner(permit)).toEqual(owner)
+        const filename = path.join(first.root, "home-ownership.json")
+        await AtomicFile.writeJsonAtomic(filename, JSON.stringify({ ...owner, installationID: crypto.randomUUID() }), {
+          private: true,
+          durable: true,
+        })
+        try {
+          await expect(HomeRestoration.verifyInstalledOwner(permit)).rejects.toThrow("another installation")
+          expect(() => HomeRestoration.assertInstalledOwner(permit)).toThrow("freshly verified")
+        } finally {
+          await AtomicFile.writeJsonAtomic(filename, JSON.stringify(owner), { private: true, durable: true })
+        }
+      })
+      expect(() => HomeRestoration.assertInstalledOwner(expired!)).toThrow("callback")
+    })
+  } finally {
+    await first.close()
+  }
+  const cold = await fixture(first.home)
+  try {
+    await cold.run(async () => {
+      const selected = await HomeRestoration.begin(request)
+      await HomeRestoration.withTarget(selected, async (permit) => {
+        expect(() => HomeRestoration.assertInstalledOwner(permit)).toThrow("freshly verified")
+        expect(await HomeRestoration.verifyInstalledOwner(permit)).toEqual(owner!)
+        expect(HomeRestoration.assertInstalledOwner(permit)).toEqual(owner!)
+      })
+    })
+  } finally {
+    await cold.close()
+    await fs.rm(first.home, { recursive: true, force: true })
+  }
+})

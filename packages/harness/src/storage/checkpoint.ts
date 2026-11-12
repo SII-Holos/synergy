@@ -8,6 +8,7 @@ import { StorageConflictError, StorageIntegrityError } from "./errors"
 import { fileDigest } from "./file-digest"
 import { SecretEnvelope, type VaultKeyProvider } from "../secrets/encrypted-store"
 import type { StoreTransaction } from "./transactional-store"
+import { RuntimeContext } from "../lifecycle/context"
 
 const ID = z
   .string()
@@ -80,6 +81,24 @@ export namespace StorageCheckpoint {
     secretEntries: Count,
   })
   export type Manifest = z.infer<typeof Manifest>
+  export interface ImportEvidence {
+    readonly kind: "storage-checkpoint-import"
+    readonly restoreID: string
+  }
+  const imported = new WeakMap<
+    ImportEvidence,
+    { assert(tx: StoreTransaction): void; manifest: Readonly<Manifest>; guards: Array<() => void> }
+  >()
+  export function assertImport(evidence: ImportEvidence, tx: StoreTransaction): Readonly<Manifest> {
+    const original = imported.get(evidence)
+    if (!original) throw new StorageIntegrityError("Checkpoint import requires original native evidence")
+    original.assert(tx)
+    return original.manifest
+  }
+  export function guardImport(evidence: ImportEvidence, tx: StoreTransaction, guard: () => void) {
+    assertImport(evidence, tx)
+    imported.get(evidence)!.guards.push(guard)
+  }
 
   export async function* streamArtifact(input: {
     directory: string
@@ -413,21 +432,61 @@ export namespace StorageCheckpoint {
     directory: string
     keys: VaultKeyProvider
     restoreID: string
+    expected?: Manifest
     signal?: AbortSignal
-    finalize(tx: StoreTransaction): Promise<void>
+    commitGuard?: () => void
+    finalize(tx: StoreTransaction, evidence: ImportEvidence): Promise<void>
   }) {
-    ID.parse(input.restoreID)
-    const root = await fs.realpath(input.directory)
-    const manifest = await verifyArchive(input)
-    const operationID = `storage-checkpoint:${input.restoreID}`
-    const store = Storage.current().store
+    const restoreID = ID.parse(input.restoreID)
+    const expected = input.expected ? Manifest.parse(input.expected) : undefined
+    const directory = input.directory
+    const signal = input.signal
+    const finalize = input.finalize
+    const guard = input.commitGuard
+    const provider = input.keys
+    const keys = Object.freeze({ current: provider.current.bind(provider), resolve: provider.resolve.bind(provider) })
+    const runtime = RuntimeContext.current()
+    const handle = Storage.current()
+    const store = handle.store
+    const configuration = JSON.stringify(store.options)
+    const artifacts = handle.artifactDirectory
+    const objects = handle.artifactObjects
+    const objectConfiguration = objects ? { ...objects } : undefined
+    const nativeGuards: Array<() => void> = []
+    const assertOwner = () => {
+      signal?.throwIfAborted()
+      const current = Storage.current()
+      if (
+        RuntimeContext.current() !== runtime ||
+        current.store !== store ||
+        JSON.stringify(store.options) !== configuration ||
+        current.artifactDirectory !== artifacts ||
+        current.artifactObjects !== objects ||
+        objects?.blobs !== objectConfiguration?.blobs ||
+        objects?.writerID !== objectConfiguration?.writerID ||
+        objects?.now !== objectConfiguration?.now
+      )
+        throw new StorageIntegrityError("Checkpoint restoration belongs to another native namespace")
+    }
+    const commitGuard = () => {
+      assertOwner()
+      guard?.()
+      for (const nativeGuard of nativeGuards) nativeGuard()
+      assertOwner()
+    }
+    assertOwner()
+    const root = await fs.realpath(directory)
+    const manifest = await verifyArchive({ directory: root, expected, keys, signal })
+    assertOwner()
+    const operationID = `storage-checkpoint:${restoreID}`
     const previous = await store.operationReceipt(operationID)
+    assertOwner()
     if (previous) {
       if (previous.requestHash !== manifest.records.sha256)
         throw new StorageConflictError("Restore identity belongs to a different checkpoint")
       return manifest
     }
-    const prefix = [stagingRoot, input.restoreID]
+    const prefix = [stagingRoot, restoreID]
     const owns = (key: string[]) => prefix.every((part, index) => key[index] === part)
     const receiptKey = (operationID: string) => [...prefix, "preparation-receipts", sha256(operationID)]
     async function assertEmpty(tx: StoreTransaction) {
@@ -459,10 +518,12 @@ export namespace StorageCheckpoint {
       }
     }
     await store.snapshot(assertEmpty)
+    assertOwner()
     const target = (key: string[]) => [...prefix, sha256(JSON.stringify(key))]
     for await (const stored of StoragePortable.entries(path.join(root, "records.ndjson"))) {
-      input.signal?.throwIfAborted()
-      const entry = await recoveryEntry(root, manifest, stored, input.keys)
+      assertOwner()
+      const entry = await recoveryEntry(root, manifest, stored, keys)
+      assertOwner()
       if (entry.type !== "artifact") continue
       const filename = (
         await checkedFile(root, "objects", `${entry.location.sha256}.bin`, {
@@ -471,7 +532,7 @@ export namespace StorageCheckpoint {
         })
       ).filename
       using prepared = await Storage.prepareBinaryStream(target(entry.key), Bun.file(filename).stream(), {
-        signal: input.signal,
+        signal,
       })
       const receipt = await Storage.preparedBinaryReceipt(prepared)
       await Storage.transaction(async (tx) => {
@@ -482,10 +543,14 @@ export namespace StorageCheckpoint {
     await StoragePortable.importFile(store, path.join(root, "records.ndjson"), {
       operationID,
       expectedSHA256: manifest.records.sha256,
-      beforeImport: assertEmpty,
+      async beforeImport(tx) {
+        nativeGuards.length = 0
+        await assertEmpty(tx)
+      },
       async transform(stored, tx) {
-        input.signal?.throwIfAborted()
-        const entry = await recoveryEntry(root, manifest, stored, input.keys)
+        assertOwner()
+        const entry = await recoveryEntry(root, manifest, stored, keys)
+        assertOwner()
         if (entry.type !== "artifact") return entry
         const location = await tx.artifact(target(entry.key))
         if (location.size !== entry.location.size || location.sha256 !== entry.location.sha256)
@@ -493,8 +558,30 @@ export namespace StorageCheckpoint {
         return { ...entry, location }
       },
       accept: (entry) => entry.type !== "record" || !physical(entry.key[0]),
+      commitGuard,
       async afterImport(tx) {
-        await input.finalize(tx)
+        assertOwner()
+        store.assertWriteTransaction(tx)
+        let open = true
+        const evidence: ImportEvidence = Object.freeze({ kind: "storage-checkpoint-import", restoreID })
+        const captured = Manifest.parse(manifest)
+        const proof = Object.freeze({ ...captured, records: Object.freeze({ ...captured.records }) })
+        imported.set(evidence, {
+          manifest: proof,
+          guards: nativeGuards,
+          assert(selected) {
+            assertOwner()
+            if (!open || selected !== tx)
+              throw new StorageIntegrityError("Checkpoint import callback is closed or belongs to another transaction")
+            store.assertWriteTransaction(selected)
+          },
+        })
+        try {
+          await finalize(tx, evidence)
+        } finally {
+          open = false
+        }
+        assertOwner()
         await tx.removeTree(prefix)
       },
     })

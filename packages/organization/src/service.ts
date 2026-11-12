@@ -172,6 +172,7 @@ async function openOrganizationNamespace(options: OrganizationServiceOptions, mo
     try {
       registerConfig()
       HomeRestoration.register()
+      RuntimeMaintenance.registerProtection()
       if (mode === "upgrade") await OrganizationServiceHome.selectForUpgrade()
       else if (mode === "recovery") await OrganizationServiceHome.selectForRecovery()
       else OrganizationServiceHome.select()

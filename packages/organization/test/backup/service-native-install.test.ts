@@ -7,6 +7,7 @@ import { HomeRestoration } from "@ericsanchezok/synergy-harness/lifecycle/home-r
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { StorageCheckpoint } from "@ericsanchezok/synergy-harness/storage/checkpoint"
+import { RuntimeMaintenance } from "@ericsanchezok/synergy-harness/storage/runtime-maintenance"
 import { OrganizationBackupCohort as Cohort } from "../../src/backup/cohort"
 import { OrganizationRecoveryArchive as Archive } from "../../src/backup/archive"
 import { OrganizationServiceNative as Native } from "../../src/backup/service-native"
@@ -243,3 +244,56 @@ test("the original install request refuses another valid native facet for the sa
     await fs.rm(f.directory, { recursive: true, force: true })
   }
 })
+
+test("restricted service native installation adopts the imported frozen operation into a new retained recovery hold", async () => {
+  const f = await fixture()
+  const home = path.join(f.directory, "target")
+  let installationID = ""
+  let sourceOperation = ""
+  try {
+    await using target = await openOrganizationRecovery({ home })
+    await target.run(async () => {
+      const selected = await HomeRestoration.begin(f.request)
+      await HomeRestoration.withTarget(selected, (permit) =>
+        Native.withInstalled({ ...f.input, permit }, async (installed) => {
+          installationID = HomeRestoration.describe(permit).installationID
+          await StorageCheckpoint.restoreArchive({
+            directory: path.join(path.dirname(f.input.directory), "records"),
+            expected: f.input.source,
+            keys,
+            restoreID: f.request.restoreID,
+            async finalize(tx, archive) {
+              Native.assertInstalled(installed)
+              await RuntimeMaintenance.adoptRestoration(tx, { permit, request: f.request, archive })
+            },
+          })
+          const reference = await RuntimeMaintenance.restoration(installationID)
+          if (!reference) throw new Error("Native recovery reference was not committed")
+          sourceOperation = reference.source.maintenanceID
+          expect(reference.source.phase).toBe("frozen")
+          expect(reference.target.phase).toBe("recovery-held")
+          expect(await RuntimeMaintenance.operation(sourceOperation)).toEqual(reference.source)
+          expect((await RuntimeMaintenance.status())?.maintenanceID).toBe(installationID)
+          await expect(RuntimeMaintenance.assertAdmission()).rejects.toThrow()
+          await expect(Storage.write(["ordinary", "unsafe"], { changed: true })).rejects.toThrow("freezes")
+          expect(RuntimeContext.isReady()).toBe(false)
+          expect("fetch" in target).toBe(false)
+          expect("bootstrapToken" in target).toBe(false)
+        }),
+      )
+    })
+    await target.close()
+    await expect(openOrganizationService({ home })).rejects.toThrow("restoration")
+    await using cold = await openOrganizationRecovery({ home })
+    await cold.run(async () => {
+      expect((await RuntimeMaintenance.status())?.maintenanceID).toBe(installationID)
+      expect((await RuntimeMaintenance.operation(sourceOperation))?.phase).toBe("frozen")
+      await expect(RuntimeMaintenance.assertAdmission()).rejects.toThrow()
+      await expect(Storage.write(["ordinary", "unsafe"], { changed: true })).rejects.toThrow()
+      expect(RuntimeContext.isReady()).toBe(false)
+      expect("fetch" in cold).toBe(false)
+    })
+  } finally {
+    await fs.rm(f.directory, { recursive: true, force: true })
+  }
+}, 15_000)

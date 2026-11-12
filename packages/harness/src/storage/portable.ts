@@ -154,9 +154,11 @@ export namespace StoragePortable {
       expectedSHA256?: string
       beforeImport?: (tx: StoreTransaction) => Promise<void>
       afterImport?: (tx: StoreTransaction) => Promise<void>
+      commitGuard?: () => void
       progress?: (progress: StorageStartupProgress) => void
     } = {},
   ) {
+    const commitGuard = options.commitGuard
     const fileHash = createHash("sha256")
     let bytes = 0
     options.progress?.({ stage: "archive-verify", current: 0, total: 0, bytes: 0 })
@@ -195,7 +197,10 @@ export namespace StoragePortable {
             await options.afterImport?.(tx)
             return { count, accepted, sha256: requestHash }
           },
-          options.operationID ? { operationID: options.operationID, requestHash } : undefined,
+          {
+            ...(options.operationID ? { operationID: options.operationID, requestHash } : {}),
+            commitGuard,
+          },
         ),
       options.progress,
     )

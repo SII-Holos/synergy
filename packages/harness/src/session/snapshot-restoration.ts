@@ -6,7 +6,6 @@ import { Database } from "bun:sqlite"
 import { z } from "zod"
 import { AtomicFile } from "@ericsanchezok/synergy-util/atomic-file"
 import { HomeRestoration } from "../lifecycle/home-restoration"
-import { HomeOwnershipFile } from "../lifecycle/home-ownership-file"
 import { RuntimeContext } from "../lifecycle/context"
 import { Storage } from "../storage/storage"
 import { StorageCheckpoint } from "../storage/checkpoint"
@@ -209,12 +208,14 @@ export namespace SnapshotRestoration {
     assert()
     await HomeRestoration.verifyCurrent(permit)
     assert()
-    const ownership = await HomeOwnershipFile.open({ root: runtime.host.root, env: runtime.host.env }).read()
-    if (ownership?.schemaVersion !== 3) fail("requires the permanent native Home reader fence")
-    await HomeRestoration.assertPendingOwner(ownership)
+    await HomeRestoration.verifyInstalledOwner(permit)
     assert()
     return SnapshotCheckpoint.withRestoredSegment({ directory, expected, source, keys, signal }, async (prepared) => {
       assertPrepared = prepared.assertCurrent
+      const assertFenced = () => {
+        assert()
+        HomeRestoration.assertInstalledOwner(permit)
+      }
       const signal = prepared.signal
       let ancestor = artifacts
       while (
@@ -222,19 +223,19 @@ export namespace SnapshotRestoration {
           if (error.code !== "ENOENT") throw error
         }))
       ) {
-        assert()
+        assertFenced()
         const parent = path.dirname(ancestor)
         if (parent === ancestor) fail("artifact anchor is unavailable")
         ancestor = parent
       }
       await directoryIdentity(ancestor)
-      await directories(ancestor, artifacts, assert)
+      await directories(ancestor, artifacts, assertFenced)
       const artifactIdentity = await directoryIdentity(artifacts)
-      assert()
+      assertFenced()
       return SnapshotLease.withHome(
         artifacts,
         async () => {
-          assert()
+          assertFenced()
           const temporary = await fs.mkdtemp(path.join(artifacts, ".snapshot-install-"))
           initializeSqliteEngine()
           const database = new Database(path.join(temporary, "index.sqlite"))
@@ -255,7 +256,7 @@ export namespace SnapshotRestoration {
               keys,
               signal,
             })) {
-              assert()
+              assertFenced()
               if (entry.type !== "record") continue
               const key = entry.key
               const header = Content.headerIdentity(key)
@@ -281,7 +282,7 @@ export namespace SnapshotRestoration {
               } else if (key.length === 7 && key[0] === "sessions" && key[3] === "messages" && key[5] === "parts")
                 for (const root of SnapshotRecords.partRoots(entry.value)) partInsert.run(key[1], key[2], root)
             }
-            assert()
+            assertFenced()
             database.exec(
               "DELETE FROM roots WHERE canonical=0 AND EXISTS(SELECT 1 FROM fences f WHERE f.scope=roots.scope AND f.id=roots.id AND (f.root='all' OR f.root=roots.root))",
             )
@@ -299,7 +300,7 @@ export namespace SnapshotRestoration {
               )
               let ordinal = 0
               for await (const item of prepared.repositories()) {
-                assert()
+                assertFenced()
                 const info = item.info
                 if (
                   (info.layout === "stored") !== Boolean(external.get(info.scopeID)?.external) &&
@@ -318,7 +319,7 @@ export namespace SnapshotRestoration {
                     durable: true,
                   })
                 } else {
-                  if ((await nativeFile(path.join(group.stage, "HEAD"), 1024 * 1024, assert)) !== info.head)
+                  if ((await nativeFile(path.join(group.stage, "HEAD"), 1024 * 1024, assertFenced)) !== info.head)
                     fail("shared stored cache has inconsistent HEAD metadata")
                   update.run(digest([group.groupHash, info]), destination)
                 }
@@ -329,7 +330,7 @@ export namespace SnapshotRestoration {
                   ["for-each-ref", "--sort=refname", "--format=%(refname)%00%(objectname)%00%(symref)"],
                   { signal },
                 )) {
-                  assert()
+                  assertFenced()
                   const [name, oid, symbolic] = line.split("\0")
                   const value = SnapshotSegment.Reference.parse({
                     version: 1,
@@ -345,7 +346,7 @@ export namespace SnapshotRestoration {
                     { signal },
                   )
                 }
-                assert()
+                assertFenced()
               }
               using groups = database.prepare<
                 {
@@ -379,9 +380,11 @@ export namespace SnapshotRestoration {
                 const stat = await fs.lstat(filename).catch(() => undefined)
                 if (!stat?.isFile() || stat.isSymbolicLink() || stat.size > 8192)
                   fail("publication reference is missing or invalid")
-                if (digest(Reference.parse(JSON.parse(await nativeFile(filename, 8192, assert)))) !== digest(value))
+                if (
+                  digest(Reference.parse(JSON.parse(await nativeFile(filename, 8192, assertFenced)))) !== digest(value)
+                )
                   fail("publication reference belongs to another installation")
-                assert()
+                assertFenced()
               }
               using ownerRows = database.prepare<{ scope: string; id: string; body: string }, []>(
                 "SELECT scope,id,body FROM owners ORDER BY scope,id",
@@ -408,7 +411,7 @@ export namespace SnapshotRestoration {
                 if (!selected) fail("segment omits a canonical Snapshot owner")
                 for (const iterator of [roots.iterate(row.scope, owner.retentionID), parts.iterate(row.scope, row.id)])
                   for (const { root } of iterator) {
-                    assert()
+                    assertFenced()
                     if ((await SnapshotGit.checked(selected.stage, ["cat-file", "-t", root], { signal })) !== "tree")
                       fail("segment omits canonical history")
                     if (
@@ -427,11 +430,11 @@ export namespace SnapshotRestoration {
               )
               if (missing.get()) fail("history has no canonical Snapshot owner")
               for (const group of groups.iterate()) {
-                assert()
-                const preparedClosure = await closure(group.stage, signal, assert)
+                assertFenced()
+                const preparedClosure = await closure(group.stage, signal, assertFenced)
                 recordClosure.run(preparedClosure.hash, preparedClosure.configurationHash, group.destination)
                 const value = originalReference(group.groupHash, preparedClosure.hash)
-                await directories(artifacts, path.dirname(group.destination), assert)
+                await directories(artifacts, path.dirname(group.destination), assertFenced)
                 const previous = await fs.lstat(group.destination).catch((error: NodeJS.ErrnoException) => {
                   if (error.code !== "ENOENT") throw error
                 })
@@ -439,7 +442,7 @@ export namespace SnapshotRestoration {
                   await directoryIdentity(group.destination)
                   await validateReference(group.destination, value)
                   if (
-                    (await closure(group.destination, signal, assert, preparedClosure.configurationHash)).hash !==
+                    (await closure(group.destination, signal, assertFenced, preparedClosure.configurationHash)).hash !==
                     preparedClosure.hash
                   )
                     fail("repository differs from its fixed closure")
@@ -448,41 +451,41 @@ export namespace SnapshotRestoration {
                     private: true,
                     durable: true,
                   })
-                  assert()
+                  assertFenced()
                   await fs.rename(group.stage, group.destination)
                 }
                 await synchronize(path.dirname(group.destination))
                 recordIdentity.run(await directoryIdentity(group.destination), group.destination)
-                assert()
+                assertFenced()
               }
               const verify = async () => {
-                assert()
+                assertFenced()
                 await HomeRestoration.verifyCurrent(permit)
-                assert()
+                assertFenced()
                 if ((await directoryIdentity(artifacts)) !== artifactIdentity)
                   fail("artifact directory identity changed")
                 for (const group of groups.iterate()) {
-                  assert()
+                  assertFenced()
                   if ((await directoryIdentity(group.destination)) !== group.identity)
                     fail("installed repository identity changed")
                   if (!group.closureHash || !group.configurationHash) fail("fixed repository closure is unavailable")
                   await validateReference(group.destination, originalReference(group.groupHash, group.closureHash))
                   if (
-                    (await closure(group.destination, signal, assert, group.configurationHash)).hash !==
+                    (await closure(group.destination, signal, assertFenced, group.configurationHash)).hash !==
                     group.closureHash
                   )
                     fail("repository differs from its fixed closure")
                 }
-                assert()
+                assertFenced()
               }
               await verify()
               const evidence: Installed = Object.freeze({
                 manifest: prepared.manifest,
                 signal,
-                assertCurrent: assert,
+                assertCurrent: assertFenced,
                 verify,
               })
-              installed.set(evidence, { assert, verify })
+              installed.set(evidence, { assert: assertFenced, verify })
               const result = await body(evidence)
               await verify()
               return result

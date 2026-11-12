@@ -3,9 +3,11 @@ import { z } from "zod"
 import { ActorStamp } from "@ericsanchezok/synergy-util/actor-stamp"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { RuntimeContext } from "../lifecycle/context"
+import { HomeRestoration } from "../lifecycle/home-restoration"
 import { Lock } from "../util/lock"
 import { Storage } from "./storage"
 import { StorageMutationGuard } from "./mutation-guard"
+import { StorageCheckpoint } from "./checkpoint"
 import type { StoreTransaction, TransactionOptions } from "./transactional-store"
 
 const ID = z.string().min(1).max(128)
@@ -16,6 +18,7 @@ const currentKey = [...root, "current"]
 const operationKey = (id: string) => [...root, "operations", id]
 const requestKey = (id: string) => [...root, "requests", id]
 const ownerKey = (id: string, owner: string) => [...root, "owners", id, owner]
+const restorationKey = (installationID: string) => [...root, "restorations", installationID]
 const startsWith = (key: readonly string[], prefix: readonly string[]) =>
   prefix.every((part, index) => key[index] === part)
 const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex")
@@ -63,6 +66,17 @@ export namespace RuntimeMaintenance {
     updatedAt: Count,
   })
   export type Info = z.infer<typeof Info>
+  export const Restoration = z.strictObject({
+    version: z.literal(1),
+    installationID: z.uuid(),
+    incarnation: z.uuid(),
+    restoreID: ID,
+    requestHash: Hash,
+    sourceHash: Hash,
+    source: Info,
+    target: Info,
+  })
+  export type Restoration = z.infer<typeof Restoration>
   export interface Lease {
     readonly maintenanceID: string
     readonly purpose: Purpose
@@ -231,6 +245,123 @@ export namespace RuntimeMaintenance {
   export async function operation(maintenanceID: string) {
     ID.parse(maintenanceID)
     return Storage.snapshot((tx) => read(tx, Info, operationKey(maintenanceID)))
+  }
+  export function restoration(installationID: string) {
+    z.uuid().parse(installationID)
+    return Storage.snapshot((tx) => read(tx, Restoration, restorationKey(installationID)))
+  }
+  export async function adoptRestoration(
+    tx: StoreTransaction,
+    input: {
+      permit: HomeRestoration.InstallPermit
+      request: HomeRestoration.Request
+      archive: StorageCheckpoint.ImportEvidence
+    },
+  ): Promise<Info> {
+    const permit = input.permit
+    const request = HomeRestoration.Request.parse(structuredClone(input.request))
+    const archive = input.archive
+    const target = HomeRestoration.describe(permit)
+    const store = Storage.current().store
+    const runtime = RuntimeContext.current()
+    const assertNative = () => {
+      if (!state().installed)
+        throw new Blocked({ message: "Recovery requires its registered native maintenance protection" })
+      HomeRestoration.assertCurrent(permit)
+      HomeRestoration.assertInstalledOwner(permit)
+      HomeRestoration.assertRequest(permit, request)
+      if (RuntimeContext.current() !== runtime || Storage.current().store !== store)
+        throw new Blocked({ message: "Maintenance adoption belongs to another native target" })
+    }
+    const assert = () => {
+      assertNative()
+      store.assertWriteTransaction(tx)
+      const manifest = StorageCheckpoint.assertImport(archive, tx)
+      if (
+        archive.restoreID !== target.restoreID ||
+        digest(StorageCheckpoint.Manifest.parse(manifest)) !== target.sourceHash
+      )
+        throw new Blocked({ message: "Maintenance adoption belongs to another original namespace restoration" })
+    }
+    assert()
+    StorageCheckpoint.guardImport(archive, tx, assertNative)
+    const previous = await current(tx)
+    assert()
+    const retained = await read(tx, Restoration, restorationKey(target.installationID))
+    assert()
+    if (retained) {
+      if (
+        retained.installationID !== target.installationID ||
+        retained.incarnation !== target.incarnation ||
+        retained.restoreID !== target.restoreID ||
+        retained.requestHash !== target.requestHash ||
+        retained.sourceHash !== target.sourceHash ||
+        digest(previous) !== digest(retained.target)
+      )
+        throw new Blocked({ message: "Native maintenance recovery reference changed" })
+      const source = await read(tx, Info, operationKey(retained.source.maintenanceID))
+      assert()
+      if (digest(source) !== digest(retained.source))
+        throw new Blocked({ message: "Archived maintenance history changed" })
+      return retained.target
+    }
+    if (!previous || previous.purpose !== "organization-backup" || previous.phase !== "frozen")
+      throw new Blocked({ message: "Recovery requires the actual imported frozen source operation" })
+    if (
+      previous.maintenanceID === target.installationID ||
+      (await read(tx, Info, operationKey(target.installationID))) ||
+      (await tx.readMany([requestKey(target.installationID)]))[0] !== undefined
+    )
+      throw new Blocked({ message: "Recovery cannot replace an archived maintenance identity" })
+    assert()
+    const now = Date.now()
+    const held = Info.parse({
+      version: 1,
+      maintenanceID: target.installationID,
+      requestID: target.installationID,
+      requestHash: target.requestHash,
+      purpose: "organization-restore",
+      sourceRuntimeID: runtime.id,
+      cohortHash: digest({
+        purpose: "organization-restore",
+        installationID: target.installationID,
+        requestHash: target.requestHash,
+        sourceCohortHash: previous.cohortHash,
+      }),
+      phase: "recovery-held",
+      revision: 1,
+      tailRevision: 0,
+      actor: {
+        kind: "system",
+        subjectID: target.installationID,
+        displayName: "Native recovery",
+        clientKind: "system",
+        requestID: target.installationID,
+      },
+      createdAt: now,
+      updatedAt: now,
+    })
+    const reference = Restoration.parse({
+      version: 1,
+      installationID: target.installationID,
+      incarnation: target.incarnation,
+      restoreID: target.restoreID,
+      requestHash: target.requestHash,
+      sourceHash: target.sourceHash,
+      source: previous,
+      target: held,
+    })
+    for (const [key, value] of [
+      [operationKey(held.maintenanceID), held],
+      [requestKey(held.requestID), { maintenanceID: held.maintenanceID, requestHash: held.requestHash }],
+      [restorationKey(target.installationID), reference],
+      [currentKey, { maintenanceID: held.maintenanceID }],
+    ] as const) {
+      assert()
+      await tx.write([...key], value)
+      assert()
+    }
+    return held
   }
   export async function assertMutation() {
     const info = await status()
