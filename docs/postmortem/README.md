@@ -14,10 +14,14 @@
 - **Summary**.
 - **Timeline** — observations.
 - **Root cause**.
-- **Guardrails** — tests, docs, gates. Residency failures require `- [x] Machine check: <lint selector or contract test name>` identifying the check. See [Memory residency scope](../operations/memory-residency-scope.md).
+- **Guardrails** — tests, docs, gates. Residency failures require `- [x] Machine check: <selector>` identifying the check. See [Memory residency scope](../operations/memory-residency-scope.md).
 - **Lessons**.
 
 ## Index
+
+- [0150](0150-space-selection-left-mobile-navigation-open.md)
+
+- [0149](0149-empty-organization-draft-reported-size-error.md)
 
 - [0148](0148-terminal-executions-never-reached-transfer-drainage.md)
 

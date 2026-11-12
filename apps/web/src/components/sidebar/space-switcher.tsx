@@ -23,6 +23,7 @@ function currentSpace() {
 
 export function SpaceSwitcher(props: {
   expanded: boolean
+  onNavigate?: () => void
   onSettings?: (section: "general" | "providers") => void
   onRepository: () => void
 }) {
@@ -100,7 +101,10 @@ export function SpaceSwitcher(props: {
                 <DropdownMenu.Item
                   class="space-switcher-menu-item"
                   onSelect={() => {
-                    pendingAction = () => space!.personal()
+                    pendingAction = () => {
+                      space!.personal()
+                      props.onNavigate?.()
+                    }
                   }}
                 >
                   <img src={currentSpace().icon} alt="" class="space-switcher-menu-avatar" />
@@ -111,7 +115,10 @@ export function SpaceSwitcher(props: {
                     <DropdownMenu.Item
                       class="space-switcher-menu-item"
                       onSelect={() => {
-                        pendingAction = () => space!.open(organizationSpaceKey(entry))
+                        pendingAction = () => {
+                          space!.open(organizationSpaceKey(entry))
+                          props.onNavigate?.()
+                        }
                       }}
                     >
                       <span class="space-switcher-menu-avatar" aria-hidden="true">
@@ -127,7 +134,10 @@ export function SpaceSwitcher(props: {
                 <DropdownMenu.Item
                   class="space-switcher-menu-item"
                   onSelect={() => {
-                    pendingAction = () => space!.add()
+                    pendingAction = () => {
+                      space!.add()
+                      props.onNavigate?.()
+                    }
                   }}
                 >
                   <Icon name={getSemanticIcon("action.add")} size="small" />

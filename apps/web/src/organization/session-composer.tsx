@@ -59,7 +59,7 @@ export function OrganizationSessionComposer(props: {
     mode: draft.mode,
     parts: [{ type: "text" as const, text: draft.text }],
   })
-  const tooLarge = () => !Command.Input.safeParse(input()).success
+  const tooLarge = () => draft.text.length > 0 && !Command.Input.safeParse(input()).success
   const envelope = () => ({
     schemaVersion: 1 as const,
     orgID: space.connection()!.orgID,
