@@ -74,14 +74,6 @@ export namespace SessionTransferStream {
     return key
   }
 
-  async function get<T>(store: BlobStore, key: string, schema: z.ZodType<T>) {
-    Hash.parse(key)
-    const bytes = await store.get(key, pageBytes)
-    if (bytes.length > pageBytes || hash(bytes) !== key)
-      throw new Rejected({ message: "Portable manifest page checksum mismatch" })
-    return schema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)))
-  }
-
   type Writer = { store: BlobStore; owners: Root["owners"]; signal?: AbortSignal }
   function writer(input: Writer): Writer {
     const signal = input.signal
@@ -262,6 +254,17 @@ export namespace SessionTransferStream {
     database.exec(
       "CREATE TABLE entries (id TEXT PRIMARY KEY, value TEXT NOT NULL); CREATE TABLE chunks (id TEXT NOT NULL, ordinal INTEGER NOT NULL, offset INTEGER NOT NULL, hash TEXT NOT NULL, bytes INTEGER NOT NULL, PRIMARY KEY(id, ordinal)); CREATE INDEX chunk_offsets ON chunks(id, offset)",
     )
+    database.exec("CREATE TABLE objects (hash TEXT PRIMARY KEY, bytes INTEGER NOT NULL)")
+    const objectSize = database.query<{ bytes: number }, [string]>("SELECT bytes FROM objects WHERE hash=?")
+    const insertObject = database.query("INSERT OR IGNORE INTO objects VALUES (?,?)")
+    const nextObject = database.query<{ hash: string; bytes: number }, [string]>(
+      "SELECT hash,bytes FROM objects WHERE hash>? ORDER BY hash LIMIT 1",
+    )
+    function object(key: string, bytes: number) {
+      const previous = objectSize.get(key)
+      if (previous && previous.bytes !== bytes) throw new Rejected({ message: "Portable object size conflict" })
+      insertObject.run(key, bytes)
+    }
     database.exec("BEGIN")
     const addPage = database.query("INSERT INTO pages (kind, position, hash) VALUES (?, ?, ?)")
     const readPage = database.query<{ hash: string }, [string, number]>(
@@ -279,8 +282,13 @@ export namespace SessionTransferStream {
     }
     async function read<T>(key: string, schema: z.ZodType<T>) {
       assertOpen()
-      const value = await get(store, key, schema)
+      Hash.parse(key)
+      const bytes = await store.get(key, pageBytes)
       assertOpen()
+      if (bytes.length > pageBytes || hash(bytes) !== key)
+        throw new Rejected({ message: "Portable manifest page checksum mismatch" })
+      const value = schema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)))
+      object(key, bytes.byteLength)
       return value
     }
     async function index<T extends { index: number; previous: string | null }>(
@@ -483,6 +491,7 @@ export namespace SessionTransferStream {
             for (const chunk of list.items) {
               assertOpen()
               putChunk.run(entry.id, chunks, size, chunk.hash, chunk.bytes)
+              object(chunk.hash, chunk.bytes)
               chunks = count(chunks, 1)
               size = count(size, chunk.bytes)
             }
@@ -496,12 +505,25 @@ export namespace SessionTransferStream {
         throw new Rejected({ message: "Portable indexed manifest totals mismatch" })
       database.exec("COMMIT")
       indexed = true
+      function objects() {
+        return (async function* () {
+          let cursor = ""
+          for (;;) {
+            assertIndexed()
+            const value = nextObject.get(cursor)
+            if (!value) return
+            cursor = value.hash
+            yield value
+          }
+        })()
+      }
       return Object.freeze({
         root,
         get: indexedEntry,
         entries: indexedEntries,
         chunks: indexedChunks,
         read: indexedContent,
+        objects,
       })
     }
     async function close() {

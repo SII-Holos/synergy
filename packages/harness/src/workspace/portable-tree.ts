@@ -100,6 +100,7 @@ export namespace WorkspacePortableTree {
         resolve,
         entries,
         read,
+        objects: index.objects,
         close: reader.close,
         [Symbol.asyncDispose]: reader.close,
       })

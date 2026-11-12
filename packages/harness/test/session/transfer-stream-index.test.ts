@@ -5,6 +5,49 @@ import { createHash } from "node:crypto"
 import { tmpdir } from "../support/fixture"
 import { SessionTransferStream as Stream } from "../../src/session/transfer-stream"
 
+test("an indexed reader discards metadata returned after its original cancellation", async () => {
+  await using temporary = await tmpdir()
+  const objects = new Map<string, Uint8Array>()
+  const store = {
+    async put(hash: string, bytes: Uint8Array) {
+      objects.set(hash, bytes.slice())
+    },
+    async get(hash: string) {
+      return objects.get(hash)!.slice()
+    },
+  }
+  const root = await Stream.write({
+    store,
+    owners: { "workspace-files": 1 },
+    entries: (async function* () {
+      yield { id: "empty", kind: "record" as const, metadata: {}, content: (async function* () {})() }
+    })(),
+  })
+  const began = Promise.withResolvers<void>()
+  const held = Promise.withResolvers<void>()
+  const controller = new AbortController()
+  const reason = new Error("metadata read cancelled before completion")
+  await using reader = await Stream.open({
+    root,
+    directory: temporary.path,
+    signal: controller.signal,
+    store: {
+      put: store.put,
+      async get() {
+        began.resolve()
+        await held.promise
+        return new Uint8Array([255])
+      },
+    },
+  })
+  const pending = reader.index()
+  await began.promise
+  controller.abort(reason)
+  held.resolve()
+  await expect(pending).rejects.toBe(reason)
+  expect(reader.verified()).toBe(false)
+})
+
 test("portable metadata indexing crosses pages without fetching file bodies and reads only the selected file", async () => {
   await using temporary = await tmpdir()
   const directory = path.join(temporary.path, "objects")

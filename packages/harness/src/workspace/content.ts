@@ -40,7 +40,7 @@ export namespace WorkspaceBlobs {
 }
 
 export namespace WorkspaceContent {
-  type StoredTree = WorkspaceTree.Manifest | Portable.Root
+  export type StoredTree = WorkspaceTree.Manifest | Portable.Root
   const cache = RuntimeContext.state(
     () => [] as Array<{ store: BlobStore; hash: string; bytes: number; tree: StoredTree }>,
   )
@@ -115,6 +115,10 @@ export namespace WorkspaceContent {
     const tree = await stored(info, store)
     if (!("entries" in tree)) throw new Error("Paged Workspace content requires its indexed tree owner")
     return tree
+  }
+
+  export async function storedRoot(info: WorkspaceCatalog.Info, store: BlobStore): Promise<StoredTree> {
+    return stored(info, store)
   }
 
   export type Tree = Pick<Awaited<ReturnType<typeof Portable.open>>, "get" | "resolve" | "entries" | "read"> & {
