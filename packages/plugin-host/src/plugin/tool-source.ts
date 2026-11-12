@@ -5,6 +5,10 @@ import { PluginToolId } from "./ids.js"
 import { ensureRuntime, type LoadedPlugin } from "./loader"
 import { pluginRuntimeManager } from "./runtime"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
+import { EnvironmentOrigin } from "@ericsanchezok/synergy-harness/environment/origin"
+import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
+import { RolloutContext } from "@ericsanchezok/synergy-harness/session/rollout/context"
+import { PluginInvocationWorkspace } from "./invocation-workspace"
 
 const log = Log.create({ service: "plugin.tool-source" })
 
@@ -58,26 +62,59 @@ function pluginToolEntry(
     display: contribution.display as ToolPluginSource.Entry["display"],
     enabledWhen: contribution.enabledWhen,
     async execute(args, ctx) {
-      await ensureRuntime(plugin)
-      return pluginRuntimeManager().invoke({
-        pluginId: plugin.id,
-        handlerId: `tool:${contribution.id}`,
-        value: args,
-        context: {
-          scopeId: ctx.scopeId,
-          sessionId: ctx.sessionID,
-          directory: ctx.directory,
-          actor: {
-            type: "agent",
-            agent: ctx.agent,
-            messageId: ctx.messageID,
-            callId: ctx.callID ?? `${plugin.id}:${contribution.id}`,
-            userMessageId: ctx.userMessageID,
+      const input = { ...ctx }
+      input.abort.throwIfAborted()
+      const rollout = RolloutContext.current()
+      if (
+        !input.callID ||
+        rollout?.owner.kind !== "session" ||
+        rollout.owner.scopeID !== input.scopeId ||
+        rollout.owner.sessionID !== input.sessionID
+      )
+        throw new Error("Plugin Tool requires its native Session, Run and call identity")
+      const callID = input.callID
+      const runID = rollout.runID
+      const message = await MessageV2.readInfo({
+        scopeID: input.scopeId,
+        sessionID: input.sessionID,
+        messageID: input.messageID,
+      })
+      if (message.role !== "assistant" || !message.rootID)
+        throw new Error("Plugin Tool requires its canonical assistant root")
+      const origin = EnvironmentOrigin.selected({
+        kind: "session",
+        scopeID: input.scopeId,
+        sessionID: input.sessionID,
+        rootID: message.rootID,
+        runID,
+        messageID: input.messageID,
+        callID,
+        tool: fullId,
+      })
+      await EnvironmentOrigin.assertAdmission(origin, { scopeID: input.scopeId })
+      return PluginInvocationWorkspace.withOrigin(origin, async () => {
+        input.abort.throwIfAborted()
+        await ensureRuntime(plugin)
+        return pluginRuntimeManager().invoke({
+          pluginId: plugin.id,
+          handlerId: `tool:${contribution.id}`,
+          value: args,
+          context: {
+            scopeId: input.scopeId,
+            sessionId: input.sessionID,
+            directory: input.directory,
+            actor: {
+              type: "agent",
+              agent: input.agent,
+              messageId: input.messageID,
+              callId: callID,
+              userMessageId: input.userMessageID,
+            },
           },
-        },
-        pluginDir: plugin.pluginDir,
-        manifest: plugin.manifest,
-        signal: ctx.abort,
+          pluginDir: plugin.pluginDir,
+          manifest: plugin.manifest,
+          signal: input.abort,
+        })
       })
     },
   }

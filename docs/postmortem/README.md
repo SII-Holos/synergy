@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0130](0130-plugin-host-callback-lost-its-native-task-origin.md)
+
 - [0129](0129-vcs-observation-retained-startup-authority.md)
 
 - [0126](0126-native-materialization-replaced-a-competing-directory.md)

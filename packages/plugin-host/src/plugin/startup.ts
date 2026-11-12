@@ -1,6 +1,7 @@
 import { StorageRecovery } from "@ericsanchezok/synergy-harness/storage/recovery"
 import { ScopeStartup } from "@ericsanchezok/synergy-harness/scope/startup"
 import { Plugin } from "."
+import { PluginInvocationWorkspace } from "./invocation-workspace"
 
 /**
  * H5 plugin startup contributions: scope activation and initialization move
@@ -17,6 +18,7 @@ async function recoverInstallations(progress?: () => void) {
 }
 
 export function registerPluginStartup() {
+  PluginInvocationWorkspace.register()
   StorageRecovery.register("plugin-installation", recoverInstallations)
   ScopeStartup.register({
     name: "plugin-activate",
