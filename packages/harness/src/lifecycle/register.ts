@@ -30,6 +30,7 @@ import { RuntimeMaintenance } from "../storage/runtime-maintenance"
 import { registerSessionMaintenanceOwner } from "../session/maintenance"
 import { registerEnvironmentMaintenanceOwner } from "../environment/maintenance-owner"
 import { LoopJob } from "../session/loop-job"
+import { RolloutRecovery } from "../session/rollout/recovery"
 
 const registration = RuntimeContext.state(() => ({ complete: false }))
 
@@ -58,6 +59,7 @@ export function registerHarness() {
   RuntimeMaintenance.registerProtection()
   registerSessionMaintenanceOwner()
   LoopJob.registerMaintenanceOwner()
+  RolloutRecovery.registerMaintenanceOwner()
   registerEnvironmentMaintenanceOwner()
   SessionTransferGate.register({ epochs: SessionTransferEpochs })
   registerSessionResolver()

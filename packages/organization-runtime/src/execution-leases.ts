@@ -279,6 +279,73 @@ export namespace OrganizationExecutionLeases {
       },
     )
   }
+  function validateHorizon(current: Entry, settlement: z.infer<typeof Settlement>) {
+    if (
+      current.uncertainUntil !== undefined &&
+      ((settlement.kind !== "closed" && settlement.kind !== "absent") ||
+        settlement.inspectedAt < current.uncertainUntil)
+    )
+      fail("Native cleanup dispatch may still commit according to its service inspection")
+  }
+  async function validateSettlement(current: Entry, settlement: z.infer<typeof Settlement>) {
+    if (
+      settlement.kind === "terminal" &&
+      (!current.hint ||
+        settlement.receipt.orgID !== current.authority.orgID ||
+        settlement.receipt.deploymentIncarnation !== current.authority.deploymentIncarnation ||
+        settlement.receipt.grantID !== current.hint.grantID ||
+        settlement.receipt.generation !== current.hint.generation ||
+        settlement.receipt.rootID !== current.authority.rootID ||
+        settlement.receipt.sessionID !== current.authority.sessionID ||
+        settlement.receipt.runtimeID !== current.authority.runtimeID ||
+        settlement.receipt.bindingEpoch !== current.authority.bindingEpoch)
+    )
+      fail("Native terminal receipt has another generation")
+    if (
+      settlement.kind === "closed" &&
+      (!current.hint ||
+        settlement.grantID !== current.hint.grantID ||
+        settlement.generation !== current.hint.generation)
+    )
+      fail("Native nonterminal closure has another generation")
+    if (
+      settlement.kind === "absent" &&
+      (current.hint || settlement.controlAdmissionID !== current.authority.control?.admissionID)
+    )
+      fail("Native absence does not match an unobserved control intent")
+    if (settlement.kind === "linked") {
+      const target = await read(settlement.entryID)
+      if (
+        target.entryID === current.entryID ||
+        !target.hint ||
+        JSON.stringify(target.authority) !== JSON.stringify(current.authority)
+      )
+        fail("Native cleanup linkage has another root authority")
+    }
+  }
+
+  export async function pendingForCapture() {
+    const selected = owner()
+    if (!selected.orgID) fail("Native capture requires its registered cleanup owner")
+    return Storage.snapshot(async () => {
+      const [coverage] = await Storage.readMany([schema])
+      if (!Schema.safeParse(coverage).success) fail("Native capture requires its completed owning cleanup migration")
+      let pending = false
+      for await (const row of Storage.records({ prefix: [...root, "entries"], limit: 128 })) {
+        const entry = Entry.parse(row.value)
+        if (JSON.stringify(row.key) !== JSON.stringify(key(entry.entryID)) || entry.authority.orgID !== selected.orgID)
+          fail("Native cleanup capture found a foreign or unknown canonical entry")
+        if (entry.state === "pending") pending = true
+        else if (entry.settlement) {
+          if (entry.settlement.kind !== "linked") validateHorizon(entry, entry.settlement)
+          await validateSettlement(entry, entry.settlement)
+        }
+        owner()
+      }
+      return pending
+    })
+  }
+
   export async function settle(value: Entry, outcome: z.infer<typeof Settlement>) {
     const entry = Entry.parse(value)
     const settlement = Settlement.parse(outcome)
@@ -291,46 +358,8 @@ export namespace OrganizationExecutionLeases {
           fail("Native cleanup entry changed before settlement")
         }
         if (current.state !== "pending") return current
-        if (
-          current.uncertainUntil !== undefined &&
-          ((settlement.kind !== "closed" && settlement.kind !== "absent") ||
-            settlement.inspectedAt < current.uncertainUntil)
-        )
-          fail("Native cleanup dispatch may still commit according to its service inspection")
-        if (
-          settlement.kind === "terminal" &&
-          (!current.hint ||
-            settlement.receipt.orgID !== current.authority.orgID ||
-            settlement.receipt.deploymentIncarnation !== current.authority.deploymentIncarnation ||
-            settlement.receipt.grantID !== current.hint.grantID ||
-            settlement.receipt.generation !== current.hint.generation ||
-            settlement.receipt.rootID !== current.authority.rootID ||
-            settlement.receipt.sessionID !== current.authority.sessionID ||
-            settlement.receipt.runtimeID !== current.authority.runtimeID ||
-            settlement.receipt.bindingEpoch !== current.authority.bindingEpoch)
-        )
-          fail("Native terminal receipt has another generation")
-        if (
-          settlement.kind === "closed" &&
-          (!current.hint ||
-            settlement.grantID !== current.hint.grantID ||
-            settlement.generation !== current.hint.generation)
-        )
-          fail("Native nonterminal closure has another generation")
-        if (
-          settlement.kind === "absent" &&
-          (current.hint || settlement.controlAdmissionID !== current.authority.control?.admissionID)
-        )
-          fail("Native absence does not match an unobserved control intent")
-        if (settlement.kind === "linked") {
-          const target = await read(settlement.entryID)
-          if (
-            target.entryID === current.entryID ||
-            !target.hint ||
-            JSON.stringify(target.authority) !== JSON.stringify(current.authority)
-          )
-            fail("Native cleanup linkage has another root authority")
-        }
+        validateHorizon(current, settlement)
+        await validateSettlement(current, settlement)
         const updated = Entry.parse({ ...current, state: "settled", settlement })
         await save(updated)
         return updated

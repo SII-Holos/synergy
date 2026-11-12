@@ -7,6 +7,7 @@ import { HomeOwnershipFile } from "@ericsanchezok/synergy-harness/lifecycle/home
 import { NamespaceRetirement } from "@ericsanchezok/synergy-harness/lifecycle/namespace-retirement"
 import { NativeNamespaceIdentity } from "@ericsanchezok/synergy-harness/lifecycle/namespace-identity"
 import { RuntimeMaintenance } from "@ericsanchezok/synergy-harness/storage/runtime-maintenance"
+import { OrganizationExecutionLeases } from "../execution-leases"
 import { SnapshotMaintenance } from "@ericsanchezok/synergy-harness/session/snapshot-maintenance"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { StorageCheckpoint } from "@ericsanchezok/synergy-harness/storage/checkpoint"
@@ -65,7 +66,9 @@ export namespace OrganizationRuntimeNative {
   export function register(input: { identity: HostedIdentity; ca?: string | string[] }) {
     RuntimeContext.assertCompositionOpen("Hosted native recovery")
     if (state().startup) fail("startup is already registered")
-    state().startup = Startup.parse({ identity: input.identity, ca: input.ca === undefined ? null : [input.ca].flat() })
+    const startup = Startup.parse({ identity: input.identity, ca: input.ca === undefined ? null : [input.ca].flat() })
+    state().startup = startup
+    OrganizationExecutionLeases.register(startup.identity.orgID)
     NamespaceRetirement.registerSource({
       owner: "organization-runtime",
       inspect(native, archive) {
@@ -149,6 +152,18 @@ export namespace OrganizationRuntimeNative {
     }
     const task = async () => {
       await frozen()
+      if (await read(() => OrganizationExecutionLeases.pendingForCapture()))
+        throw new RuntimeMaintenance.Blocked({
+          message: "Hosted recovery requires reconciled execution generations",
+          requirements: [
+            {
+              owner: "organization-execution-leases",
+              code: "execution_generation_pending",
+              label: "Reconcile original execution cleanup before native backup capture",
+              recoverable: true,
+            },
+          ],
+        })
       const proof = await read(() => NativeNamespaceIdentity.capture())
       const descriptor = NativeNamespaceIdentity.inspect(proof)
       if (descriptor.owner !== "organization-runtime" || descriptor.identity.kind !== "hosted")

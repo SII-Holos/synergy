@@ -29,12 +29,15 @@ import { registerOrganizationNamespaceIdentity } from "../../src/namespace-ident
 import { connectionState } from "../../src/connection-state"
 import { readCredentials } from "../../src/credentials"
 import { fixture } from "../support/organization"
+import { completedHostedTask, pausedHostedTask } from "../support/hosted-task"
 import { openHostedRuntime } from "../../src/runtime"
 import { OrganizationBackupCohort as Cohort } from "../../../organization/src/backup/cohort"
 import { OrganizationRecoveryArchive as Archive } from "../../../organization/src/backup/archive"
 import { withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
 import { HostedBinding } from "../../src/home-schema"
 import { FileAtomicWrite } from "@ericsanchezok/synergy-local-runtime/file/atomic-write"
+import { OrganizationExecutionLeases } from "../../src/execution-leases"
+import { Session } from "@ericsanchezok/synergy-harness/session"
 
 const keys = {
   async current() {
@@ -109,15 +112,17 @@ async function source(production = false) {
     }
     let lease: RuntimeMaintenance.Lease | undefined
     let closed = false
+    const releaseCapture = async () => {
+      const active = lease
+      if (!active) return
+      await runtime.run(async () => {
+        if (!(await RuntimeMaintenance.retirement(active.maintenanceID))) await RuntimeMaintenance.release(active)
+      })
+      lease = undefined
+    }
     const close = async () => {
       if (closed) return
-      if (lease) {
-        const active = lease
-        await runtime.run(async () => {
-          if (!(await RuntimeMaintenance.retirement(active.maintenanceID))) await RuntimeMaintenance.release(active)
-        })
-      }
-      lease = undefined
+      await releaseCapture()
       await runtime.close()
       closed = true
     }
@@ -127,6 +132,7 @@ async function source(production = false) {
       service,
       runtime,
       close,
+      releaseCapture,
       capture(
         signal?: AbortSignal,
         before?: () => Promise<void>,
@@ -776,4 +782,70 @@ test("an enrolled Hosted namespace permanently fences its actual writer and bind
     (await readHostedHome(path.join(selected.service.root, "hosted-target"), selected.home.identity)).publicKey,
   ).toBe(selected.home.publicKey)
   expect(Buffer.from(await ordinary.run(() => Storage.readBinary(["recovery", "proof"])))).toEqual(bytes)
+}, 15_000)
+
+test("a completed Hosted model task drains its actual native writers before capture and ordinary shutdown", async () => {
+  await using selected = await source(true)
+  await using task = await completedHostedTask(selected)
+  const captured = await selected.capture()
+  expect(await selected.runtime.run(() => OrganizationExecutionLeases.pendingForCapture())).toBe(false)
+  const native = await Native.verify({
+    directory: captured.native.directory,
+    expected: captured.native.namespace,
+    source: captured.archive.namespace,
+    keys,
+  })
+  expect(native.registration).toEqual(selected.registration)
+  expect(await selected.runtime.run(() => Session.get(task.sessionID))).toMatchObject({
+    organization: task.info.organization,
+  })
+  await selected.close()
+}, 15_000)
+
+test("an unknown paused Hosted gateway refuses native capture without retiring or trapping its original writer", async () => {
+  await using selected = await source(true)
+  await using task = await pausedHostedTask(selected)
+  const pending = await selected.runtime.run(() => OrganizationExecutionLeases.page(selected.registration.runtimeID))
+  expect(pending.items.length).toBeGreaterThan(0)
+  await expect(selected.capture()).rejects.toMatchObject({
+    data: { requirements: [{ owner: "organization-execution-leases", code: "execution_generation_pending" }] },
+  })
+  const maintenance = await selected.runtime.run(() => RuntimeMaintenance.status())
+  expect(maintenance?.phase).toBe("frozen")
+  if (!maintenance) throw new Error("Expected the original maintenance hold")
+  expect(await selected.runtime.run(() => RuntimeMaintenance.retirement(maintenance.maintenanceID))).toBeUndefined()
+  expect(await selected.runtime.run(() => OrganizationExecutionLeases.page(selected.registration.runtimeID))).toEqual(
+    pending,
+  )
+  expect(await readHostedHome(selected.home.home, selected.home.identity)).toMatchObject({
+    publicKey: selected.home.publicKey,
+  })
+  const info = await selected.runtime.run(() => Session.get(task.sessionID))
+  expect(info.paused).toEqual(task.info.paused)
+  expect(info.organization).toEqual(task.info.organization)
+  const resumed = Promise.withResolvers<void>()
+  selected.service.interceptFrames((_socket, raw) => {
+    const frame = Protocol.ClientFrame.parse(JSON.parse(String(raw)))
+    if (frame.type === "heartbeat" && frame.connectionEpoch > selected.registration.connectionEpoch) resumed.resolve()
+    return false
+  })
+  await selected.releaseCapture()
+  const timer = setTimeout(
+    () => resumed.reject(new Error("Original Hosted bridge did not resume after refused capture")),
+    3000,
+  )
+  try {
+    await resumed.promise
+  } finally {
+    clearTimeout(timer)
+  }
+  expect((await selected.runtime.run(() => RuntimeMaintenance.status()))?.phase).toBe("released")
+  const gateway = await selected.service.service.maintenance.run(async () => {
+    const values = []
+    for await (const row of Storage.records({ prefix: ["organization", "gateway-calls"], limit: 128 }))
+      values.push(row.value)
+    return values
+  })
+  expect(gateway).toEqual(task.gateway)
+  await selected.close()
 }, 15_000)

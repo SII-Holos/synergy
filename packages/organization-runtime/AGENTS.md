@@ -24,4 +24,4 @@ Private history and interactions use distinct signed permits, canonical Scope/li
 
 Desktop Browser requires private managed launch data, explicit listener authentication and lazy page creation. Reject inherited native credentials and non-Desktop selection. Hosted/member machines share bridge/intake/worker composition; hosted identities have no human account. Verify desktop, hosted-home and hosted-runtime suites.
 
-Isolate Homes; run focused tests/typecheck. Native recovery: `./backup`, `./backup/knowledge`, `./backup/recovery`, `test/backup/`. Preserve active Runtimes.
+Isolate Homes; run focused tests/typecheck. Capture rejects pending generations. Native recovery: `./backup`, `./backup/knowledge`, `./backup/recovery`, `test/backup/`. Preserve active Runtimes.

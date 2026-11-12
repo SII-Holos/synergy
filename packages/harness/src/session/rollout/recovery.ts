@@ -10,8 +10,42 @@ import { RolloutPending } from "./pending"
 import { SnapshotEvidence } from "../snapshot-evidence"
 import { RuntimeContext } from "../../lifecycle/context"
 import { UpgradeWork } from "../../storage/upgrade-work"
+import { RuntimeMaintenance } from "../../storage/runtime-maintenance"
 
 export namespace RolloutRecovery {
+  export function registerMaintenanceOwner() {
+    RuntimeMaintenance.register("rollout-recovery", {
+      version: 1,
+      order: 1000,
+      async suspend(context) {
+        await RuntimeMaintenance.assertDraining(context.lease)
+      },
+      async drain(context) {
+        await RuntimeMaintenance.assertDraining(context.lease)
+        context.signal.throwIfAborted()
+        await settle()
+        context.signal.throwIfAborted()
+      },
+      async inspect(context) {
+        context.signal.throwIfAborted()
+        const pending = await RolloutPending.tracked()
+        const touched = new Set(RolloutPending.touched().map(identityKey))
+        if (!pending || pending.owners.some((owner) => touched.has(identityKey(owner))))
+          return [
+            {
+              owner: "rollout-recovery",
+              code: "rollout_settlement_pending",
+              label: "Settle original native rollout writers before freezing",
+              recoverable: true,
+            },
+          ]
+        return []
+      },
+      async release(context) {
+        await RuntimeMaintenance.assertReleasing(context.lease)
+      },
+    })
+  }
   const admission = Storage.state(() => ({
     enabled: false,
     ready: new Set<string>(),
