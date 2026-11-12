@@ -140,3 +140,5 @@ Read `docs/reference/frontend-theming.md` before changing the color contract, ad
 bun test --cwd packages/ui test/theme.test.ts test/theme-generation.test.ts
 bun test --cwd apps/web test/testing/color-token-contract.test.ts
 ```
+
+For finite conversation history, click Latest without assigning its destination in the fixture. Verify the final hydrated message through the existing virtualizer, independent of fetching the recent metadata page. Settle mounted-body geometry before the first screenshot and retain a pixel-content check alongside descendant ranges; DOM visibility and hit testing do not prove paint. Use finite native scroll distances for reading checks and preserve an initial blank image as failed evidence rather than retrying screenshots until one passes.

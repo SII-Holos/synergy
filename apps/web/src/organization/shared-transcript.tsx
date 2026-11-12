@@ -292,7 +292,7 @@ export function SharedOrganizationTranscript(props: {
     setState("parts", event.messageID, reconcile(next))
     refresh(event.messageID)
   }
-  async function windowPage(more = false) {
+  async function windowPage(more = false, latest = false) {
     if (loading()) return
     setLoading(true)
     setError(undefined)
@@ -324,6 +324,7 @@ export function SharedOrganizationTranscript(props: {
         setLoaded(true)
         if (!more) setRowEpoch(epoch)
       })
+      if (latest && state.order.length) virtualizer?.scrollToIndex(state.order.length - 1, { align: "end" })
     } catch (error) {
       fail(error)
     } finally {
@@ -515,7 +516,7 @@ export function SharedOrganizationTranscript(props: {
             </Button>
           </Show>
           <Show when={loaded()}>
-            <Button disabled={loading()} onClick={() => void windowPage()}>
+            <Button disabled={loading()} onClick={() => void windowPage(false, true)}>
               {_({ id: "organization.session.latest", message: "Latest messages" })}
             </Button>
           </Show>

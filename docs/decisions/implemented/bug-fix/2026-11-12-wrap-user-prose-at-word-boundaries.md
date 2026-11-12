@@ -25,3 +25,5 @@ The organization transcript row owns one `minmax(0, 1fr)` grid column. Its avail
 ## Consequences
 
 User prose remains readable through the shared renderer without an organization-specific style. The real conversation fixture pages through 320 messages at 375 and 1100 pixels, measures the oldest hydrated row against its reading viewport after a user scroll, and verifies ordinary word ranges, mixed-language content and long-token containment. It also checks lazy body reads, bounded mounted rows and returning to the latest page. These geometric checks do not establish settled painting for every narrow virtualized history state, model performance or untested browser behavior.
+
+The later [Latest navigation regression](2026-11-12-navigate-to-the-latest-shared-message.md) complements those ranges with first-image pixel checks after mounted-body geometry settles. The initial blank narrow image remains failed diagnostic evidence; later readable captures do not establish a native overscroll or general compositor fix.

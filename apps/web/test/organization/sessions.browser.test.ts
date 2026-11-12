@@ -1553,6 +1553,58 @@ for (const width of [375, 1100])
     const bodies = new Set<number>()
     const paths: string[] = []
     const number = (index: number) => String(index).padStart(4, "0")
+    const paints: Array<{ location: string; nonBackgroundRatio: number }> = []
+    const captureReading = async (location: string, id: string) => {
+      const viewport = page.locator(".organization-transcript-viewport")
+      const bounds = await viewport.boundingBox()
+      if (!bounds) throw new Error("Reading viewport is absent")
+      const screenshot = await page.screenshot({ scale: "css" })
+      const paint = await page.evaluate(
+        async ({ png, bounds }) => {
+          const binary = atob(png)
+          const bytes = new Uint8Array(binary.length)
+          for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index)
+          const bitmap = await createImageBitmap(new Blob([bytes], { type: "image/png" }))
+          try {
+            const canvas = new OffscreenCanvas(bitmap.width, bitmap.height)
+            const context = canvas.getContext("2d")
+            if (!context) throw new Error("PNG analysis canvas is unavailable")
+            context.drawImage(bitmap, 0, 0)
+            const x = Math.max(0, Math.ceil(bounds.x + 8))
+            const y = Math.max(0, Math.ceil(bounds.y + 2))
+            const width = Math.max(1, Math.min(bitmap.width - x, Math.floor(bounds.width - 28)))
+            const height = Math.max(1, Math.min(bitmap.height - y, Math.floor(bounds.height - 6)))
+            const data = context.getImageData(x, y, width, height).data
+            const colors = new Map<number, number>()
+            for (let offset = 0; offset < data.length; offset += 4) {
+              const color = ((data[offset]! >> 3) << 10) | ((data[offset + 1]! >> 3) << 5) | (data[offset + 2]! >> 3)
+              colors.set(color, (colors.get(color) ?? 0) + 1)
+            }
+            const pixels = width * height
+            return {
+              pixels,
+              dominantPixels: Math.max(...colors.values()),
+              nonBackgroundRatio: 1 - Math.max(...colors.values()) / pixels,
+            }
+          } finally {
+            bitmap.close()
+          }
+        },
+        { png: screenshot.toString("base64"), bounds },
+      )
+      paints.push({ location, nonBackgroundRatio: paint.nonBackgroundRatio })
+      if (process.env.SYNERGY_UI_SCREENSHOT_DIR) {
+        await fs.mkdir(process.env.SYNERGY_UI_SCREENSHOT_DIR, { recursive: true })
+        await fs.writeFile(
+          path.join(process.env.SYNERGY_UI_SCREENSHOT_DIR, `archive-${location}-${width}.png`),
+          screenshot,
+        )
+        await fs.writeFile(
+          path.join(process.env.SYNERGY_UI_SCREENSHOT_DIR, `archive-${location}-${width}.json`),
+          JSON.stringify({ width, location, paint }, null, 2),
+        )
+      }
+    }
     const waitForReading = (id: string) =>
       page.waitForFunction((id) => {
         const row = document.querySelector(`[data-organization-message="${id}"]`)
@@ -1571,7 +1623,25 @@ for (const width of [375, 1100])
         const bottom = Math.min(bounds.bottom, item.bottom)
         if (bottom <= top) return false
         const hit = document.elementFromPoint(bounds.left + bounds.width / 2, (top + bottom) / 2)
-        return !!hit && row.contains(hit)
+        if (!hit || !row.contains(hit)) return false
+        const rows = [...viewport.querySelectorAll("[data-organization-message]")]
+        if (rows.some((item) => !item.querySelector("h2"))) return false
+        const signature = JSON.stringify([
+          id,
+          viewport.scrollTop,
+          viewport.scrollHeight,
+          ...rows.map((item) => [
+            item.getAttribute("data-organization-message"),
+            item.getBoundingClientRect().height,
+            item.textContent?.length,
+          ]),
+        ])
+        const previous: { signature: string; at: number } | undefined = Reflect.get(viewport, "historyReadingGeometry")
+        if (previous?.signature !== signature) {
+          Reflect.set(viewport, "historyReadingGeometry", { signature, at: performance.now() })
+          return false
+        }
+        return performance.now() - previous.at > 200
       }, id)
     await page.exposeFunction("hostList", () => ({ ok: true, value: [entry] }))
     await page.exposeFunction("hostRequest", (request: Desktop.Request) => {
@@ -1713,7 +1783,8 @@ for (const width of [375, 1100])
       await page.getByRole("heading", { name: "Archive note 0000", exact: true }).waitFor()
       await page.evaluate(() => document.fonts.ready.then(() => {}))
       await viewport.hover({ position: { x: 2, y: 2 } })
-      await page.mouse.wheel(0, -1000000)
+      const toTop = await viewport.evaluate((element) => -element.scrollTop)
+      if (toTop) await page.mouse.wheel(0, toTop)
       await waitForReading("history-0000")
       await page.evaluate(
         () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
@@ -1768,19 +1839,12 @@ for (const width of [375, 1100])
       expect(bounds!.x).toBeGreaterThanOrEqual(0)
       expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width + 1)
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
-      if (process.env.SYNERGY_UI_SCREENSHOT_DIR) {
-        await fs.mkdir(process.env.SYNERGY_UI_SCREENSHOT_DIR, { recursive: true })
-        await page.screenshot({ path: path.join(process.env.SYNERGY_UI_SCREENSHOT_DIR, `archive-oldest-${width}.png`) })
-      }
+      await captureReading("oldest", "history-0000")
       await page.getByRole("button", { name: "Latest messages", exact: true }).click()
       await page.waitForFunction(() => !document.querySelector("button[disabled]"))
-      await viewport.evaluate((element) => {
-        element.scrollTop = element.scrollHeight
-      })
       await page.getByRole("heading", { name: "Archive note 0319", exact: true }).waitFor()
       await page.evaluate(() => document.fonts.ready.then(() => {}))
       await viewport.hover({ position: { x: 2, y: 2 } })
-      await page.mouse.wheel(0, 1000000)
       await waitForReading("history-0319")
       await page.evaluate(
         () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
@@ -1813,8 +1877,8 @@ for (const width of [375, 1100])
       expect(
         paths.some((value) => value.endsWith("/read") || /\/(input|control|interactions\/reply)$/.test(value)),
       ).toBe(false)
-      if (process.env.SYNERGY_UI_SCREENSHOT_DIR)
-        await page.screenshot({ path: path.join(process.env.SYNERGY_UI_SCREENSHOT_DIR, `archive-latest-${width}.png`) })
+      await captureReading("latest", "history-0319")
+      expect(paints.every((paint) => paint.nonBackgroundRatio > 0.001)).toBe(true)
     } finally {
       await page.close()
     }
