@@ -8,6 +8,21 @@ import { executionFixture } from "./support/execution"
 import { commandFixture } from "./support/commands"
 import { OrganizationExecutionProtocol as Execution } from "@ericsanchezok/synergy-organization-protocol"
 
+test("version three grants upgrade without inventing handoff history and previous readers reject the current contract", async () => {
+  await using f = await executionFixture({ endpoint: "https://provider.example/v1" })
+  const legacy = Execution.LegacyGrant3.parse({ ...f.grant, schemaVersion: 3 })
+  await f.run(() => Storage.write(Keys.executionGrant(f.grant.grantID), legacy))
+  await f.restart()
+  await f.run(async () => {
+    expect(await Record.read(Record.ExecutionGrant, Keys.executionGrant(f.grant.grantID))).toEqual(f.grant)
+    expect(await Storage.read(Keys.executionGrant(f.grant.grantID))).toEqual(legacy)
+    expect(Execution.LegacyGrant3.safeParse(f.grant).success).toBe(false)
+    expect((await Record.read(Record.SessionDirectory, Keys.session(f.sessionID)))!.retainedExecutionGrants).toBe(1)
+    await Storage.write(Keys.executionGrant(f.grant.grantID), { ...f.grant, schemaVersion: 5 })
+    await expect(Record.read(Record.ExecutionGrant, Keys.executionGrant(f.grant.grantID))).rejects.toThrow()
+  })
+})
+
 test("historical gateway calls acquire a retention generation without rewriting their signed capabilities", async () => {
   await using f = await executionFixture({ endpoint: "https://provider.example/v1" })
   const proof = await f.proof("before-retention-migration")
@@ -56,7 +71,7 @@ test("bound grant retention upgrades from version two without rewriting stored e
   await f.run(async () => {
     const current = await Record.read(Record.ExecutionGrant, Keys.executionGrant(f.grant.grantID))
     expect(current).toEqual(f.grant)
-    expect(current).toMatchObject({ schemaVersion: 3, retention: { state: "held", generation: 1 } })
+    expect(current).toMatchObject({ schemaVersion: 4, retention: { state: "held", generation: 1 } })
     expect(await Storage.read(Keys.executionGrant(f.grant.grantID))).toEqual(legacy)
     expect((await Record.read(Record.SessionDirectory, Keys.session(f.sessionID)))!.retainedExecutionGrants).toBe(1)
   })

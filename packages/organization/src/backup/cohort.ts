@@ -37,7 +37,7 @@ interface Runner {
 }
 interface Binding {
   runner: Runner
-  describe?: () => Promise<Descriptor>
+  kind: "service" | "hosted"
   runtime?: RuntimeContext.Instance
   store?: Storage.Handle["store"]
 }
@@ -60,13 +60,13 @@ async function run<T>(source: OrganizationBackupCohort.Source, body: (identity: 
     const writer = await ServerProcessLock.currentOwnership()
     selected.runtime = runtime
     selected.store = store
-    const proof = selected.describe ? undefined : await NativeNamespaceIdentity.capture()
-    const namespace = proof && NativeNamespaceIdentity.inspect(proof)
-    if (namespace && namespace.owner !== "organization-runtime")
-      throw new CohortError("Hosted namespace requires its canonical Runtime identity owner")
-    const identity = selected.describe ? Descriptor.parse(await selected.describe()) : Hosted.parse(namespace!.identity)
+    const proof = await NativeNamespaceIdentity.capture()
+    const namespace = NativeNamespaceIdentity.inspect(proof)
+    if (namespace.owner !== (selected.kind === "service" ? "organization" : "organization-runtime"))
+      throw new CohortError("Backup namespace requires its canonical identity owner")
+    const identity = selected.kind === "service" ? Service.parse(namespace.identity) : Hosted.parse(namespace.identity)
     const result = await body(identity)
-    if (proof) await NativeNamespaceIdentity.verify(proof)
+    await NativeNamespaceIdentity.verify(proof)
     await ServerProcessLock.verifyOwnership(writer)
     return result
   })
@@ -165,20 +165,12 @@ export namespace OrganizationBackupCohort {
   export type NamespaceInventory = z.infer<typeof NamespaceInventory>
   export function service(runner: Runner): Source {
     const source = Object.freeze({ kind: "organization-backup-namespace" as const })
-    bindings.set(source, {
-      runner,
-      async describe() {
-        const info = OrganizationProtocol.Deployment.parse(await Storage.read(Keys.deployment()))
-        return Service.parse({ kind: "service", orgID: info.orgID, deploymentIncarnation: info.deploymentIncarnation })
-      },
-    })
+    bindings.set(source, { runner, kind: "service" })
     return source
   }
   export function hosted(runner: Runner): Source {
     const source = Object.freeze({ kind: "organization-backup-namespace" as const })
-    bindings.set(source, {
-      runner,
-    })
+    bindings.set(source, { runner, kind: "hosted" })
     return source
   }
   export async function capture(input: {

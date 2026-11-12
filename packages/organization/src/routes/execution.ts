@@ -8,6 +8,36 @@ import { operation, validation } from "./shared"
 export function executionRoutes(grants: () => ExecutionGrants) {
   return new Hono()
     .post(
+      "/execution/handoff-inventory",
+      operation(
+        "orgExecution.handoffInventory",
+        "Page the canonical retained source resources of this prepared handoff",
+        Execution.HandoffInventoryPage,
+        true,
+      ),
+      validator("json", Execution.HandoffInventoryRequest, validation),
+      async (c) => {
+        if (c.req.header("origin") || c.req.header("cookie"))
+          fail("PERMISSION_DENIED", "Handoff inventory requires a machine request")
+        return c.json(await grants().handoffInventory(c.req.valid("json")))
+      },
+    )
+    .post(
+      "/execution/handoff-close",
+      operation(
+        "orgExecution.closeHandoff",
+        "Close a drained source resource generation with a permanent handoff cause",
+        Execution.HandoffCloseReceipt,
+        true,
+      ),
+      validator("json", Execution.HandoffCloseRequest, validation),
+      async (c) => {
+        if (c.req.header("origin") || c.req.header("cookie"))
+          fail("PERMISSION_DENIED", "Handoff resource closure requires a machine request")
+        return c.json(await grants().closeHandoff(c.req.valid("json")))
+      },
+    )
+    .post(
       "/execution/retention",
       operation(
         "orgExecution.retention",

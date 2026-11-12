@@ -269,6 +269,48 @@ test("organization transfer requires its actual reader and carries only the acce
     ).rejects.toThrow("incompatible")
     expect(bodyReads).toBe(0)
   })
+  await using legacyTarget = await testRuntime({
+    register() {
+      Core.register()
+      Owners.register("organization-runtime", {
+        version: 1,
+        reads: [1],
+        applies: () => false,
+        async inspect() {
+          return { requirements: [], children: (async function* () {})() }
+        },
+        async freeze() {
+          throw new Error("Legacy reader must not freeze")
+        },
+        export() {
+          throw new Error("Legacy reader must not export")
+        },
+        async validate() {
+          throw new Error("Legacy reader must not validate continuation closure")
+        },
+        async publish() {
+          throw new Error("Legacy reader must not publish continuation closure")
+        },
+      })
+    },
+  })
+  await legacyTarget.run(async () => {
+    let reads = 0
+    await expect(
+      Staging.receive({
+        handoffID: frozen.epoch.handoffID,
+        root: frozen.prepared.root,
+        store: {
+          put: store.put,
+          async get(hash, maximum) {
+            reads++
+            return store.get(hash, maximum)
+          },
+        },
+      }),
+    ).rejects.toThrow("incompatible")
+    expect(reads).toBe(0)
+  })
   await using target = await testRuntime({ register })
   await target.run(async () => {
     const original: Array<Omit<Stream.Input, "content"> & { value: unknown }> = []

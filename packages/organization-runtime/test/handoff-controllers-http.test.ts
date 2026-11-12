@@ -2,11 +2,19 @@ import { expect, spyOn, test } from "bun:test"
 import path from "node:path"
 import {
   OrganizationHandoffProtocol as Handoff,
+  OrganizationCommandProtocol as Command,
+  OrganizationExecutionProtocol as Execution,
   OrganizationRuntimeProtocol as Runtime,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { testRuntime } from "@ericsanchezok/synergy-harness/test/support/runtime"
 import { HomeOwnership } from "@ericsanchezok/synergy-harness/lifecycle/home-ownership"
 import { Session } from "@ericsanchezok/synergy-harness/session"
+import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
+import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
+import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
+import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/ledger"
+import { RolloutLifecycle } from "@ericsanchezok/synergy-harness/session/rollout/lifecycle"
 import {
   SessionTransferCore as Core,
   SessionTransferSource as NativeSource,
@@ -23,7 +31,7 @@ import {
 } from "../src/home"
 import { enrollMemberRuntime, enrollHostedRuntime } from "../src/enrollment"
 import { openMemberConnection } from "../src/connection"
-import { createCommandIntake } from "../src/command-intake"
+import { createCommandIntake, readCommandControlVersion } from "../src/command-intake"
 import { registerSessionSchema } from "../src/session-schema"
 import { registerOrganizationTransferOwner } from "../src/session-transfer"
 import { OrganizationHandoffSource as Source } from "../src/handoff-source"
@@ -56,10 +64,28 @@ function execution(plan: Handoff.MachinePlan, fact: Handoff.Proof): Promise<Hand
   )
 }
 
-test.each(["cancel", "transfer", "unknown", "observer"] as const)(
+test.each([
+  "cancel",
+  "transfer",
+  "unknown",
+  "observer",
+  "resource-cancel",
+  "resource-cancel-retained",
+  "resource-transfer",
+  "resource-close-unknown",
+] as const)(
   "generated HTTPS and actual enrolled machine Homes preserve %s without input replay",
   async (mode) => {
+    const withResources = mode.startsWith("resource-")
+    const wake = withResources ? spyOn(SessionManager, "scheduleWake").mockImplementation(() => {}) : undefined
+    using restoreWake = {
+      [Symbol.dispose]() {
+        wake?.mockRestore()
+      },
+    }
     await using f = await fixture()
+    let sourceIntake: ReturnType<typeof createCommandIntake> | undefined
+    let targetIntake: ReturnType<typeof createCommandIntake> | undefined
     const member = await prepareMemberHome({
       baseDirectory: path.join(f.root, "members"),
       identity: f.identity,
@@ -149,23 +175,26 @@ test.each(["cancel", "transfer", "unknown", "observer"] as const)(
       ca: f.ca,
       buildVersion: "actual-source-controller",
       commands(connection, signal) {
+        const intake = createCommandIntake({
+          identity: connection.signingIdentity,
+          runtimeID: connection.runtimeID,
+          accountID: member.identity.accountID,
+          connectionEpoch: connection.connectionEpoch,
+          signal,
+        })
+        sourceIntake = intake
         return {
-          ...unused(),
-          create: (delivery) =>
-            source.run(() =>
-              createCommandIntake({
-                identity: connection.signingIdentity,
-                runtimeID: connection.runtimeID,
-                accountID: member.identity.accountID,
-                connectionEpoch: connection.connectionEpoch,
-                signal,
-              }).create(delivery),
-            ),
+          create: (delivery) => source.run(() => intake.create(delivery)),
+          input: (delivery) => source.run(() => intake.input(delivery)),
+          control: (delivery, received) => source.run(() => intake.control(delivery, received)),
+          decision: (delivery) => source.run(() => intake.decision(delivery)),
+          query: (delivery) => source.run(() => intake.query(delivery)),
+          skip: (delivery) => source.run(() => intake.skip(delivery)),
         }
       },
-      handoff: (authorization, connection, signal) =>
+      handoff: (authorization, connection, signal, resources) =>
         source.run(async () => {
-          const input = { authorization, connection, signal }
+          const input = { authorization, connection, signal, resources }
           sourceSignal = signal
           const plan = authorization.plan
           if (plan.operation === "prepare-source") preparations++
@@ -199,7 +228,23 @@ test.each(["cancel", "transfer", "unknown", "observer"] as const)(
       identity: hosted.identity,
       ca: f.ca,
       buildVersion: "actual-target-controller",
-      commands: unused,
+      commands(connection, signal) {
+        const intake = createCommandIntake({
+          identity: connection.signingIdentity,
+          runtimeID: connection.runtimeID,
+          connectionEpoch: connection.connectionEpoch,
+          signal,
+        })
+        targetIntake = intake
+        return {
+          create: (delivery) => target.run(() => intake.create(delivery)),
+          input: (delivery) => target.run(() => intake.input(delivery)),
+          control: (delivery, received) => target.run(() => intake.control(delivery, received)),
+          decision: (delivery) => target.run(() => intake.decision(delivery)),
+          query: (delivery) => target.run(() => intake.query(delivery)),
+          skip: (delivery) => target.run(() => intake.skip(delivery)),
+        }
+      },
       handoff: (authorization, connection, signal, resources) =>
         target.run(async () => {
           const input = {
@@ -251,6 +296,174 @@ test.each(["cancel", "transfer", "unknown", "observer"] as const)(
         )
       ).data
       const sessionID = created.effect.sessionID
+      let original: Command.InputAccepted | undefined
+      let originalGrant: Execution.BoundGrant | undefined
+      if (withResources) {
+        const resource = (
+          await f.client.orgResources.create(
+            {
+              orgResourceCreate: {
+                name: "Continuation model",
+                scope: { kind: "organization" },
+                configuration: {
+                  protocol: "openai-compatible",
+                  endpoint: "https://provider.example/v1",
+                  model: { id: "continuation-model", name: "Continuation", limit: { context: 8192, output: 1024 } },
+                },
+                credential: { kind: "bearer", value: "isolated-resource-key" },
+              },
+            },
+            options,
+          )
+        ).data
+        await f.client.orgResourceGrants.set(
+          {
+            resourceID: resource.resourceID,
+            kind: "account",
+            subjectID: f.identity.accountID,
+            orgResourceGrantChange: { expectedRevision: 0, enabled: true },
+          },
+          options,
+        )
+        await f.client.orgSessionResources.set(
+          {
+            sessionID,
+            orgSessionResourceChange: {
+              expectedRevision: 0,
+              selection: { modelResourceID: resource.resourceID, connectionResourceIDs: [] },
+            },
+          },
+          options,
+        )
+        original = Command.InputAccepted.parse(
+          (
+            await f.client.orgCommands.input(
+              {
+                sessionID,
+                orgCommandInputRequest: {
+                  schemaVersion: 1,
+                  orgID: f.identity.orgID,
+                  projectID: project.projectID,
+                  sessionID,
+                  runtimeID: sourceRegistration.runtimeID,
+                  requestID: "original-continuation-input",
+                  input: {
+                    operation: "input",
+                    mode: "task",
+                    parts: [{ type: "text", text: "Keep the original root and actor" }],
+                  },
+                },
+              },
+              options,
+            )
+          ).data,
+        )
+        const accepted = original
+        const proof = await source.run(async () => {
+          const session = await Session.get(sessionID)
+          return ScopeContext.provide({
+            scope: session.scope,
+            workspace: null,
+            fn: async () => {
+              await Session.update(sessionID, (draft) => {
+                draft.modelOverride = { providerID: "test", modelID: "test" }
+              })
+              expect((await SessionInbox.materializeNextTask(sessionID)).status).toBe("materialized")
+              await RolloutLedger.beginRun(RolloutLifecycle.owner(session), accepted.effect.messageID)
+              return sourceIntake!.bindingProof(
+                { subjectID: accepted.permit.actor.subjectID, requestID: accepted.permit.requestID },
+                accepted.effect.messageID,
+              )
+            },
+          })
+        })
+        originalGrant = await sourceConnection.resources.bind(proof)
+        expect(originalGrant.retention).toEqual({ state: "held", generation: 1 })
+      }
+      async function resumeResources(
+        current: typeof source,
+        intake: ReturnType<typeof createCommandIntake>,
+        connection: typeof sourceConnection,
+        epoch: number,
+      ) {
+        const accepted = original!
+        const lookup = { subjectID: accepted.permit.actor.subjectID, requestID: accepted.permit.requestID }
+        const control = await current.run(async () => ({
+          operation: "continue" as const,
+          pausedSince: (await Session.get(sessionID)).paused!.since,
+          controlVersion: await readCommandControlVersion(f.identity.orgID, sessionID),
+        }))
+        const continued = Command.ControlAccepted.parse(
+          (
+            await f.client.orgCommands.control(
+              {
+                sessionID,
+                orgCommandControlRequest: {
+                  schemaVersion: 1,
+                  orgID: f.identity.orgID,
+                  projectID: project.projectID,
+                  sessionID,
+                  runtimeID: connection.connected.runtimeID,
+                  requestID: "explicit-post-handoff-control",
+                  control,
+                },
+              },
+              options,
+            )
+          ).data,
+        )
+        expect(continued.effect).toMatchObject({ operation: "continue", rootID: accepted.effect.messageID })
+        const description = await current.run(() => intake.descriptionProof(lookup))
+        expect(description.receipt.accepted).toEqual(accepted)
+        expect(description.continuation?.receipt.accepted).toEqual(continued)
+        const resources = await connection.resources.describe(description)
+        expect(resources.grant).toMatchObject({
+          runtimeID: connection.connected.runtimeID,
+          bindingEpoch: epoch,
+          actor: accepted.permit.actor,
+          admissionID: accepted.permit.admissionID,
+          attemptID: accepted.permit.attemptID,
+          provenance: { originGrantID: originalGrant!.grantID, rootID: accepted.effect.messageID, control: continued },
+        })
+        expect(resources.grant.grantID).not.toBe(originalGrant!.grantID)
+        const binding = await current.run(() => intake.bindingProof(lookup, accepted.effect.messageID))
+        const bound = await connection.resources.bind(binding)
+        expect(bound).toMatchObject({
+          grantID: resources.grant.grantID,
+          rootID: accepted.effect.messageID,
+          retention: { state: "held", generation: 1 },
+        })
+        await current.run(async () => {
+          const session = await Session.get(sessionID)
+          expect(
+            (await MessageV2.readInfo({ scopeID: session.scope.id, sessionID, messageID: accepted.effect.messageID }))
+              .actor,
+          ).toEqual(accepted.permit.actor)
+          await ScopeContext.provide({
+            scope: session.scope,
+            workspace: null,
+            fn: () => RolloutLedger.finishRun(RolloutLifecycle.owner(session), accepted.effect.messageID, "completed"),
+          })
+        })
+        const release = Execution.ReleaseProof.parse({
+          ...binding,
+          purpose: "execution-resources-release",
+          grantID: bound.grantID,
+          rootID: bound.rootID,
+          generation: bound.retention.generation,
+          outcome: "completed",
+        })
+        expect(await connection.resources.release(release)).toMatchObject({
+          grantID: bound.grantID,
+          rootID: accepted.effect.messageID,
+          generation: 1,
+        })
+        expect(await connection.resources.release(release)).toMatchObject({
+          grantID: bound.grantID,
+          outcome: "completed",
+        })
+        await expect(connection.resources.bind(binding)).rejects.toThrow()
+      }
       const handoffID = "actual-controller-transfer"
       await f.client.orgHandoff.prepare(
         {
@@ -323,7 +536,7 @@ test.each(["cancel", "transfer", "unknown", "observer"] as const)(
       } else frozen = await drive("prepare-source")
       expect(frozen.facts[0]?.proof).toMatchObject({ purpose: "source-frozen", drained: true, paused: true })
       expect(preparations).toBe(1)
-      if (mode === "cancel") {
+      if (mode === "cancel" || mode === "resource-cancel-retained") {
         await f.client.orgHandoff.cancel({ handoffID, body: {} }, options)
         expect((await drive("cancel-source")).facts[0]?.proof.purpose).toBe("source-cancelled")
         expect((await drive("inspect-source")).facts[0]?.proof.purpose).toBe("source-cancelled")
@@ -334,6 +547,7 @@ test.each(["cancel", "transfer", "unknown", "observer"] as const)(
         await target.run(async () => {
           await expect(Session.get(sessionID)).rejects.toThrow()
         })
+        if (withResources) await resumeResources(source, sourceIntake!, sourceConnection, 1)
         return
       }
       let prepared: Handoff.MachineResult
@@ -367,6 +581,61 @@ test.each(["cancel", "transfer", "unknown", "observer"] as const)(
         { handoffID, orgHandoffPermitRequest: { purpose: "handoff-surrender" } },
         options,
       )
+      if (mode === "resource-cancel") {
+        const failSurrender = spyOn(NativeSource, "surrender").mockImplementationOnce(async () => {
+          throw new Error("Stop after the real retention close")
+        })
+        try {
+          await expect(drive("surrender-source")).rejects.toMatchObject({
+            code: "SERVICE_UNAVAILABLE",
+            outcome: "unknown",
+          })
+        } finally {
+          failSurrender.mockRestore()
+        }
+        const retained = await sourceConnection.resources.retention(
+          await source.run(() =>
+            sourceIntake!.retentionProof({
+              subjectID: original!.permit.actor.subjectID,
+              requestID: original!.permit.requestID,
+            }),
+          ),
+        )
+        expect(retained).toMatchObject({
+          grantID: originalGrant!.grantID,
+          retention: { state: "handoff_closed", generation: 1 },
+        })
+        await f.client.orgHandoff.cancel({ handoffID, body: {} }, options)
+        expect((await drive("cancel-source")).facts[0]?.proof.purpose).toBe("source-cancelled")
+        expect((await source.run(() => Session.get(sessionID))).paused).toBeDefined()
+        await resumeResources(source, sourceIntake!, sourceConnection, 1)
+        return
+      }
+      if (mode === "resource-close-unknown") {
+        let closed = 0
+        f.interceptHTTP(async (request) => {
+          if (!new URL(request.url).pathname.endsWith("/execution/handoff-close")) return
+          closed++
+          const committed = await f.service.fetch(request)
+          expect(committed.status).toBe(200)
+          return Response.json(
+            {
+              code: "SERVICE_UNAVAILABLE",
+              message: "Lost committed closure reply",
+              retryable: false,
+              outcome: "unknown",
+            },
+            { status: 503 },
+          )
+        })
+        await expect(drive("surrender-source")).rejects.toMatchObject({
+          code: "SERVICE_UNAVAILABLE",
+          outcome: "unknown",
+        })
+        f.interceptHTTP(undefined)
+        expect(closed).toBe(1)
+        expect((await f.client.orgHandoff.get({ handoffID }, options)).data.phase).toBe("prepared")
+      }
       expect((await drive("surrender-source")).facts[0]?.proof.purpose).toBe("source-surrendered")
       expect((await drive("inspect-source")).facts[0]?.proof.purpose).toBe("source-surrendered")
       expect((await f.client.orgHandoff.commit({ handoffID, body: {} }, options)).data.phase).toBe("committed")
@@ -393,6 +662,7 @@ test.each(["cancel", "transfer", "unknown", "observer"] as const)(
           },
         })
       })
+      if (withResources) await resumeResources(target, targetIntake!, targetConnection, 2)
     } finally {
       sourceResume.resolve()
       targetResume.resolve()

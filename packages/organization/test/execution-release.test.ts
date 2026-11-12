@@ -227,3 +227,19 @@ test("reacquisition commits its generation and occupancy together without rewrit
     expect((await Record.read(Record.SessionDirectory, Keys.session(f.sessionID)))!.retainedExecutionGrants).toBe(1)
   })
 })
+
+test("an explicit legacy grant selector cannot release a different canonical grant", async () => {
+  await using f = await executionFixture({ endpoint: "https://provider.example/v1" })
+  const proof = Execution.ReleaseProof.parse({ ...(await release(f)).proof, grantID: "another-grant" })
+  await expect(
+    f.run(async () =>
+      f.execution.release({
+        proof,
+        signature: await Execution.signRelease(proof, f.machineKeys.privateKey),
+      }),
+    ),
+  ).rejects.toMatchObject({ data: { code: "PROTOCOL_MISMATCH" } })
+  expect((await f.run(() => Record.read(Record.ExecutionGrant, Keys.executionGrant(f.grant.grantID))))?.state).toBe(
+    "bound",
+  )
+})

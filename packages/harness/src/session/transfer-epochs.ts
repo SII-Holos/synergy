@@ -774,4 +774,26 @@ export namespace SessionTransferEpochs {
     if (!record) fail("owner resume evidence is unavailable")
     return structuredClone(record.binding)
   }
+
+  export async function inspectOwnerBinding(input: {
+    sessionID: string
+    rootSessionID: string
+  }): Promise<Binding | undefined> {
+    const current = await pointer(input.sessionID)
+    if (!current?.lastHandoffID || !current.lastFromEpoch) return
+    const record = await optional(
+      State,
+      stateKey({ sessionID: input.sessionID, handoffID: current.lastHandoffID, fromEpoch: current.lastFromEpoch }),
+    )
+    if (
+      !record ||
+      (record.binding.rootSessionID ?? record.binding.sessionID) !== input.rootSessionID ||
+      !(
+        (record.role === "source" && record.phase === "cancelled" && current.epoch === record.binding.fromEpoch) ||
+        (record.role === "target" && record.phase === "activated" && current.epoch === record.binding.toEpoch)
+      )
+    )
+      fail("current owner lineage requires a permanent native epoch outcome")
+    return structuredClone(record.binding)
+  }
 }

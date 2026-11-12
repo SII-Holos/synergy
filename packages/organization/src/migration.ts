@@ -3,10 +3,12 @@ import type { Migration } from "@ericsanchezok/synergy-harness/migration/types"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { OrganizationProtocol } from "@ericsanchezok/synergy-organization-protocol"
 import { OrganizationStoragePath } from "./storage/path"
-import { HomeOwnership } from "@ericsanchezok/synergy-harness/lifecycle/home-ownership"
 import { initializeSigningIdentity } from "./signing"
 import { executionMigration } from "./execution-migration"
 import { executionRetentionMigration } from "./execution-retention-migration"
+import { executionHandoffMigration } from "./execution-handoff-migration"
+import { OrganizationExecutionIndex } from "./execution-index"
+import { OrganizationHandoffExecution } from "./handoff"
 import { sharedProjectionMigration, sharedWindowMigration, sharedWindowHistoryMigration } from "./shared-projection"
 import { publicationMigration } from "./publications"
 import { inviteCatalogMigration } from "./auth/invite-migration"
@@ -14,10 +16,14 @@ import { knowledgeSelectionMigration } from "./knowledge-selection"
 import { sharedBlobMigration } from "./shared-blob"
 import { organizationAuthorityMigration } from "./authority-history"
 import { sharedTaskMigration } from "./shared-tasks"
+import { OrganizationServiceHome } from "./service-home"
 
 const migrations: Migration[] = [
   executionMigration,
   executionRetentionMigration,
+  executionHandoffMigration,
+  OrganizationExecutionIndex.migration,
+  OrganizationHandoffExecution.migration,
   sharedProjectionMigration,
   sharedWindowMigration,
   sharedWindowHistoryMigration,
@@ -54,17 +60,7 @@ const migrations: Migration[] = [
       progress(1, 1)
     },
   },
-  {
-    id: "20261108-organization-home-ownership",
-    description: "Retain independent organization Home ownership when execution components are absent",
-    scope: "global",
-    execution: "startup",
-    dependsOn: ["20261108-organization-deployment"],
-    async up(progress) {
-      await HomeOwnership.persist()
-      progress(1, 1)
-    },
-  },
+  OrganizationServiceHome.initialization,
   {
     id: "20261109-organization-signing-identity",
     description: "Establish a deployment-bound organization command signing identity",
@@ -79,6 +75,7 @@ const migrations: Migration[] = [
 ]
 
 export function registerOrganizationMigrations() {
+  OrganizationServiceHome.registerMigration()
   MigrationRegistry.register("organization", [
     ...migrations,
     {

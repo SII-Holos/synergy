@@ -6,7 +6,10 @@ import { OrganizationBackupCohort as Cohort } from "../../src/backup/cohort"
 import { OrganizationRecoveryArchive } from "../../src/backup/archive"
 import { OrganizationStoragePath as Keys } from "../../src/storage/path"
 import { OrganizationRecord as Record } from "../../src/storage/records"
-import { OrganizationRuntimeProtocol as Runtime } from "@ericsanchezok/synergy-organization-protocol"
+import {
+  OrganizationRuntimeProtocol as Runtime,
+  OrganizationProtocol,
+} from "@ericsanchezok/synergy-organization-protocol"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { RuntimeMaintenance } from "@ericsanchezok/synergy-harness/storage/runtime-maintenance"
 import { SnapshotStore } from "@ericsanchezok/synergy-harness/session/snapshot-store"
@@ -40,17 +43,18 @@ const deployment = {
   createdAt: 1,
 }
 const hash = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex")
-async function runtime(registration?: Runtime.HostedRegistrationRecord) {
+async function runtime(registration?: Runtime.HostedRegistrationRecord | "service") {
   const home = await runtimeHome()
   const selected = {
     schemaVersion: 2 as const,
-    owner: "organization-runtime",
+    owner: registration === "service" ? "organization" : "organization-runtime",
     identity: "f".repeat(64),
     readerContract: "cohort-fixture-v1",
   }
   if (registration) {
     await HomeOwnershipFile.open({ root: home.host.root, env: home.host.env, selected }).persist()
-    await Bun.write(path.join(home.host.root, "fixture-namespace.json"), JSON.stringify(registration))
+    if (registration !== "service")
+      await Bun.write(path.join(home.host.root, "fixture-namespace.json"), JSON.stringify(registration))
   }
   const runtime = await testRuntime({
     home: home.host.home,
@@ -59,8 +63,12 @@ async function runtime(registration?: Runtime.HostedRegistrationRecord) {
       if (registration) {
         HomeOwnership.select(selected)
         NativeNamespaceIdentity.register({
-          owner: "organization-runtime",
-          async read() {
+          owner: selected.owner,
+          async read(): Promise<Record<string, string>> {
+            if (registration === "service") {
+              const current = OrganizationProtocol.Deployment.parse(await Storage.read(Keys.deployment()))
+              return { kind: "service", orgID: current.orgID, deploymentIncarnation: current.deploymentIncarnation }
+            }
             const current = Runtime.HostedRegistrationRecord.parse(
               await Bun.file(path.join(home.host.root, "fixture-namespace.json")).json(),
             )
@@ -84,7 +92,7 @@ async function runtime(registration?: Runtime.HostedRegistrationRecord) {
 }
 async function fixture() {
   const directory = await tmpdir()
-  const service = await runtime()
+  const service = await runtime("service")
   const material = randomBytes(32)
   const keys = {
     async current() {
@@ -553,7 +561,7 @@ test("cohort discovery retains the original cancellation signal when its caller 
 
 test("cohort capture retains original participants, destination, actor and key-provider ports across discovery", async () => {
   await using f = await fixture()
-  await using replacement = await runtime()
+  await using replacement = await runtime("service")
   await f.service.run(() => Storage.write(["cohort-origin"], { namespace: "original" }))
   await replacement.run(async () => {
     await Storage.write(Keys.deployment(), deployment)

@@ -21,6 +21,8 @@
 
 - [0112](0112-cancelled-reader-retained-artifact-pin.md)
 
+- [0111](0111-cancelled-handoff-reenabled-retained-grants.md)
+
 - [0109](0109-native-publication-lost-input-priority.md)
 
 - [0108](0108-staged-context-read-foreign-storage.md)

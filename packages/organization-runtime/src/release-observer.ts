@@ -76,6 +76,7 @@ export function startExecutionReleaseObserver(input: {
             const proof = Execution.ReleaseProof.parse({
               ...description,
               purpose: "execution-resources-release",
+              grantID: grant.grantID,
               rootID: entry.rootID,
               generation,
               outcome: result,

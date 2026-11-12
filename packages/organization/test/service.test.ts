@@ -13,6 +13,7 @@ import { MigrationRegistry } from "@ericsanchezok/synergy-harness/migration/regi
 import { OrganizationRuntimeProtocol as Runtime } from "@ericsanchezok/synergy-organization-protocol"
 import { digest } from "../src/auth/secret"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { OrganizationServiceHome } from "../src/service-home"
 
 const homes: string[] = []
 const services: Awaited<ReturnType<typeof openOrganizationService>>[] = []
@@ -319,7 +320,11 @@ test("Home ownership upgrades existing organization identity and refuses a perso
   const upgraded = await open(legacy)
   expect(await upgraded.deployment()).toEqual(deployment)
   const ownership = await Bun.file(path.join(root, "home-ownership.json")).text()
-  expect(JSON.parse(ownership)).toMatchObject({ schemaVersion: 1, owner: "organization" })
+  expect(JSON.parse(ownership)).toMatchObject({
+    schemaVersion: 2,
+    owner: "organization",
+    readerContract: OrganizationServiceHome.readerContract,
+  })
   await upgraded.close()
   const repeated = await open(legacy)
   expect(await repeated.deployment()).toEqual(deployment)

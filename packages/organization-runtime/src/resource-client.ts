@@ -18,6 +18,11 @@ export interface MemberResourceClient {
     range: z.infer<typeof Handoff.ObjectRange>,
     signal?: AbortSignal,
   ): Promise<z.infer<typeof Handoff.ObjectChunk>>
+  handoffInventory(
+    proof: Execution.HandoffInventoryProof,
+    signal?: AbortSignal,
+  ): Promise<Execution.HandoffInventoryPage>
+  closeHandoff(proof: Execution.HandoffCloseProof, signal?: AbortSignal): Promise<Execution.HandoffCloseReceipt>
   retention(proof: Execution.DescriptionProof, signal?: AbortSignal): Promise<Execution.Grant>
   describe(proof: Execution.DescriptionProof, signal?: AbortSignal): Promise<Execution.Description>
   bind(proof: Execution.BindingProof, signal?: AbortSignal): Promise<Execution.BoundGrant>
@@ -78,7 +83,13 @@ export type HandoffObjectReference = Pick<
 >
 
 type Proof =
-  Execution.DescriptionProof | Execution.BindingProof | Execution.ReleaseProof | Gateway.Proof | Objects.Proof
+  | Execution.DescriptionProof
+  | Execution.BindingProof
+  | Execution.ReleaseProof
+  | Execution.HandoffInventoryProof
+  | Execution.HandoffCloseProof
+  | Gateway.Proof
+  | Objects.Proof
 
 function failure(
   code: OrganizationProtocol.Error["code"],
@@ -244,20 +255,43 @@ export function createMemberResourceClient(options: {
   }
   function grant(proof: Execution.DescriptionProof | Execution.BindingProof, value: Execution.Grant) {
     const permit = proof.receipt.accepted!.permit
+    const control = proof.continuation?.receipt.accepted
+    const authority = control?.permit ?? permit
     if (
-      value.grantID !== permit.provisionalGrantID ||
       value.orgID !== permit.orgID ||
       value.deploymentIncarnation !== permit.deploymentIncarnation ||
-      value.runtimeID !== permit.runtimeID ||
+      value.runtimeID !== authority.runtimeID ||
       value.sessionID !== permit.sessionID ||
       value.projectID !== permit.projectID ||
-      value.bindingEpoch !== permit.bindingEpoch ||
+      value.bindingEpoch !== authority.bindingEpoch ||
       value.admissionID !== permit.admissionID ||
       value.attemptID !== permit.attemptID ||
       JSON.stringify(value.actor) !== JSON.stringify(permit.actor) ||
-      (value.state === "bound" && value.rootID !== proof.receipt.accepted!.effect.messageID)
+      (value.state === "bound" && value.rootID !== proof.receipt.accepted!.effect.messageID) ||
+      (control
+        ? value.grantID === permit.provisionalGrantID ||
+          value.provenance?.originGrantID !== permit.provisionalGrantID ||
+          value.provenance?.handoffID !== proof.continuation!.handoffID ||
+          value.provenance?.rootID !== proof.receipt.accepted!.effect.messageID ||
+          JSON.stringify(value.provenance?.control) !== JSON.stringify(control)
+        : value.grantID !== permit.provisionalGrantID || value.provenance !== undefined)
     )
-      throw failure("PROTOCOL_MISMATCH", "Organization execution grant does not match its accepted task")
+      throw failure(
+        "PROTOCOL_MISMATCH",
+        "Organization execution grant does not match its accepted task and current control",
+      )
+  }
+  function sameHandoff(
+    proof: Execution.HandoffInventoryProof | Execution.HandoffCloseProof,
+    value: z.infer<typeof Handoff.Binding>,
+  ) {
+    if (
+      Object.keys(Handoff.Binding.shape).some((key) => {
+        const field = key as keyof z.infer<typeof Handoff.Binding>
+        return proof[field] !== value[field]
+      })
+    )
+      throw failure("PROTOCOL_MISMATCH", "Resource handoff response belongs to another exact binding")
   }
   function target(proof: Gateway.Proof, value: Gateway.Target) {
     if (
@@ -469,6 +503,54 @@ export function createMemberResourceClient(options: {
         signal,
       )
     },
+    async handoffInventory(value, signal) {
+      const proof = Execution.HandoffInventoryProof.parse(value)
+      return invoke(
+        proof,
+        Execution.HandoffInventoryPage,
+        async (signal) =>
+          client.orgExecution.handoffInventory(
+            {
+              orgExecutionHandoffInventoryRequest: {
+                proof,
+                signature: await Execution.signHandoffInventory(proof, options.key),
+              },
+            },
+            { signal },
+          ),
+        (result) => sameHandoff(proof, result.binding),
+        signal,
+      )
+    },
+    async closeHandoff(value, signal) {
+      const proof = Execution.HandoffCloseProof.parse(value)
+      return invoke(
+        proof,
+        Execution.HandoffCloseReceipt,
+        async (signal) =>
+          client.orgExecution.closeHandoff(
+            {
+              orgExecutionHandoffCloseRequest: {
+                proof,
+                signature: await Execution.signHandoffClose(proof, options.key),
+              },
+            },
+            { signal },
+          ),
+        (result) => {
+          sameHandoff(proof, result)
+          if (
+            result.grantID !== proof.grantID ||
+            result.rootID !== proof.rootID ||
+            result.generation !== proof.generation ||
+            result.manifestHash !== proof.manifestHash ||
+            result.preparedHash !== proof.preparedHash
+          )
+            throw failure("PROTOCOL_MISMATCH", "Resource handoff receipt does not match its exact retained generation")
+        },
+        signal,
+      )
+    },
     async retention(value, signal) {
       const proof = Execution.DescriptionProof.parse(value)
       return invoke(
@@ -531,13 +613,14 @@ export function createMemberResourceClient(options: {
           ),
         (result) => {
           const permit = proof.receipt.accepted!.permit
+          const current = proof.continuation?.receipt.accepted?.permit ?? permit
           if (
-            result.grantID !== permit.provisionalGrantID ||
+            result.grantID !== (proof.grantID ?? permit.provisionalGrantID) ||
             result.orgID !== permit.orgID ||
             result.deploymentIncarnation !== permit.deploymentIncarnation ||
-            result.runtimeID !== permit.runtimeID ||
+            result.runtimeID !== current.runtimeID ||
             result.sessionID !== permit.sessionID ||
-            result.bindingEpoch !== permit.bindingEpoch ||
+            result.bindingEpoch !== current.bindingEpoch ||
             result.rootID !== proof.rootID ||
             result.generation !== proof.generation ||
             result.outcome !== proof.outcome ||

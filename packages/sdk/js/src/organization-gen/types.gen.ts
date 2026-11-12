@@ -2385,6 +2385,38 @@ export type OrgCommandInputAccepted = {
   }
 }
 
+export type OrgCommandControlAccepted = {
+  schemaVersion: 1
+  permit: OrgCommandPermit
+  acceptedAt: number
+  intakeSeq: number
+  effect:
+    | {
+        kind: "control"
+        controlVersion: number
+        pausedSince: number
+        operation: "pause"
+        changed: boolean
+      }
+    | {
+        kind: "control"
+        controlVersion: number
+        pausedSince: number
+        operation: "continue"
+        itemID: string
+        messageID: string
+        rootID?: string
+      }
+    | {
+        kind: "control"
+        operation: "cancel"
+        controlVersion: number
+        runID: string
+        runStatusAtReception: "running" | "completed" | "failed" | "cancelled" | "interrupted"
+        cancelRequestedAt?: number
+      }
+}
+
 export type OrgExecutionDescriptionProof = {
   schemaVersion: 1
   orgID: string
@@ -2435,6 +2467,55 @@ export type OrgExecutionDescriptionProof = {
         deadline: number
       }
       receivedAt: number
+    }
+  }
+  continuation?: {
+    handoffID: string
+    receipt: {
+      attempt:
+        | {
+            schemaVersion: 1
+            permit: OrgCommandPermit
+            receivedAt: number
+            status: "accepted"
+            acceptedAttemptID: string
+          }
+        | {
+            schemaVersion: 1
+            permit: OrgCommandPermit
+            receivedAt: number
+            status: "rejected"
+            reason:
+              | "EXPIRED_PERMIT"
+              | "STALE_CONNECTION"
+              | "STALE_BINDING"
+              | "SESSION_UNAVAILABLE"
+              | "TRANSFER_BLOCKED"
+              | "SEQUENCE_GAP"
+              | "SEQUENCE_CLOSED"
+              | "REQUEST_CONFLICT"
+              | "PAYLOAD_MISMATCH"
+              | "CONTROL_CONFLICT"
+          }
+        | {
+            schemaVersion: 1
+            permit: OrgCommandPermit
+            receivedAt: number
+            status: "skipped"
+          }
+      accepted?: OrgCommandControlAccepted
+      skip?: {
+        schemaVersion: 1
+        permit: {
+          schemaVersion: 1
+          purpose: "session-command-skip"
+          command: OrgCommandPermit
+          connectionEpoch: number
+          authorizedAt: number
+          deadline: number
+        }
+        receivedAt: number
+      }
     }
   }
   issuedAt: number
@@ -2561,38 +2642,6 @@ export type OrgCommandDecisionRequest = {
   projectID: string
   runtimeID: string
   decision: OrgCommandDecision
-}
-
-export type OrgCommandControlAccepted = {
-  schemaVersion: 1
-  permit: OrgCommandPermit
-  acceptedAt: number
-  intakeSeq: number
-  effect:
-    | {
-        kind: "control"
-        controlVersion: number
-        pausedSince: number
-        operation: "pause"
-        changed: boolean
-      }
-    | {
-        kind: "control"
-        controlVersion: number
-        pausedSince: number
-        operation: "continue"
-        itemID: string
-        messageID: string
-        rootID?: string
-      }
-    | {
-        kind: "control"
-        operation: "cancel"
-        controlVersion: number
-        runID: string
-        runStatusAtReception: "running" | "completed" | "failed" | "cancelled" | "interrupted"
-        cancelRequestedAt?: number
-      }
 }
 
 export type OrgCommandControl =
@@ -2964,8 +3013,215 @@ export type OrgGatewayMcpRequest =
       }
     }
 
+export type OrgExecutionHandoffInventoryPage = {
+  binding: {
+    schemaVersion: 1
+    orgID: string
+    deploymentIncarnation: string
+    handoffID: string
+    sessionID: string
+    sourceRuntimeID: string
+    targetRuntimeID: string
+    fromEpoch: number
+    toEpoch: number
+    mappingPlanRevision: number
+    shareGeneration: number
+  }
+  retained: number
+  items: Array<{
+    grantID: string
+    rootID: string
+    generation: number
+    originGrantID: string
+    lookup: {
+      subjectID: string
+      requestID: string
+    }
+    continuation?: {
+      handoffID: string
+      lookup: {
+        subjectID: string
+        requestID: string
+      }
+    }
+  }>
+  cursor?: string
+}
+
+export type OrgExecutionHandoffInventoryProof = {
+  schemaVersion: 1
+  orgID: string
+  deploymentIncarnation: string
+  handoffID: string
+  sessionID: string
+  sourceRuntimeID: string
+  targetRuntimeID: string
+  fromEpoch: number
+  toEpoch: number
+  mappingPlanRevision: number
+  shareGeneration: number
+  purpose: "execution-handoff-inventory"
+  runtimeID: string
+  connectionEpoch: number
+  manifestHash: string
+  preparedHash: string
+  cursor?: string
+  issuedAt: number
+  expiresAt: number
+}
+
+export type OrgExecutionHandoffInventoryRequest = {
+  proof: OrgExecutionHandoffInventoryProof
+  signature: string
+}
+
+export type OrgExecutionHandoffCloseReceipt = {
+  schemaVersion: 1
+  orgID: string
+  deploymentIncarnation: string
+  handoffID: string
+  sessionID: string
+  sourceRuntimeID: string
+  targetRuntimeID: string
+  fromEpoch: number
+  toEpoch: number
+  mappingPlanRevision: number
+  shareGeneration: number
+  purpose: "execution-handoff-closed"
+  grantID: string
+  rootID: string
+  generation: number
+  manifestHash: string
+  preparedHash: string
+  closedAt: number
+}
+
+export type OrgExecutionHandoffCloseProof = {
+  schemaVersion: 1
+  orgID: string
+  deploymentIncarnation: string
+  handoffID: string
+  sessionID: string
+  sourceRuntimeID: string
+  targetRuntimeID: string
+  fromEpoch: number
+  toEpoch: number
+  mappingPlanRevision: number
+  shareGeneration: number
+  purpose: "execution-handoff-close"
+  runtimeID: string
+  connectionEpoch: number
+  grantID: string
+  rootID: string
+  generation: number
+  manifestHash: string
+  preparedHash: string
+  receipt: {
+    attempt:
+      | {
+          schemaVersion: 1
+          permit: OrgCommandPermit
+          receivedAt: number
+          status: "accepted"
+          acceptedAttemptID: string
+        }
+      | {
+          schemaVersion: 1
+          permit: OrgCommandPermit
+          receivedAt: number
+          status: "rejected"
+          reason:
+            | "EXPIRED_PERMIT"
+            | "STALE_CONNECTION"
+            | "STALE_BINDING"
+            | "SESSION_UNAVAILABLE"
+            | "TRANSFER_BLOCKED"
+            | "SEQUENCE_GAP"
+            | "SEQUENCE_CLOSED"
+            | "REQUEST_CONFLICT"
+            | "PAYLOAD_MISMATCH"
+            | "CONTROL_CONFLICT"
+        }
+      | {
+          schemaVersion: 1
+          permit: OrgCommandPermit
+          receivedAt: number
+          status: "skipped"
+        }
+    accepted?: OrgCommandInputAccepted
+    skip?: {
+      schemaVersion: 1
+      permit: {
+        schemaVersion: 1
+        purpose: "session-command-skip"
+        command: OrgCommandPermit
+        connectionEpoch: number
+        authorizedAt: number
+        deadline: number
+      }
+      receivedAt: number
+    }
+  }
+  continuation?: {
+    handoffID: string
+    receipt: {
+      attempt:
+        | {
+            schemaVersion: 1
+            permit: OrgCommandPermit
+            receivedAt: number
+            status: "accepted"
+            acceptedAttemptID: string
+          }
+        | {
+            schemaVersion: 1
+            permit: OrgCommandPermit
+            receivedAt: number
+            status: "rejected"
+            reason:
+              | "EXPIRED_PERMIT"
+              | "STALE_CONNECTION"
+              | "STALE_BINDING"
+              | "SESSION_UNAVAILABLE"
+              | "TRANSFER_BLOCKED"
+              | "SEQUENCE_GAP"
+              | "SEQUENCE_CLOSED"
+              | "REQUEST_CONFLICT"
+              | "PAYLOAD_MISMATCH"
+              | "CONTROL_CONFLICT"
+          }
+        | {
+            schemaVersion: 1
+            permit: OrgCommandPermit
+            receivedAt: number
+            status: "skipped"
+          }
+      accepted?: OrgCommandControlAccepted
+      skip?: {
+        schemaVersion: 1
+        permit: {
+          schemaVersion: 1
+          purpose: "session-command-skip"
+          command: OrgCommandPermit
+          connectionEpoch: number
+          authorizedAt: number
+          deadline: number
+        }
+        receivedAt: number
+      }
+    }
+  }
+  issuedAt: number
+  expiresAt: number
+}
+
+export type OrgExecutionHandoffCloseRequest = {
+  proof: OrgExecutionHandoffCloseProof
+  signature: string
+}
+
 export type OrgBoundExecutionGrant = {
-  schemaVersion: 3
+  schemaVersion: 4
   grantID: string
   orgID: string
   deploymentIncarnation: string
@@ -2994,6 +3250,13 @@ export type OrgBoundExecutionGrant = {
   admissionID: string
   attemptID: string
   createdAt: number
+  provenance?: {
+    handoffID: string
+    predecessorGrantID: string
+    originGrantID: string
+    rootID: string
+    control: OrgCommandControlAccepted
+  }
   state: "bound"
   rootID: string
   boundAt: number
@@ -3008,11 +3271,25 @@ export type OrgBoundExecutionGrant = {
         releasedAt: number
         outcome: "completed" | "failed" | "cancelled"
       }
+    | {
+        handoffID: string
+        manifestHash: string
+        preparedHash: string
+        closedAt: number
+        state: "handoff_closed"
+        generation: number
+      }
+    | {
+        state: "control_closed"
+        generation: number
+        successorGrantID: string
+        closedAt: number
+      }
 }
 
 export type OrgExecutionGrant =
   | {
-      schemaVersion: 3
+      schemaVersion: 4
       grantID: string
       orgID: string
       deploymentIncarnation: string
@@ -3041,11 +3318,18 @@ export type OrgExecutionGrant =
       admissionID: string
       attemptID: string
       createdAt: number
+      provenance?: {
+        handoffID: string
+        predecessorGrantID: string
+        originGrantID: string
+        rootID: string
+        control: OrgCommandControlAccepted
+      }
       state: "provisional"
     }
   | OrgBoundExecutionGrant
   | {
-      schemaVersion: 3
+      schemaVersion: 4
       grantID: string
       orgID: string
       deploymentIncarnation: string
@@ -3074,8 +3358,28 @@ export type OrgExecutionGrant =
       admissionID: string
       attemptID: string
       createdAt: number
+      provenance?: {
+        handoffID: string
+        predecessorGrantID: string
+        originGrantID: string
+        rootID: string
+        control: OrgCommandControlAccepted
+      }
       state: "closed"
       closedAt: number
+      handoffClosure?: {
+        handoffID: string
+        manifestHash: string
+        preparedHash: string
+        closedAt: number
+        rootID: string
+        generation: 0
+      }
+      controlClosure?: {
+        rootID: string
+        successorGrantID: string
+        closedAt: number
+      }
     }
 
 export type OrgExecutionDescription = {
@@ -3174,6 +3478,55 @@ export type OrgExecutionBindingProof = {
       receivedAt: number
     }
   }
+  continuation?: {
+    handoffID: string
+    receipt: {
+      attempt:
+        | {
+            schemaVersion: 1
+            permit: OrgCommandPermit
+            receivedAt: number
+            status: "accepted"
+            acceptedAttemptID: string
+          }
+        | {
+            schemaVersion: 1
+            permit: OrgCommandPermit
+            receivedAt: number
+            status: "rejected"
+            reason:
+              | "EXPIRED_PERMIT"
+              | "STALE_CONNECTION"
+              | "STALE_BINDING"
+              | "SESSION_UNAVAILABLE"
+              | "TRANSFER_BLOCKED"
+              | "SEQUENCE_GAP"
+              | "SEQUENCE_CLOSED"
+              | "REQUEST_CONFLICT"
+              | "PAYLOAD_MISMATCH"
+              | "CONTROL_CONFLICT"
+          }
+        | {
+            schemaVersion: 1
+            permit: OrgCommandPermit
+            receivedAt: number
+            status: "skipped"
+          }
+      accepted?: OrgCommandControlAccepted
+      skip?: {
+        schemaVersion: 1
+        permit: {
+          schemaVersion: 1
+          purpose: "session-command-skip"
+          command: OrgCommandPermit
+          connectionEpoch: number
+          authorizedAt: number
+          deadline: number
+        }
+        receivedAt: number
+      }
+    }
+  }
   issuedAt: number
   expiresAt: number
   purpose: "execution-root-binding"
@@ -3252,9 +3605,59 @@ export type OrgExecutionReleaseProof = {
       receivedAt: number
     }
   }
+  continuation?: {
+    handoffID: string
+    receipt: {
+      attempt:
+        | {
+            schemaVersion: 1
+            permit: OrgCommandPermit
+            receivedAt: number
+            status: "accepted"
+            acceptedAttemptID: string
+          }
+        | {
+            schemaVersion: 1
+            permit: OrgCommandPermit
+            receivedAt: number
+            status: "rejected"
+            reason:
+              | "EXPIRED_PERMIT"
+              | "STALE_CONNECTION"
+              | "STALE_BINDING"
+              | "SESSION_UNAVAILABLE"
+              | "TRANSFER_BLOCKED"
+              | "SEQUENCE_GAP"
+              | "SEQUENCE_CLOSED"
+              | "REQUEST_CONFLICT"
+              | "PAYLOAD_MISMATCH"
+              | "CONTROL_CONFLICT"
+          }
+        | {
+            schemaVersion: 1
+            permit: OrgCommandPermit
+            receivedAt: number
+            status: "skipped"
+          }
+      accepted?: OrgCommandControlAccepted
+      skip?: {
+        schemaVersion: 1
+        permit: {
+          schemaVersion: 1
+          purpose: "session-command-skip"
+          command: OrgCommandPermit
+          connectionEpoch: number
+          authorizedAt: number
+          deadline: number
+        }
+        receivedAt: number
+      }
+    }
+  }
   issuedAt: number
   expiresAt: number
   purpose: "execution-resources-release"
+  grantID?: string
   rootID: string
   generation: number
   outcome: "completed" | "failed" | "cancelled"
@@ -9415,6 +9818,99 @@ export type OrgGatewayMessagesResponses = {
 }
 
 export type OrgGatewayMessagesResponse = OrgGatewayMessagesResponses[keyof OrgGatewayMessagesResponses]
+
+export type OrgExecutionHandoffInventoryData = {
+  body: OrgExecutionHandoffInventoryRequest
+  path?: never
+  query?: never
+  url: "/runtime/v1/execution/handoff-inventory"
+}
+
+export type OrgExecutionHandoffInventoryErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgExecutionHandoffInventoryError =
+  OrgExecutionHandoffInventoryErrors[keyof OrgExecutionHandoffInventoryErrors]
+
+export type OrgExecutionHandoffInventoryResponses = {
+  /**
+   * Success
+   */
+  200: OrgExecutionHandoffInventoryPage
+}
+
+export type OrgExecutionHandoffInventoryResponse =
+  OrgExecutionHandoffInventoryResponses[keyof OrgExecutionHandoffInventoryResponses]
+
+export type OrgExecutionCloseHandoffData = {
+  body: OrgExecutionHandoffCloseRequest
+  path?: never
+  query?: never
+  url: "/runtime/v1/execution/handoff-close"
+}
+
+export type OrgExecutionCloseHandoffErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgExecutionCloseHandoffError = OrgExecutionCloseHandoffErrors[keyof OrgExecutionCloseHandoffErrors]
+
+export type OrgExecutionCloseHandoffResponses = {
+  /**
+   * Success
+   */
+  200: OrgExecutionHandoffCloseReceipt
+}
+
+export type OrgExecutionCloseHandoffResponse =
+  OrgExecutionCloseHandoffResponses[keyof OrgExecutionCloseHandoffResponses]
 
 export type OrgExecutionRetentionData = {
   body: OrgExecutionDescriptionRequest

@@ -3,6 +3,7 @@ import {
   OrganizationCommandProtocol as Command,
   OrganizationExecutionProtocol as Execution,
   OrganizationResourceProtocol as Resource,
+  OrganizationHandoffProtocol as Handoff,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { OrganizationSessionResources as Resources } from "./session-resources"
 import { assertRuntimeConnection, runtimeAuthority } from "./runtime-authority"
@@ -12,6 +13,16 @@ import { fail } from "./error"
 import { projectView, projectExecutionRole } from "./authorization"
 import type { CommandAdmissions } from "./command-admission"
 import type { RuntimeConnections } from "./runtime-connection"
+import type { createHandoffs } from "./handoff"
+import { OrganizationAuthorityHistory as History } from "./authority-history"
+import { isDeepStrictEqual as same } from "node:util"
+import { OrganizationHandoffExecution } from "./handoff"
+import { OrganizationExecutionIndex as Index } from "./execution-index"
+
+async function saveGrant(grant: Execution.Grant) {
+  await Storage.write(Keys.executionGrant(grant.grantID), grant)
+  await Index.update(grant)
+}
 
 export namespace OrganizationExecutionGrants {
   export async function provision(session: Record.SessionDirectory, permit: Command.Permit) {
@@ -29,7 +40,7 @@ export namespace OrganizationExecutionGrants {
     if (!contract?.selection) return
     await Resources.enabled(session, contract.selection)
     const grant = Execution.Grant.parse({
-      schemaVersion: 3,
+      schemaVersion: 4,
       grantID: crypto.randomUUID(),
       orgID: session.orgID,
       deploymentIncarnation: permit.deploymentIncarnation,
@@ -46,7 +57,7 @@ export namespace OrganizationExecutionGrants {
       createdAt: permit.authorizedAt,
       state: "provisional",
     })
-    await Storage.write(Keys.executionGrant(grant.grantID), grant)
+    await saveGrant(grant)
     await Storage.write(
       Keys.session(session.sessionID),
       Record.SessionDirectory.parse({
@@ -74,10 +85,7 @@ export namespace OrganizationExecutionGrants {
     if (grant.state === "bound") fail("PROTOCOL_MISMATCH", "An accepted root grant cannot be rejected")
     const session = await Record.read(Record.SessionDirectory, Keys.session(grant.sessionID))
     if (!session || session.orgID !== grant.orgID) fail("NOT_FOUND", "Session not found")
-    await Storage.write(
-      Keys.executionGrant(grant.grantID),
-      Execution.Grant.parse({ ...grant, state: "closed", closedAt: Date.now() }),
-    )
+    await saveGrant(Execution.Grant.parse({ ...grant, state: "closed", closedAt: Date.now() }))
     await Storage.write(
       Keys.session(session.sessionID),
       Record.SessionDirectory.parse({
@@ -89,30 +97,258 @@ export namespace OrganizationExecutionGrants {
   }
 }
 
-type ReceiptProof = Execution.BindingProof | Execution.DescriptionProof | Execution.ReleaseProof
+type ReceiptProof =
+  Execution.BindingProof | Execution.DescriptionProof | Execution.ReleaseProof | Execution.HandoffCloseProof
+type MachineProof = Pick<
+  Execution.DescriptionProof,
+  "orgID" | "deploymentIncarnation" | "runtimeID" | "connectionEpoch" | "issuedAt" | "expiresAt"
+>
 
 export function createExecutionGrants(options: {
   connections: RuntimeConnections
   admissions: CommandAdmissions
   assertResourcesDrained(grantID: string): void
+  handoffs?: Pick<ReturnType<typeof createHandoffs>, "executionAuthority" | "continuationAuthority">
 }) {
-  function window(proof: ReceiptProof) {
+  function window(proof: MachineProof) {
     if (proof.issuedAt > Date.now() || proof.expiresAt <= Date.now())
       fail("PERMISSION_DENIED", "Execution binding proof is outside its validity window")
   }
-  async function machine(proof: ReceiptProof) {
+  async function machine(proof: MachineProof) {
     return runtimeAuthority(proof)
   }
-  function capture(proof: ReceiptProof, runtime: Record.RuntimeRegistration) {
+  function capture(proof: MachineProof, runtime: Record.RuntimeRegistration) {
     const connection = options.connections.capture(proof.runtimeID)
     assertRuntimeConnection(runtime, connection.handshake)
     return connection
   }
-  async function resolve(proof: ReceiptProof, publicKey: string) {
+  async function original(proof: ReceiptProof) {
+    const accepted = proof.receipt.accepted!
+    const permit = accepted.permit
+    const request = await Record.read(
+      Record.CommandRequest,
+      Keys.commandRequest(permit.actor.subjectID, permit.requestID),
+    )
+    if (!request?.accepted || !same(request.accepted, accepted))
+      fail("PERMISSION_DENIED", "Execution continuation has no original service acceptance")
+    return accepted
+  }
+  async function prepareContinuation(proof: Execution.DescriptionProof | Execution.BindingProof, publicKey: string) {
+    const continuation = proof.continuation
+    const control = continuation?.receipt.accepted
+    if (!continuation || !control || control.effect.operation !== "continue" || !control.effect.rootID) return
+    const rootID = control.effect.rootID
+    const connection = capture(proof, (await Storage.snapshot(() => machine(proof))).runtime)
+    if (!options.handoffs) fail("HANDOFF_BLOCKED", "Execution continuation authority is unavailable")
+    const handoffs = options.handoffs
+    let predecessorID: string | undefined
+    await History.system(
+      "execution.handoff.continue",
+      async (identify, actionID) => {
+        identify({ ...control.permit.actor, requestID: actionID })
+        window(proof)
+        connection.assertCurrent()
+        const { runtime } = await machine(proof)
+        if (runtime.publicKey !== publicKey) fail("PERMISSION_DENIED", "Execution continuation identity changed")
+        const accepted = await original(proof)
+        const permit = accepted.permit
+        const authority = await handoffs.continuationAuthority({
+          handoffID: continuation.handoffID,
+          sessionID: permit.sessionID,
+          runtimeID: proof.runtimeID,
+          bindingEpoch: control.permit.bindingEpoch,
+          commandSeq: control.permit.commandSeq,
+        })
+        const session = authority.current
+        const currentKey = Keys.rootGrant(session.sessionID, session.bindingEpoch, rootID)
+        const pointer = await Record.read(Record.RootGrant, currentKey)
+        const source =
+          pointer ??
+          (await Record.read(Record.RootGrant, Keys.rootGrant(session.sessionID, authority.sourceBindingEpoch, rootID)))
+        const predecessor = await Record.read(
+          Record.ExecutionGrant,
+          Keys.executionGrant(source?.grantID ?? permit.provisionalGrantID!),
+        )
+        if (
+          !predecessor ||
+          predecessor.sessionID !== permit.sessionID ||
+          predecessor.orgID !== permit.orgID ||
+          predecessor.projectID !== permit.projectID ||
+          predecessor.admissionID !== permit.admissionID ||
+          predecessor.attemptID !== permit.attemptID ||
+          !same(predecessor.actor, permit.actor) ||
+          (predecessor.state === "bound" && predecessor.rootID !== rootID) ||
+          (predecessor.provenance && predecessor.provenance.originGrantID !== permit.provisionalGrantID)
+        )
+          fail("PERMISSION_DENIED", "Execution continuation has another original task grant")
+        if (
+          predecessor.runtimeID !== (pointer ? session.driverRuntimeID : authority.sourceRuntimeID) ||
+          predecessor.bindingEpoch !== (pointer ? session.bindingEpoch : authority.sourceBindingEpoch)
+        )
+          fail("PERMISSION_DENIED", "Execution continuation predecessor has another native binding")
+        if (
+          pointer &&
+          predecessor.provenance?.handoffID === continuation.handoffID &&
+          same(predecessor.provenance.control, control)
+        )
+          return
+        if (predecessor.provenance && control.permit.commandSeq <= predecessor.provenance.control.permit.commandSeq)
+          fail("PERMISSION_DENIED", "Execution continuation cannot reuse an older control")
+        const priorClosed =
+          predecessor.state === "bound" && predecessor.retention.state === "handoff_closed"
+            ? predecessor.retention
+            : predecessor.state === "closed"
+              ? predecessor.handoffClosure
+              : undefined
+        const retainedSource =
+          authority.cancelled &&
+          predecessor.runtimeID === session.driverRuntimeID &&
+          predecessor.bindingEpoch === session.bindingEpoch &&
+          (predecessor.state === "provisional" ||
+            (predecessor.state === "bound" && predecessor.retention.state === "held"))
+        const completedSource =
+          predecessor.runtimeID === authority.sourceRuntimeID &&
+          predecessor.bindingEpoch === authority.sourceBindingEpoch &&
+          predecessor.state === "bound" &&
+          predecessor.retention.state === "released"
+        if (
+          (!pointer || !predecessor.provenance) &&
+          priorClosed?.handoffID !== continuation.handoffID &&
+          !retainedSource &&
+          !completedSource
+        )
+          fail("HANDOFF_BLOCKED", "Execution continuation requires its source generation closure")
+        if (predecessor.state === "bound" && predecessor.retention.state === "control_closed")
+          fail("PERMISSION_DENIED", "Execution continuation pointer has already been superseded")
+        const held =
+          predecessor.state === "provisional" ||
+          (predecessor.state === "bound" && predecessor.retention.state === "held")
+        if (held && !session.retainedExecutionGrants)
+          fail("PROTOCOL_MISMATCH", "Retained execution count is inconsistent")
+        options.assertResourcesDrained(predecessor.grantID)
+        predecessorID = predecessor.grantID
+        const contract = await Resources.read(session)
+        if (
+          !contract ||
+          contract.revision !== predecessor.selectionRevision ||
+          !same(contract.selection, predecessor.selection)
+        )
+          fail("REVISION_CONFLICT", "Execution continuation resource selection changed")
+        await Resources.enabled(session, predecessor.selection)
+        const grant = Execution.Grant.parse({
+          schemaVersion: 4,
+          state: "provisional",
+          grantID: crypto.randomUUID(),
+          orgID: predecessor.orgID,
+          deploymentIncarnation: predecessor.deploymentIncarnation,
+          sessionID: predecessor.sessionID,
+          projectID: predecessor.projectID,
+          selectionRevision: predecessor.selectionRevision,
+          selection: predecessor.selection,
+          limits: predecessor.limits,
+          actor: predecessor.actor,
+          admissionID: predecessor.admissionID,
+          attemptID: predecessor.attemptID,
+          runtimeID: session.driverRuntimeID,
+          bindingEpoch: session.bindingEpoch,
+          createdAt: Date.now(),
+          provenance: {
+            handoffID: continuation.handoffID,
+            predecessorGrantID: predecessor.grantID,
+            originGrantID: permit.provisionalGrantID,
+            rootID,
+            control,
+          },
+        })
+        if (held && predecessor.state === "bound")
+          await saveGrant(
+            Execution.Grant.parse({
+              ...predecessor,
+              retention: {
+                state: "control_closed",
+                generation: predecessor.retention.generation,
+                successorGrantID: grant.grantID,
+                closedAt: Date.now(),
+              },
+            }),
+          )
+        if (held && predecessor.state === "provisional")
+          await saveGrant(
+            Execution.Grant.parse({
+              ...predecessor,
+              state: "closed",
+              closedAt: Date.now(),
+              controlClosure: { rootID, successorGrantID: grant.grantID, closedAt: Date.now() },
+            }),
+          )
+        await saveGrant(grant)
+        await Storage.write(currentKey, Record.RootGrant.parse({ grantID: grant.grantID }))
+        await Storage.write(
+          Keys.session(session.sessionID),
+          Record.SessionDirectory.parse({
+            ...session,
+            retainedExecutionGrants: session.retainedExecutionGrants + (held ? 0 : 1),
+            rowRevision: session.rowRevision + 1,
+          }),
+        )
+      },
+      {
+        commitGuard() {
+          window(proof)
+          connection.assertCurrent()
+          if (predecessorID) options.assertResourcesDrained(predecessorID)
+        },
+      },
+    )
+  }
+  function receivedGrant(
+    proof: ReceiptProof,
+    value: Execution.Grant | undefined,
+    access: "execution" | "retention" = "execution",
+  ): Execution.Grant {
+    const accepted = proof.receipt.accepted!
+    const permit = accepted.permit
+    const control = proof.continuation?.receipt.accepted
+    if (
+      !value ||
+      (!control && value.grantID !== permit.provisionalGrantID) ||
+      value.orgID !== permit.orgID ||
+      value.deploymentIncarnation !== permit.deploymentIncarnation ||
+      value.sessionID !== permit.sessionID ||
+      value.projectID !== permit.projectID ||
+      value.runtimeID !== (control?.permit.runtimeID ?? permit.runtimeID) ||
+      value.bindingEpoch !== (control?.permit.bindingEpoch ?? permit.bindingEpoch) ||
+      value.attemptID !== permit.attemptID ||
+      value.admissionID !== permit.admissionID ||
+      (value.state === "bound" && value.rootID !== accepted.effect.messageID) ||
+      JSON.stringify(value.actor) !== JSON.stringify(permit.actor)
+    )
+      fail("PERMISSION_DENIED", "Execution grant does not match the accepted admission")
+    if (
+      control &&
+      (!value.provenance ||
+        value.provenance.originGrantID !== permit.provisionalGrantID ||
+        !same(value.provenance.control, control))
+    )
+      fail("PERMISSION_DENIED", "Execution grant has another independent control provenance")
+    if (control && value.provenance?.handoffID !== proof.continuation?.handoffID) {
+      const closed =
+        value.state === "bound" && value.retention.state === "handoff_closed"
+          ? value.retention
+          : value.state === "closed"
+            ? value.handoffClosure
+            : undefined
+      if (access !== "retention" || closed?.handoffID !== proof.continuation?.handoffID)
+        fail("PERMISSION_DENIED", "Execution continuation has another permanent handoff origin")
+    }
+    return value
+  }
+  async function resolve(proof: ReceiptProof, publicKey: string, access: "execution" | "retention" = "execution") {
     const { runtime, account } = await machine(proof)
     if (runtime.publicKey !== publicKey) fail("PERMISSION_DENIED", "Execution binding identity changed")
     const accepted = proof.receipt.accepted!
     const permit = accepted.permit
+    const control = proof.continuation?.receipt.accepted
     const session = await Record.read(Record.SessionDirectory, Keys.session(permit.sessionID))
     if (
       !session ||
@@ -120,30 +356,34 @@ export function createExecutionGrants(options: {
       session.orgID !== proof.orgID ||
       session.projectID !== permit.projectID ||
       session.driverRuntimeID !== runtime.runtimeID ||
-      session.bindingEpoch !== permit.bindingEpoch
+      session.bindingEpoch !== (control?.permit.bindingEpoch ?? permit.bindingEpoch)
     )
       fail("STALE_BINDING", "Execution grant Session binding changed")
-    const grant = await Record.read(Record.ExecutionGrant, Keys.executionGrant(permit.provisionalGrantID!))
-    if (
-      !grant ||
-      grant.grantID !== permit.provisionalGrantID ||
-      grant.orgID !== permit.orgID ||
-      grant.deploymentIncarnation !== permit.deploymentIncarnation ||
-      grant.sessionID !== permit.sessionID ||
-      grant.projectID !== permit.projectID ||
-      grant.runtimeID !== permit.runtimeID ||
-      grant.bindingEpoch !== permit.bindingEpoch ||
-      grant.attemptID !== permit.attemptID ||
-      grant.admissionID !== permit.admissionID ||
-      (grant.state === "bound" && grant.rootID !== accepted.effect.messageID) ||
-      JSON.stringify(grant.actor) !== JSON.stringify(permit.actor)
+    if (control) await original(proof)
+    const continued =
+      control &&
+      (await Record.read(
+        Record.RootGrant,
+        Keys.rootGrant(session.sessionID, session.bindingEpoch, accepted.effect.messageID),
+      ))
+    const grant = await Record.read(
+      Record.ExecutionGrant,
+      Keys.executionGrant(continued ? continued.grantID : permit.provisionalGrantID!),
     )
-      fail("PERMISSION_DENIED", "Execution grant does not match the accepted admission")
-    return { session, grant, account }
+    const retained = receivedGrant(proof, grant, access)
+    return { session, grant: retained, account }
   }
-  async function enabled(session: Record.SessionDirectory, grant: Execution.Grant, account: Record.Account | undefined) {
-    if (session.handoffID) fail("HANDOFF_BLOCKED", "Session handoff blocks execution binding")
+  async function enabled(
+    session: Record.SessionDirectory,
+    grant: Execution.Grant,
+    account: Record.Account | undefined,
+  ) {
+    await OrganizationHandoffExecution.assertExecution(session, grant)
     if (grant.state === "closed") fail("PERMISSION_DENIED", "Execution grant is closed")
+    if (grant.state === "bound" && grant.retention.state === "handoff_closed")
+      fail("PERMISSION_DENIED", "Execution grant was closed for handoff")
+    if (grant.provenance && grant.state === "bound" && grant.retention.state !== "held")
+      fail("PERMISSION_DENIED", "Execution continuation requires a new independent control")
     if ((grant.state === "provisional" || grant.retention.state === "held") && session.retainedExecutionGrants === 0)
       fail("PROTOCOL_MISMATCH", "Retained execution grant count is inconsistent")
     const [project, membership] = await Promise.all([
@@ -163,6 +403,193 @@ export function createExecutionGrants(options: {
     return Resources.enabled(session, grant.selection)
   }
   return {
+    async handoffInventory(value: Execution.HandoffInventoryRequest) {
+      if (Storage.inTransaction()) fail("INVALID_REQUEST", "Handoff inventory must own its read boundary")
+      const { proof, signature } = Execution.HandoffInventoryRequest.parse(value)
+      window(proof)
+      const registered = await Storage.snapshot(() => runtimeAuthority(proof))
+      if (!(await Execution.verifyHandoffInventory(proof, signature, registered.runtime.publicKey)))
+        fail("PERMISSION_DENIED", "Handoff inventory signature is invalid")
+      const connection = capture(proof, registered.runtime)
+      if (!options.handoffs) fail("HANDOFF_BLOCKED", "Handoff inventory authority is unavailable")
+      const handoffs = options.handoffs
+      const page = await Storage.snapshot(async () => {
+        const authority = await handoffs.executionAuthority(proof)
+        const session = authority.current
+        const entries = await Index.page(session, { after: proof.cursor, limit: 64 })
+        const items = []
+        for (const entry of entries) {
+          const grant = await Record.read(Record.ExecutionGrant, Keys.executionGrant(entry.grantID))
+          if (
+            !grant ||
+            grant.grantID !== entry.grantID ||
+            grant.orgID !== session.orgID ||
+            grant.sessionID !== session.sessionID ||
+            grant.runtimeID !== proof.sourceRuntimeID ||
+            grant.bindingEpoch !== proof.fromEpoch ||
+            !(grant.state === "provisional" || (grant.state === "bound" && grant.retention.state === "held"))
+          )
+            fail("SERVICE_UNAVAILABLE", "Retained grant index has another canonical owner or state")
+          const request = await Record.read(
+            Record.CommandRequest,
+            Keys.commandRequest(grant.actor.subjectID, grant.actor.requestID),
+          )
+          const accepted = request?.accepted
+          if (
+            !accepted ||
+            accepted.effect.kind !== "inbox" ||
+            accepted.effect.mode !== "task" ||
+            accepted.permit.sessionID !== session.sessionID ||
+            !same(accepted.permit.actor, grant.actor) ||
+            accepted.permit.provisionalGrantID !== (grant.provenance?.originGrantID ?? grant.grantID)
+          )
+            fail("HANDOFF_BLOCKED", "Reconcile the original accepted task before closing its source resources")
+          const rootID =
+            grant.state === "bound" ? grant.rootID : (grant.provenance?.rootID ?? accepted.effect.messageID)
+          if (rootID !== accepted.effect.messageID)
+            fail("PROTOCOL_MISMATCH", "Retained resource root does not match its original task")
+          items.push(
+            Execution.HandoffInventoryItem.parse({
+              grantID: grant.grantID,
+              rootID,
+              generation: grant.state === "bound" ? grant.retention.generation : 0,
+              originGrantID: grant.provenance?.originGrantID ?? grant.grantID,
+              lookup: { subjectID: grant.actor.subjectID, requestID: grant.actor.requestID },
+              continuation: grant.provenance
+                ? {
+                    handoffID: grant.provenance.handoffID,
+                    lookup: {
+                      subjectID: grant.provenance.control.permit.actor.subjectID,
+                      requestID: grant.provenance.control.permit.requestID,
+                    },
+                  }
+                : undefined,
+            }),
+          )
+        }
+        window(proof)
+        connection.assertCurrent()
+        authority.guard()
+        return Execution.HandoffInventoryPage.parse({
+          binding: Handoff.Binding.strip().parse(proof),
+          retained: session.retainedExecutionGrants,
+          items,
+          ...(entries.length === 64 ? { cursor: entries.at(-1)!.grantID } : {}),
+        })
+      })
+      await Storage.snapshot(async () => {
+        const current = await handoffs.executionAuthority(proof)
+        window(proof)
+        connection.assertCurrent()
+        current.guard()
+      })
+      return page
+    },
+    async closeHandoff(value: Execution.HandoffCloseRequest): Promise<Execution.HandoffCloseReceipt> {
+      if (Storage.inTransaction()) fail("INVALID_REQUEST", "Handoff resource closure must own its commit boundary")
+      const { proof, signature } = Execution.HandoffCloseRequest.parse(value)
+      window(proof)
+      const registered = await Storage.snapshot(() => machine(proof))
+      if (!(await Execution.verifyHandoffClose(proof, signature, registered.runtime.publicKey)))
+        fail("PERMISSION_DENIED", "Handoff resource closure signature is invalid")
+      const connection = capture(proof, registered.runtime)
+      await options.admissions.observe(connection, proof.continuation?.receipt ?? proof.receipt)
+      const key = ["organization", "execution-handoff-closures", proof.grantID, String(proof.generation)]
+      let guard: (() => void) | undefined
+      return History.system(
+        "execution.handoff.close",
+        async (identify, actionID) => {
+          identify({
+            kind: "system",
+            orgID: proof.orgID,
+            subjectID: proof.runtimeID,
+            displayName: "Runtime",
+            clientKind: "runtime",
+            requestID: actionID,
+          })
+          window(proof)
+          connection.assertCurrent()
+          const [raw] = await Storage.readMany([key])
+          const previous = raw === undefined ? undefined : Execution.HandoffCloseReceipt.parse(raw)
+          const receipt = Execution.HandoffCloseReceipt.strip().parse({
+            ...proof,
+            purpose: "execution-handoff-closed",
+            closedAt: previous?.closedAt ?? Date.now(),
+          })
+          if (previous) {
+            if (JSON.stringify(previous) !== JSON.stringify(receipt))
+              fail("REVISION_CONFLICT", "Handoff closure already has another cause")
+            await original(proof)
+            const historical = receivedGrant(
+              proof,
+              await Record.read(Record.ExecutionGrant, Keys.executionGrant(proof.grantID)),
+            )
+            if (historical.grantID !== proof.grantID)
+              fail("PROTOCOL_MISMATCH", "Handoff closure receipt has another canonical grant")
+            return previous
+          }
+          if (!options.handoffs) fail("HANDOFF_BLOCKED", "Handoff resource authority is unavailable")
+          const authority = await options.handoffs.executionAuthority(proof)
+          guard = authority.guard
+          const { session, grant } = await resolve(proof, registered.runtime.publicKey)
+          if (
+            grant.grantID !== proof.grantID ||
+            grant.runtimeID !== proof.sourceRuntimeID ||
+            grant.bindingEpoch !== proof.fromEpoch
+          )
+            fail("PERMISSION_DENIED", "Handoff closure has another original grant")
+          if (
+            grant.state === "closed" ||
+            (grant.state === "bound" &&
+              (grant.rootID !== proof.rootID ||
+                grant.retention.state !== "held" ||
+                grant.retention.generation !== proof.generation))
+          )
+            fail("REVISION_CONFLICT", "Handoff source retention generation changed")
+          if (grant.state === "provisional" && proof.generation !== 0)
+            fail("REVISION_CONFLICT", "Unbound source grant has another generation")
+          if (!session.retainedExecutionGrants)
+            fail("PROTOCOL_MISMATCH", "Retained execution grant count is inconsistent")
+          options.assertResourcesDrained(grant.grantID)
+          const closure = {
+            handoffID: proof.handoffID,
+            manifestHash: proof.manifestHash,
+            preparedHash: proof.preparedHash,
+            closedAt: receipt.closedAt,
+          }
+          await saveGrant(
+            Execution.Grant.parse(
+              grant.state === "bound"
+                ? { ...grant, retention: { ...closure, state: "handoff_closed", generation: proof.generation } }
+                : {
+                    ...grant,
+                    state: "closed",
+                    closedAt: receipt.closedAt,
+                    handoffClosure: { ...closure, rootID: proof.rootID, generation: 0 },
+                  },
+            ),
+          )
+          await Storage.write(
+            Keys.session(session.sessionID),
+            Record.SessionDirectory.parse({
+              ...session,
+              retainedExecutionGrants: session.retainedExecutionGrants - 1,
+              rowRevision: session.rowRevision + 1,
+            }),
+          )
+          await Storage.write(key, receipt)
+          return receipt
+        },
+        {
+          commitGuard() {
+            window(proof)
+            connection.assertCurrent()
+            guard?.()
+            options.assertResourcesDrained(proof.grantID)
+          },
+        },
+      )
+    },
     async retention(value: Execution.DescriptionRequest): Promise<Execution.Grant> {
       if (Storage.inTransaction()) fail("INVALID_REQUEST", "Retention inspection must own its reconciliation boundary")
       const { proof, signature } = Execution.DescriptionRequest.parse(value)
@@ -171,9 +598,9 @@ export function createExecutionGrants(options: {
       if (!(await Execution.verifyDescription(proof, signature, registered.runtime.publicKey)))
         fail("PERMISSION_DENIED", "Execution retention proof signature is invalid")
       const connection = capture(proof, registered.runtime)
-      await options.admissions.observe(connection, proof.receipt)
+      await options.admissions.observe(connection, proof.continuation?.receipt ?? proof.receipt)
       return Storage.snapshot(async () => {
-        const { grant } = await resolve(proof, registered.runtime.publicKey)
+        const { grant } = await resolve(proof, registered.runtime.publicKey, "retention")
         window(proof)
         connection.assertCurrent()
         return grant
@@ -187,7 +614,8 @@ export function createExecutionGrants(options: {
       if (!(await Execution.verifyDescription(proof, signature, registered.runtime.publicKey)))
         fail("PERMISSION_DENIED", "Execution resource proof signature is invalid")
       const connection = capture(proof, registered.runtime)
-      await options.admissions.observe(connection, proof.receipt)
+      await options.admissions.observe(connection, proof.continuation?.receipt ?? proof.receipt)
+      await prepareContinuation(proof, registered.runtime.publicKey)
       return Storage.snapshot(async () => {
         const { session, grant, account } = await resolve(proof, registered.runtime.publicKey)
         const resources = await enabled(session, grant, account)
@@ -210,7 +638,8 @@ export function createExecutionGrants(options: {
       if (!(await Execution.verifyBinding(proof, signature, registered.runtime.publicKey)))
         fail("PERMISSION_DENIED", "Execution binding signature is invalid")
       const connection = capture(proof, registered.runtime)
-      await options.admissions.observe(connection, proof.receipt)
+      await options.admissions.observe(connection, proof.continuation?.receipt ?? proof.receipt)
+      await prepareContinuation(proof, registered.runtime.publicKey)
       return Storage.transaction(
         async () => {
           window(proof)
@@ -229,7 +658,7 @@ export function createExecutionGrants(options: {
               ...grant,
               retention: { state: "held", generation: grant.retention.generation + 1 },
             })
-            await Storage.write(Keys.executionGrant(grant.grantID), retained)
+            await saveGrant(retained)
             await Storage.write(
               Keys.session(session.sessionID),
               Record.SessionDirectory.parse({
@@ -247,7 +676,7 @@ export function createExecutionGrants(options: {
             boundAt: Date.now(),
             retention: { state: "held", generation: 1 },
           })
-          await Storage.write(Keys.executionGrant(grant.grantID), bound)
+          await saveGrant(bound)
           await Storage.write(key, Record.RootGrant.parse({ grantID: grant.grantID }))
           return bound
         },
@@ -267,13 +696,15 @@ export function createExecutionGrants(options: {
       if (!(await Execution.verifyRelease(proof, signature, registered.runtime.publicKey)))
         fail("PERMISSION_DENIED", "Execution release signature is invalid")
       const connection = capture(proof, registered.runtime)
-      await options.admissions.observe(connection, proof.receipt)
+      await options.admissions.observe(connection, proof.continuation?.receipt ?? proof.receipt)
       let releasingGrantID: string | undefined
       return Storage.transaction(
         async () => {
           window(proof)
           connection.assertCurrent()
           const { session, grant } = await resolve(proof, registered.runtime.publicKey)
+          if (proof.grantID !== undefined && proof.grantID !== grant.grantID)
+            fail("PROTOCOL_MISMATCH", "Execution release does not identify its canonical grant")
           const key = Keys.executionRelease(grant.grantID, proof.generation)
           const previous = await Record.read(Record.ExecutionRelease, key)
           const receipt = Execution.ReleaseReceipt.parse({
@@ -312,8 +743,7 @@ export function createExecutionGrants(options: {
             fail("PROTOCOL_MISMATCH", "Retained execution grant count is inconsistent")
           options.assertResourcesDrained(grant.grantID)
           releasingGrantID = grant.grantID
-          await Storage.write(
-            Keys.executionGrant(grant.grantID),
+          await saveGrant(
             Execution.Grant.parse(
               grant.state === "bound"
                 ? {

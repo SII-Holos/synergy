@@ -15,7 +15,7 @@ export const executionRetentionMigration: Migration = {
       z.undefined().parse(record.retention)
       record.schemaVersion = 3
       if (record.state === "bound") record.retention = { state: "held", generation: 1 }
-      Execution.Grant.parse(record)
+      Execution.LegacyGrant3.parse(record)
     }
     if (key.length === 4 && key[1] === "gateway-calls" && record.schemaVersion === 1) {
       z.undefined().parse(record.retentionGeneration)

@@ -4,6 +4,7 @@ import {
   OrganizationCommandProtocol as Command,
   OrganizationIdentity as Identity,
   OrganizationExecutionProtocol as Execution,
+  OrganizationHandoffProtocol as Handoff,
   OrganizationProtocol,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { Session } from "@ericsanchezok/synergy-harness/session"
@@ -14,7 +15,7 @@ import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { SessionLifecycle } from "@ericsanchezok/synergy-harness/session/lifecycle"
 import { SessionResume } from "@ericsanchezok/synergy-harness/session/resume"
-import { SessionTransfer } from "@ericsanchezok/synergy-harness/session/transfer"
+import { SessionTransfer, SessionTransferEpochs as Epochs } from "@ericsanchezok/synergy-harness/session/transfer"
 import { RolloutLifecycle } from "@ericsanchezok/synergy-harness/session/rollout/lifecycle"
 import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/ledger"
 import { prepareSessionMigrations } from "@ericsanchezok/synergy-harness/migration"
@@ -653,6 +654,37 @@ export function createCommandIntake(options: {
     )
   }
 
+  async function continuation(session: Session.Info, accepted: Command.InputAccepted) {
+    const resume = session.resume
+    if (!resume?.actor || resume.rootID !== accepted.effect.messageID) return
+    const owner = await Epochs.inspectOwnerBinding({ sessionID: session.id, rootSessionID: session.id })
+    if (!owner) return
+    const request = await read(Request, Keys.request(authority.orgID, resume.actor.subjectID, resume.actor.requestID))
+    const control = request?.accepted
+    if (
+      !control ||
+      control.effect.kind !== "control" ||
+      control.effect.operation !== "continue" ||
+      control.effect.rootID !== accepted.effect.messageID ||
+      control.effect.itemID !== resume.itemID ||
+      control.effect.messageID !== resume.messageID ||
+      control.effect.pausedSince !== resume.pausedSince ||
+      JSON.stringify(control.permit.actor) !== JSON.stringify(resume.actor)
+    )
+      throw failure("PERMISSION_DENIED", "Execution continuation requires its canonical native control receipt")
+    assertAuthority(control.permit)
+    if (control.permit.connectionEpoch > connectionEpoch || (await binding(control.permit)))
+      throw failure("STALE_BINDING", "Execution continuation belongs to another Runtime binding")
+    const current = await records(control.permit)
+    if (
+      !current.matches ||
+      current.attempt?.status !== "accepted" ||
+      !stateMatches(control.permit, current.state) ||
+      current.slot?.attemptID !== control.permit.attemptID
+    )
+      throw failure("PROTOCOL_MISMATCH", "Execution continuation has no matching native attempt")
+    return Execution.Continuation.parse({ handoffID: owner.handoffID, receipt: result(current, current.attempt) })
+  }
   async function taskReceipt(lookup: z.infer<typeof Lookup>, access: "execution" | "retention") {
     assertActive()
     const request = await read(Request, Keys.request(authority.orgID, lookup.subjectID, lookup.requestID))
@@ -664,31 +696,37 @@ export function createCommandIntake(options: {
     )
       throw failure("NOT_FOUND", "Accepted task receipt not found")
     const permit = accepted.permit
-    assertAuthority(permit)
-    if (
-      permit.connectionEpoch > connectionEpoch ||
-      !permit.provisionalGrantID ||
-      accepted.effect.kind !== "inbox" ||
-      accepted.effect.mode !== "task"
-    )
+    if (!permit.provisionalGrantID || accepted.effect.kind !== "inbox" || accepted.effect.mode !== "task")
       throw failure("PERMISSION_DENIED", "Execution binding requires the accepted task root")
-    if (await binding(permit)) throw failure("STALE_BINDING", "Execution binding Session changed")
     if (access === "execution" && (await SessionTransfer.isFrozen(permit.sessionID)))
       throw failure("HANDOFF_BLOCKED", "Session transfer blocks root binding")
     const session = await Session.get(permit.sessionID)
+    const continued = await continuation(session, Command.InputAccepted.parse(accepted))
+    if (!continued) {
+      assertAuthority(permit)
+      if (permit.connectionEpoch > connectionEpoch || (await binding(permit)))
+        throw failure("STALE_BINDING", "Execution binding Session changed")
+    }
     if (access === "execution" && session.time.archived)
       throw failure("PERMISSION_DENIED", "Archived Session cannot bind execution")
     const current = await records(permit)
     if (!current.matches || current.attempt?.status !== "accepted")
       throw failure("PROTOCOL_MISMATCH", "Accepted task has no matching native attempt")
     assertActive()
-    return { current, attempt: current.attempt, permit, session, messageID: accepted.effect.messageID }
+    return {
+      current,
+      attempt: current.attempt,
+      permit,
+      session,
+      continuation: continued,
+      messageID: accepted.effect.messageID,
+    }
   }
   async function resourceProof(value: z.infer<typeof Lookup>, access: "execution" | "retention") {
     assertStandalone()
     const lookup = Lookup.parse(value)
     return Storage.snapshot(async () => {
-      const { current, attempt } = await taskReceipt(lookup, access)
+      const { current, attempt, continuation } = await taskReceipt(lookup, access)
       const issuedAt = Date.now()
       return Execution.DescriptionProof.parse({
         schemaVersion: 1,
@@ -698,13 +736,153 @@ export function createCommandIntake(options: {
         runtimeID,
         connectionEpoch,
         receipt: result(current, attempt),
+        continuation,
         issuedAt,
         expiresAt: issuedAt + 30_000,
       })
     })
   }
+  async function handoffCloseProof(input: {
+    authorization: Handoff.SignedMachinePlan
+    item: z.infer<typeof Execution.HandoffInventoryItem>
+  }): Promise<Execution.HandoffCloseProof> {
+    assertStandalone()
+    const { plan, signature } = Handoff.SignedMachinePlan.parse(input.authorization)
+    const item = Execution.HandoffInventoryItem.parse(input.item)
+    if (
+      plan.operation !== "surrender-source" ||
+      plan.orgID !== authority.orgID ||
+      plan.deploymentIncarnation !== authority.deploymentIncarnation ||
+      plan.keyID !== authority.keyID ||
+      plan.sourceRuntimeID !== runtimeID ||
+      plan.runtimeID !== runtimeID ||
+      plan.connectionEpoch !== connectionEpoch ||
+      plan.issuedAt > Date.now() ||
+      plan.expiresAt <= Date.now() ||
+      !plan.preparedHash ||
+      !(await Handoff.verifyMachinePlan(plan, signature, authority.publicKey)) ||
+      !plan.authorization ||
+      !(await Handoff.verifyPermit(plan.authorization.permit, plan.authorization.signature, authority.publicKey))
+    )
+      throw failure("HANDOFF_BLOCKED", "Resource closure requires the exact current source surrender authority")
+    return Storage.snapshot(async () => {
+      const frozen = await Epochs.assertFrozen(plan.sessionID, plan.handoffID)
+      if (
+        frozen.sourceID !== runtimeID ||
+        frozen.targetID !== plan.targetRuntimeID ||
+        frozen.fromEpoch !== plan.fromEpoch ||
+        frozen.toEpoch !== plan.toEpoch ||
+        frozen.scopeID !== plan.sourceBinding.projectID ||
+        frozen.rootSessionID !== undefined
+      )
+        throw failure("HANDOFF_BLOCKED", "Resource closure belongs to another frozen source tuple")
+      const session = await Session.get(plan.sessionID)
+      if (
+        JSON.stringify(session.organization) !== JSON.stringify(plan.sourceBinding) ||
+        (await Epochs.inspect(frozen)).manifestHash !== plan.manifestHash
+      )
+        throw failure("HANDOFF_BLOCKED", "Resource closure does not match the canonical frozen Session")
+      const request = await read(Request, Keys.request(authority.orgID, item.lookup.subjectID, item.lookup.requestID))
+      const accepted = Command.InputAccepted.parse(request?.accepted)
+      const permit = accepted.permit
+      const current = await records(permit)
+      if (
+        permit.orgID !== plan.orgID ||
+        permit.deploymentIncarnation !== plan.deploymentIncarnation ||
+        permit.sessionID !== plan.sessionID ||
+        permit.projectID !== plan.sourceBinding.projectID ||
+        permit.commandSeq > plan.commandSeq ||
+        permit.actor.subjectID !== item.lookup.subjectID ||
+        permit.requestID !== item.lookup.requestID ||
+        permit.provisionalGrantID !== item.originGrantID ||
+        accepted.effect.mode !== "task" ||
+        accepted.effect.messageID !== item.rootID ||
+        !current.matches ||
+        current.attempt?.status !== "accepted" ||
+        current.slot?.attemptID !== permit.attemptID
+      )
+        throw failure("PROTOCOL_MISMATCH", "Retained grant does not match its canonical original root reception")
+      let continuation: Execution.Continuation | undefined
+      if (item.continuation) {
+        const lookup = item.continuation.lookup
+        const controlRequest = await read(Request, Keys.request(authority.orgID, lookup.subjectID, lookup.requestID))
+        const control = Command.ControlAccepted.parse(controlRequest?.accepted)
+        assertAuthority(control.permit)
+        const controlRecords = await records(control.permit)
+        if (
+          control.effect.operation !== "continue" ||
+          control.effect.rootID !== item.rootID ||
+          control.permit.sessionID !== plan.sessionID ||
+          control.permit.projectID !== plan.sourceBinding.projectID ||
+          control.permit.bindingEpoch !== plan.fromEpoch ||
+          control.permit.commandSeq > plan.commandSeq ||
+          control.permit.actor.subjectID !== lookup.subjectID ||
+          control.permit.requestID !== lookup.requestID ||
+          control.permit.connectionEpoch > connectionEpoch ||
+          !controlRecords.matches ||
+          controlRecords.attempt?.status !== "accepted" ||
+          controlRecords.slot?.attemptID !== control.permit.attemptID ||
+          !stateMatches(control.permit, controlRecords.state) ||
+          item.grantID === item.originGrantID
+        )
+          throw failure("PROTOCOL_MISMATCH", "Retained successor lacks its exact native independent control")
+        continuation = Execution.Continuation.parse({
+          handoffID: item.continuation.handoffID,
+          receipt: result(controlRecords, controlRecords.attempt),
+        })
+      } else if (
+        permit.runtimeID !== runtimeID ||
+        permit.bindingEpoch !== plan.fromEpoch ||
+        item.grantID !== item.originGrantID
+      )
+        throw failure("PROTOCOL_MISMATCH", "Original grant belongs to another source binding")
+      if (item.generation > 0) {
+        const message = await MessageV2.readInfo({
+          scopeID: session.scope.id,
+          sessionID: session.id,
+          messageID: item.rootID,
+        })
+        const run = await RolloutLedger.getRun(RolloutLifecycle.owner(session), item.rootID)
+        if (
+          message.role !== "user" ||
+          !message.isRoot ||
+          message.rootID !== item.rootID ||
+          JSON.stringify(message.actor) !== JSON.stringify(permit.actor) ||
+          run?.id !== item.rootID ||
+          run.owner.kind !== "session" ||
+          run.owner.sessionID !== session.id ||
+          run.owner.scopeID !== session.scope.id
+        )
+          throw failure("PROTOCOL_MISMATCH", "Retained bound generation lacks its original native root and Run")
+      }
+      await Epochs.assertFrozen(plan.sessionID, plan.handoffID)
+      assertActive()
+      if (plan.expiresAt <= Date.now()) throw failure("HANDOFF_BLOCKED", "Source surrender authority expired")
+      const issuedAt = Date.now()
+      return Execution.HandoffCloseProof.parse({
+        ...Handoff.Binding.parse(
+          Object.fromEntries(
+            Object.keys(Handoff.Binding.shape).map((key) => [key, plan[key as keyof Handoff.MachinePlan]]),
+          ),
+        ),
+        purpose: "execution-handoff-close",
+        runtimeID,
+        connectionEpoch,
+        grantID: item.grantID,
+        rootID: item.rootID,
+        generation: item.generation,
+        manifestHash: plan.manifestHash,
+        preparedHash: plan.preparedHash,
+        receipt: result(current, current.attempt),
+        continuation,
+        issuedAt,
+        expiresAt: Math.min(issuedAt + 30_000, plan.expiresAt),
+      })
+    })
+  }
   return {
     control,
+    handoffCloseProof,
     retentionProof(value: z.infer<typeof Lookup>): Promise<Execution.DescriptionProof> {
       return resourceProof(value, "retention")
     },
@@ -717,12 +895,11 @@ export function createCommandIntake(options: {
       const rootID = Identity.ID.parse(root)
       const prior = await read(Request, Keys.request(authority.orgID, lookup.subjectID, lookup.requestID))
       if (!prior?.accepted) throw failure("NOT_FOUND", "Accepted task receipt not found")
-      assertAuthority(prior.accepted.permit)
       const initial = await Session.get(prior.accepted.permit.sessionID)
       await prepareSessionMigrations({ scopeID: initial.scope.id, sessionID: initial.id })
       return Storage.snapshot(async () => {
         assertActive()
-        const { current, attempt, permit, session, messageID } = await taskReceipt(lookup, "execution")
+        const { current, attempt, permit, session, messageID, continuation } = await taskReceipt(lookup, "execution")
         if (messageID !== rootID)
           throw failure("PERMISSION_DENIED", "Execution binding requires the accepted task root")
         const [message, run] = await Promise.all([
@@ -767,6 +944,7 @@ export function createCommandIntake(options: {
           connectionEpoch,
           rootID,
           receipt: result(current, attempt),
+          continuation,
           issuedAt,
           expiresAt: issuedAt + 30_000,
         })

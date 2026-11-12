@@ -2,6 +2,8 @@ import { z } from "zod"
 import { createHash } from "node:crypto"
 import {
   OrganizationHandoffProtocol as Handoff,
+  OrganizationExecutionProtocol as Execution,
+  OrganizationProtocol,
   OrganizationRuntimeProtocol as Runtime,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
@@ -17,18 +19,24 @@ import { NativeSessionTransferPhysical as Physical } from "@ericsanchezok/synerg
 import { OrganizationHandoffObjects as Objects } from "./handoff-objects"
 import { OrganizationHandoffTarget as Target } from "./handoff-target"
 import { createCommandIntake } from "./command-intake"
-import { OrganizationCommandRecords as Records } from "./command-records"
-import { OrganizationIntakePath as Keys } from "./storage/path"
 import { RuntimeIdentity } from "./home"
 import { assertHandoffHome } from "./handoff-home"
 import { OrganizationRuntimeError } from "./error"
+import type { MemberResourceClient } from "./resource-client"
 
 export namespace OrganizationHandoffSource {
   interface Input {
     authorization: Handoff.SignedMachinePlan
     connection: z.infer<typeof Runtime.Connected>
     signal: AbortSignal
+    resources?: MemberResourceClient
   }
+  const ResourceClosure = z.strictObject({
+    binding: Handoff.Binding,
+    manifestHash: OrganizationProtocol.Digest,
+    preparedHash: OrganizationProtocol.Digest,
+    closedAt: z.number().int().nonnegative(),
+  })
   const fields = [
     "schemaVersion",
     "orgID",
@@ -60,6 +68,7 @@ export namespace OrganizationHandoffSource {
       authorization: Handoff.SignedMachinePlan.parse(input.authorization),
       connection: Runtime.Connected.parse(input.connection),
       signal: input.signal,
+      resources: input.resources,
     }
   }
   export function create(options: { identity: RuntimeIdentity; runtimeID: string }) {
@@ -79,13 +88,10 @@ export namespace OrganizationHandoffSource {
       { plan: Handoff.MachinePlan; abort: AbortController; promise: Promise<Handoff.Proof> }
     >()
     let closing: Promise<void> | undefined
-    const factKey = (plan: Handoff.MachinePlan, kind: "frozen" | "surrender-permit") => [
-      "organization_handoff_source",
-      plan.orgID,
-      plan.deploymentIncarnation,
-      plan.handoffID,
-      kind,
-    ]
+    const factKey = (
+      plan: Handoff.MachinePlan,
+      kind: "frozen" | "surrender-permit" | "resource-closure" | "resource-receipts",
+    ) => ["organization_handoff_source", plan.orgID, plan.deploymentIncarnation, plan.handoffID, kind]
     function assertOwner() {
       const current = Storage.current()
       if (
@@ -196,49 +202,95 @@ export namespace OrganizationHandoffSource {
       Physical.assertCurrent(lease)
       return lease
     }
-    async function resourceClosure(plan: Handoff.MachinePlan, signal: AbortSignal) {
-      for await (const member of NativeSource.members(binding(plan), signal)) {
-        for await (const row of Storage.records({
-          prefix: [...Keys.sessionRecords(plan.orgID, member.binding.sessionID), "requests"],
-          limit: 128,
-        })) {
-          signal.throwIfAborted()
-          const reference = Records.SessionRequest.parse(row.value)
-          const [raw] = await Storage.readMany([Keys.request(plan.orgID, reference.subjectID, reference.requestID)])
-          const request = Records.Request.parse(raw)
-          if (request.identity.sessionID !== member.binding.sessionID || request.identity.orgID !== plan.orgID)
-            fail("Source resource request belongs to another Session")
-          const accepted = request.accepted
-          if (
-            !accepted ||
-            accepted.effect.kind !== "inbox" ||
-            accepted.effect.mode !== "task" ||
-            !accepted.permit.provisionalGrantID
+    async function resourceClosure(plan: Handoff.MachinePlan) {
+      const [raw] = await Storage.readMany([factKey(plan, "resource-closure")])
+      const proof = ResourceClosure.parse(raw)
+      if (
+        JSON.stringify(proof.binding) !== JSON.stringify(factBinding(plan)) ||
+        proof.manifestHash !== plan.manifestHash ||
+        proof.preparedHash !== plan.preparedHash
+      )
+        fail("Source resource closure belongs to another immutable handoff")
+    }
+    async function closeResources(input: Input, commands: ReturnType<typeof createCommandIntake>, signal: AbortSignal) {
+      const plan = input.authorization.plan
+      const resources = input.resources
+      if (!resources) fail("Source resource closure requires the current machine resource client")
+      let cursor: string | undefined
+      while (true) {
+        assertOwner()
+        signal.throwIfAborted()
+        const issuedAt = Date.now()
+        const page = await resources.handoffInventory(
+          Execution.HandoffInventoryProof.parse({
+            ...factBinding(plan),
+            purpose: "execution-handoff-inventory",
+            runtimeID,
+            connectionEpoch: input.connection.connectionEpoch,
+            manifestHash: plan.manifestHash,
+            preparedHash: plan.preparedHash,
+            cursor,
+            issuedAt,
+            expiresAt: Math.min(issuedAt + 30_000, plan.expiresAt),
+          }),
+          signal,
+        )
+        assertOwner()
+        if (!page.items.length) {
+          if (page.retained || page.cursor || cursor) {
+            if (cursor && !page.retained && !page.cursor) {
+              cursor = undefined
+              continue
+            }
+            fail("Source retained resource inventory is incomplete")
+          }
+          await Storage.transaction(
+            async () => {
+              await Epochs.assertFrozen(plan.sessionID, plan.handoffID)
+              await Storage.write(
+                factKey(plan, "resource-closure"),
+                ResourceClosure.parse({
+                  binding: factBinding(plan),
+                  manifestHash: plan.manifestHash,
+                  preparedHash: plan.preparedHash,
+                  closedAt: Date.now(),
+                }),
+              )
+            },
+            {
+              commitGuard() {
+                assertOwner()
+                signal.throwIfAborted()
+              },
+            },
           )
-            continue
-          const [released] = await Storage.readMany([
-            Keys.release(plan.orgID, reference.subjectID, reference.requestID),
-          ])
-          const value = Records.Release.parse(released)
-          if (
-            value.sessionID !== member.binding.sessionID ||
-            value.grantID !== accepted.permit.provisionalGrantID ||
-            value.rootID !== accepted.effect.messageID
-          )
-            fail("Source grant closure belongs to another accepted root")
-          if (value.state !== "released")
-            throw new Owners.Rejected({
-              message: "Source execution resources are still retained",
-              requirements: [
-                {
-                  code: "grant_handoff_closure",
-                  owner: "organization-runtime",
-                  label: "Close the source grant generation without terminating or replaying its paused Run",
-                  recoverable: true,
-                },
-              ],
-            })
+          return
         }
+        for (const item of page.items) {
+          const proof = await commands.handoffCloseProof({ authorization: input.authorization, item })
+          const receipt = await resources.closeHandoff(proof, signal)
+          assertOwner()
+          signal.throwIfAborted()
+          const key = [...factKey(plan, "resource-receipts"), receipt.grantID, String(receipt.generation)]
+          await Storage.transaction(
+            async () => {
+              const [prior] = await Storage.readMany([key])
+              if (
+                prior !== undefined &&
+                JSON.stringify(Execution.HandoffCloseReceipt.parse(prior)) !== JSON.stringify(receipt)
+              )
+                fail("Source resource closure cannot replace a generation receipt")
+              if (prior === undefined) await Storage.write(key, receipt)
+            },
+            {
+              commitGuard() {
+                assertOwner()
+                signal.throwIfAborted()
+              },
+            },
+          )
+        }
+        cursor = page.cursor
       }
     }
     return {
@@ -449,7 +501,8 @@ export namespace OrganizationHandoffSource {
             if (!prior) {
               const lease = await capture(plan, signal)
               const commands = intake({ ...input, signal })
-              await resourceClosure(plan, signal)
+              await closeResources(input, commands, signal)
+              await resourceClosure(plan)
               await NativeSource.surrender({
                 binding: binding(plan),
                 manifestHash: signed.permit.manifestHash,
@@ -459,7 +512,7 @@ export namespace OrganizationHandoffSource {
                   assertOwner()
                   Physical.assertCurrent(lease)
                   await commands.barrier(plan.sessionID, plan.fromEpoch, plan.commandSeq)
-                  await resourceClosure(plan, signal)
+                  await resourceClosure(plan)
                   const key = factKey(plan, "surrender-permit")
                   const [raw] = await Storage.readMany([key])
                   if (raw !== undefined && JSON.stringify(Handoff.SignedPermit.parse(raw)) !== JSON.stringify(signed))

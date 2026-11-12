@@ -2,7 +2,7 @@
 
 Own identity, authorization, resources, publication/projection storage, forwarding and handoff. Never run Agent loops or import Runtime presets. Preserve native Execution/Workspace/Environment owners. See [organization architecture](../../docs/architecture/organization.md).
 
-Use isolated Storage Handles, central migrations and owner-local keys. Commit authorization with admission; Runtime acceptance is separate. Prepare binaries before metadata transactions. Reauthorize downloads/receipts. Never copy private member bodies into forwarding records.
+Use isolated Storage Handles, central migrations and owner-local keys. Commit authorization with admission; Runtime acceptance is separate. Prepare binaries before transactions. Reauthorize downloads/receipts. Keep private member bodies Runtime-owned.
 
 Route actions through `authorization.ts`, resolving stored ownership before roles; deny unknown actions. Archived projects allow stopping, not new execution. Authentication and one-time token consumption belong to `auth/`. Do not duplicate role matrices in routes or Runtime adapters.
 
@@ -12,13 +12,13 @@ Page authorized creator/shared Session indexes before records. Capacity exposes 
 
 Client grants bind login, callback and deployment. Consume codes atomically; refresh replay revokes before error. API tokens bind one project, operations, expiry and current authority. Routes supply trusted purposes; receipts never redisclose secrets. Preserve signed token attribution and current stream authorization. Verify client-auth/api-tokens suites and generated contracts.
 
-Register config, CLI and history owners before startup. Require absolute Home; read only organization config. Keep secrets out of argv/stdout. Migrate private signing format and baseline atomically; preserve keys/public identities. Missing history requires recovery; current authorization never trusts journal entries. Verify authority-history/configuration/CLI/signing suites.
+Register config, CLI, history and Home owners before startup. Require absolute dedicated Homes and organization config. Use v2 service readers; legacy upgrades require frozen native maintenance, never HTTP. Preserve signing identities and atomic history baselines. Unknown history/readers require recovery; journals never grant access. Verify service-home/authority-history/configuration/CLI/signing suites.
 
 Machine sockets preserve registration/account checks, fences and commit guards. Handoff permits bind Directory source ownership. Object relays verify fresh destination signatures, consent and participants before/after forwarding; retain no content. Heartbeat expiry signals availability. Hosted authority is human-independent; member account fences differ. Verify connection, hosted and handoff-dispatch/object suites.
 
 Commands derive actors from validated credentials and capture live connections inside admission. Preserve metadata attempts, unresolved receipts and skip proofs across reconnect without replay. Bounded exchanges distinguish dropped, enqueued and unknown sends; observe cancellation independently and recheck binding/access after replies. Verify command-admission and command-forwarding suites plus Presets integration.
 
-Resource secrets remain separate. Atomically update grants, bind from native evidence, inspect retention without acquisition, release drained generations and fence old capabilities. Gateways reauthorize, commit before transmission and retain capacity through drainage; preserve native budgets. Verify resource, grant, retention, release, gateway and migration suites.
+Separate resource secrets. Bind native evidence; inspect without acquiring. Keep terminal release and nonterminal closure receipts distinct. Continue preserves original input/root/actor with fresh provenance. Index retained grants atomically; canonical grants/counts remain authoritative. Gateways commit before dispatch and retain drainage capacity/budgets. Verify resource/grant/retention/release/handoff/index/migration suites.
 
 Sharing owns creator-only CAS, generation fencing, visibility indexes and checkpoint/idempotency commits. Explicit opt-in shares portable transcript DTOs and content references; private bodies remain Runtime-owned. Task pages seek canonical event versions at a fixed watermark and catch up later writes. Authorize every projection/blob read; never expose local paths, credentials or permanent asset URLs. Verify sharing/transcript/shared-tasks suites and regenerate SDK after protocol/routes change.
 

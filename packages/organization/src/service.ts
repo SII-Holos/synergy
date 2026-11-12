@@ -25,7 +25,6 @@ import {
 import { ObservabilityMetrics } from "@ericsanchezok/synergy-harness/observability/metrics"
 import { ObservabilityStore } from "@ericsanchezok/synergy-harness/observability/store"
 import { createRuntimeRegistrations } from "./runtime-registration"
-import { digest } from "./auth/secret"
 import type { Server } from "bun"
 import { createRuntimeConnections, type RuntimeConnections, type RuntimeSocket } from "./runtime-connection"
 import { organizationWeb } from "./web"
@@ -44,6 +43,7 @@ import { OrganizationSessionDirectory } from "./session-directory"
 import { createHandoffs, registerHandoffAuthorityHistory } from "./handoff"
 import { createSessionReadForwarder } from "./session-read"
 import { OrganizationServiceMaintenance } from "./service-maintenance"
+import { OrganizationServiceHome } from "./service-home"
 
 export interface OrganizationServiceOptions {
   home: string
@@ -58,6 +58,22 @@ export interface OrganizationServiceOptions {
 }
 
 export async function openOrganizationService(options: OrganizationServiceOptions) {
+  const entry = await openOrganizationNamespace(options, "serve")
+  if (entry.mode !== "serve") throw new Error("Organization service startup selected another native mode")
+  const { mode: _, ...service } = entry
+  return service
+}
+
+export async function openOrganizationServiceHomeUpgrade(
+  options: Pick<OrganizationServiceOptions, "home" | "database" | "cloud">,
+) {
+  const entry = await openOrganizationNamespace(options, "upgrade")
+  if (entry.mode !== "upgrade") throw new Error("Organization upgrade startup selected another native mode")
+  const { mode: _, ...upgrade } = entry
+  return upgrade
+}
+
+async function openOrganizationNamespace(options: OrganizationServiceOptions, mode: "serve" | "upgrade") {
   if (!path.isAbsolute(options.home)) throw new Error("Organization Home must be absolute")
   const settings = OrganizationSettings.parse({
     authentication: options.authentication,
@@ -72,7 +88,7 @@ export async function openOrganizationService(options: OrganizationServiceOption
     if (url.origin !== options.publicOrigin || url.protocol !== "https:")
       throw new Error("Organization public origin must be an HTTPS origin")
   }
-  const web = options.web ? await organizationWeb(options.web.directory) : undefined
+  const web = mode === "serve" && options.web ? await organizationWeb(options.web.directory) : undefined
   const home = path.resolve(options.home)
   const root = path.join(home, ".synergy")
   const context = RuntimeContext.create(
@@ -142,7 +158,8 @@ export async function openOrganizationService(options: OrganizationServiceOption
     }
     try {
       registerConfig()
-      HomeOwnership.select({ owner: "organization", identity: digest("synergy.organization.service.v1") })
+      if (mode === "serve") OrganizationServiceHome.select()
+      else await OrganizationServiceHome.selectForUpgrade()
       ownership = await ServerProcessLock.acquire()
       const owned = await HomeOwnership.assert()
       const data = path.join(root, "data")
@@ -167,7 +184,9 @@ export async function openOrganizationService(options: OrganizationServiceOption
       OrganizationArtifacts.registerAuthorityHistory()
       OrganizationCloud.registerAuthorityHistory()
       registerOrganizationMigrations()
+      await OrganizationServiceHome.assertStartupOwner()
       OrganizationServiceMaintenance.register()
+      OrganizationServiceHome.registerNamespaceIdentity()
       OrganizationCloud.register(options.cloud)
       OrganizationSessionDirectory.registerRuntimeStatus(async (runtimeID) => {
         if (!connections) throw new Error("Organization Runtime presence is unavailable")
@@ -180,6 +199,32 @@ export async function openOrganizationService(options: OrganizationServiceOption
       const deployment = OrganizationProtocol.Deployment.parse(await Storage.read(OrganizationStoragePath.deployment()))
       const signing = await loadSigningAuthority(deployment)
       await OrganizationAuthorityHistory.attach(deployment)
+      const maintenance = Object.freeze({
+        async run<T>(body: () => Promise<T>): Promise<T> {
+          if (!ready) throw new Error("Organization service is closed")
+          const pending = context.run(body)
+          active.add(pending)
+          try {
+            return await pending
+          } finally {
+            active.delete(pending)
+          }
+        },
+      })
+      if (mode === "upgrade") {
+        ready = true
+        RuntimeContext.setReady(true)
+        return {
+          mode: "upgrade" as const,
+          home,
+          maintenance,
+          upgrade(input: Omit<Parameters<typeof OrganizationServiceHome.upgrade>[0], "home">) {
+            return maintenance.run(() => OrganizationServiceHome.upgrade({ ...input, home }))
+          },
+          close,
+          [Symbol.asyncDispose]: close,
+        }
+      }
       connections = createRuntimeConnections({
         run,
         captureTail: OrganizationServiceMaintenance.captureTail,
@@ -204,9 +249,11 @@ export async function openOrganizationService(options: OrganizationServiceOption
         run: async (body) => context.run(body),
         captureTail: OrganizationServiceMaintenance.captureTail,
       })
+      const handoffs = createHandoffs({ connections, signing })
       const execution = createExecutionGrants({
         admissions,
         connections,
+        handoffs,
         assertResourcesDrained(grantID) {
           modelGateway!.assertDrained(grantID)
           connectionGateway!.assertDrained(grantID)
@@ -215,7 +262,6 @@ export async function openOrganizationService(options: OrganizationServiceOption
       const authentication = await createAuthentication(settings.authentication, connections.removeAccount)
       const clientAuthentication = createClientAuthentication(settings.clientAuthentication, options.publicOrigin)
       const registrations = createRuntimeRegistrations(settings.registration, connections.revoke)
-      const handoffs = createHandoffs({ connections, signing })
       const app = organizationApp(
         () => ready,
         authentication,
@@ -233,6 +279,7 @@ export async function openOrganizationService(options: OrganizationServiceOption
       ready = true
       RuntimeContext.setReady(true)
       return {
+        mode: "serve" as const,
         home,
         bootstrapToken: () => run(() => authentication.bootstrapToken()),
         async fetch(request: Request, server?: Server<RuntimeSocket>) {
@@ -251,18 +298,7 @@ export async function openOrganizationService(options: OrganizationServiceOption
             )
           }
         },
-        maintenance: Object.freeze({
-          async run<T>(body: () => Promise<T>): Promise<T> {
-            if (!ready) throw new Error("Organization service is closed")
-            const pending = context.run(body)
-            active.add(pending)
-            try {
-              return await pending
-            } finally {
-              active.delete(pending)
-            }
-          },
-        }),
+        maintenance,
         websocket: connections.websocket,
         deployment: () =>
           run(async () =>

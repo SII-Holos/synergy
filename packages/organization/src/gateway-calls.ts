@@ -11,6 +11,7 @@ import { fail, OrganizationError } from "./error"
 import type { RuntimeConnections } from "./runtime-connection"
 import type { CommandSigningAuthority } from "./signing"
 import { runtimeAuthority } from "./runtime-authority"
+import { OrganizationHandoffExecution } from "./handoff"
 
 function sameCall(left: Gateway.Target, right: Gateway.Target) {
   return (Object.keys(Gateway.Target.shape) as (keyof Gateway.Target)[]).every(
@@ -73,7 +74,7 @@ export function createGatewayCalls(options: { connections: RuntimeConnections; s
       fail("STALE_BINDING", "Gateway Session ownership changed")
     if (invoke && (grant.retention.state !== "held" || session.retainedExecutionGrants === 0))
       fail("PERMISSION_DENIED", "Root resources have been released")
-    if (invoke && session.handoffID) fail("HANDOFF_BLOCKED", "Session handoff blocks new resource calls")
+    if (invoke) await OrganizationHandoffExecution.assertExecution(session, grant)
     const [project, membership, contract] = await Promise.all([
       Record.read(Record.Project, Keys.project(grant.projectID)),
       account ? Record.read(Record.ProjectMember, Keys.projectMember(grant.projectID, account.accountID)) : undefined,

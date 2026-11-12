@@ -5,6 +5,7 @@ import {
   OrganizationHandoffObjectProtocol as Objects,
   OrganizationIdentity as Identity,
   OrganizationRuntimeProtocol as Runtime,
+  OrganizationExecutionProtocol as Execution,
 } from "@ericsanchezok/synergy-organization-protocol"
 import type { Credentials } from "./auth/session"
 import { authorize, projectView } from "./authorization"
@@ -18,6 +19,8 @@ import type { RuntimeConnections } from "./runtime-connection"
 import type { CommandSigningAuthority } from "./signing"
 import { AuthorityJournal } from "@ericsanchezok/synergy-harness/storage/authority-journal"
 import { createHash } from "node:crypto"
+import type { Migration } from "@ericsanchezok/synergy-harness/migration/types"
+import { UpgradeWork } from "@ericsanchezok/synergy-harness/storage/upgrade-work"
 import { OrganizationAuthorityHistory as History } from "./authority-history"
 
 const Stored = Handoff.View.omit({
@@ -102,6 +105,123 @@ export function registerHandoffAuthorityHistory() {
       }
     },
   })
+}
+
+export namespace OrganizationHandoffExecution {
+  const root = ["organization", "session-handoff-epochs"]
+  const Entry = z.strictObject({ version: z.literal(1), handoffID: Identity.ID })
+  const epochKey = (sessionID: string, epoch: number) => [
+    ...root,
+    Identity.ID.parse(sessionID),
+    String(epoch).padStart(16, "0"),
+  ]
+  export async function index(value: Stored) {
+    if (!Storage.inWriteTransaction()) fail("INVALID_REQUEST", "Handoff epoch index must join its canonical writer")
+    const record = Stored.parse(value)
+    const key = epochKey(record.sessionID, record.toEpoch)
+    const [existing] = await Storage.readMany([key])
+    if (existing !== undefined && Entry.parse(existing).handoffID !== record.handoffID)
+      fail("SERVICE_UNAVAILABLE", "Handoff epoch index conflicts with canonical reservation history")
+    await Storage.write(key, Entry.parse({ version: 1, handoffID: record.handoffID }))
+  }
+  export async function assertExecution(session: Record.SessionDirectory, grant: Execution.Grant) {
+    if (!Storage.inTransaction()) fail("INVALID_REQUEST", "Execution eligibility must join its canonical snapshot")
+    if (session.handoffID) fail("HANDOFF_BLOCKED", "Session handoff blocks resource execution")
+    if (session.nextBindingEpoch === session.bindingEpoch + 1) return
+    const [raw] = await Storage.readMany([epochKey(session.sessionID, session.nextBindingEpoch - 1)])
+    if (raw === undefined) fail("HANDOFF_BLOCKED", "Handoff epoch index requires its owning migration")
+    const entry = Entry.parse(raw)
+    const [value] = await Storage.readMany([key(entry.handoffID)])
+    const record = Stored.parse(value)
+    const cancelled = record.cancelled?.proof
+    if (
+      record.handoffID !== entry.handoffID ||
+      record.sessionID !== session.sessionID ||
+      record.orgID !== session.orgID ||
+      record.deploymentIncarnation !== grant.deploymentIncarnation ||
+      record.sourceRuntimeID !== session.driverRuntimeID ||
+      record.fromEpoch !== session.bindingEpoch ||
+      record.toEpoch !== session.nextBindingEpoch - 1 ||
+      record.phase !== "cancelled" ||
+      !record.cancelRequested ||
+      cancelled?.purpose !== "source-cancelled" ||
+      cancelled.handoffID !== record.handoffID ||
+      cancelled.sessionID !== session.sessionID ||
+      cancelled.sourceRuntimeID !== record.sourceRuntimeID ||
+      cancelled.targetRuntimeID !== record.targetRuntimeID ||
+      cancelled.fromEpoch !== record.fromEpoch ||
+      cancelled.toEpoch !== record.toEpoch
+    )
+      fail("HANDOFF_BLOCKED", "Execution requires the exact permanent source cancellation outcome")
+    if (
+      !record.cancelled ||
+      record.source.runtimeID !== record.sourceRuntimeID ||
+      !(await Handoff.verifyProof(cancelled, record.cancelled.signature, record.source.publicKey))
+    )
+      fail("HANDOFF_BLOCKED", "Execution cancellation outcome has invalid native source evidence")
+    const request = await Record.read(
+      Record.CommandRequest,
+      Keys.commandRequest(grant.actor.subjectID, grant.actor.requestID),
+    )
+    const accepted = request?.accepted
+    if (
+      !accepted ||
+      accepted.effect.kind !== "inbox" ||
+      accepted.effect.mode !== "task" ||
+      accepted.permit.orgID !== grant.orgID ||
+      accepted.permit.sessionID !== grant.sessionID ||
+      accepted.permit.projectID !== grant.projectID ||
+      accepted.permit.admissionID !== grant.admissionID ||
+      accepted.permit.attemptID !== grant.attemptID ||
+      !same(accepted.permit.actor, grant.actor) ||
+      accepted.permit.provisionalGrantID !== (grant.provenance?.originGrantID ?? grant.grantID) ||
+      (grant.state === "bound" && accepted.effect.messageID !== grant.rootID)
+    )
+      fail("PROTOCOL_MISMATCH", "Execution lacks its canonical original task reception")
+    const control = grant.provenance?.control
+    if (control) {
+      const current = await Record.read(
+        Record.CommandRequest,
+        Keys.commandRequest(control.permit.actor.subjectID, control.permit.requestID),
+      )
+      if (
+        !same(current?.accepted, control) ||
+        control.effect.operation !== "continue" ||
+        control.effect.rootID !== accepted.effect.messageID
+      )
+        fail("PERMISSION_DENIED", "Execution lacks its canonical independent control")
+    }
+    const authority = control?.permit ?? accepted.permit
+    if (
+      authority.runtimeID !== session.driverRuntimeID ||
+      authority.bindingEpoch !== session.bindingEpoch ||
+      authority.commandSeq <= record.commandSeq
+    )
+      fail(
+        "HANDOFF_BLOCKED",
+        "Source cancellation requires an independently accepted control or new task after its exact barrier",
+      )
+  }
+  export const migration: Migration = {
+    id: "20261112-organization-handoff-epoch-index",
+    description: "Index canonical reserved handoff epochs for execution fences",
+    scope: "global",
+    execution: "startup",
+    dependsOn: ["20261108-organization-deployment"],
+    async up(progress) {
+      await Storage.removeTree(root)
+      let count = 0
+      for await (const row of Storage.records({ prefix: ["organization", "handoffs"], limit: 128 })) {
+        UpgradeWork.signal()?.throwIfAborted()
+        const record = Stored.parse(row.value)
+        if (row.key.length !== 3 || row.key[2] !== record.handoffID)
+          fail("SERVICE_UNAVAILABLE", "Handoff history has another canonical key")
+        await Storage.transaction(() => index(record))
+        progress(++count, 0)
+      }
+      progress(count, count)
+    },
+  }
 }
 
 export function createHandoffs(options: {
@@ -281,6 +401,55 @@ export function createHandoffs(options: {
   }
 
   const api = {
+    async continuationAuthority(input: {
+      handoffID: string
+      sessionID: string
+      runtimeID: string
+      bindingEpoch: number
+      commandSeq: number
+    }) {
+      if (!Storage.inTransaction()) fail("INVALID_REQUEST", "Execution continuation must join its grant transaction")
+      const record = await load(input.handoffID)
+      const current = await session(record)
+      const cancelled = record.phase === "cancelled" && !!record.cancelled
+      const activated = record.phase === "completed" && !!record.activated
+      if (
+        (!cancelled && !activated) ||
+        record.sessionID !== input.sessionID ||
+        current.handoffID ||
+        record.toEpoch !== current.nextBindingEpoch - 1 ||
+        input.commandSeq <= record.commandSeq ||
+        current.driverRuntimeID !== input.runtimeID ||
+        current.bindingEpoch !== input.bindingEpoch ||
+        input.runtimeID !== (cancelled ? record.sourceRuntimeID : record.targetRuntimeID) ||
+        input.bindingEpoch !== (cancelled ? record.fromEpoch : record.toEpoch)
+      )
+        fail(
+          "HANDOFF_BLOCKED",
+          "Execution continuation requires the latest permanent handoff outcome and a fresh control",
+        )
+      return { current, sourceRuntimeID: record.sourceRuntimeID, sourceBindingEpoch: record.fromEpoch, cancelled }
+    },
+    async executionAuthority(proof: Execution.HandoffCloseProof | Execution.HandoffInventoryProof) {
+      if (!Storage.inTransaction()) fail("INVALID_REQUEST", "Handoff resource closure must join its grant transaction")
+      const record = await load(proof.handoffID)
+      if (bindingFields.some((field) => record[field] !== proof[field]))
+        fail("PROTOCOL_MISMATCH", "Execution resource closure has another handoff binding")
+      if (
+        record.phase !== "prepared" ||
+        record.cancelRequested ||
+        !record.frozen ||
+        !record.prepared ||
+        record.surrendered
+      )
+        fail("HANDOFF_BLOCKED", "Execution resources require the current prepared handoff")
+      if (
+        record.manifestHash !== proof.manifestHash ||
+        (await Handoff.proofHash(record.prepared.proof)) !== proof.preparedHash
+      )
+        fail("PROTOCOL_MISMATCH", "Execution resource closure has another immutable preparation")
+      return eligible(record)
+    },
     async object(value: Objects.Request, input: { signal: AbortSignal }): Promise<z.infer<typeof Handoff.ObjectChunk>> {
       const request = Objects.Request.parse(value)
       input.signal.throwIfAborted()
@@ -552,6 +721,7 @@ export function createHandoffs(options: {
           )
           await save(record)
           await Storage.write([...sessionKey(sessionID), record.handoffID], { handoffID: record.handoffID })
+          await OrganizationHandoffExecution.index(record)
           return view(record, access.account.accountID)
         },
         {

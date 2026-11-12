@@ -90,7 +90,13 @@ import type {
   OrgExecutionBindErrors,
   OrgExecutionBindingRequest,
   OrgExecutionBindResponses,
+  OrgExecutionCloseHandoffErrors,
+  OrgExecutionCloseHandoffResponses,
   OrgExecutionDescriptionRequest,
+  OrgExecutionHandoffCloseRequest,
+  OrgExecutionHandoffInventoryErrors,
+  OrgExecutionHandoffInventoryRequest,
+  OrgExecutionHandoffInventoryResponses,
   OrgExecutionReleaseErrors,
   OrgExecutionReleaseRequest,
   OrgExecutionReleaseResponses,
@@ -4211,6 +4217,64 @@ export class OrgGateway extends HeyApiClient {
 }
 
 export class OrgExecution extends HeyApiClient {
+  /**
+   * Page the canonical retained source resources of this prepared handoff
+   */
+  public handoffInventory<ThrowOnError extends boolean = false>(
+    parameters: {
+      orgExecutionHandoffInventoryRequest: OrgExecutionHandoffInventoryRequest
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [{ args: [{ key: "orgExecutionHandoffInventoryRequest", map: "body" }] }],
+    )
+    return (options?.client ?? this.client).post<
+      OrgExecutionHandoffInventoryResponses,
+      OrgExecutionHandoffInventoryErrors,
+      ThrowOnError
+    >({
+      url: "/runtime/v1/execution/handoff-inventory",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Close a drained source resource generation with a permanent handoff cause
+   */
+  public closeHandoff<ThrowOnError extends boolean = false>(
+    parameters: {
+      orgExecutionHandoffCloseRequest: OrgExecutionHandoffCloseRequest
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [{ args: [{ key: "orgExecutionHandoffCloseRequest", map: "body" }] }],
+    )
+    return (options?.client ?? this.client).post<
+      OrgExecutionCloseHandoffResponses,
+      OrgExecutionCloseHandoffErrors,
+      ThrowOnError
+    >({
+      url: "/runtime/v1/execution/handoff-close",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
   /**
    * Inspect accepted resource retention without acquiring execution authority
    */

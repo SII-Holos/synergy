@@ -21,7 +21,7 @@ export namespace OrganizationHandoffProtocol {
     "cancelled",
     "retired",
   ])
-  const Binding = z.strictObject({
+  export const Binding = z.strictObject({
     schemaVersion: z.literal(1),
     orgID: Identity.ID,
     deploymentIncarnation: Identity.ID,
