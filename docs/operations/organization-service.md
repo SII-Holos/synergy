@@ -101,9 +101,37 @@ docker compose -f compose.yml -f compose.infrastructure.yml up -d --wait organiz
 
 `bun script/organization-infrastructure-check.ts synergy-execution-host:local` provisions its own temporary PostgreSQL/MinIO project and private credentials. It checks actual SQL restart identity, object bytes and an allocated Execution Host running a command, then removes only its own containers and volumes. External composition still requires actual target reconstruction and coverage for native backup/restore; the existing guard rejects unsupported composition. Startup and health do not establish recoverability.
 
+## Register and serve a Runtime
+
+Install the matching organization Runtime package to obtain `synergy-org-runtime`; a full product installation exposes the same commands under `synergy org-runtime`. Registration uses a private JSON request on stdin and an absolute parent directory. A member identity contains `orgID`, `accountID` and `deviceID`; a hosted identity contains `orgID` and `hostID`:
+
+```json
+{
+  "version": 1,
+  "origin": "https://organization.example.org",
+  "identity": { "orgID": "organization-id", "hostID": "team-host" }
+}
+```
+
+Save the request in a private file; add `ca` containing the trusted PEM certificate when using a private CA. Prepare its Home and public key:
+
+```sh
+./node_modules/.bin/synergy-org-runtime register --base-directory /absolute/machine-homes < /absolute/private/register.json
+```
+
+The returned `home` is qualified by the complete machine identity. Give its `publicKey` to the existing generated `orgRuntime.registerHosted` operation, or `registerMember` under the actual member account. Add the exact returned ticket as `ticket` in the same private registration request, then repeat the command once to enroll. No ticket or private key is printed. Repeating preparation without a ticket reports the retained enrollment without a network request. An uncertain response is not automatically retried; the original exact ticket can explicitly reconcile through the enrollment owner. Different keys or deployment identities require explicit recovery.
+
+Start the enrolled machine with the existing version-one launch request described below, including its matching identity/incarnation, a nonzero loopback port, a fresh 64-hex bearer and optional CA. Tickets are optional after successful enrollment. `state: active` in registration output describes the retained receipt, not live connectivity or permission to run a Session.
+
+```sh
+SYNERGY_HOME=/absolute/identity-qualified-home ./node_modules/.bin/synergy-org-runtime serve --kind hosted < /absolute/private/hosted-request.json
+```
+
+Use `--kind member` with the matching member request. The command shares supervised startup, readiness and graceful shutdown; it does not start a personal Runtime. Keep request files private and out of logs or command arguments.
+
 ## Hosted Runtime entry
 
-Install the matching organization Runtime package and invoke `synergy-org-runtime hosted-runtime`. Prepare its Home using `prepareHostedHome({ baseDirectory, identity: { orgID, hostID }, origin })` from `./home`; an administrator registers its key using generated `orgRuntime.registerHosted`. On private stdin supply the resulting ticket, prepared identity and deployment incarnation, explicit local port, ephemeral 64-hex bearer and optional CA in the existing `HostedLaunchRequest`. End at EOF; the request is bounded to 64 KiB and never appears in arguments/output. Retained registration permits restart without replaying the ticket. The local listener stays loopback-only.
+Supervisors and hosted images use `synergy-org-runtime hosted-runtime` with the same serving lifecycle. For programmatic preparation, `prepareHostedHome({ baseDirectory, identity: { orgID, hostID }, origin })` comes from `./home`; the public CLI follows the [same registration flow](#register-and-serve-a-runtime). Private stdin receives the existing `HostedLaunchRequest` with the prepared identity, deployment incarnation, explicit local port, ephemeral 64-hex bearer, optional CA and optional enrollment ticket. End at EOF; the request is bounded to 64 KiB and never appears in arguments/output. Retained registration permits restart without replaying the ticket. The local listener stays loopback-only.
 
 ```sh
 SYNERGY_HOME=/absolute/prepared-hosted-home ./node_modules/.bin/synergy-org-runtime hosted-runtime < /absolute/private/hosted-request.json

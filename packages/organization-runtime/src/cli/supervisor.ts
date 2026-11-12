@@ -14,8 +14,9 @@ import { readRuntimeRegistration } from "../registration"
 import { MemberHomeError } from "../record"
 import { HostedLaunchRequest, MemberDesktopEntry, MemberLaunchRequest } from "../launch"
 import { openHostedRuntime, openMemberRuntime } from "../runtime"
+import { readMachineInput } from "./input"
 
-function explicitHome() {
+export function explicitHome() {
   const home = process.env.SYNERGY_HOME
   if (!home || !path.isAbsolute(home)) throw new MemberHomeError("Member Runtime requires an absolute SYNERGY_HOME")
   const root = process.env.SYNERGY_RUNTIME_ROOT
@@ -24,86 +25,74 @@ function explicitHome() {
   return path.resolve(home)
 }
 
-async function request(kind: "member" | "hosted") {
-  const chunks: Buffer[] = []
-  let bytes = 0
-  const deadline = setTimeout(() => process.stdin.destroy(new Error("Supervisor input expired")), 15_000)
-  try {
-    for await (const chunk of process.stdin) {
-      const buffer = Buffer.from(chunk)
-      bytes += buffer.length
-      if (bytes > 64 * 1024) throw new Error("Supervisor input exceeds its limit")
-      chunks.push(buffer)
-    }
-    const raw = JSON.parse(Buffer.concat(chunks).toString("utf8"))
-    return kind === "member" ? MemberLaunchRequest.parse(raw) : HostedLaunchRequest.parse(raw)
-  } catch {
-    throw new MemberHomeError("Invalid or incomplete member supervisor request")
-  } finally {
-    clearTimeout(deadline)
-  }
+export function supervisedRuntimeCommand(kind: "member" | "hosted") {
+  return cmd({
+    command: `${kind}-runtime`,
+    describe:
+      kind === "member"
+        ? "serve a prepared member Runtime from a private supervisor request"
+        : "serve a prepared organization-hosted Runtime from a private supervisor request",
+    builder: (yargs) =>
+      yargs.check(() => {
+        explicitHome()
+        return true
+      }),
+    handler: () => serveSupervisedRuntime(kind),
+  })
 }
 
-export function supervisedRuntimeCommand(kind: "member" | "hosted") {
-return cmd({
-  command: `${kind}-runtime`,
-  describe: kind === "member" ? "serve a prepared member Runtime from a private supervisor request" : "serve a prepared organization-hosted Runtime from a private supervisor request",
-  builder: (yargs) =>
-    yargs.check(() => {
-      explicitHome()
-      return true
-    }),
-  async handler() {
-    const home = explicitHome()
-    const input = await request(kind)
-    const desktop = "desktop" in input ? input.desktop : undefined
-    if (desktop && !MemberDesktopEntry.safeParse(process.env.SYNERGY_RUNTIME_ENTRY).success)
-      throw new MemberHomeError("Member Desktop capabilities require a managed Desktop launch")
-    const member = await readRuntimeHome(home, input.identity)
-    if (input.ticket && input.ticket.runtime.deploymentIncarnation !== input.deploymentIncarnation)
-      throw new MemberHomeError("Member supervisor deployment does not match its ticket")
-    const registration = input.ticket
-      ? await enrollRuntime({ home, identity: member.identity, ticket: input.ticket, ca: input.ca })
-      : await readRuntimeRegistration(home, member.identity)
-    if (
-      !registration ||
-      registration.runtimeKind !== kind ||
-      registration.deploymentIncarnation !== input.deploymentIncarnation ||
-      registration.state !== "active"
-    )
-      throw new MemberHomeError("Member supervisor deployment does not match its registration")
-    input.ticket = undefined
-    process.env.SYNERGY_SERVER_TOKEN = input.token
-    await run({
-      managedReady: true,
-      interactive: false,
-      printBanner: false,
-      printChannelStatus: false,
-      network: { hostname: "127.0.0.1", port: input.port },
-      startupReporter: createManagedStartupReporter(),
-      storageReporter: createManagedStorageReporter(),
-      maintenanceReporter: createManagedMaintenanceReporter(),
-      migrationReporter: createManagedMigrationReporter(),
-      recoveryReporter: createManagedRecoveryReporter(),
-      migrationOutput: "silent",
-      runtimeFactory: (options) => {
-        const common = {
-          home,
-          entry: options.host?.launch?.entry,
-          ca: input.ca,
-          listen: { port: input.port, token: input.token },
-          startupReporter: options.startupReporter,
-          storageReporter: options.storageReporter,
-          maintenanceReporter: options.maintenanceReporter,
-          reporter: options.reporter,
-          recoveryReporter: options.recoveryReporter,
-          migrationOutput: options.migrationOutput,
-        }
-        return "accountID" in member.identity
-          ? openMemberRuntime({ ...common, identity: member.identity, desktop })
-          : openHostedRuntime({ ...common, identity: member.identity })
-      },
-    })
-  },
-})
+export async function serveSupervisedRuntime(kind: "member" | "hosted") {
+  const home = explicitHome()
+  const input =
+    kind === "member"
+      ? await readMachineInput(MemberLaunchRequest, "member supervisor request")
+      : await readMachineInput(HostedLaunchRequest, "member supervisor request")
+  const desktop = "desktop" in input ? input.desktop : undefined
+  if (desktop && !MemberDesktopEntry.safeParse(process.env.SYNERGY_RUNTIME_ENTRY).success)
+    throw new MemberHomeError("Member Desktop capabilities require a managed Desktop launch")
+  const member = await readRuntimeHome(home, input.identity)
+  if (input.ticket && input.ticket.runtime.deploymentIncarnation !== input.deploymentIncarnation)
+    throw new MemberHomeError("Member supervisor deployment does not match its ticket")
+  const registration = input.ticket
+    ? await enrollRuntime({ home, identity: member.identity, ticket: input.ticket, ca: input.ca })
+    : await readRuntimeRegistration(home, member.identity)
+  if (
+    !registration ||
+    registration.runtimeKind !== kind ||
+    registration.deploymentIncarnation !== input.deploymentIncarnation ||
+    registration.state !== "active"
+  )
+    throw new MemberHomeError("Member supervisor deployment does not match its registration")
+  input.ticket = undefined
+  process.env.SYNERGY_SERVER_TOKEN = input.token
+  await run({
+    managedReady: true,
+    interactive: false,
+    printBanner: false,
+    printChannelStatus: false,
+    network: { hostname: "127.0.0.1", port: input.port },
+    startupReporter: createManagedStartupReporter(),
+    storageReporter: createManagedStorageReporter(),
+    maintenanceReporter: createManagedMaintenanceReporter(),
+    migrationReporter: createManagedMigrationReporter(),
+    recoveryReporter: createManagedRecoveryReporter(),
+    migrationOutput: "silent",
+    runtimeFactory: (options) => {
+      const common = {
+        home,
+        entry: options.host?.launch?.entry,
+        ca: input.ca,
+        listen: { port: input.port, token: input.token },
+        startupReporter: options.startupReporter,
+        storageReporter: options.storageReporter,
+        maintenanceReporter: options.maintenanceReporter,
+        reporter: options.reporter,
+        recoveryReporter: options.recoveryReporter,
+        migrationOutput: options.migrationOutput,
+      }
+      return "accountID" in member.identity
+        ? openMemberRuntime({ ...common, identity: member.identity, desktop })
+        : openHostedRuntime({ ...common, identity: member.identity })
+    },
+  })
 }

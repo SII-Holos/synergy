@@ -7,7 +7,15 @@ await withInstalledPackages(
   ["@ericsanchezok/synergy-organization-runtime"],
   async (directory, env) => {
     const acceptance = Bun.spawn(
-      [process.execPath, "test", "--timeout", "30000", "test/entry.test.ts", "test/hosted-cli.test.ts"],
+      [
+        process.execPath,
+        "test",
+        "--timeout",
+        "30000",
+        "test/entry.test.ts",
+        "test/hosted-cli.test.ts",
+        "test/runtime-admin-cli.test.ts",
+      ],
       {
         cwd: path.resolve(import.meta.dir, "../packages/organization-runtime"),
         env: { ...env, SYNERGY_TEST_ORGANIZATION_RUNTIME_INSTALL: directory },

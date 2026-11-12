@@ -78,7 +78,7 @@ The fixture checks shared launcher replay and context lifetime, not the componen
 
 ## Synchronize Documentation
 
-Run `bun script/gen/gen-cli-reference.ts` to update the generated [CLI reference](../../../docs/reference/cli.md); never hand-edit it. The generator follows both command catalogs, lazy contributions and component adapters’ `dataCommands`, `debugCommands` and `pluginCommands` contributions. Test both core and full help when changing availability or aliases. Also review `README.md`, configuration/storage references, affected help text, and `.synergy/command/` workflows. Keep migration history outside the current CLI reference.
+Run `bun script/gen/gen-cli-reference.ts` to update the generated [CLI reference](../../../docs/reference/cli.md); never hand-edit it. The generator follows actual builder registrations, lazy command sources and component adapters’ explicit `dataCommands`, `debugCommands` and `pluginCommands` exports without executing modules. Keep complete parent paths and verify identically named children retain their own options. Test both core and full help when changing availability or aliases. Also review `README.md`, configuration/storage references, affected help text, and `.synergy/command/` workflows. Keep migration history outside the current CLI reference.
 
 ## Handoff
 
