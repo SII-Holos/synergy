@@ -6,6 +6,7 @@ import { RuntimeMaintenance } from "@ericsanchezok/synergy-harness/storage/runti
 import { AuthorityJournal } from "@ericsanchezok/synergy-harness/storage/authority-journal"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { StorageCheckpoint } from "@ericsanchezok/synergy-harness/storage/checkpoint"
+import { ServerProcessLock } from "@ericsanchezok/synergy-harness/util/server-process-lock"
 import type { VaultKeyProvider } from "@ericsanchezok/synergy-harness/secrets/encrypted-store"
 import { OrganizationCurrentAuthority as Current } from "./current-authority"
 import { OrganizationRecoveryAuthority as Authority } from "./authority"
@@ -23,6 +24,7 @@ function fail(message: string): never {
 }
 type TargetBinding = {
   assert(): void
+  assertLive(): void
   verify(): Promise<void>
   run<T>(body: () => T): T
   request: Native.InstallationRequest
@@ -38,6 +40,73 @@ export namespace OrganizationRecovery {
     readonly kind: "organization-recovery-policy-target"
   }
   const targets = new WeakMap<Target, TargetBinding>()
+  export interface PreparationTarget {
+    readonly kind: "organization-source-preparation-target"
+  }
+  const preparations = new WeakMap<
+    PreparationTarget,
+    {
+      assert(): void
+      verify(): Promise<void>
+      reference: z.infer<typeof OrganizationInstallationReference>
+      checkpoint: AuthorityJournal.Checkpoint
+    }
+  >()
+  function preparation(target: PreparationTarget) {
+    const selected = preparations.get(target)
+    if (!selected) fail("preparation requires its original live Target evidence")
+    selected.assert()
+    return selected
+  }
+  export function assertPreparationTarget(target: PreparationTarget) {
+    preparation(target)
+  }
+  export function inspectPreparationTarget(target: PreparationTarget) {
+    const selected = preparation(target)
+    return {
+      reference: OrganizationInstallationReference.parse(selected.reference),
+      checkpoint: AuthorityJournal.Checkpoint.parse(selected.checkpoint),
+    }
+  }
+  export async function verifyPreparationTarget(target: PreparationTarget) {
+    if (Storage.inTransaction()) fail("preparation Target verification requires its boundary outside Source SQL")
+    await preparation(target).verify()
+  }
+  export async function withPreparationTarget<T>(target: Target, body: (target: PreparationTarget) => Promise<T>) {
+    if (Storage.inTransaction()) fail("preparation Target capture requires its boundary outside Source SQL")
+    const selected = targets.get(target)
+    if (!selected) fail("preparation requires its original Target callback")
+    const writer = await selected.run(async () => {
+      await selected.verify()
+      return ServerProcessLock.currentOwnership()
+    })
+    let open = true
+    const assert = () => {
+      if (!open || targets.get(target) !== selected) fail("preparation Target callback has ended")
+      selected.assertLive()
+      ServerProcessLock.assertLive(writer)
+    }
+    const verify = async () => {
+      if (Storage.inTransaction()) fail("preparation Target verification requires its boundary outside Source SQL")
+      assert()
+      await selected.run(async () => {
+        await ServerProcessLock.verifyOwnership(writer)
+        await selected.verify()
+        await ServerProcessLock.verifyOwnership(writer)
+      })
+      assert()
+    }
+    try {
+      await verify()
+      const cap: PreparationTarget = Object.freeze({ kind: "organization-source-preparation-target" })
+      preparations.set(cap, { assert, verify, reference: selected.reference, checkpoint: selected.checkpoint })
+      const result = await body(cap)
+      await verify()
+      return result
+    } finally {
+      open = false
+    }
+  }
   async function apply(
     target: TargetBinding,
     evidence: AuthorityJournal.Adoption,
@@ -106,22 +175,29 @@ export namespace OrganizationRecovery {
     const objects = primary.artifactObjects
     const ports = objects && { blobs: objects.blobs, writerID: objects.writerID, now: objects.now }
     let open = true
-    const assert = () => {
+    const assertLive = () => {
       if (!open) fail("target callback has ended")
-      const active = Storage.current()
       if (
-        RuntimeContext.current() !== runtime ||
         runtime.storage !== primary ||
-        active.store !== store ||
-        active.artifactDirectory !== artifacts ||
-        active.artifactObjects !== objects ||
         primary.store !== store ||
+        !store.readiness.readerReady ||
         hash(store.options) !== configuration ||
         primary.artifactDirectory !== artifacts ||
         primary.artifactObjects !== objects ||
         objects?.blobs !== ports?.blobs ||
         objects?.writerID !== ports?.writerID ||
         objects?.now !== ports?.now
+      )
+        fail("requires its original target Runtime and primary Store")
+    }
+    const assert = () => {
+      assertLive()
+      const active = Storage.current()
+      if (
+        RuntimeContext.current() !== runtime ||
+        active.store !== store ||
+        active.artifactDirectory !== artifacts ||
+        active.artifactObjects !== objects
       )
         fail("requires its original target Runtime and primary Store")
       HomeRestoration.assertRequest(permit, request)
@@ -157,6 +233,7 @@ export namespace OrganizationRecovery {
       const target: Target = Object.freeze({ kind: "organization-recovery-policy-target" })
       targets.set(target, {
         assert,
+        assertLive,
         verify,
         run: runtime.run,
         permit,

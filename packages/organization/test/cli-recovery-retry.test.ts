@@ -5,7 +5,6 @@ import { RuntimeMaintenance } from "@ericsanchezok/synergy-harness/storage/runti
 import { HomeRestoration } from "@ericsanchezok/synergy-harness/lifecycle/home-restoration"
 import type { StoreTransaction } from "@ericsanchezok/synergy-harness/storage/transactional-store"
 import { OrganizationRecoveryAdministration as Recovery } from "../src/backup/administration-recovery"
-import { OrganizationCurrentAuthority as Current } from "../src/backup/current-authority"
 import { OrganizationRecoveryPublication as Publication } from "../src/backup/publication"
 import { openOrganizationRecovery } from "../src/service"
 import { preparedFixture } from "./support/recovery-administration"
@@ -13,7 +12,7 @@ import { preparedFixture } from "./support/recovery-administration"
 test("public recover resumes its durable Reference after the original pre-reservation call fails", async () => {
   await using f = await preparedFixture()
   const lost = new Error("Original process left after durable selection before retirement reservation")
-  using stopped = spyOn(Current, "retire").mockImplementationOnce(() => {
+  using stopped = spyOn(RuntimeMaintenance, "reserveRetirement").mockImplementationOnce(() => {
     throw lost
   })
   await expect(Recovery.recover(f.input)).rejects.toBe(lost)

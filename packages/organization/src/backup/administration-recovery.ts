@@ -2,7 +2,6 @@ import fs from "node:fs/promises"
 import path from "node:path"
 import { createHash } from "node:crypto"
 import { z } from "zod"
-import { RuntimeMaintenance } from "@ericsanchezok/synergy-harness/storage/runtime-maintenance"
 import { AuthorityJournal } from "@ericsanchezok/synergy-harness/storage/authority-journal"
 import { HomeRestoration } from "@ericsanchezok/synergy-harness/lifecycle/home-restoration"
 import { HomeOwnershipFile } from "@ericsanchezok/synergy-harness/lifecycle/home-ownership-file"
@@ -18,6 +17,7 @@ import { OrganizationRecoveryPublication as Publication } from "./publication"
 import { OrganizationRecoveryAuthority as Authority } from "./authority"
 import { OrganizationRecoveryWriters as Writers } from "./writers"
 import { OrganizationServiceNative as Native } from "./service-native"
+import { OrganizationSourcePreparation as Preparation } from "./source-preparation"
 import { readOrganizationPrivateFile } from "../private-file"
 import { readOrganizationConfiguration } from "../configuration"
 import { loadOrganizationInfrastructure } from "../infrastructure"
@@ -25,6 +25,7 @@ import {
   openOrganizationPendingRetirement,
   openOrganizationRecovery,
   openOrganizationService,
+  openOrganizationSourcePreparation,
   openOrganizationSourceRetirement,
 } from "../service"
 
@@ -120,21 +121,27 @@ export namespace OrganizationRecoveryAdministration {
           const selectorFile = path.join(work, selectionName)
           let selector: z.infer<typeof Selector> | undefined
           if (existing) {
-            try {
-              selector = Selector.parse(JSON.parse(await readOrganizationPrivateFile(selectorFile)))
-            } catch {
-              throw new Error(
-                "Incomplete recovery work is retained; no source retirement was authorized by this command",
-              )
+            const selectedFile = await fs.lstat(selectorFile).catch((error: NodeJS.ErrnoException) => {
+              if (error.code !== "ENOENT") throw error
+            })
+            if (selectedFile) {
+              try {
+                selector = Selector.parse(JSON.parse(await readOrganizationPrivateFile(selectorFile)))
+              } catch {
+                throw new Error(
+                  "Incomplete recovery work is retained; no source retirement was authorized by this command",
+                )
+              }
             }
             if (
-              selector.publicOrigin !== publicOrigin ||
-              selector.reference.target.installationID !== context.info.installationID ||
-              selector.reference.target.requestHash !== context.info.requestHash ||
-              selector.reference.target.restoreID !== selected.restoreID ||
-              selector.reference.target.sourceHash !== context.info.sourceHash ||
-              selector.reference.target.incarnation !== context.info.incarnation ||
-              selector.reference.target.nativeHash !== context.request.payload.nativeHash
+              selector &&
+              (selector.publicOrigin !== publicOrigin ||
+                selector.reference.target.installationID !== context.info.installationID ||
+                selector.reference.target.requestHash !== context.info.requestHash ||
+                selector.reference.target.restoreID !== selected.restoreID ||
+                selector.reference.target.sourceHash !== context.info.sourceHash ||
+                selector.reference.target.incarnation !== context.info.incarnation ||
+                selector.reference.target.nativeHash !== context.request.payload.nativeHash)
             )
               throw new Error(
                 "Recovery work belongs to another original Target or origin; all original data is retained",
@@ -182,12 +189,12 @@ export namespace OrganizationRecoveryAdministration {
           }
           return context.withPrepared(async (original, target) => {
             const prepared = Authority.describe(original.prepared)
-            if (selector) {
+            const resume = async (saved: z.infer<typeof Selector>) => {
               const namespace = await facet(work, "records")
               const native = await facet(work, "native")
               const source = await openOrganizationPendingRetirement({
                 home: sourceHome,
-                reference: selector.reference,
+                reference: saved.reference,
               })
               sourceOwners.push(source)
               const receipt = await Current.resumeRetirement({
@@ -202,76 +209,60 @@ export namespace OrganizationRecoveryAdministration {
                 Recovery.publishServiceOnly({ source: receipt, target, namespace, native, keys, publicOrigin, signal }),
               )
             }
-            const configuration = await readOrganizationConfiguration(sourceHome)
-            const source = await openOrganizationService({
-              ...configuration,
-              ...(await loadOrganizationInfrastructure(configuration.infrastructure)),
-              home: sourceHome,
-              publicOrigin: selected.sourceOrigin,
-            })
-            sourceOwners.push(source)
-            return await source.maintenance.run(async () => {
-              const requestID = crypto.randomUUID()
-              const lease = await RuntimeMaintenance.begin({
-                purpose: "organization-backup",
-                requestID,
-                signal,
-                actor: {
-                  kind: "system",
-                  subjectID: "host-operator",
-                  displayName: "Host operator",
-                  clientKind: "system",
-                  requestID,
-                },
-              })
-              let retained = false
-              try {
-                await RuntimeMaintenance.freeze(lease, await RuntimeMaintenance.drain(lease, { signal }))
-                await Writers.assertServiceOnly({ signal })
-                return await Current.withSource(
-                  {
-                    lease,
-                    after: prepared.checkpoint,
-                    directory: path.join(work, "h1"),
-                    buildVersion: selected.buildVersion,
-                    keys,
-                    signal,
-                  },
-                  async (current) => {
-                    await Recovery.preflightWriters({ source: current, target, signal })
-                    const reference = await Current.retirementReference(current, prepared.reference)
-                    retained = true
-                    await FileAtomicWrite.withRoot(work, async (root) => {
-                      await Current.verify(current)
-                      await FileAtomicWrite.write(
-                        root,
-                        [selectionName],
-                        Buffer.from(JSON.stringify(Selector.parse({ version: 1, reference, publicOrigin })) + "\n"),
+            if (selector) return resume(selector)
+            const saved = await Recovery.withPreparationTarget(target, (preparationTarget) =>
+              Preparation.withOriginal(
+                { target: preparationTarget, work, publicOrigin, sourceOrigin: selected.sourceOrigin, signal },
+                async (preparation) => {
+                  const configuration = await readOrganizationConfiguration(sourceHome)
+                  await using source = await openOrganizationSourcePreparation({
+                    ...configuration,
+                    ...(await loadOrganizationInfrastructure(configuration.infrastructure)),
+                    home: sourceHome,
+                    publicOrigin: selected.sourceOrigin,
+                    preparation,
+                  })
+                  return source.run(() =>
+                    Preparation.withLease(preparation, { existingWork: !!existing, signal }, async (lease, retain) => {
+                      await Writers.assertServiceOnly({ signal })
+                      return Current.withSource(
+                        {
+                          lease,
+                          after: prepared.checkpoint,
+                          directory: path.join(work, "h1"),
+                          buildVersion: selected.buildVersion,
+                          keys,
+                          signal,
+                        },
+                        async (current) => {
+                          await Recovery.preflightWriters({ source: current, target, signal })
+                          const reference = await Current.retirementReference(current, prepared.reference)
+                          const expected = Selector.parse({ version: 1, reference, publicOrigin })
+                          retain()
+                          await Preparation.verify(preparation)
+                          return FileAtomicWrite.withRoot(work, async (root) => {
+                            await Current.verify(current)
+                            await Preparation.verify(preparation)
+                            await FileAtomicWrite.write(
+                              root,
+                              [selectionName],
+                              Buffer.from(JSON.stringify(expected) + "\n"),
+                            )
+                            await Preparation.verify(preparation)
+                            await Current.verify(current)
+                            const saved = Selector.parse(JSON.parse(await readOrganizationPrivateFile(selectorFile)))
+                            if (hash(saved) !== hash(expected))
+                              throw new Error("Original recovery selector was replaced")
+                            return saved
+                          })
+                        },
                       )
-                      await Current.verify(current)
-                      const saved = Selector.parse(JSON.parse(await readOrganizationPrivateFile(selectorFile)))
-                      if (hash(saved.reference) !== hash(reference))
-                        throw new Error("Original recovery selector was replaced")
-                    })
-                    await Recovery.reconstruct({ source: current, target, signal })
-                    const receipt = await Retirement.complete(reference)
-                    return Current.withCaptured(current, (captured) =>
-                      Recovery.publishServiceOnly({
-                        source: receipt,
-                        target,
-                        namespace: captured.namespace,
-                        native: captured.native,
-                        keys,
-                        publicOrigin,
-                        signal,
-                      }),
-                    )
-                  },
-                )
-              } finally {
-                if (!retained) await RuntimeMaintenance.release(lease)
-              }
-            })
+                    }),
+                  )
+                },
+              ),
+            )
+            return resume(saved)
           })
         })
       },

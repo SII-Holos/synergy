@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0181](0181-source-freeze-preceded-durable-recovery-selection.md)
+
 - [0180](0180-explicit-background-waited-for-automatic-yield.md)
 
 - [0178](0178-explicit-skill-updates-interrupted-an-authorized-load.md)

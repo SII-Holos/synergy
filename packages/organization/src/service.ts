@@ -49,6 +49,7 @@ import { OrganizationServiceHome } from "./service-home"
 import { OrganizationServiceNative } from "./backup/service-native"
 import { OrganizationSourceRetirement } from "./backup/source-retirement"
 import { OrganizationCurrentAuthority } from "./backup/current-authority"
+import { OrganizationSourcePreparation } from "./backup/source-preparation"
 import { OrganizationRecoveryPublication } from "./backup/publication"
 import { readOrganizationConfiguration } from "./configuration"
 import { OrganizationHealth } from "./health"
@@ -111,10 +112,21 @@ export async function openOrganizationPendingRetirement(
   return source
 }
 
+export async function openOrganizationSourcePreparation(
+  options: OrganizationServiceOptions & { preparation: OrganizationSourcePreparation.Original },
+) {
+  const { preparation, ...selected } = options
+  const entry = await openOrganizationNamespace(selected, "source-preparation", undefined, preparation)
+  if (entry.mode !== "source-preparation") throw new Error("Source preparation selected another native mode")
+  const { mode: _, ...source } = entry
+  return source
+}
+
 async function openOrganizationNamespace(
   options: OrganizationServiceOptions,
-  mode: "serve" | "upgrade" | "recovery" | "retirement" | "pending-retirement",
+  mode: "serve" | "upgrade" | "recovery" | "retirement" | "pending-retirement" | "source-preparation",
   retirement?: OrganizationSourceRetirement.Reference,
+  preparation?: OrganizationSourcePreparation.Original,
 ) {
   if (!path.isAbsolute(options.home)) throw new Error("Organization Home must be absolute")
   const home = path.resolve(options.home)
@@ -217,7 +229,8 @@ async function openOrganizationNamespace(
       HomeRestoration.register()
       OrganizationRecoveryPublication.register()
       RuntimeMaintenance.registerProtection()
-      if (mode === "upgrade") await OrganizationServiceHome.selectForUpgrade()
+      if (mode === "source-preparation") await OrganizationSourcePreparation.selectOwner()
+      else if (mode === "upgrade") await OrganizationServiceHome.selectForUpgrade()
       else if (mode === "recovery") await OrganizationServiceHome.selectForRecovery()
       else if (mode === "retirement" || mode === "pending-retirement") {
         if (!retirement) throw new Error("Source retirement requires its original reference")
@@ -264,8 +277,12 @@ async function openOrganizationNamespace(
         OrganizationServiceMaintenance.register()
         OrganizationServiceHome.registerNamespaceIdentity()
         OrganizationCloud.register(cloud)
-        if (mode === "serve")
+        if (mode === "serve" || mode === "source-preparation")
           OrganizationServiceNative.register({ ...settings, publicOrigin, web: webOptions, database, cloud })
+        if (mode === "source-preparation") {
+          if (!preparation) throw new Error("Source preparation requires its original Target and work capability")
+          OrganizationSourcePreparation.register(preparation)
+        }
         OrganizationSessionDirectory.registerRuntimeStatus(async (runtimeID) => {
           if (!connections) throw new Error("Organization Runtime presence is unavailable")
           return connections.availability(runtimeID)
@@ -327,6 +344,15 @@ async function openOrganizationNamespace(
       if (mode === "recovery") {
         ready = true
         return { mode: "recovery" as const, home, run: maintenance.run, close, [Symbol.asyncDispose]: close }
+      }
+      if (mode === "source-preparation") {
+        const deployment = OrganizationProtocol.Deployment.parse(
+          await Storage.read(OrganizationStoragePath.deployment()),
+        )
+        await loadSigningAuthority(deployment)
+        await OrganizationAuthorityHistory.attach(deployment)
+        ready = true
+        return { mode: "source-preparation" as const, home, run: maintenance.run, close, [Symbol.asyncDispose]: close }
       }
       if (mode === "pending-retirement") {
         if (!retirement) throw new Error("Pending retirement requires its original reference")

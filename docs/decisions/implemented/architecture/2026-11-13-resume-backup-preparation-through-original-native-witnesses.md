@@ -12,6 +12,8 @@ An organization recovery can stop after its actual Source has drained and frozen
 
 `withSourcePreparationRecovery()` reopens only that original draining or frozen operation. It verifies the native selection outside SQL, carries synchronous native ownership into commit guards, reconciles frozen owners and expires the recovered lease when the callback ends. The same capability can drain and capture; it cannot reserve retirement or release the cold Source hold. A durable complete Reference and the existing pending-retirement owner must authorize the later retirement.
 
+The Service consumes the actual recovery Target callback and an opened private work-directory descriptor. Its restricted Source opener attaches the original signer and authority history without migrations, authentication, transports or execution. Same-request retry captures under the native witness, durably saves the complete Reference, closes the preparation owner and proceeds through the existing pending-retirement entry. Changed physical work, Target or configuration remains blocked.
+
 Home upgrades and Source preparation share private physical-owner and native-transition helpers. Their versioned purposes, selections and public recovery entries remain distinct. Legacy maintenance records and version-two Home upgrade serialization retain their existing readers.
 
 ## Alternatives considered
