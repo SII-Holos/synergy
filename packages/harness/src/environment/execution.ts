@@ -17,6 +17,7 @@ import { EnvironmentOrigin } from "./origin"
 import { upgradeAccessRecord } from "../migration/import"
 import { EnvironmentExecutionOriginIndex } from "./execution-origin-index"
 import { EnvironmentUseOwnership } from "./use-ownership"
+import { EnvironmentExecutionSource as Sources } from "./execution-source"
 
 export namespace EnvironmentExecution {
   export const Info = EnvironmentExecutionSchema.Info
@@ -37,6 +38,9 @@ export namespace EnvironmentExecution {
   const pending = RuntimeContext.state(() => new Set<Pending>())
   const finishing = Storage.state(() => new Map<string, Promise<Info>>())
   const connections = Storage.state(() => new Map<string, Promise<Executor>>())
+  const sourceOperations = Storage.state(
+    () => new Map<string, { record: Sources.Record; operations: Sources.Operations }>(),
+  )
   interface UseInput {
     id: string
     scopeID: string
@@ -51,7 +55,7 @@ export namespace EnvironmentExecution {
   }))
 
   export function hasPendingRequests() {
-    return pending().size > 0 || finishing().size > 0 || EnvironmentOrigin.hasRequests()
+    return pending().size > 0 || finishing().size > 0 || EnvironmentOrigin.hasRequests() || Sources.hasPendingRequests()
   }
 
   function currentPending() {
@@ -65,6 +69,7 @@ export namespace EnvironmentExecution {
   }
 
   export function hasSessionPending(scopeID: string, sessionID: string) {
+    if (Sources.hasSessionPending(scopeID, sessionID)) return true
     return (
       EnvironmentOrigin.sessionRequests(scopeID, sessionID).length > 0 ||
       currentPending().some(
@@ -267,6 +272,22 @@ export namespace EnvironmentExecution {
     return Info.parse(await stored(id, scopeID))
   }
 
+  export function entries(): AsyncIterable<Info> {
+    const current = EnvironmentUseOwnership.captureStorage()
+    return (async function* () {
+      current()
+      for await (const row of Storage.records({ prefix: ["environment_execution"], limit: 128 })) {
+        current()
+        const record = EnvironmentExecutionSchema.Record.parse(upgradeAccessRecord(row.key, row.value))
+        const info = record.execution
+        if (row.key.length !== 3 || row.key[1] !== info.scopeID || row.key[2] !== info.id)
+          throw new Error("Environment execution metadata belongs to another canonical address")
+        yield Info.parse(info)
+      }
+      current()
+    })()
+  }
+
   export async function listActive(scopeID: string): Promise<Info[]> {
     const keys = await Storage.list(StoragePath.environmentExecutionActive(scopeID))
     return Promise.all(keys.map((key) => get(key[2], scopeID)))
@@ -281,6 +302,7 @@ export namespace EnvironmentExecution {
     intentDigest?: string
     workspaces?: WorkspaceProtocol.Reference[]
     signal?: AbortSignal
+    source?: Sources.Lease
   }): Promise<Info> {
     const id = ExecutionProtocol.ID.parse(input.id)
     const origin = EnvironmentOrigin.selected(input.origin)
@@ -327,6 +349,7 @@ export namespace EnvironmentExecution {
     workspaces?: WorkspaceProtocol.Reference[]
     digest: string
     signal?: AbortSignal
+    source?: Sources.Lease
   }) {
     input.origin.assertCurrent()
     const existing = await stored(input.id, input.scopeID).catch((error: unknown) => {
@@ -344,6 +367,7 @@ export namespace EnvironmentExecution {
     await EnvironmentOrigin.assertAdmission(input.origin, input)
     await RuntimeMaintenance.assertAdmission()
     input.origin.assertCurrent()
+    if (input.source) return submitSource({ ...input, source: input.source })
     const use = await Environment.acquire(input.environmentID, {
       scopeID: input.scopeID,
       useID: useID(input.scopeID, input.id),
@@ -452,7 +476,13 @@ export namespace EnvironmentExecution {
 
   export async function reconcile(id: string, scopeID: string): Promise<Info> {
     const info = await get(id, scopeID)
-    if (["completed", "saved", "unsaved", "exited"].includes(info.state)) return info
+    if (info.state === "completed") return info
+    if (info.source) {
+      const live = originalSource(info)
+      const observed = live ? await live.inspect(id) : (await inspectSource(info)).info
+      return observed ? acceptSource(info, observed) : update(info, { state: "unknown" })
+    }
+    if (["saved", "unsaved", "exited"].includes(info.state)) return info
     const executor = await connect(info)
     if (info.state === "cancel_requested") await executor.cancel(id, info.digest)
     const status = await executor.status(id)
@@ -464,6 +494,17 @@ export namespace EnvironmentExecution {
     const info = await get(id, scopeID)
     if (["completed", "saved", "unsaved", "exited"].includes(info.state)) return
     await update(info, { state: "cancel_requested" })
+    if (info.source) {
+      const live = originalSource(info)
+      if (!live)
+        throw new Environment.Unavailable({
+          environmentID: info.target.environmentID,
+          message: "Retained remote execution permits only original receipt inspection",
+        })
+      await live.cancel(id, info.digest)
+      await reconcile(id, scopeID)
+      return
+    }
     await (await connect(info)).cancel(id, info.digest)
     await reconcile(id, scopeID)
   }
@@ -497,6 +538,7 @@ export namespace EnvironmentExecution {
         environmentID: info.target.environmentID,
         message: "Physical process and stream completion must be confirmed before saving",
       })
+    if (info.source) return finishSource(info)
     const executor = await connect(info)
     if (info.state !== "saved") {
       try {
@@ -532,7 +574,11 @@ export namespace EnvironmentExecution {
     const info = await get(id, scopeID)
     if (!Number.isSafeInteger(after) || after < 0 || !Number.isSafeInteger(limit) || limit < 1 || limit > 128)
       throw new Error("Invalid output cursor or limit")
-    if (info.state !== "completed" && info.state !== "saved") return (await connect(info)).output(id, after, limit)
+    if (info.state !== "completed" && info.state !== "saved") {
+      if (info.source)
+        return originalSource(info)?.output(id, after, limit) ?? (await inspectSource(info, after, limit)).output
+      return (await connect(info)).output(id, after, limit)
+    }
     const keys = Array.from({ length: Math.min(limit, Math.max(0, info.outputCursor - after)) }, (_, index) =>
       StoragePath.environmentOutput(scopeID, id, after + index + 1),
     )
@@ -544,16 +590,43 @@ export namespace EnvironmentExecution {
 
   export async function stdin(id: string, scopeID: string, data: Uint8Array, end = false) {
     if (data.byteLength > 65_536) throw new Error("Input frame exceeds 64 KiB")
+    data = Uint8Array.from(data)
     const info = await get(id, scopeID)
+    if (info.source) {
+      const live = originalSource(info)
+      if (!live)
+        throw new Environment.Unavailable({
+          environmentID: info.target.environmentID,
+          message: "Retained remote execution cannot send new process input",
+        })
+      await live.stdin(id, data, end)
+      return
+    }
     await (await connect(info)).stdin(id, data, end)
   }
 
   export async function resize(id: string, scopeID: string, cols: number, rows: number) {
     const size = ExecutionProtocol.Command.shape.pty.unwrap().parse({ cols, rows })
-    await (await connect(await get(id, scopeID))).resize(id, size.cols, size.rows)
+    const info = await get(id, scopeID)
+    if (info.source) {
+      const live = originalSource(info)
+      if (!live)
+        throw new Environment.Unavailable({
+          environmentID: info.target.environmentID,
+          message: "Retained remote execution cannot resize a process",
+        })
+      await live.resize(id, size.cols, size.rows)
+      return
+    }
+    await (await connect(info)).resize(id, size.cols, size.rows)
   }
 
-  export async function connect(info: Pick<Info, "scopeID" | "target">): Promise<Executor> {
+  export async function connect(info: Pick<Info, "scopeID" | "target" | "source">): Promise<Executor> {
+    if (info.source)
+      throw new Environment.Unavailable({
+        environmentID: info.target.environmentID,
+        message: "Remote execution has no controller-local Executor",
+      })
     const environment = await Environment.assertTarget(info.target, info.scopeID)
     const provider = EnvironmentProviders.get(environment.provider)
     if (!provider.connect)
@@ -578,7 +651,160 @@ export namespace EnvironmentExecution {
     return connection
   }
 
-  async function captureOutput(info: Info, executor: Executor) {
+  function originalSource(info: Info) {
+    const entry = sourceOperations().get(JSON.stringify([info.scopeID, info.id]))
+    if (!entry) return
+    if (JSON.stringify(entry.record) !== JSON.stringify(info.source))
+      throw new Error("Execution changed its original live source")
+    return entry.operations
+  }
+
+  async function inspectSource(info: Info, after = 0, limit = 128) {
+    if (!info.source) throw new Error("Execution has no retained remote source")
+    return Sources.inspect(info.source, {
+      scopeID: info.scopeID,
+      operationID: info.id,
+      digest: info.digest,
+      origin: info.origin,
+      after,
+      limit,
+    })
+  }
+
+  async function submitSource(input: {
+    id: string
+    scopeID: string
+    environmentID: string
+    command: ExecutionProtocol.Command
+    origin: EnvironmentOrigin.Captured
+    source: Sources.Lease
+    digest: string
+    intentDigest?: string
+    workspaces?: WorkspaceProtocol.Reference[]
+    signal?: AbortSignal
+  }) {
+    const source = Sources.capture(input.source, input.origin),
+      owner = Sources.captureOwner(source)
+    if (source.target.environmentID !== input.environmentID)
+      throw new Environment.Stale({
+        environmentID: input.environmentID,
+        message: "Execution selected another remote Environment",
+      })
+    const operations = Sources.operations(input.source)
+    const assert = () => {
+      owner()
+      input.source.assert()
+      input.origin.assertCurrent()
+      input.signal?.throwIfAborted()
+    }
+    assert()
+    const info = await Storage.transaction(
+      async () => {
+        await RuntimeMaintenance.assertAdmission()
+        await EnvironmentOrigin.assertAdmission(input.origin, { scopeID: input.scopeID })
+        assert()
+        const now = Date.now()
+        return write(
+          Info.parse({
+            id: input.id,
+            scopeID: input.scopeID,
+            target: source.target,
+            origin: input.origin.value,
+            workspaces: input.workspaces,
+            digest: input.digest,
+            intentDigest: input.intentDigest,
+            state: "submitted",
+            outputCursor: 0,
+            createdAt: now,
+            updatedAt: now,
+            source,
+          }),
+        )
+      },
+      { commitGuard: assert },
+    )
+    sourceOperations().set(JSON.stringify([info.scopeID, info.id]), { record: source, operations })
+    try {
+      const observed = await operations.start(input)
+      return acceptSource(info, observed)
+    } catch (error) {
+      await update(info, { state: "unknown" }).catch(() => {})
+      throw error
+    }
+  }
+
+  async function acceptSource(info: Info, observed: Info) {
+    if (
+      observed.id !== info.id ||
+      observed.scopeID !== info.scopeID ||
+      observed.digest !== info.digest ||
+      !Environment.sameTarget(observed.target, info.target) ||
+      JSON.stringify(observed.origin) !== JSON.stringify(info.origin) ||
+      observed.sourceObservation === undefined
+    )
+      throw new Environment.Stale({
+        environmentID: info.target.environmentID,
+        message: "Remote execution returned another original native operation",
+      })
+    const status = observed.status && ExecutionProtocol.Status.parse(observed.status)
+    if (
+      status &&
+      (status.id !== info.id || status.digest !== info.digest || !Environment.sameTarget(status.target, info.target))
+    )
+      throw new Environment.Stale({
+        environmentID: info.target.environmentID,
+        message: "Remote execution returned another physical receipt",
+      })
+    const state = ["completed", "saved", "unsaved", "exited"].includes(info.state)
+      ? undefined
+      : ["completed", "saved", "unsaved", "exited"].includes(observed.state)
+        ? "exited"
+        : observed.state
+    return update(info, { ...(state && { state }), status, sourceObservation: observed.sourceObservation })
+  }
+
+  async function finishSource(input: Info) {
+    let info = input
+    const native = async () => {
+      const observation = EnvironmentExecutionSchema.Info.parse(info.sourceObservation)
+      if (observation.state === "completed") return observation
+      const live = originalSource(info)
+      if (!live)
+        throw new Environment.Unavailable({
+          environmentID: info.target.environmentID,
+          message: "Retained remote execution cannot perform a new physical save",
+        })
+      const observed = await live.complete(info.id)
+      info = await acceptSource(info, observed)
+      const completed = EnvironmentExecutionSchema.Info.parse(info.sourceObservation)
+      if (completed.state !== "completed")
+        throw new Environment.Busy({
+          environmentID: info.target.environmentID,
+          message: "Original remote save and release are not confirmed",
+        })
+      return completed
+    }
+    try {
+      await captureOutput(info, {
+        output: (id, after, limit) =>
+          originalSource(info)?.output(id, after, limit) ??
+          inspectSource(info, after, limit).then((value) => value.output),
+      })
+      const completed = await native()
+      const result = await update(info, {
+        state: "completed",
+        saved: completed.saved,
+        checkpointFailures: completed.checkpointFailures,
+      })
+      sourceOperations().delete(JSON.stringify([info.scopeID, info.id]))
+      return result
+    } catch (error) {
+      await update(info, { state: "unsaved" }).catch(() => {})
+      throw error
+    }
+  }
+
+  async function captureOutput(info: Info, executor: Pick<Executor, "output">) {
     let after = (await get(info.id, info.scopeID)).outputCursor
     const end = info.status!.cursor
     while (after < end) {
@@ -630,38 +856,46 @@ export namespace EnvironmentExecution {
   }
 
   async function update(info: Info, changes: Partial<Info>): Promise<Info> {
-    return Storage.transaction(async () => {
-      await Environment.assertTarget(info.target, info.scopeID)
-      const latest = await stored(info.id, info.scopeID)
-      if (!Environment.sameTarget(latest.target, info.target) || latest.digest !== info.digest)
-        throw new Environment.Stale({
-          environmentID: info.target.environmentID,
-          message: "Operation changed during execution",
-        })
-      if (latest.state === "completed") return Info.parse(latest)
-      if (latest.state === "saved" && changes.state && changes.state !== "completed") return Info.parse(latest)
-      if (
-        ["saved", "unsaved", "exited"].includes(latest.state) &&
-        changes.state &&
-        ["running", "unknown", "cancel_requested", "exited"].includes(changes.state)
-      )
-        return Info.parse(latest)
-      if (latest.state === "cancel_requested" && changes.state === "running")
-        changes = { ...changes, state: "cancel_requested" }
-      if (
-        Object.entries(changes).every(
-          ([key, value]) => JSON.stringify(latest[key as keyof Info]) === JSON.stringify(value),
+    const sourceOwner = info.source && Sources.captureOwner(info.source)
+    return Storage.transaction(
+      async () => {
+        if (sourceOwner) sourceOwner()
+        else await Environment.assertTarget(info.target, info.scopeID)
+        const latest = await stored(info.id, info.scopeID)
+        if (!Environment.sameTarget(latest.target, info.target) || latest.digest !== info.digest)
+          throw new Environment.Stale({
+            environmentID: info.target.environmentID,
+            message: "Operation changed during execution",
+          })
+        if (latest.state === "completed") return Info.parse(latest)
+        if (latest.state === "saved" && changes.state && changes.state !== "completed") return Info.parse(latest)
+        if (
+          ["saved", "unsaved", "exited"].includes(latest.state) &&
+          changes.state &&
+          ["running", "unknown", "cancel_requested", "exited"].includes(changes.state)
         )
-      )
-        return Info.parse(latest)
-      return write({ ...latest, ...changes })
-    })
+          return Info.parse(latest)
+        if (latest.state === "cancel_requested" && changes.state === "running")
+          changes = { ...changes, state: "cancel_requested" }
+        if (JSON.stringify(latest.source) !== JSON.stringify(info.source))
+          throw new Error("Execution changed its retained source")
+        if (
+          Object.entries(changes).every(
+            ([key, value]) => JSON.stringify(latest[key as keyof Info]) === JSON.stringify(value),
+          )
+        )
+          return Info.parse(latest)
+        return write({ ...latest, ...changes })
+      },
+      { commitGuard: sourceOwner },
+    )
   }
 
   async function write(info: Info) {
     const next = EnvironmentExecutionSchema.PersistedInfo.parse({ ...info, updatedAt: Date.now() })
     await EnvironmentOrigin.assertMutation(next.origin)
-    await Storage.write(StoragePath.environmentExecution(info.scopeID, info.id), { schemaVersion: 2, execution: next })
+    const record = EnvironmentExecutionSchema.Record.parse({ schemaVersion: next.source ? 3 : 2, execution: next })
+    await Storage.write(StoragePath.environmentExecution(info.scopeID, info.id), record)
     await EnvironmentExecutionOriginIndex.update(next)
     const active = StoragePath.environmentExecutionActive(info.scopeID, info.id)
     if (next.state === "completed") await Storage.remove(active)

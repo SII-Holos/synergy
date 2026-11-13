@@ -8,6 +8,7 @@ import { StoragePath } from "../storage/path"
 import { EnvironmentExecution } from "./execution"
 import { executionOriginRecordMigration, executionOriginPhysicalMigration } from "./execution-origin-migration"
 import { environmentUseRecordMigration, environmentUsePhysicalMigration } from "./use-migration"
+import { executionSourceRecordMigration, executionSourcePhysicalMigration } from "./execution-source-migration"
 import {
   environmentTransferRecordMigration,
   environmentTransferPhysicalMigration,
@@ -90,6 +91,8 @@ export const environmentMigrations: Migration[] = [
   },
   executionOriginRecordMigration,
   executionOriginPhysicalMigration,
+  executionSourceRecordMigration,
+  executionSourcePhysicalMigration,
   environmentUseRecordMigration,
   environmentUsePhysicalMigration,
   environmentTransferRecordMigration,

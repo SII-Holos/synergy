@@ -23,6 +23,8 @@ Do not forward a queued stdin EOF after the native worker confirms whole-tree dr
 
 For organization Skill loads, retain the immutable version selected at the load boundary while obtaining fresh accepted authority for deferred content and references. Do not infer revocation from a newer desired collection or authorize from cached bytes alone. Test a permission wait with public application of a new collection, overlapping activation without pointer rollback, and real withdrawal before content is returned. Reuse the original verifier and activated-selection owner; retained revalidation must not write pointers or seals.
 
+For registered execution sources, retain the composing Runtime, actual primary/artifact ports and original native origin before awaiting. Supply the actual release-only cleanup facet immediately after acquisition, retain it through unknown cleanup, and preserve both resolution and cleanup failures. Test held preparation, owner replacement, lost replies and final Host revocation with native Use/receipt evidence. Exercise every remote read under actual transactions and snapshots; pure metadata guards must remain usable in publishing transactions. Verify that an actual readonly primary rejects producer entry while retained inspection remains readable. Distinguish inspection-only startup from ordinary allocation resume and test both against the same durable request.
+
 ## Trace the Whole Decision
 
 For multi-target approvals, exercise both ask/deny target orders before publication of any pending event, including mandatory confirmation and persisted rules. Verify that multiple ask targets produce one complete request, cancellation removes it, and all-allow requests still resolve without prompting.

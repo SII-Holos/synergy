@@ -9,6 +9,7 @@ import { RuntimeContext } from "../lifecycle/context"
 import { WorkspaceTree } from "../workspace/tree"
 import { EnvironmentOrigin } from "./origin"
 import { WorkspaceFileSource } from "../workspace/file-source"
+import { EnvironmentExecutionSource as Sources } from "./execution-source"
 
 export namespace EnvironmentResources {
   /** A model-facing file namespace, separate from any live Environment mount location. */
@@ -58,7 +59,7 @@ export namespace EnvironmentResources {
     workspaceGeneration?: number
   }
   export interface Resolved extends AsyncDisposable {
-    kind: "none" | "objects" | "native" | "execution" | "files"
+    kind: "none" | "objects" | "native" | "execution" | "files" | "remote-execution"
     selection?: Selection
     origin?: EnvironmentOrigin.Captured
     workspace?: WorkspaceCatalog.Info
@@ -67,7 +68,18 @@ export namespace EnvironmentResources {
     runtime?: ExecutionProtocol.Description
     directory?: string
     files?: WorkspaceFileSource.Lease
+    source?: Sources.Lease
     release(): Promise<void>
+  }
+  export type Cleanup = Readonly<{ release(): Promise<void> }>
+
+  async function releaseAfterFailure(release: () => Promise<void>, error: unknown): Promise<never> {
+    try {
+      await release()
+    } catch (failure) {
+      throw new AggregateError([error, failure], "Environment resource resolution and cleanup failed", { cause: error })
+    }
+    throw error
   }
 
   function result(
@@ -99,8 +111,7 @@ export namespace EnvironmentResources {
     input: Selection & { ownerID: string; origin?: EnvironmentOrigin.Input; needs: Needs; signal?: AbortSignal },
   ) {
     if (input.workspaceID) virtualRoot(await WorkspaceCatalog.get(input.workspaceID, input.scopeID))
-    const environment = input.needs.execution ? await Environment.select(input) : undefined
-    return resolve({ ...input, environmentID: environment?.id ?? input.environmentID, needs: input.needs })
+    return resolveOwned(input, input.ownerID)
   }
 
   export async function prepareSandbox(resources: Resolved, input: ExecutionProtocol.SandboxInput) {
@@ -121,28 +132,80 @@ export namespace EnvironmentResources {
 
   export async function resolve(
     input: Selection & { origin?: EnvironmentOrigin.Input; needs: Needs; signal?: AbortSignal },
+    observeCleanup?: (cleanup: Cleanup) => void,
   ): Promise<Resolved> {
-    input = { ...input, needs: { ...input.needs } }
+    return resolveOwned(input, undefined, observeCleanup)
+  }
+  async function resolveOwned(
+    value: Selection & { origin?: EnvironmentOrigin.Input; needs: Needs; signal?: AbortSignal },
+    ownerID?: string,
+    observeCleanup?: (cleanup: Cleanup) => void,
+  ): Promise<Resolved> {
+    const input = { ...value, needs: { ...value.needs } }
+    let observed = false
+    const observe = (release: () => Promise<void>) => {
+      observed = true
+      observeCleanup?.(Object.freeze({ release }))
+    }
     const origin = input.needs.workspace || input.needs.execution ? EnvironmentOrigin.selected(input.origin) : undefined
     async function perform() {
       input.signal?.throwIfAborted()
       const target = { scopeID: input.scopeID, environmentID: input.environmentID ?? undefined }
       if (origin) await EnvironmentOrigin.assertAdmission(origin, target)
-      const resolved = await resolveSelection({ ...input, origin })
+      let resolved: Resolved | undefined
+      if (input.needs.execution && origin) {
+        if (input.needs.workspace && !input.workspaceID)
+          throw new WorkspaceCatalog.Unavailable({ workspaceID: "", message: "This operation requires a Workspace" })
+        const source = await Sources.open({
+          selection: {
+            scopeID: input.scopeID,
+            environmentID: input.environmentID,
+            workspaceID: input.workspaceID,
+            workspaceGeneration: input.workspaceGeneration,
+            ownerID: ownerID ?? (origin.value.kind === "session" ? origin.value.sessionID : origin.value.owner),
+          },
+          origin,
+          needs: { workspace: input.needs.workspace, execution: input.needs.execution },
+          signal: input.signal,
+        })
+        if (source)
+          resolved = result(
+            {
+              kind: "remote-execution",
+              source,
+              runtime: source.runtime,
+              executor: source.executor,
+              directory: source.directory,
+            },
+            source.release,
+          )
+      }
+      if (!resolved) {
+        const environment =
+          input.needs.execution && ownerID !== undefined ? await Environment.select({ ...input, ownerID }) : undefined
+        resolved = await resolveSelection(
+          { ...input, origin, environmentID: environment?.id ?? input.environmentID },
+          observe,
+        )
+      }
       try {
-        if (origin) await EnvironmentOrigin.assertAdmission(origin, target)
+        if (!observed) observe(resolved.release)
+        if (origin)
+          await EnvironmentOrigin.assertAdmission(origin, {
+            scopeID: input.scopeID,
+            environmentID: resolved.environment?.id ?? target.environmentID,
+          })
         input.signal?.throwIfAborted()
         resolved.origin = origin
         resolved.selection = {
           scopeID: input.scopeID,
-          environmentID: input.environmentID,
+          environmentID: resolved.environment?.id ?? input.environmentID,
           workspaceID: input.workspaceID,
           workspaceGeneration: input.workspaceGeneration,
         }
         return resolved
       } catch (error) {
-        await resolved.release()
-        throw error
+        return releaseAfterFailure(resolved.release, error)
       }
     }
     return origin ? EnvironmentOrigin.request(origin, perform) : perform()
@@ -150,6 +213,7 @@ export namespace EnvironmentResources {
 
   async function resolveSelection(
     input: Selection & { origin?: EnvironmentOrigin.Captured; needs: Needs; signal?: AbortSignal },
+    observeCleanup: (release: () => Promise<void>) => void,
   ): Promise<Resolved> {
     input.signal?.throwIfAborted()
     if (!input.needs.workspace && !input.needs.execution) return result({ kind: "none" })
@@ -238,6 +302,7 @@ export namespace EnvironmentResources {
       signal: input.signal,
     })
     try {
+      observeCleanup(use.release)
       const environment = await Environment.assertTarget(use.target, input.scopeID)
       if (active && !Environment.sameTarget(active.target, use.target))
         throw new Environment.Stale({ environmentID, message: "Workspace allocation changed during admission" })
@@ -274,8 +339,7 @@ export namespace EnvironmentResources {
         use.release,
       )
     } catch (error) {
-      await use.release()
-      throw error
+      return releaseAfterFailure(use.release, error)
     }
   }
 }

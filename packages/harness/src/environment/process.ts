@@ -58,6 +58,7 @@ export namespace EnvironmentProcess {
   export async function prepare(input: Input) {
     input.signal?.throwIfAborted()
     const environment = input.resources.environment
+    const source = input.resources.source
     const selectedOrigin = input.resources.origin
     if (!selectedOrigin)
       throw new Environment.Unavailable({
@@ -66,15 +67,18 @@ export namespace EnvironmentProcess {
       })
     const origin = selectedOrigin
     origin.assertCurrent()
-    if (!environment || !input.resources.runtime)
+    if ((!environment && !source) || !input.resources.runtime)
       throw new Environment.Unavailable({ environmentID: "", message: "Process requires resolved execution resources" })
     const command = ExecutionProtocol.Command.parse(input.command)
     const mount = input.resources.workspace?.activeMount
-    command.useRoots = [...new Set([command.cwd, ...command.useRoots, ...(mount ? [mount.path] : [])])]
+    command.useRoots = [
+      ...new Set([command.cwd, ...command.useRoots, ...(mount ? [mount.path] : []), ...(source?.useRoots ?? [])]),
+    ]
     const workspaces = [
       ...new Map(
         [
-          ...(input.resources.workspace ? [WorkspaceMounts.reference(input.resources.workspace)] : []),
+          ...(input.resources.workspace?.activeMount ? [WorkspaceMounts.reference(input.resources.workspace)] : []),
+          ...(source?.workspaces ?? []),
           ...(input.workspaces ?? []),
         ].map((reference) => [reference.id, reference]),
       ).values(),
@@ -121,7 +125,7 @@ export namespace EnvironmentProcess {
       if (finished) return
       const error = new Error({
         id: input.id,
-        environmentID: environment!.id,
+        environmentID: source?.target.environmentID ?? environment!.id,
         stage,
         message: reason instanceof globalThis.Error ? reason.message : String(reason),
         failure: WorkspaceErrors.failure(reason),
@@ -238,7 +242,8 @@ export namespace EnvironmentProcess {
           submission = EnvironmentExecution.start({
             id: input.id,
             scopeID: input.scopeID,
-            environmentID: environment!.id,
+            environmentID: source?.target.environmentID ?? environment!.id,
+            source,
             origin,
             command,
             intentDigest: input.intentDigest,

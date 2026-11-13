@@ -7,6 +7,8 @@ export namespace EnvironmentOrigin {
   export type Session = Schema.Session
   export const Current = Schema.Current
   export type Current = Schema.Current
+  export const Host = Schema.Host
+  export type Host = Extract<Current, { kind: "host" }>
   export const Info = Schema.Info
   export type Info = Schema.Info
   const originBrand: unique symbol = Symbol("Environment host origin")
@@ -26,6 +28,10 @@ export namespace EnvironmentOrigin {
     admission(origin: Readonly<Session>, target: Readonly<Target>): Promise<void>
     mutation(origin: Readonly<Session>): Promise<void>
   }
+  export interface HostAuthority {
+    admission(origin: Readonly<Host>, target: Readonly<Target>): Promise<void>
+    mutation(origin: Readonly<Host>): Promise<void>
+  }
   interface Request {
     origin: Captured
     store: ReturnType<typeof Storage.current>["store"]
@@ -35,7 +41,7 @@ export namespace EnvironmentOrigin {
   }
   const state = RuntimeContext.state(() => ({
     authority: undefined as SessionAuthority | undefined,
-    hosts: new Set<string>(),
+    hosts: new Map<string, HostAuthority | undefined>(),
     requests: new Set<Request>(),
   }))
   const captures = new WeakMap<object, Captured>()
@@ -77,12 +83,19 @@ export namespace EnvironmentOrigin {
     return captured
   }
 
-  export function registerHost(owner: string) {
+  export function registerHost(owner: string, authority?: HostAuthority) {
     RuntimeContext.assertCompositionOpen("Environment host origins")
     owner = Schema.Host.shape.owner.parse(owner)
     const runtime = RuntimeContext.current()
     if (state().hosts.has(owner)) throw new Error("Environment host origin is already registered")
-    state().hosts.add(owner)
+    state().hosts.set(
+      owner,
+      authority &&
+        Object.freeze({
+          admission: authority.admission.bind(authority),
+          mutation: authority.mutation.bind(authority),
+        }),
+    )
     return Object.freeze({
       capture(invocationID: string): Token {
         if (RuntimeContext.current() !== runtime || !state().hosts.has(owner))
@@ -144,11 +157,19 @@ export namespace EnvironmentOrigin {
       if (!authority) throw new Error("Environment Session origin authority is unavailable")
       if (origin.value.scopeID !== target.scopeID) throw new Error("Environment origin belongs to another Scope")
       await authority.admission(origin.value, target)
+    } else {
+      const authority = state().hosts.get(origin.value.owner)
+      if (authority) await authority.admission(origin.value, target)
     }
     origin.assertCurrent()
   }
 
   export async function assertMutation(origin: Readonly<Info>) {
+    if (origin.kind === "host") {
+      const authority = state().hosts.get(origin.owner)
+      if (authority) await authority.mutation(Object.freeze(Host.parse(origin)))
+      return
+    }
     if (origin.kind !== "session") return
     const authority = state().authority
     if (!authority) throw new Error("Environment Session origin authority is unavailable")

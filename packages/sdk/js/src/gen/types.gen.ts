@@ -13039,6 +13039,13 @@ export type EnvironmentExecutionInfo = {
     | {
         kind: "legacy-unknown"
       }
+  source?: {
+    version: 1
+    provider: string
+    target: EnvironmentTarget
+    binding: unknown
+  }
+  sourceObservation?: unknown
 }
 
 export type EnvironmentActivity = {

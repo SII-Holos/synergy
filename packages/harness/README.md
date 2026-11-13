@@ -18,6 +18,8 @@ Embedded tool admission uses `tool/policy-source`: a host can narrow visible and
 
 Initialized tools may declare `resourceNeeds(args)` for input-dependent Workspace or execution requirements. Those requirements augment static declarations and use the same resource admission, capability gate and release path. Directory-independent actions remain usable without allocating a Workspace; precise file operations retain their resolved-path permission requests.
 
+`environment/execution-source` owns finite external execution leases and strict retained observations without a local allocation mirror. Hosts drain its tracked callbacks and original cleanup before storage closes. Private Host checks, the early release-only resource observer and inspection-only allocation recovery retain their native owners. See [finite sources](../../docs/decisions/implemented/architecture/2026-11-13-register-finite-environment-execution-sources.md).
+
 The `environment` host entries own durable allocation and operation identities. Register providers before opening a Runtime; missing providers fail explicitly. See [Environments](../../docs/architecture/environments.md) for execution, checkpoint and recovery semantics.
 
 A provider's optional `withDeallocation()` holds its original physical ownership around release admission, resource finalization and catalog publication. The Environment owner retains one actual completion, rejects escaped or foreign-storage callbacks and drains an already started release even if the wrapper returns or fails early. See [native deallocation](../../docs/decisions/implemented/bug-fix/2026-11-12-retain-native-deallocation-claims-through-final-saving.md) and `test/environment/deallocation-owner.test.ts`.

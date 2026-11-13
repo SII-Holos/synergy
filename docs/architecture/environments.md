@@ -34,6 +34,14 @@ Recovery endpoints inspect existing operation identities and retry confirmed sav
 
 The [decision record](../decisions/implemented/architecture/2026-09-27-environment-allocation-identity.md) explains independent identity and reconciliation. Workspace authority remains defined by [Workspace and files](workspace-and-files.md).
 
+## Registered execution sources
+
+`EnvironmentExecutionSource` registers finite external execution ports during composition. Its private live leases retain the original Runtime, primary Store/options, artifact ports and native caller. Serialized source bindings and original observations support retained inspection rather than dispatch. Source-backed receipts use a strict version-three envelope; native version-two receipts keep their representation. Completed output remains readable through local artifact ownership. Hosts close the registered source before disposing its storage or transport.
+
+Lease release closes admission, drains accepted callbacks and retries the original cleanup after unknown acknowledgement. Source closure cannot discard unresolved resources or wait on its own callback. Remote preparation, execution, inspection and output callbacks run outside actual SQL transactions and snapshots; metadata owner checks remain valid within publishing transactions. New resolution rejects an actual readonly primary before entering the producer, while retained inspection remains available. Registered Host origins may recheck current admission and mutation authority at the native allocation and dispatch boundaries. `EnvironmentResources.resolve` supplies a frozen release-only cleanup facet immediately after acquisition and preserves both resolution and cleanup errors.
+
+`Environment.registerRecovery({ allocation: "inspect-only" })` preserves pending original allocations and retained admissions without resuming them. `reconcileInspection` observes the same original request; ordinary recovery keeps its existing resume behavior. Releasing allocations retain their original release path. Canonical paged Environment and execution inventories are metadata readers, not allocation or completion proof. See [finite execution sources](../decisions/implemented/architecture/2026-11-13-register-finite-environment-execution-sources.md).
+
 ## Execution and saving
 
 `EnvironmentExecution` persists an operation identity, input digest and allocation target before dispatch. Repeated submissions inspect the existing operation. Different inputs for an occupied operation identity fail. A missing executor receipt produces an unknown result, not a repeated command. Cancellation is persisted before transmission and requires executor confirmation.

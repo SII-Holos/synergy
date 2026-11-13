@@ -52,8 +52,10 @@ export namespace Environment {
     for (const release of consumers().values()) await release(info)
   }
 
-  export function registerRecovery() {
-    StorageRecovery.register("environment", recover)
+  export function registerRecovery(options: { allocation?: "inspect-only" } = {}) {
+    if (options.allocation !== undefined && options.allocation !== "inspect-only")
+      throw new Error("Unknown Environment allocation recovery mode")
+    StorageRecovery.register("environment", options.allocation === "inspect-only" ? recoverInspection : recover)
   }
 
   export async function get(id: string, scopeID: string): Promise<Info> {
@@ -62,6 +64,36 @@ export namespace Environment {
     const info = Info.parse(value)
     if (info.scopeID !== scopeID) throw new Storage.NotFoundError({ message: "Environment not found in this Scope" })
     return info
+  }
+
+  export async function hasState() {
+    return Storage.snapshot(async () => {
+      for (const prefix of [
+        ["environment"],
+        ["environment_use"],
+        ["environment_execution"],
+        ["environment_binding"],
+        ["environment_active"],
+        ["environment_execution_active"],
+      ])
+        if ((await Storage.queryKeys({ prefix, limit: 1 })).length) return true
+      return false
+    })
+  }
+
+  export function entries(): AsyncIterable<Info> {
+    const current = EnvironmentUseOwnership.captureStorage()
+    return (async function* () {
+      current()
+      for await (const row of Storage.records({ prefix: ["environment"], limit: 128 })) {
+        current()
+        const info = Info.parse(row.value)
+        if (row.key.length !== 2 || row.key[1] !== info.id)
+          throw new Error("Environment metadata belongs to another canonical address")
+        yield info
+      }
+      current()
+    })()
   }
 
   export async function list(scopeID: string): Promise<Info[]> {
@@ -223,7 +255,12 @@ export namespace Environment {
     await EnvironmentUseOwnership.authorize(input.ownership, "admission", selector)
     if (releasePreparations().has(id))
       throw new Busy({ environmentID: id, message: "Environment release owns resource admission" })
-    const info = await ensure(id, input.scopeID)
+    const admission = async () => {
+      input.signal?.throwIfAborted()
+      await EnvironmentUseOwnership.authorize(input.ownership, "admission", selector)
+      input.signal?.throwIfAborted()
+    }
+    const info = await ensure(id, input.scopeID, admission)
     input.signal?.throwIfAborted()
     const target = targetOf(info)
     if (input.capabilities.some((capability) => !info.allocation?.capabilities.includes(capability)))
@@ -571,6 +608,14 @@ export namespace Environment {
   }
 
   export async function reconcile(id: string, scopeID: string): Promise<Info> {
+    return reconcileOwned(id, scopeID, false)
+  }
+
+  export async function reconcileInspection(id: string, scopeID: string): Promise<Info> {
+    return reconcileOwned(id, scopeID, true)
+  }
+
+  async function reconcileOwned(id: string, scopeID: string, inspection: boolean): Promise<Info> {
     const info = await get(id, scopeID)
     // Recovery cannot retire a provider request still owned by this Runtime.
     if (providerRequests().has(id)) return info
@@ -594,6 +639,7 @@ export namespace Environment {
         )
       const status = await provider.inspect(requestOf(info))
       if (status.state === "pending") {
+        if (inspection && info.state === "allocating") return info
         if (info.state !== "allocating" || !provider.resume || (await uses(id)).length)
           return updateAllocation(info, "unknown")
         return updateAllocation(info, await provider.resume(requestOf(info)))
@@ -610,18 +656,27 @@ export namespace Environment {
     })
   }
 
-  async function recover(progress?: () => void) {
+  function recoverInspection(progress?: () => void) {
+    return recover(progress, true)
+  }
+
+  async function recover(progress?: () => void, inspection = false) {
     for (const key of await Storage.list(StoragePath.environmentActive())) {
       const [scopeID] = await Storage.readMany<string>([key])
       progress?.()
       if (!scopeID) continue
       for (const use of await uses(key[1])) {
-        if (use.kind === "admission" && use.ownership.kind !== "legacy-unknown" && use.ownerEpoch !== epoch())
+        if (
+          !inspection &&
+          use.kind === "admission" &&
+          use.ownership.kind !== "legacy-unknown" &&
+          use.ownerEpoch !== epoch()
+        )
           await releaseRecoveredAdmission(use, scopeID)
         progress?.()
       }
       try {
-        await reconcile(key[1], scopeID)
+        await reconcileOwned(key[1], scopeID, inspection)
       } catch {
         const info = await get(key[1], scopeID)
         if (info.state !== "releasing") await updateAllocation(info, "unknown")
@@ -675,13 +730,15 @@ export namespace Environment {
     )
   }
 
-  async function ensure(id: string, scopeID: string): Promise<Info> {
+  async function ensure(id: string, scopeID: string, admission: () => Promise<void>): Promise<Info> {
     const current = pending().get(id)
     if (current) {
       await get(id, scopeID)
-      return current
+      const info = await current
+      await admission()
+      return info
     }
-    const promise = allocate(id, scopeID)
+    const promise = allocate(id, scopeID, admission)
     pending().set(id, promise)
     try {
       return await promise
@@ -690,7 +747,8 @@ export namespace Environment {
     }
   }
 
-  async function allocate(id: string, scopeID: string): Promise<Info> {
+  async function allocate(id: string, scopeID: string, admission: () => Promise<void>): Promise<Info> {
+    await admission()
     let info = await get(id, scopeID)
     if (info.state === "ready") return info
     if (info.state !== "idle") info = await reconcile(id, scopeID)
@@ -704,6 +762,7 @@ export namespace Environment {
     return providerRequest(id, async () => {
       const requestID = `alloc_${randomUUID().replaceAll("-", "")}`
       info = await Storage.transaction(async () => {
+        await admission()
         await RuntimeMaintenance.assertAdmission()
         const latest = await get(id, scopeID)
         if (latest.state !== "idle")
@@ -716,9 +775,11 @@ export namespace Environment {
           allocation: { requestID, capabilities: [] },
         })
       })
+      await admission()
       const allocation = EnvironmentSchema.Allocation.parse(
         await EnvironmentProviders.get(info.provider).allocate(requestOf(info)),
       )
+      await admission()
       return updateAllocation(info, allocation)
     })
   }

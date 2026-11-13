@@ -78526,7 +78526,27 @@
                 "additionalProperties": false
               }
             ]
-          }
+          },
+          "source": {
+            "type": "object",
+            "properties": {
+              "version": {
+                "type": "number",
+                "const": 1
+              },
+              "provider": {
+                "type": "string",
+                "minLength": 1
+              },
+              "target": {
+                "$ref": "#/components/schemas/EnvironmentTarget"
+              },
+              "binding": {}
+            },
+            "required": ["version", "provider", "target", "binding"],
+            "additionalProperties": false
+          },
+          "sourceObservation": {}
         },
         "required": ["id", "scopeID", "target", "digest", "state", "outputCursor", "createdAt", "updatedAt", "origin"]
       },

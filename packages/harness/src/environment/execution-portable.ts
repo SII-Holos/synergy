@@ -68,7 +68,8 @@ export namespace EnvironmentExecutionPortable {
         : Count.parse(info.outputCursor) > Count.parse(info.status.cursor))
     )
       throw new Error("Portable Environment operation requires terminal receipt and complete saved output")
-    return { ...record, execution: { ...info, origin: info.origin } }
+    if (record.schemaVersion === 3) return { ...record, execution: { ...record.execution, origin: info.origin } }
+    return { ...record, execution: { ...record.execution, origin: info.origin } }
   }
 
   export function parse(key: readonly string[], value: unknown, input: Owner): Completed {
