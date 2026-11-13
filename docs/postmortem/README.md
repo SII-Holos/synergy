@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0184](0184-observer-cancellation-reached-accepted-native-retirement.md)
+
 - [0183](0183-service-path-alias-changed-native-recovery-identity.md)
 
 - [0182](0182-process-sampling-raced-original-close-completion.md)

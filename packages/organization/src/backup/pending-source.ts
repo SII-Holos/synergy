@@ -100,8 +100,7 @@ export namespace OrganizationPendingSource {
     const signal = input.signal
     const reference = source.reference
     let open = true
-    const assert = () => {
-      signal?.throwIfAborted()
+    const assertNative = () => {
       source.assert()
       if (
         !open ||
@@ -110,6 +109,10 @@ export namespace OrganizationPendingSource {
         !primary.store.readiness.readerReady
       )
         fail("original Target callback or primary changed")
+    }
+    const assert = () => {
+      signal?.throwIfAborted()
+      assertNative()
     }
     const verifyTarget = (inventory = true) =>
       targetRuntime.run(async () => {
@@ -186,7 +189,7 @@ export namespace OrganizationPendingSource {
             await compareNamespace(namespace, keys, assert, signal)
             await verifyTarget()
             const admission = Object.freeze({ kind: "verified-pending-source" })
-            admissions.set(admission, { reference, assert })
+            admissions.set(admission, { reference, assert: assertNative })
             return RuntimeMaintenance.withRetirementSource({ evidence: admission, signal }, (lease) =>
               RuntimeMaintenance.withFrozen(
                 lease,
@@ -209,26 +212,10 @@ export namespace OrganizationPendingSource {
                           if (hash(actual) !== hash(reference)) fail("original physical Source reference changed")
                           assert()
                           const referenceHash = Retirement.marker(reference).referenceHash
-                          try {
-                            await Storage.transaction(
-                              () => RuntimeMaintenance.reserveRetirement(lease, referenceHash),
-                              {
-                                commitGuard: assert,
-                              },
-                            )
-                          } catch (error) {
-                            const reserved = await RuntimeMaintenance.retirement(
-                              reference.current.maintenance.maintenanceID,
-                            )
-                            if (
-                              !reserved ||
-                              reserved.referenceHash !== referenceHash ||
-                              hash(reserved.source) !== hash(reference.current.maintenance)
-                            )
-                              throw error
-                          }
-                          completed = await Retirement.complete(reference)
-                          return completed
+                          return RuntimeMaintenance.withRetirementCommit({ lease, referenceHash }, async () => {
+                            completed = await Retirement.complete(reference)
+                            return completed
+                          })
                         }),
                     ),
                   ),

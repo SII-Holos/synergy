@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks"
 import { ObservabilityMetrics } from "../observability/metrics"
 import { StorageBusyError, StorageClosedError } from "./errors"
+import { storageAdmission as admission, nativeAdmissionGuard } from "./queue-admission"
 
 const ADMISSION_DEADLINE_MS = 30_000
 export const MAX_PENDING = 1024
@@ -48,8 +49,6 @@ export interface StorageQueueOptions {
   priority?: "foreground" | "background"
   onWait?(waiting: boolean): void
 }
-
-const admission = new AsyncLocalStorage<StorageQueueOptions>()
 
 export function storageQueueSignal() {
   return admission.getStore()?.signal
@@ -99,6 +98,12 @@ export class StorageQueue {
     if (this.waiting.length + Number(this.active) >= MAX_PENDING)
       return Promise.reject(new StorageBusyError(`Authoritative storage queue is full (${this.name})`))
     const inherited = admission.getStore()
+    const assertNative = inherited?.[nativeAdmissionGuard]
+    try {
+      assertNative?.()
+    } catch (error) {
+      return Promise.reject(error)
+    }
     const onWait = options.onWait ?? inherited?.onWait
     const signal =
       options.signal && inherited?.signal
@@ -147,8 +152,14 @@ export class StorageQueue {
           const startedAt = performance.now()
           void (async () => {
             try {
+              assertNative?.()
               // Admission's wait cap ends here; only a caller's deadline bounds later admissions.
-              resolve(await admission.run({ deadline: requestDeadline, signal, priority, onWait }, body))
+              resolve(
+                await admission.run(
+                  { deadline: requestDeadline, signal, priority, onWait, [nativeAdmissionGuard]: assertNative },
+                  body,
+                ),
+              )
             } catch (error) {
               reject(error)
             } finally {

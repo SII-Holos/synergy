@@ -16,6 +16,8 @@ The Kernel consumes that admission through a composition-registered owning inspe
 
 Reserve the original reference before native effects. Existing reservation retry stays on the original retirement completion path. After commitment, retain accepted work through file completion and Store/process-lock closure. An observer abort is treated as known completion only once the actual physical receipt exists; other validation, commit and native failures remain errors. Target policy reconstruction, fresh publication and readiness remain under their existing owners and original receipts.
 
+`RuntimeMaintenance.withRetirementCommit()` owns that reservation transaction for the original recovered lease inside its exact frozen callback. A fixed reconciliation read verifies the native binding, original current operation/request and complete canonical reservation before admitting any completion callback. An unknown result without that row remains unknown; another reservation is rejected. The accepted callback uses a private Storage admission scope with the original native lifetime guard, independently of observer cancellation. Parent and sibling admission keep their original signals, and an escaped completion scope cannot admit later storage work. The Pending owner retains and drains the actual completion promise; only its genuine physical receipt establishes success.
+
 ## Alternatives considered
 
 **Reusing ordinary begin** would certify an empty new process without reconciling the original native writer.
@@ -26,10 +28,12 @@ Reserve the original reference before native effects. Existing reservation retry
 
 **Running ordinary startup first** would load authority or attempt writes before the recovery hold was verified.
 
+**Keep observer cancellation on accepted native work.** A cancelled artifact or queue admission can prevent the first completion read after reservation, leaving the permanently accepted operation unfinished. Cancellation still applies before commitment; the original native owner completes accepted work afterward.
+
 ## Consequences
 
 This closes the pre-reservation process-crash window for the service source owner. It does not establish nonempty member/external writer coverage, Library recovery, execution Continue lineage or complete CLI recovery. All unsupported facts retain their original blockers.
 
 ## Verification
 
-Organization test/backup/pending-retirement.test.ts uses real child processes, actual H0 Target installation and inactive material, a fixed H1 capture and fsynced Reference. It covers exits both before reservation and after reservation but before the first native fence effect; same immutable operation/hash/key identity; copied and still-live Homes; bare selector refusal; unknown native-call facts; precommit cancellation; accepted fence drainage after postcommit observer abort; cold receipt retry; actual policy/publication/native completion and ordinary ready without key generation. Adjacent current-authority, source-retirement and service-maintenance suites remain green.
+Organization `test/backup/pending-retirement.test.ts` uses real child processes, actual H0 Target installation and inactive material, a fixed H1 capture and fsynced Reference. It covers exits before reservation and after reservation but before the first native fence effect, immutable identities, live-Home exclusion, unsupported facts, postcommit observer cancellation with Source-close drainage, cold receipt retry and actual publication/readiness. `test/backup/pending-retirement-commit.test.ts` verifies unknown commits before and after actual SQL publication, unchanged parent cancellation, expired owned scopes and a genuine native failure followed by same-reference cold completion. Harness `test/storage/queue-admission.test.ts` retains ordinary cancellation, deadlines, priority and caller-context semantics. This dedicated owner does not generalize warm Current retirement or unfinished facet streams.

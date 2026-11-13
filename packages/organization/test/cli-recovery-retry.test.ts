@@ -12,7 +12,7 @@ import { preparedFixture } from "./support/recovery-administration"
 test("public recover resumes its durable Reference after the original pre-reservation call fails", async () => {
   await using f = await preparedFixture()
   const lost = new Error("Original process left after durable selection before retirement reservation")
-  using stopped = spyOn(RuntimeMaintenance, "reserveRetirement").mockImplementationOnce(() => {
+  using stopped = spyOn(RuntimeMaintenance, "withRetirementCommit").mockImplementationOnce(() => {
     throw lost
   })
   await expect(Recovery.recover(f.input)).rejects.toBe(lost)

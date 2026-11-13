@@ -10,6 +10,7 @@ import { NativeNamespaceIdentity } from "../lifecycle/namespace-identity"
 import { ServerProcessLock } from "../util/server-process-lock"
 import { Lock } from "../util/lock"
 import { Storage } from "./storage"
+import { storageAdmission, nativeAdmissionGuard } from "./queue-admission"
 import { StorageMutationGuard } from "./mutation-guard"
 import { StorageCheckpoint } from "./checkpoint"
 import { RuntimeMaintenanceSchema as Schema } from "./runtime-maintenance-schema"
@@ -142,7 +143,14 @@ export namespace RuntimeMaintenance {
     store: Storage.Handle["store"]
     maintenanceID: string
     cohortHash: string
-    resumed?: { source: Info; referenceHash: string; assert(): void }
+    resumed?: {
+      source: Info
+      referenceHash: string
+      assert(): void
+      assertNative(): void
+      verifyNative(): Promise<void>
+      observer?: AbortSignal
+    }
     homeUpgrade?: {
       binding: HomeUpgradeBinding
       native: HomeUpgradeNative
@@ -159,6 +167,7 @@ export namespace RuntimeMaintenance {
     revision: number
     tailRevision: number
   }
+  const retirementCommit = RuntimeContext.createAsyncContext<{ lease: Lease; held: LeaseIdentity; open: boolean }>()
   const leases = new WeakMap<Lease, LeaseIdentity>()
   const receipts = new WeakMap<DrainReceipt, ReceiptIdentity>()
   const state = RuntimeContext.state(() => ({
@@ -310,7 +319,9 @@ export namespace RuntimeMaintenance {
     if (!value || value.runtime !== RuntimeContext.current() || value.store !== Storage.current().store)
       throw new Blocked({ message: "Maintenance lease belongs to another Runtime or namespace" })
     if (value.cohortHash !== cohortHash()) throw new Blocked({ message: "Maintenance writer cohort changed" })
-    value.resumed?.assert()
+    const committed = retirementCommit.getStore()
+    if (committed?.open && committed.lease === lease && committed.held === value) value.resumed?.assertNative()
+    else value.resumed?.assert()
     value.homeUpgrade?.binding.assert()
     value.sourcePreparation?.binding.assert()
     return value
@@ -751,10 +762,10 @@ export namespace RuntimeMaintenance {
     const writer = await ServerProcessLock.currentOwnership()
     const files = HomeOwnershipFile.open({ root: runtime.host.root, env: runtime.host.env, selected: marker })
     let open = true
-    const assert = () => {
-      signal?.throwIfAborted()
+    const assertNative = () => {
       if (
         !open ||
+        source.cohortHash !== cohortHash() ||
         RuntimeContext.current() !== runtime ||
         runtime.storage !== primary ||
         Storage.current().store !== store ||
@@ -777,15 +788,8 @@ export namespace RuntimeMaintenance {
     }
     const artifacts = primary.artifactDirectory
     const lease: Lease = Object.freeze({ maintenanceID: source.maintenanceID, purpose: source.purpose })
-    leases.set(lease, {
-      runtime,
-      store,
-      maintenanceID: source.maintenanceID,
-      cohortHash: source.cohortHash,
-      resumed: { source, referenceHash: marker.referenceHash, assert },
-    })
-    const verify = async () => {
-      assert()
+    const verifyNative = async () => {
+      assertNative()
       await ServerProcessLock.verifyOwnership(writer)
       if (
         (await files.physicalHash()) !== marker.physicalHash ||
@@ -793,7 +797,7 @@ export namespace RuntimeMaintenance {
       )
         throw new Blocked({ message: "Cold retirement requires its original unfenced physical Home" })
       await Storage.snapshot(async (tx) => {
-        if (digest(await requireCurrent(tx, lease)) !== digest(source))
+        if (digest(await current(tx)) !== digest(source))
           throw new Blocked({ message: "Cold retirement frozen operation changed" })
         const request = await read(
           tx,
@@ -823,8 +827,24 @@ export namespace RuntimeMaintenance {
             throw new Blocked({ message: "Cold retirement has no original owner drainage" })
         }
       })
+      assertNative()
+    }
+    const assert = () => {
+      signal?.throwIfAborted()
+      assertNative()
+    }
+    const verify = async () => {
+      assert()
+      await verifyNative()
       assert()
     }
+    leases.set(lease, {
+      runtime,
+      store,
+      maintenanceID: source.maintenanceID,
+      cohortHash: source.cohortHash,
+      resumed: { source, referenceHash: marker.referenceHash, assert, assertNative, verifyNative, observer: signal },
+    })
     try {
       await verify()
       const currentContext = context(lease, signal)
@@ -882,6 +902,96 @@ export namespace RuntimeMaintenance {
       },
       { commitGuard: assert },
     )
+  }
+  export async function withRetirementCommit<T>(
+    input: { lease: Lease; referenceHash: string },
+    body: () => Promise<T>,
+  ): Promise<T> {
+    if (Storage.inTransaction())
+      throw new Blocked({ message: "Retirement completion must own its original commit boundary" })
+    const lease = input.lease
+    const held = identity(lease)
+    const native = held.resumed
+    const frozen = frozenWork.getStore()
+    const referenceHash = Hash.parse(input.referenceHash)
+    if (!native || native.referenceHash !== referenceHash || held.sourcePreparation || held.homeUpgrade)
+      throw new Blocked({ message: "Retirement completion requires its original opaque source and Reference" })
+    const assertNative = () => {
+      if (
+        leases.get(lease) !== held ||
+        held.runtime !== RuntimeContext.current() ||
+        held.store !== Storage.current().store ||
+        held.cohortHash !== cohortHash() ||
+        !frozen?.open ||
+        frozenWork.getStore() !== frozen ||
+        frozen.lease !== lease ||
+        frozen.runtime !== held.runtime ||
+        frozen.store !== held.store
+      )
+        throw new Blocked({ message: "Retirement completion lost its original frozen native callback" })
+      native.assertNative()
+    }
+    assertNative()
+    let failed = false
+    let failure: unknown
+    try {
+      await mutate(() => reserveRetirement(lease, referenceHash))
+    } catch (error) {
+      const observer =
+        (frozen!.signal.aborted && error === frozen!.signal.reason) ||
+        (native.observer?.aborted && error === native.observer.reason)
+      if (!(error instanceof Storage.CommitUnknownError) && !observer) throw error
+      failed = true
+      failure = error
+    }
+    const reservation = await storageAdmission.run({ [nativeAdmissionGuard]: assertNative }, async () => {
+      assertNative()
+      await native.verifyNative()
+      return Storage.snapshot(async (tx) => {
+        assertNative()
+        const reserved = await Retirements.read(held.maintenanceID)
+        if (!reserved) return
+        const request = await read(
+          tx,
+          z.strictObject({ maintenanceID: ID, requestHash: Hash }),
+          requestKey(native.source.requestID),
+        )
+        if (
+          reserved.referenceHash !== referenceHash ||
+          digest(reserved.source) !== digest(native.source) ||
+          digest(await current(tx)) !== digest(native.source) ||
+          request?.maintenanceID !== held.maintenanceID ||
+          request.requestHash !== native.source.requestHash
+        )
+          throw new Blocked({
+            message: "Retirement completion has another canonical reservation or original operation",
+          })
+        assertNative()
+        return reserved
+      })
+    })
+    if (!reservation) {
+      if (failed) throw failure
+      throw new Blocked({ message: "Retirement completion has no committed original reservation" })
+    }
+    const accepted = { lease, held, open: true }
+    return retirementCommit.run(accepted, async () => {
+      const assert = () => {
+        if (!accepted.open || retirementCommit.getStore() !== accepted)
+          throw new Blocked({ message: "Accepted retirement completion callback has ended" })
+        assertNative()
+      }
+      try {
+        return await storageAdmission.run({ [nativeAdmissionGuard]: assert }, async () => {
+          assert()
+          const result = await body()
+          assert()
+          return result
+        })
+      } finally {
+        accepted.open = false
+      }
+    })
   }
   async function requireRestoration(tx: StoreTransaction, target: HomeRestoration.Info) {
     const retained = await read(tx, Restoration, restorationKey(target.installationID))
