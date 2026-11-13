@@ -185,7 +185,7 @@ function validateSkill(uploadID: string) {
 }
 
 export namespace OrganizationKnowledge {
-  export async function history(reader: Publications.HistoricalSource) {
+  export async function history(reader: Publications.HistoricalSource, append?: (key: string[]) => void) {
     const bad = (message: string): never => fail("PROTOCOL_MISMATCH", "Historical knowledge " + message)
     const currentOrgID = reader.read(Protocol.Deployment, OrganizationKeys.deployment()).orgID
     const account = (orgID: string, accountID: string) => {
@@ -244,6 +244,7 @@ export namespace OrganizationKnowledge {
           }
         } else if (release.skill) bad("material claims a Skill manifest")
         reader.accept(row.key)
+        append?.(row.key)
       }
       if (count !== item.latestVersion) bad("item version history is incomplete")
       reader.accept(keys.item(item.orgID, item.itemID))
@@ -252,6 +253,7 @@ export namespace OrganizationKnowledge {
         if (reader.read(z.strictObject({ itemID: Identity.ID }), index).itemID !== item.itemID)
           bad("item index changed")
         reader.accept(index)
+        append?.(index)
       }
     }
     for (const row of reader.entries(["organization-knowledge", "receipts"])) {
@@ -272,6 +274,7 @@ export namespace OrganizationKnowledge {
       )
         bad("publication receipt changed its original release")
       reader.accept(row.key)
+      append?.(row.key)
     }
     for (const row of reader.entries(["organization-knowledge", "releases"])) {
       const release = Release.parse(row.value)

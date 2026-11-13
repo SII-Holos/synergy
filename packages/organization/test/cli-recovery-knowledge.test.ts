@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test"
+import { expect, spyOn, test } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { createHash } from "node:crypto"
@@ -11,6 +11,11 @@ import {
 import { openOrganizationService, openOrganizationRecovery } from "../src/service"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { RuntimeMaintenance } from "@ericsanchezok/synergy-harness/storage/runtime-maintenance"
+import { AuthorityJournal } from "@ericsanchezok/synergy-harness/storage/authority-journal"
+import { StoreTransaction } from "@ericsanchezok/synergy-harness/storage/transactional-store"
+import { OrganizationRecoveryAdministration as Recovery } from "../src/backup/administration-recovery"
+import { OrganizationRecoveryWriters as Writers } from "../src/backup/writers"
+import { currentPolicyKey, OrganizationCurrentPolicyReceipt } from "../src/backup/policy-records"
 import { preparedFixture } from "./support/recovery-administration"
 import { password } from "./support/organization"
 
@@ -327,27 +332,186 @@ test("rehashed publication metadata cannot replace verification of the complete 
   await rejected(fixture.f, /file checksum does not match/)
 }, 30_000)
 
-test("a new H1 immutable release using old sealed bytes still blocks before Source4", async () => {
-  await using fixture = await knowledgeFixture()
-  const { f } = fixture
-  const material = fixture.original.published[0]
-  if (!material) throw new Error("Original material is absent")
-  await f.source.restart()
-  const http = await client(f.source.service, "https://organization.example", "H1 retry password")
-  const published = await http.request(
-    "POST",
-    "/knowledge",
-    JSON.stringify({
+async function newH1ReleaseFixture() {
+  const fixture = await knowledgeFixture()
+  try {
+    const { f } = fixture
+    const material = fixture.original.published[0]
+    if (!material) throw new Error("Original material is absent")
+    await f.source.restart()
+    const http = await client(f.source.service, "https://organization.example", "H1 retry password")
+    const publication = Knowledge.Publish.parse({
       requestID: "new-after-h0",
       itemID: "new-after-h0",
       expectedRevision: 0,
       uploadID: material.uploadID,
       title: "New H1 content using old bytes",
       kind: "material",
-    }),
+    })
+    const published = await http.request("POST", "/knowledge", JSON.stringify(publication))
+    expect(published.status).toBe(200)
+    const release = Knowledge.Release.parse(await published.json())
+    expect(release.version).toBe(1)
+    await f.source.service.close()
+    return { ...fixture, material, publication, release }
+  } catch (error) {
+    await fixture[Symbol.asyncDispose]()
+    throw error
+  }
+}
+
+test("public recover adopts a new H1 immutable release using the original H0 sealed bytes", async () => {
+  await using fixture = await newH1ReleaseFixture()
+  const { f, material, publication, release } = fixture
+  const recovered = await f.invoke()
+  expect(recovered.code, recovered.stderr).toBe(0)
+  expect(JSON.parse(recovered.stdout)).toMatchObject({ state: "ready", executionEnabled: false })
+  expect((await Bun.file(path.join(f.input.sourceHome, ".synergy", "home-ownership.json")).json()).schemaVersion).toBe(
+    4,
   )
-  expect(published.status).toBe(200)
-  expect(Knowledge.Release.parse(await published.json()).version).toBe(1)
-  await f.source.service.close()
-  await rejected(f, /H0 facts|incomplete H1/)
+  for (let reopen = 0; reopen < 2; reopen++) {
+    await using target = await openOrganizationService({ home: f.input.home })
+    expect(
+      (
+        await target.fetch(
+          new Request(f.input.publicOrigin + "/org/v1/auth/login", {
+            method: "POST",
+            headers: { origin: f.input.publicOrigin, "content-type": "application/json" },
+            body: JSON.stringify({ loginName: "owner", password }),
+          }),
+        )
+      ).status,
+    ).toBe(401)
+    const restored = await client(target, f.input.publicOrigin, "H1 retry password")
+    const version = await restored.request("GET", `/knowledge/${release.itemID}/versions/${release.version}`)
+    expect(version.status).toBe(200)
+    expect(Knowledge.Release.parse(await version.json())).toEqual(release)
+    const receipt = await restored.request("POST", "/knowledge/publication-receipts", JSON.stringify(publication))
+    expect(receipt.status).toBe(200)
+    expect(Knowledge.PublicationReceipt.parse(await receipt.json())).toEqual({ state: "published", release })
+    const content = await restored.request(
+      "GET",
+      `/knowledge/${release.itemID}/versions/${release.version}/files/${material.file.fileID}/content`,
+    )
+    expect(content.status).toBe(200)
+    const bytes = new Uint8Array(await content.arrayBuffer())
+    expect(bytes).toEqual(material.bytes)
+    expect(createHash("sha256").update(bytes).digest("hex")).toBe(material.file.sha256)
+  }
+  expect(await f.materialHash()).toBe(f.originalKey)
+}, 30_000)
+
+test("knowledge metadata finalization rolls back skipped and caught writes before exact unknown retry", async () => {
+  await using fixture = await newH1ReleaseFixture()
+  const { f, release } = fixture
+  const policyKey = currentPolicyKey(f.target.installationID)
+  const releaseKey = [
+    "organization-knowledge",
+    "releases",
+    release.orgID,
+    release.itemID,
+    String(release.version).padStart(16, "0"),
+  ]
+  async function held() {
+    await using target = await openOrganizationRecovery({ home: f.input.home })
+    return await target.run(async () => {
+      const [policy, metadata] = await Storage.readMany([policyKey, releaseKey])
+      return {
+        policy,
+        metadata,
+        checkpoint: await AuthorityJournal.head(),
+        phase: (await RuntimeMaintenance.status())?.phase,
+      }
+    })
+  }
+  const original = await held()
+  const publish = Writers.publishKnowledgeDelta,
+    seal = Writers.sealPreflight
+  const omitted = { calls: 0, caught: 0 }
+  {
+    using missing = spyOn(Writers, "publishKnowledgeDelta").mockImplementation(async () => {
+      omitted.calls++
+    })
+    using swallowed = spyOn(Writers, "sealPreflight").mockImplementation(async (tx) => {
+      try {
+        await seal(tx)
+      } catch {
+        omitted.caught++
+      }
+    })
+    await expect(Recovery.recover(f.input)).rejects.toThrow()
+  }
+  expect(omitted).toEqual({ calls: 1, caught: 1 })
+  expect(await held()).toEqual(original)
+  expect((await Bun.file(path.join(f.input.sourceHome, ".synergy", "home-ownership.json")).json()).schemaVersion).toBe(
+    4,
+  )
+  const write = StoreTransaction.prototype.write
+  const failure = new Error("Last immutable release write failed after its actual staged effect")
+  const caught = { writes: 0, publisher: 0, seal: 0 }
+  {
+    using interrupted = spyOn(StoreTransaction.prototype, "write").mockImplementation(async function (
+      this: StoreTransaction,
+      ...args: Parameters<typeof write>
+    ) {
+      await write.apply(this, args)
+      if (JSON.stringify(args[0]) === JSON.stringify(releaseKey)) {
+        caught.writes++
+        throw failure
+      }
+    })
+    using swallowed = spyOn(Writers, "publishKnowledgeDelta").mockImplementation(async (tx) => {
+      try {
+        await publish(tx)
+      } catch (error) {
+        if (error !== failure) throw error
+        expect((await tx.readMany([releaseKey]))[0]).toMatchObject(release)
+        caught.publisher++
+      }
+    })
+    using ignored = spyOn(Writers, "sealPreflight").mockImplementation(async (tx) => {
+      try {
+        await seal(tx)
+      } catch {
+        caught.seal++
+      }
+    })
+    await expect(Recovery.recover(f.input)).rejects.toThrow()
+  }
+  expect(caught).toEqual({ writes: 1, publisher: 1, seal: 1 })
+  expect(await held()).toEqual(original)
+  const transaction = RuntimeMaintenance.restorationTransaction
+  const lost = new Error("Committed H1 metadata acknowledgement was lost")
+  const observed = { committed: false }
+  {
+    using unknown = spyOn(RuntimeMaintenance, "restorationTransaction").mockImplementation(
+      async <T>(
+        input: Parameters<typeof transaction>[0],
+        body: (tx: StoreTransaction) => Promise<T>,
+        options?: Parameters<typeof transaction>[2],
+      ) => {
+        const result = await transaction(input, body, options)
+        if (!observed.committed && (await Storage.readMany([policyKey]))[0] !== undefined) {
+          observed.committed = true
+          throw lost
+        }
+        return result
+      },
+    )
+    await expect(Recovery.recover(f.input)).rejects.toBe(lost)
+  }
+  expect(observed.committed).toBe(true)
+  const retained = await held()
+  expect(retained.phase).toBe("recovery-held")
+  expect(retained.metadata).toMatchObject(release)
+  expect(OrganizationCurrentPolicyReceipt.parse(retained.policy).checkpoint).toEqual(retained.checkpoint)
+  const retried = await f.invoke()
+  expect(retried.code, retried.stderr).toBe(0)
+  expect(JSON.parse(retried.stdout)).toMatchObject({ state: "ready", executionEnabled: false })
+  expect(await f.materialHash()).toBe(f.originalKey)
+  await using target = await openOrganizationService({ home: f.input.home })
+  const http = await client(target, f.input.publicOrigin, "H1 retry password")
+  const version = await http.request("GET", `/knowledge/${release.itemID}/versions/${release.version}`)
+  expect(version.status).toBe(200)
+  expect(Knowledge.Release.parse(await version.json())).toEqual(release)
 }, 30_000)

@@ -63,11 +63,13 @@ export namespace OrganizationRecovery {
             fail("publication receipt belongs to another original recovery")
           await AuthorityJournal.adopt(tx, evidence)
           assert()
+          await OrganizationRecoveryWriters.publishKnowledgeDelta(tx)
           await OrganizationRecoveryWriters.sealPreflight(tx)
           return receipt
         }
         await AuthorityJournal.adopt(tx, evidence)
         assert()
+        await OrganizationRecoveryWriters.publishKnowledgeDelta(tx)
         const receipt = Receipt.parse({
           version: 1,
           target: target.reference,

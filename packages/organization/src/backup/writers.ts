@@ -50,7 +50,10 @@ type HistoryIndex = Pick<Inventory, "database" | "assertTarget" | "historyComple
 type Frame = Inventory & { target: Reference; namespaceHash: string }
 const inspections = new WeakMap<OrganizationRecoveryWriters.Inspection, Frame>()
 const preflights = RuntimeContext.createAsyncContext<Frame>()
-const preflightSeals = new WeakMap<StoreTransaction, { frame: Frame; complete: boolean; failed: boolean }>()
+const preflightSeals = new WeakMap<
+  StoreTransaction,
+  { frame: Frame; complete: boolean; failed: boolean; sealed: boolean }
+>()
 const sealed = new WeakMap<StoreTransaction, { frame: Frame; failed: boolean }>()
 const mutations = RuntimeContext.createAsyncContext<{
   frame: Frame
@@ -356,7 +359,7 @@ function historicalReader(selected: HistoryIndex): Record.HistoricalReader {
 function inventoryDatabase(filename: string) {
   const database = new Database(filename)
   database.exec(
-    "PRAGMA journal_mode=OFF; PRAGMA temp_store=FILE; PRAGMA cache_size=-2048; CREATE TABLE records(key TEXT PRIMARY KEY,value TEXT NOT NULL,mode TEXT NOT NULL); CREATE TABLE artifacts(key TEXT PRIMARY KEY,sha256 TEXT NOT NULL,size INTEGER NOT NULL,location TEXT NOT NULL); CREATE TABLE blobs(sha256 TEXT PRIMARY KEY,size INTEGER NOT NULL); CREATE TABLE verified(key TEXT PRIMARY KEY,location TEXT NOT NULL,pack TEXT NOT NULL); CREATE TABLE target_blobs(location TEXT PRIMARY KEY); CREATE TABLE history(key TEXT PRIMARY KEY); CREATE TABLE history_groups(key TEXT PRIMARY KEY,digest TEXT NOT NULL); CREATE TABLE history_artifacts(key TEXT PRIMARY KEY)",
+    "PRAGMA journal_mode=OFF; PRAGMA temp_store=FILE; PRAGMA cache_size=-2048; CREATE TABLE records(key TEXT PRIMARY KEY,value TEXT NOT NULL,mode TEXT NOT NULL); CREATE TABLE artifacts(key TEXT PRIMARY KEY,sha256 TEXT NOT NULL,size INTEGER NOT NULL,location TEXT NOT NULL); CREATE TABLE blobs(sha256 TEXT PRIMARY KEY,size INTEGER NOT NULL); CREATE TABLE verified(key TEXT PRIMARY KEY,location TEXT NOT NULL,pack TEXT NOT NULL); CREATE TABLE target_blobs(location TEXT PRIMARY KEY); CREATE TABLE history(key TEXT PRIMARY KEY); CREATE TABLE history_groups(key TEXT PRIMARY KEY,digest TEXT NOT NULL); CREATE TABLE history_artifacts(key TEXT PRIMARY KEY); CREATE TABLE history_appends(key TEXT PRIMARY KEY)",
   )
   return database
 }
@@ -375,6 +378,7 @@ async function validatePublishedHistory(selected: HistoryIndex, stream: (key: st
     "SELECT sha256,size FROM artifacts WHERE key=?",
   )
   using acceptedArtifact = selected.database.query("INSERT OR IGNORE INTO history_artifacts VALUES(?)")
+  using appended = selected.database.query("INSERT OR IGNORE INTO history_appends VALUES(?)")
   const history: OrganizationPublications.HistoricalSource = {
     ...reader,
     accept(key) {
@@ -416,7 +420,9 @@ async function validatePublishedHistory(selected: HistoryIndex, stream: (key: st
     },
   }
   OrganizationPublications.historicalRequests(history)
-  await OrganizationKnowledge.history(history)
+  await OrganizationKnowledge.history(history, (key) => {
+    appended.run(JSON.stringify(key))
+  })
   await OrganizationArtifacts.history(history)
   using artifacts = selected.database.query<{ key: string }, []>("SELECT key FROM artifacts ORDER BY key")
   using known = selected.database.query<{ key: string }, [string]>("SELECT key FROM history_artifacts WHERE key=?")
@@ -560,30 +566,67 @@ export namespace OrganizationRecoveryWriters {
   }
   export function withPreflight<T>(input: Omit<Input, "sources">, body: () => Promise<T>) {
     return withInventory({ ...input, sources: [] }, "preflight", async (selected) => {
-      await assertInventoryMatches(selected)
+      await assertInventoryMatches(selected, { allowMissingKnowledge: true })
       return preflights.run(selected, body)
     })
   }
-  export async function sealPreflight(tx: StoreTransaction) {
+  async function preflightTransaction(tx: StoreTransaction) {
     const selected = preflights.getStore()
     if (!selected || !Storage.inWriteTransaction() || Storage.current().transaction !== tx)
       blocked("missing original preflight transaction")
+    selected.assert()
     const previous = preflightSeals.get(tx)
     if (previous && (previous.frame !== selected || previous.failed)) blocked("changed artifact preflight transaction")
-    const seal = previous ?? { frame: selected, complete: false, failed: false }
-    if (!previous) {
-      preflightSeals.set(tx, seal)
-      tx.addMutationGuard(() => {
-        seal.failed = true
-        blocked("writes after final artifact preflight")
-      })
-    }
+    const seal = previous ?? { frame: selected, complete: false, failed: false, sealed: false }
+    if (!previous) preflightSeals.set(tx, seal)
     await Storage.transaction(async () => {}, {
       commitGuard() {
         selected.assert()
         if (!seal.complete || seal.failed) blocked("failed final artifact preflight")
       },
     })
+    return { selected, seal }
+  }
+  export async function publishKnowledgeDelta(tx: StoreTransaction) {
+    const { selected, seal } = await preflightTransaction(tx)
+    try {
+      if (seal.sealed) blocked("knowledge publication after final preflight")
+      await assertInventoryMatches(selected, { allowMissingKnowledge: true })
+      using rows = selected.database.query<{ key: string; value: string }, [string]>(
+        "SELECT records.key,records.value FROM history_appends JOIN records USING(key) WHERE key>? ORDER BY key LIMIT 128",
+      )
+      let after = ""
+      while (true) {
+        selected.assert()
+        const page = rows.all(after)
+        if (!page.length) break
+        const keys = page.map((row) => z.array(z.string()).parse(JSON.parse(row.key)))
+        const values = await tx.readMany(keys)
+        for (const [index, row] of page.entries()) {
+          selected.assert()
+          const key = keys[index]
+          if (!key) blocked("incomplete knowledge metadata page")
+          const value = JSON.parse(row.value)
+          if (values[index] === undefined) await tx.write(key, value)
+          else if (hash(values[index]) !== hash(value)) blocked("changed immutable knowledge metadata")
+          after = row.key
+        }
+      }
+      await assertInventoryMatches(selected)
+    } catch (error) {
+      seal.failed = true
+      throw error
+    }
+  }
+  export async function sealPreflight(tx: StoreTransaction) {
+    const { selected, seal } = await preflightTransaction(tx)
+    if (!seal.sealed) {
+      seal.sealed = true
+      tx.addMutationGuard(() => {
+        seal.failed = true
+        blocked("writes after final artifact preflight")
+      })
+    }
     try {
       await assertInventoryMatches(selected)
       seal.complete = true
@@ -778,7 +821,27 @@ export namespace OrganizationRecoveryWriters {
     await assertInventoryMatches(selected)
     return inspect(evidence)
   }
-  async function assertInventoryMatches(selected: Frame) {
+  async function knowledgeMetadata(selected: Frame, tx: StoreTransaction, allowMissing: boolean) {
+    using rows = selected.database.query<{ key: string; value: string }, [string]>(
+      "SELECT records.key,records.value FROM history_appends JOIN records USING(key) WHERE key>? ORDER BY key LIMIT 128",
+    )
+    let after = "",
+      missing = 0
+    while (true) {
+      selected.assert()
+      const page = rows.all(after)
+      if (!page.length) return missing
+      const values = await tx.readMany(page.map((row) => z.array(z.string()).parse(JSON.parse(row.key))))
+      for (const [index, row] of page.entries()) {
+        if (values[index] === undefined) {
+          if (!allowMissing) blocked("incomplete H1 knowledge metadata")
+          missing++
+        } else if (hash(values[index]) !== hash(JSON.parse(row.value))) blocked("changed immutable knowledge metadata")
+        after = row.key
+      }
+    }
+  }
+  async function assertInventoryMatches(selected: Frame, options: { allowMissingKnowledge?: boolean } = {}) {
     return Storage.snapshot(async (tx) => {
       using wantedArtifact = selected.database.query<{ sha256: string; size: number }, [string]>(
         "SELECT sha256,size FROM artifacts WHERE key=?",
@@ -835,6 +898,11 @@ export namespace OrganizationRecoveryWriters {
         "SELECT key FROM records WHERE mode<>'metadata' ORDER BY key",
       )
       for (const row of rows.iterate()) if (selected.kind !== "preflight" || !projected(JSON.parse(row.key))) expected++
+      expected -= await knowledgeMetadata(
+        selected,
+        tx,
+        selected.kind === "preflight" && options.allowMissingKnowledge === true,
+      )
       const expectedArtifacts = artifactCount.get()?.count
       if (
         count !== expected ||
