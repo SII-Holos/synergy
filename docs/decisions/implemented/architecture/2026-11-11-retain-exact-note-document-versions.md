@@ -16,6 +16,8 @@ Handoff preparation seals only version references and content hashes, while the 
 
 The owning central migration captures only the version actually retained on disk. It does not invent overwritten versions. Historical references without evidence remain missing and must block lossless transfer until resolved explicitly. Deleting an archived private Note removes its private version history as well; independently published organization releases have their own lifecycle.
 
+Complete persisted documents retain their exact current version even when their kind owner is unavailable. An incomplete legacy document with an unavailable kind stays opaque and unchanged; the migration cannot prove a version for it. Malformed documents whose kind owner is available still reject migration. Authoring and owner metadata fixtures use the original metadata writer rather than replacing bytes beneath an already retained immutable version.
+
 ## Alternatives considered
 
 **Substitute the current document.** This makes a historical version reference misleading and can change the material being audited.

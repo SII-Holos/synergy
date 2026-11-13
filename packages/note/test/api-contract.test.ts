@@ -8,6 +8,7 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { runtimeHome } from "@ericsanchezok/synergy-harness/test/support/runtime-home"
 import { NoteDocumentKinds } from "../src/document-kinds"
+import { NoteStore } from "../src/store"
 import { NoteRoute } from "../src/routes/note"
 import { testRuntime } from "./support/runtime"
 
@@ -47,7 +48,9 @@ test("the generated SDK keeps named Note inputs and preserves unavailable owner 
           if (!created.data) throw new Error("SDK Note creation failed")
           const key = ["notes", "home", created.data.id]
           const stored = await Storage.read<Record<string, unknown>>(key)
-          await Storage.write(key, { ...stored, futureOwner: retained })
+          await NoteStore.mutateMetadata("home", created.data.id, (draft) => {
+            Object.assign(draft, { futureOwner: retained })
+          })
           await Storage.write(["notes", "home", "nte_unavailable"], {
             ...stored,
             id: "nte_unavailable",
@@ -60,10 +63,13 @@ test("the generated SDK keeps named Note inputs and preserves unavailable owner 
           expect((await sdk.note.list()).data?.map((note) => note.id)).toEqual([created.data.id])
 
           const read = await sdk.note.get({ id: created.data.id })
+          expect(read.response.status).toBe(200)
+          if (!read.data) throw new Error("SDK Note read failed")
+          expect(read.data.version).toBe(created.data.version + 1)
           expect(read.data).not.toHaveProperty("futureOwner")
           const updated = await sdk.note.update({
             id: created.data.id,
-            notePatchInput: { title: "SDK changed", expectedVersion: created.data.version },
+            notePatchInput: { title: "SDK changed", expectedVersion: read.data.version },
           })
           expect(updated.response.status).toBe(200)
           expect(updated.data?.title).toBe("SDK changed")

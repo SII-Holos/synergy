@@ -2,6 +2,7 @@ import { z } from "zod"
 import { isDeepEqual } from "remeda"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import type { Migration } from "@ericsanchezok/synergy-harness/migration"
+import { NoteDocumentKinds } from "./document-kinds"
 import { NoteTypes } from "./types"
 
 export namespace NoteVersions {
@@ -46,8 +47,13 @@ export const noteVersionMigration: Migration = {
       await Storage.transaction(async () => {
         const [current] = await Storage.readMany([row.key])
         if (current === undefined) return
-        const note = NoteTypes.PersistedInfo.parse(current)
-        await NoteVersions.capture(row.key[1], note)
+        const note = NoteTypes.PersistedInfo.safeParse(current)
+        if (!note.success) {
+          const opaque = z.object({ kind: z.string() }).safeParse(current)
+          if (opaque.success && !NoteDocumentKinds.available(opaque.data.kind)) return
+          throw note.error
+        }
+        await NoteVersions.capture(row.key[1], note.data)
       })
       progress(++count, 0)
     }
