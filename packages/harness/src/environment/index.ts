@@ -831,8 +831,9 @@ export namespace Environment {
       const allocation = EnvironmentSchema.Allocation.parse(
         await EnvironmentProviders.get(info.provider).allocate(requestOf(info)),
       )
+      const ready = await updateAllocation(info, allocation)
       await admission()
-      return updateAllocation(info, allocation)
+      return ready
     })
   }
 

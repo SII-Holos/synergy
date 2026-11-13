@@ -12,6 +12,8 @@ The Runtime owns one in-flight allocation, release or reconciliation per Environ
 
 The durable allocation intent, request identity and generation checks remain authoritative. Failed requests release in-memory ownership so ordinary reconciliation can inspect their outcome. A new Runtime has no live ownership and performs existing restart recovery. Maintenance remains enabled for other Environments and for idle reclamation.
 
+A valid allocation returned by the original provider publishes through that intent's request, generation and state checks before the caller's final admission check. Pausing a Task or draining its epoch can reject acquisition of a new Use without discarding a physical result already known to its native owner. Provider ownership remains held through both publication and admission settlement. An uncertain or thrown provider result still requires original-request reconciliation.
+
 ## Alternatives considered
 
 **Await the original request in maintenance.** Waiting couples the maintenance loop to provider latency and can delay recovery of unrelated resources. Skipping permits the next tick to inspect a failed request after it settles.

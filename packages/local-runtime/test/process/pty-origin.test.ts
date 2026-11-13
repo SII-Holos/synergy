@@ -111,6 +111,10 @@ test.skipIf(process.platform === "win32")(
               try {
                 await ready.promise
                 await SessionLifecycle.pause({ sessionID: task.session.id, reason: "interrupted" })
+                await expect(
+                  EnvironmentExecution.assertSessionDrained(scope.id, task.session.id, environment.id),
+                ).rejects.toMatchObject({ name: "EnvironmentBusy" })
+                await resources.release()
                 await EnvironmentExecution.assertSessionDrained(scope.id, task.session.id, environment.id)
                 Pty.write(info.id, "after-pause\n")
                 await echoed.promise

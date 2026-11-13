@@ -34,6 +34,8 @@ async function fixture(
   } = {},
 ) {
   let starts = 0
+  let allocations = 0
+  let inspections = 0
   const operations = new Map<string, ExecutionProtocol.Status>()
   const executor: Executor = {
     async start(input) {
@@ -79,10 +81,12 @@ async function fixture(
       EnvironmentProviders.register({
         id: "origin-fixture",
         async allocate(request) {
+          allocations++
           await options.allocate?.()
           return { id: request.requestID, capabilities: ["exec"] }
         },
         async inspect(request) {
+          inspections++
           return { state: "ready", allocation: { id: request.requestID, capabilities: ["exec"] } }
         },
         async deallocate() {},
@@ -168,7 +172,14 @@ async function fixture(
         },
       }),
     )
-    return { runtime, input, starts: () => starts, [Symbol.asyncDispose]: () => runtime.close() }
+    return {
+      runtime,
+      input,
+      starts: () => starts,
+      allocations: () => allocations,
+      inspections: () => inspections,
+      [Symbol.asyncDispose]: () => runtime.close(),
+    }
   } catch (error) {
     await runtime.close()
     throw error
@@ -209,6 +220,9 @@ test("final Session freeze cannot pass a real accepted Environment allocation be
           () => "refused",
         )
         await entered.promise
+        const accepted = await Environment.get(f.input.environmentID, "home")
+        if (!accepted.allocation) throw new Error("Accepted provider request has no original allocation identity")
+        const requestID = accepted.allocation.requestID
         const binding = {
           sessionID: f.input.origin.sessionID,
           scopeID: "home",
@@ -226,6 +240,14 @@ test("final Session freeze cannot pass a real accepted Environment allocation be
           expect(f.starts()).toBe(0)
           release.resolve()
           expect(await result).toBe("refused")
+          expect(await Environment.get(f.input.environmentID, "home")).toMatchObject({
+            state: "ready",
+            generation: accepted.generation,
+            allocation: { requestID, id: requestID },
+          })
+          expect(f.allocations()).toBe(1)
+          expect(f.inspections()).toBe(0)
+          expect(await Environment.uses(f.input.environmentID)).toEqual([])
           await SessionTransferEpochs.freeze(binding)
           expect((await SessionTransferEpochs.inspect(binding)).phase).toBe("frozen")
         } finally {
@@ -342,6 +364,9 @@ test("native Session drainage waits for the accepted provider request and observ
           () => "refused",
         )
         await entered.promise
+        const accepted = await Environment.get(f.input.environmentID, "home")
+        if (!accepted.allocation) throw new Error("Accepted provider request has no original allocation identity")
+        const requestID = accepted.allocation.requestID
         const binding = {
           sessionID: f.input.origin.sessionID,
           scopeID: "home",
@@ -367,6 +392,14 @@ test("native Session drainage waits for the accepted provider request and observ
           await expect(SessionTransferEpochs.freeze(binding)).rejects.toThrow("Environment")
           release.resolve()
           expect(await result).toBe("refused")
+          expect(await Environment.get(f.input.environmentID, "home")).toMatchObject({
+            state: "ready",
+            generation: accepted.generation,
+            allocation: { requestID, id: requestID },
+          })
+          expect(f.allocations()).toBe(1)
+          expect(f.inspections()).toBe(0)
+          expect(await Environment.uses(f.input.environmentID)).toEqual([])
           await EnvironmentExecution.drainSession({
             scopeID: "home",
             sessionID: binding.sessionID,
@@ -561,6 +594,9 @@ test.each(["allocate", "connect"] as const)(
             (error: unknown) => ({ error }),
           )
           await entered.promise
+          const accepted = await Environment.get(f.input.environmentID, "home")
+          if (!accepted.allocation) throw new Error("Accepted provider request has no original allocation identity")
+          const requestID = accepted.allocation.requestID
           const binding = {
             sessionID: f.input.origin.sessionID,
             scopeID: "home",
@@ -581,6 +617,13 @@ test.each(["allocate", "connect"] as const)(
             expect(result).toHaveProperty("error")
             expect(await Environment.uses(f.input.environmentID)).toEqual([])
             expect(f.starts()).toBe(0)
+            expect(await Environment.get(f.input.environmentID, "home")).toMatchObject({
+              state: "ready",
+              generation: accepted.generation,
+              allocation: { requestID, id: requestID },
+            })
+            expect(f.allocations()).toBe(1)
+            expect(f.inspections()).toBe(0)
             await SessionTransferEpochs.freeze(binding)
           } finally {
             release.resolve()

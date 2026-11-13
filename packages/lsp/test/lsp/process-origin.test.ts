@@ -125,6 +125,10 @@ test("a shared native language server survives its first Task pause while a paus
               await owned.activate()
               await ready.promise
               await SessionLifecycle.pause({ sessionID: task.session.id, reason: "interrupted" })
+              await expect(
+                EnvironmentExecution.assertSessionDrained(scope.id, task.session.id, environment.id),
+              ).rejects.toMatchObject({ name: "EnvironmentBusy" })
+              await resources.release()
               await EnvironmentExecution.assertSessionDrained(scope.id, task.session.id, environment.id)
               owned.child.stdin.write("after-pause")
               await echoed.promise
