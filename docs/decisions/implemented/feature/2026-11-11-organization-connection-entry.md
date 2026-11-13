@@ -12,6 +12,10 @@ The independent space layer presents one compact connection panel using the prod
 
 Organization routes retain the organization, account and deployment identity for workspace destinations and project conversations. Switching still disposes business providers from the previous space without stopping its backend work. The entry remains independent of personal Runtime readiness.
 
+The authorization page uses the same large primary variant for signing in and continuing. Sign-out and closing remain subordinate actions. Shared theme tokens own enabled, busy and focus states in both appearances.
+
+An unavailable discovery transport or HTTP response produces the existing connection recovery message. Only a successful discovery response reaches authority validation; malformed or mismatched identities still fail closed. See the [discovery failure postmortem](../../../postmortem/0189-discovery-connectivity-was-reported-as-identity-change.md).
+
 ## Alternatives considered
 
 **Put the form inside personal Settings.** This makes organization recovery depend on the availability of the personal Runtime and does not provide a coherent organization destination.

@@ -148,7 +148,7 @@ function Approval(props: { page: Extract<AuthorizationPage, { kind: "authorize" 
                   value={password()}
                   onChange={setPassword}
                 />
-                <Button type="submit" size="large" disabled={busy()}>
+                <Button type="submit" size="large" variant="primary" disabled={busy()}>
                   {busy() ? _(messages.working) : _(messages.signIn)}
                 </Button>
               </fieldset>
@@ -165,6 +165,7 @@ function Approval(props: { page: Extract<AuthorizationPage, { kind: "authorize" 
               <div class="organization-auth-actions">
                 <Button
                   size="large"
+                  variant="primary"
                   disabled={busy()}
                   onClick={() =>
                     void run(async () => {

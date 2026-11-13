@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0189](0189-discovery-connectivity-was-reported-as-identity-change.md)
+
 - [0188](0188-active-file-authority-crossed-the-final-inspection.md)
 
 - [0187](0187-cold-inventory-assumed-home-upgrade-purpose.md)

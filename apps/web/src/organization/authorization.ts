@@ -217,6 +217,7 @@ export function authorizeOrganization(options: {
         })
         const response = await client.orgAuth.discovery({ clientID: options.clientID }, { signal: controller.signal })
         if (finished) return
+        if (!response.response?.ok) return finish(new OrganizationAuthorizationError("unavailable"))
         const discovery = Protocol.Discovery.safeParse(response.data)
         if (
           !discovery.success ||
