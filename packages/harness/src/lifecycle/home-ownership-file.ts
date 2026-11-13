@@ -152,6 +152,85 @@ export namespace HomeOwnershipFile {
         },
       )
     }
+    async function advanceReader(expected: Info, options: { signal?: AbortSignal } = {}) {
+      const prior = Source.parse(expected)
+      const target = Source.parse(selected)
+      if (JSON.stringify({ ...prior, readerContract: target.readerContract }) !== JSON.stringify(target))
+        throw new Error("Home reader advancement must retain its original format and identity")
+      const physical = await physicalHash()
+      await withFileLock(
+        { directory: path.join(root, "state", ".locks"), key: "home-ownership", signal: options.signal },
+        async () => {
+          options.signal?.throwIfAborted()
+          if ((await physicalHash()) !== physical) throw new Error("Home reader physical identity changed")
+          const before = await fs.lstat(filename, { bigint: true })
+          if (!before.isFile() || before.isSymbolicLink() || before.nlink !== 1n || before.size > 4096n)
+            throw new Error("Home reader ownership file is invalid or changed")
+          const file = await fs.open(filename, constants.O_RDWR | (constants.O_NOFOLLOW ?? 0))
+          try {
+            const initial = await file.stat({ bigint: true })
+            if (
+              !initial.isFile() ||
+              initial.nlink !== 1n ||
+              initial.dev !== before.dev ||
+              initial.ino !== before.ino ||
+              initial.size !== before.size ||
+              initial.ctimeNs !== before.ctimeNs
+            )
+              throw new Error("Home reader ownership file changed while opening")
+            const verify = async () => {
+              options.signal?.throwIfAborted()
+              if ((await physicalHash()) !== physical) throw new Error("Home reader physical identity changed")
+              const current = await fs.lstat(filename, { bigint: true })
+              const retained = await file.stat({ bigint: true })
+              if (
+                !current.isFile() ||
+                current.isSymbolicLink() ||
+                current.nlink !== 1n ||
+                current.dev !== initial.dev ||
+                current.ino !== initial.ino ||
+                !retained.isFile() ||
+                retained.nlink !== 1n ||
+                retained.dev !== initial.dev ||
+                retained.ino !== initial.ino ||
+                current.size !== retained.size ||
+                current.ctimeNs !== retained.ctimeNs
+              )
+                throw new Error("Home reader requires its original ownership file")
+            }
+            await verify()
+            const bytes = Buffer.alloc(4097)
+            const { bytesRead } = await file.read(bytes, 0, bytes.length, 0)
+            let current: Info
+            try {
+              if (bytesRead > 4096) throw new Error("Home reader ownership file is too large")
+              current = Info.parse(JSON.parse(bytes.subarray(0, bytesRead).toString("utf8")))
+            } catch {
+              throw new Error("Home reader ownership file is invalid or unsupported")
+            }
+            await verify()
+            if (JSON.stringify(current) !== JSON.stringify(prior))
+              throw new Error("Home owner changed before reader advancement")
+            if (JSON.stringify(current) === JSON.stringify(target)) return
+            const encoded = Buffer.from(JSON.stringify(target) + "\n")
+            for (let offset = 0; offset < encoded.byteLength;) {
+              await verify()
+              const { bytesWritten } = await file.write(encoded, offset, encoded.byteLength - offset, offset)
+              if (!bytesWritten) throw new Error("Home reader ownership write made no progress")
+              offset += bytesWritten
+            }
+            await verify()
+            await file.truncate(encoded.byteLength)
+            await file.sync()
+            await verify()
+            await assert({ required: true })
+            await verify()
+          } finally {
+            await file.close()
+          }
+        },
+      )
+    }
     function retirement(expected: z.infer<typeof Source>) {
       const prior = Source.parse(expected)
       if (!selected || selected.schemaVersion !== 4 || JSON.stringify(selected.source) !== JSON.stringify(prior))
@@ -235,6 +314,6 @@ export namespace HomeOwnershipFile {
         }),
       )
     }
-    return { read, assert, persist, upgrade, retire, inspectRetirement, physicalHash }
+    return { read, assert, persist, upgrade, advanceReader, retire, inspectRetirement, physicalHash }
   }
 }
