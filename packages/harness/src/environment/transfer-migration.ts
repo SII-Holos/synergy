@@ -40,3 +40,17 @@ export const environmentTransferHistoryMigration: Migration = {
   dependsOn: [environmentTransferPhysicalMigration.id],
   description: "Validate retained descriptor and completed-history Environment reader versions",
 }
+
+export const environmentTransferMappingRecordMigration: Migration = {
+  ...environmentTransferRecordMigration,
+  id: "20261114-environment-transfer-logical-mapping-records",
+  dependsOn: [environmentTransferRecordMigration.id],
+  description: "Read explicit logical Environment mappings while preserving original immutable facts",
+}
+
+export const environmentTransferMappingPhysicalMigration: Migration = {
+  ...environmentTransferPhysicalMigration,
+  id: "20261114-environment-transfer-logical-mapping-storage",
+  dependsOn: [environmentTransferMappingRecordMigration.id, environmentTransferHistoryMigration.id],
+  description: "Validate explicit Environment mapping readers without allocating or rewriting historical facts",
+}

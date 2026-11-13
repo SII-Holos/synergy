@@ -18,6 +18,8 @@ Publication declares Environment-before-Core ordering. The original epoch activa
 
 The Environment owner centrally registers strict record and bounded physical migrations for source seals and receipts. Unknown versions, malformed addresses and extra fields reject without deleting retained facts. This adds non-executing evidence rather than changing the current Environment/Execution format; the portable manifest's required owner version fences readers missing this capability. It grants no execution or machine control.
 
+Reader three adds bounded explicit logical mapping facts through a composition-registered provider. Source capture and target validation require that provider's original private callback and recheck it through the final publication commit. A mapping DTO or retained receipt cannot supply that authority. The actual target remains a canonical native selection or null, while immutable source selection and execution history remain intact. Original reader-one and reader-two bytes are not rewritten; their compatible native descriptor rules remain enforced.
+
 ## Alternatives considered
 
 **Copy complete Environment records.** Specs and allocation details contain host-local authority and do not establish a valid target provider or native binding.
@@ -30,6 +32,6 @@ The Environment owner centrally registers strict record and bounded physical mig
 
 ## Consequences
 
-Explicit hosts can transfer a supported unused Native selection without starting compute, while ordinary catalog and execution admission remain authoritative. Version-one packages remain descriptor-only. Reader two carries exact completed operation/output facts; active operation drainage, cloud resource mapping consent and default organization controller enablement remain separate.
+Explicit hosts can transfer a supported unused Native selection without starting compute, while ordinary catalog and execution admission remain authoritative. Version-one packages remain descriptor-only. Reader two carries exact completed operation/output facts. Reader three permits a registered owner to prove an explicit logical mapping without copying an allocation. Cloud consent, organization controllers and complete machine acceptance remain separate from this native extension.
 
 Verification uses Local Runtime `test/session-transfer-environments-native.test.ts` for two actual Native Homes, explicit mappings, hidden-null Core evidence, activation rollback, paused targets, cold receipt re-export, strict specs and unchanged completed command/output refusal. Harness `test/environment/transfer-records.test.ts` exercises immutable collisions, central import validation and a bad physical-migration row beyond the first page. Existing `test/session/transfer-environments.test.ts` verifies complete Use drainage independently of this reader.

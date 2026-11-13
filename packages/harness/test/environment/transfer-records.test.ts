@@ -129,3 +129,49 @@ test("the central physical migration validates all retained transfer rows withou
     expect((await Storage.queryKeys({ prefix: Records.prefix, limit: 128 })).length).toBe(65)
   })
 }, 15_000)
+
+test("an explicit logical Environment mapping preserves immutable native source and legacy receipts", async () => {
+  await using runtime = await testRuntime()
+  await runtime.run(async () => {
+    const legacy = source("legacy-native-mapping")
+    const original = source("explicit-logical-mapping")
+    const selected = original.selected
+    if (!selected) throw new Error("The original native mapping fixture has no selected descriptor")
+    const mapping = {
+      version: 1,
+      provider: "organization",
+      hash: "a".repeat(64),
+      source: {
+        kind: "native",
+        environmentID: selected.environmentID,
+        provider: selected.provider,
+        generation: selected.generation,
+        descriptor: selected.descriptor,
+      },
+      target: { kind: "organization", resourceID: "selected-compute", resourceRevision: 2, environmentID: "cloud-environment" },
+    }
+    const current = S.Source.parse({ ...original, version: 3, executions: 0, mapping })
+    const receipt = S.Receipt.parse({ version: 3, kind: "receipt", source: current, target: null })
+    const legacyBytes = JSON.stringify(legacy)
+    await Storage.transaction(async () => {
+      await Records.save(legacy)
+      await Records.save(current)
+      await Records.save(receipt)
+      await Records.save(current)
+      await Records.save(receipt)
+    })
+    expect(await Records.source(current)).toEqual(current)
+    expect(await Records.receipt(current)).toEqual(receipt)
+    expect(JSON.stringify(await Storage.read(Records.key(legacy)))).toBe(legacyBytes)
+    expect(current.selected).toEqual(selected)
+    expect(receipt.target).toBeNull()
+    expect(upgradeImportedRecord(Records.key(current), current)).toEqual(current)
+    expect(upgradeImportedRecord(Records.key(receipt), receipt)).toEqual(receipt)
+    expect(S.Receipt.safeParse({ version: 2, kind: "receipt", source: { ...original, version: 2, executions: 0 }, target: null }).success).toBe(false)
+    expect(S.Source.safeParse({ ...current, mapping: { ...mapping, hash: "unknown" } }).success).toBe(false)
+    expect(S.Source.safeParse({ ...current, mapping: { ...mapping, allocationID: "caller-allocation" } }).success).toBe(false)
+    const changed = S.Source.parse({ ...current, mapping: { ...mapping, hash: "b".repeat(64) } })
+    await expect(Storage.transaction(() => Records.save(changed))).rejects.toThrow("cannot change")
+    expect(await Records.source(current)).toEqual(current)
+  })
+})

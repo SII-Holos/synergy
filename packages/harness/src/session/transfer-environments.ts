@@ -18,9 +18,45 @@ import { createHash } from "node:crypto"
 
 export namespace SessionTransferEnvironments {
   export const receipt = Records.receipt
+  export interface MappingSource {
+    applies(session: Readonly<Session.Info>): boolean
+    capture(
+      context: Readonly<Owners.SourceContext>,
+      selected: Readonly<S.Selection> | null,
+    ): { mapping: S.Mapping; assert(): void } | undefined
+    target(
+      context: Readonly<Owners.TargetContext>,
+      source: Readonly<z.infer<typeof S.ExplicitSource>>,
+      selected: Readonly<S.Selection> | null,
+    ): () => void
+  }
   const ownerID = "session-environments"
   const preparations = new WeakMap<Owners.TargetContext, { hash: string; assert(): void }>()
-  const executions = (source: S.Source) => (source.version === 2 ? source.executions : 0)
+  const mappingSources = RuntimeContext.state(() => new Map<string, MappingSource>())
+  const executions = (source: S.Source) => (source.version === 1 ? 0 : source.executions)
+  export function registerMappingSource(provider: string, port: MappingSource) {
+    RuntimeContext.assertCompositionOpen("Environment transfer mapping sources")
+    provider = z.string().min(1).max(4096).parse(provider)
+    if (mappingSources().has(provider)) throw new Error("Environment transfer mapping source is already registered")
+    mappingSources().set(provider, Object.freeze({
+      applies: port.applies.bind(port),
+      capture: port.capture.bind(port),
+      target: port.target.bind(port),
+    }))
+  }
+  function explicitMapping(context: Owners.SourceContext, selected: S.Selection | null) {
+    let observed: { mapping: S.Mapping; assert(): void } | undefined
+    for (const [provider, port] of mappingSources()) {
+      if (!port.applies(context.session)) continue
+      const result = port.capture(context, selected ? structuredClone(selected) : null)
+      if (!result) fail("The selected Environment mapping source has no original capture authority")
+      result.assert()
+      const mapping = S.Mapping.parse(structuredClone(result.mapping))
+      if (mapping.provider !== provider || observed) fail("Environment mapping has an ambiguous registered owner")
+      observed = { mapping, assert: result.assert.bind(result) }
+    }
+    return observed
+  }
   function fail(message: string): never {
     throw new Owners.Rejected({ message })
   }
@@ -60,6 +96,12 @@ export namespace SessionTransferEnvironments {
       state: info.state,
       descriptor: provider.portableDescriptor(info.spec),
     })
+  }
+  export async function nativeSelection(input: { environmentID: string | null; scopeID: string; signal?: AbortSignal }) {
+    const assertOwner = guard(input.signal ?? new AbortController().signal)
+    const selected = await selection(input.environmentID, input.scopeID)
+    assertOwner()
+    return selected
   }
   async function historyCount(scopeID: string, sessionID: string, signal: AbortSignal, read = Portable.records) {
     let count = 0
@@ -125,6 +167,7 @@ export namespace SessionTransferEnvironments {
       signal: context.signal,
     })
     assertOwner()
+    let mapping: ReturnType<typeof explicitMapping>
     await Storage.transaction(
       async () => {
         assertOwner()
@@ -145,6 +188,9 @@ export namespace SessionTransferEnvironments {
         const current = await Environment.binding(session.scope.id, session.id)
         if ((current?.id ?? null) !== session.environmentID)
           fail("Native Environment binding disagrees with its Session")
+        const selected = await selection(session.environmentID, session.scope.id)
+        mapping = explicitMapping({ ...context, session }, selected)
+        mapping?.assert()
         const existing = await Records.source({
           scopeID: session.scope.id,
           sessionID: session.id,
@@ -154,25 +200,28 @@ export namespace SessionTransferEnvironments {
           if (
             existing.rootSessionID !== context.rootSessionID ||
             existing.selected?.environmentID !== (session.environmentID ?? undefined) ||
-            executions(existing) !== count
+            executions(existing) !== count ||
+            (existing.version === 3 ? JSON.stringify(existing.mapping) : undefined) !==
+              (mapping ? JSON.stringify(mapping.mapping) : undefined)
           )
             fail("Sealed Environment selection belongs to another source")
           return
         }
         await Records.save(
           S.Source.parse({
-            version: 2,
+            version: mapping ? 3 : 2,
             executions: count,
             kind: "source",
             scopeID: session.scope.id,
             sessionID: session.id,
             rootSessionID: context.rootSessionID,
             handoffID: context.handoffID,
-            selected: await selection(session.environmentID, session.scope.id),
+            selected,
+            ...(mapping && { mapping: mapping.mapping }),
           }),
         )
       },
-      { commitGuard: assertOwner },
+      { commitGuard() { assertOwner(); mapping?.assert() } },
     )
     assertOwner()
   }
@@ -366,22 +415,33 @@ export namespace SessionTransferEnvironments {
       )
     const mapped = context.mapping.environmentID
     if (mapped !== null && typeof mapped !== "string") fail("Environment requires an explicit destination mapping")
-    if ((source.selected === null) !== (mapped === null))
-      fail("Environment mapping cannot erase or introduce a selection")
     const selected = await selection(mapped, core.info.scope.id)
     assertOwner()
-    if (
-      source.selected &&
-      selected &&
-      (source.selected.provider !== selected.provider ||
-        JSON.stringify(source.selected.descriptor) !== JSON.stringify(selected.descriptor))
-    )
-      fail("Destination Environment has an incompatible registered provider descriptor")
+    let assertMapping = assertOwner
+    if (source.version === 3) {
+      const port = mappingSources().get(source.mapping.provider)
+      if (!port) fail("Explicit Environment mapping requires its registered native owner")
+      const verify = port.target(context, structuredClone(source), selected ? structuredClone(selected) : null)
+      if (typeof verify !== "function") fail("Explicit Environment mapping has no original target authority")
+      assertMapping = () => { assertOwner(); verify() }
+      assertMapping()
+      hash.update(JSON.stringify({ mapping: source.mapping, target: selected }) + "\n")
+    } else {
+      if ((source.selected === null) !== (mapped === null))
+        fail("Environment mapping cannot erase or introduce a selection")
+      if (
+        source.selected &&
+        selected &&
+        (source.selected.provider !== selected.provider ||
+          JSON.stringify(source.selected.descriptor) !== JSON.stringify(selected.descriptor))
+      )
+        fail("Destination Environment has an incompatible registered provider descriptor")
+    }
     const digest = hash.digest("hex")
     if (publishing) {
       preparation?.assert()
       if (preparation?.hash !== digest) fail("Prepared Environment history changed before publication")
-    } else preparations.set(context, { hash: digest, assert: assertOwner })
+    } else preparations.set(context, { hash: digest, assert: assertMapping })
     return { source, selected }
   }
   async function publish(context: Owners.TargetContext) {
@@ -418,7 +478,11 @@ export namespace SessionTransferEnvironments {
       if (value.kind === "receipt") await Records.save(value)
     }
     for await (const artifact of context.staged.artifacts()) await artifact.publish(artifact.key)
-    await Records.save({ version: 2, kind: "receipt", source, target: selected })
+    await Records.save(
+      source.version === 3
+        ? { version: 3, kind: "receipt", source, target: selected }
+        : { version: 2, kind: "receipt", source, target: selected },
+    )
     const preparation = preparations.get(context)
     if (!preparation) fail("Completed Environment history lost its original preparation")
     await Storage.transaction(
@@ -436,8 +500,8 @@ export namespace SessionTransferEnvironments {
   }
   export function register() {
     Owners.register(ownerID, {
-      version: 2,
-      reads: [1, 2],
+      version: 3,
+      reads: [1, 2, 3],
       stagedDependencies: ["session-core"],
       publicationBefore: ["session-core"],
       async applies(session, signal) {
@@ -453,7 +517,7 @@ export namespace SessionTransferEnvironments {
             requirements: [requirement(error)],
           })
         }
-        return !!current.environmentID || count > 0 || Records.hasReceipts(current.scope.id, current.id)
+        return !!current.environmentID || count > 0 || [...mappingSources().values()].some((port) => port.applies(current)) || Records.hasReceipts(current.scope.id, current.id)
       },
       inspect,
       freeze,

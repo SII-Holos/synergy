@@ -13,6 +13,8 @@ import {
   environmentTransferRecordMigration,
   environmentTransferPhysicalMigration,
   environmentTransferHistoryMigration,
+  environmentTransferMappingRecordMigration,
+  environmentTransferMappingPhysicalMigration,
 } from "./transfer-migration"
 
 export async function migrateSessionEnvironment(
@@ -98,6 +100,8 @@ export const environmentMigrations: Migration[] = [
   environmentTransferRecordMigration,
   environmentTransferPhysicalMigration,
   environmentTransferHistoryMigration,
+  environmentTransferMappingRecordMigration,
+  environmentTransferMappingPhysicalMigration,
 ]
 
 export function registerEnvironmentMigrations() {

@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { JsonValue } from "../util/json-value"
 
 export namespace EnvironmentPortableSchema {
   const ID = z.string().min(1).max(4096)
@@ -31,7 +32,17 @@ export namespace EnvironmentPortableSchema {
     version: z.literal(2),
     executions: z.number().int().nonnegative().safe(),
   })
-  export const Source = z.discriminatedUnion("version", [LegacySource, CurrentSource])
+  export const Mapping = z.strictObject({
+    version: z.literal(1),
+    provider: ID,
+    hash: z.string().regex(/^[a-f0-9]{64}$/),
+    source: JsonValue,
+    target: JsonValue,
+  }).refine((value) => JSON.stringify(value).length <= 16_384, "Environment mapping evidence exceeds its bound")
+  export type Mapping = z.infer<typeof Mapping>
+  export const ExplicitSource = CurrentSource.extend({ version: z.literal(3), mapping: Mapping })
+  const NativeSource = z.discriminatedUnion("version", [LegacySource, CurrentSource])
+  export const Source = z.discriminatedUnion("version", [LegacySource, CurrentSource, ExplicitSource])
   export type Source = z.infer<typeof Source>
   const ReceiptFields = z.strictObject({
     version: z.literal(1),
@@ -40,9 +51,13 @@ export namespace EnvironmentPortableSchema {
     target: Selection.nullable(),
   })
   export const Receipt = z
-    .discriminatedUnion("version", [ReceiptFields, ReceiptFields.extend({ version: z.literal(2), source: Source })])
-    .refine(({ source, target }) =>
-      source.selected === null
+    .discriminatedUnion("version", [
+      ReceiptFields,
+      ReceiptFields.extend({ version: z.literal(2), source: NativeSource }),
+      ReceiptFields.extend({ version: z.literal(3), source: ExplicitSource }),
+    ])
+    .refine(({ version, source, target }) =>
+      version === 3 ? true : source.selected === null
         ? target === null
         : target !== null &&
           source.selected.provider === target.provider &&
