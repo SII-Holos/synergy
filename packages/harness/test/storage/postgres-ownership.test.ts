@@ -33,6 +33,9 @@ test.skipIf(!enabled)(
       await expect(TransactionalStore.open({ backend: "postgres", namespace, url: url! })).rejects.toThrow(
         "did not release ownership",
       )
+      await expect(TransactionalStore.openExisting({ backend: "postgres", namespace, url: url! })).rejects.toThrow(
+        "did not release ownership",
+      )
       replacement = await TransactionalStore.open({ backend: "postgres", namespace, url: url!, recover: true })
       await replacement.write(["value"], { count: 3 })
       await expect(store.write(["value"], { count: 4 })).rejects.toThrow()
