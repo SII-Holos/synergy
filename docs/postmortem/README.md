@@ -19,6 +19,7 @@
 
 ## Index
 
+- [0178](0178-explicit-skill-updates-interrupted-an-authorized-load.md)
 - [0177](0177-shared-projection-accepted-human-writer-authority.md)
 - [0176](0176-current-archive-used-a-logical-namespace-as-physical-identity.md)
 - [0175](0175-returned-session-retained-an-old-message-order.md)

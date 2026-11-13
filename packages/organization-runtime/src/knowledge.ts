@@ -271,17 +271,22 @@ export async function knowledgeFiles(
   return { items, ...(rows.length > items.length ? { cursor: items.at(-1)!.fileID } : {}) }
 }
 
-export async function stageKnowledgeSelection(input: {
-  root: string
-  orgID: string
-  projectID: string
-  sessionID: string
-  sourceSessionID?: string
-  transport: KnowledgeTransport
-  signal?: AbortSignal
-}): Promise<ActiveKnowledge> {
+export async function stageKnowledgeSelection(
+  input: {
+    root: string
+    orgID: string
+    projectID: string
+    sessionID: string
+    sourceSessionID?: string
+    transport: KnowledgeTransport
+    signal?: AbortSignal
+  },
+  retained?: ActiveKnowledge,
+): Promise<ActiveKnowledge> {
+  const expected = retained ? Active.strip().parse(structuredClone(retained)) : undefined
   using lock = await Lock.write(`organization-knowledge-session:${input.sessionID}`)
   input.signal?.throwIfAborted()
+  const original = expected ? ActiveStore.releases(expected) : undefined
   let preexisting = false
   let publicationStarted = false
   let cursor: string | undefined
@@ -290,6 +295,10 @@ export async function stageKnowledgeSelection(input: {
   let previousItemID: string | undefined
   let count = 0
   const digest = createHash("sha256").update("[")
+  const sameSelection = (left: Knowledge.SelectionSummary, right: Knowledge.SelectionSummary) =>
+    expected
+      ? left.manifestHash === right.manifestHash && left.releaseCount === right.releaseCount
+      : JSON.stringify(left) === JSON.stringify(right)
   try {
     do {
       input.signal?.throwIfAborted()
@@ -302,7 +311,7 @@ export async function stageKnowledgeSelection(input: {
         page.sessionID !== (input.sourceSessionID ?? input.sessionID)
       )
         throw new Error("Knowledge selection belongs to another organization, project or Session")
-      if (metadata && JSON.stringify(metadata) !== JSON.stringify(page.selection))
+      if (metadata && !sameSelection(metadata, page.selection))
         throw new Error("Knowledge selection changed during preparation")
       metadata = page.selection
       if (!header) {
@@ -315,6 +324,17 @@ export async function stageKnowledgeSelection(input: {
           selection: metadata,
         })
         preexisting = await ActiveStore.sealed(header)
+        if (
+          expected &&
+          (!preexisting ||
+            header.orgID !== expected.orgID ||
+            header.projectID !== expected.projectID ||
+            header.sessionID !== expected.sessionID ||
+            header.manifestID !== expected.manifestID ||
+            header.selection.manifestHash !== expected.selection.manifestHash ||
+            header.selection.releaseCount !== expected.selection.releaseCount)
+        )
+          throw new Error("Knowledge load no longer matches its original verified manifest")
       }
       for (const release of page.items) {
         if (
@@ -325,8 +345,21 @@ export async function stageKnowledgeSelection(input: {
         const selected = reference(release)
         if (count) digest.update(",")
         digest.update(JSON.stringify(selected))
-        const cached = await prepareRelease({ ...input, release })
-        await ActiveStore.put(header, count++, cached)
+        if (original) {
+          const stored = await original.next()
+          if (stored.done || JSON.stringify(stored.value.release) !== JSON.stringify(release))
+            throw new Error("Knowledge load changed its original immutable release")
+          await verifyDirectory(
+            stored.value.directory,
+            KnowledgeCache.id(release, input.projectID),
+            release,
+            input.signal,
+          )
+          count++
+        } else {
+          const cached = await prepareRelease({ ...input, release })
+          await ActiveStore.put(header, count++, cached)
+        }
         previousItemID = release.itemID
       }
       if (page.cursor && (page.cursor !== previousItemID || page.cursor === cursor || !page.items.length))
@@ -348,9 +381,14 @@ export async function stageKnowledgeSelection(input: {
       confirmed.orgID !== input.orgID ||
       confirmed.projectID !== input.projectID ||
       confirmed.sessionID !== (input.sourceSessionID ?? input.sessionID) ||
-      JSON.stringify(confirmed.selection) !== JSON.stringify(metadata)
+      !sameSelection(confirmed.selection, metadata)
     )
       throw new Error("Knowledge selection changed before activation")
+    if (expected) {
+      if (!(await original?.next())?.done)
+        throw new Error("Knowledge load did not verify its complete original manifest")
+      return expected
+    }
     const active = header
     await ActiveStore.seal(active)
     publicationStarted = true
@@ -369,6 +407,7 @@ export async function stageKnowledgeSelection(input: {
       return active
     })
   } catch (error) {
+    if (original) throw error
     const current = header ? await activeKnowledge(input.sessionID) : undefined
     if (header && publicationStarted) {
       if (
@@ -381,6 +420,8 @@ export async function stageKnowledgeSelection(input: {
     if (header && !preexisting && current?.manifestID !== header.manifestID)
       await Storage.removeTree(ActiveStore.root(header))
     throw error
+  } finally {
+    await original?.return(undefined)
   }
 }
 

@@ -12,6 +12,7 @@ import type { RuntimeIdentity } from "./home"
 import { denied, withMemberExecution, type MemberExecutionResolution } from "./execution-source"
 import {
   syncKnowledgeSelection,
+  stageKnowledgeSelection,
   knowledgeSkills,
   selectedKnowledge,
   knowledgePage,
@@ -65,18 +66,25 @@ export function knowledgeTransport(
   }
 }
 
-export function loadOrganizationKnowledge(identity: RuntimeIdentity, sessionID: string, signal?: AbortSignal) {
-  return withMemberExecution(identity, { sessionID, signal }, async (resolution, signal) =>
-    syncKnowledgeSelection({
+export function loadOrganizationKnowledge(
+  identity: RuntimeIdentity,
+  sessionID: string,
+  signal?: AbortSignal,
+  retained?: ActiveKnowledge,
+) {
+  const expected = retained ? structuredClone(retained) : undefined
+  return withMemberExecution(identity, { sessionID, signal }, async (resolution, signal) => {
+    const input = {
       root: RuntimeContext.current().host.root,
       orgID: identity.orgID,
       projectID: resolution.session.organization!.projectID,
       sessionID,
       sourceSessionID: resolution.accepted.sessionID,
-      transport: knowledgeTransport(resolution),
+      transport: knowledgeTransport(resolution, expected?.selection.manifestHash),
       signal,
-    }),
-  )
+    }
+    return expected ? stageKnowledgeSelection(input, expected) : syncKnowledgeSelection(input)
+  })
 }
 
 async function memberSkillRoots(identity: RuntimeIdentity): Promise<SkillSourceProfile.ResolvedRoot[]> {
@@ -126,10 +134,11 @@ async function memberSkillRoots(identity: RuntimeIdentity): Promise<SkillSourceP
 export function registerOrganizationKnowledge(
   identity: RuntimeIdentity,
   options: {
-    load?: (sessionID: string, signal?: AbortSignal) => Promise<ActiveKnowledge>
+    load?: (sessionID: string, signal?: AbortSignal, retained?: ActiveKnowledge) => Promise<ActiveKnowledge>
   } = {},
 ) {
-  const load = options.load ?? ((sessionID, signal) => loadOrganizationKnowledge(identity, sessionID, signal))
+  const load =
+    options.load ?? ((sessionID, signal, retained) => loadOrganizationKnowledge(identity, sessionID, signal, retained))
   const original = InstructionRegistry.get("skill")
   async function catalog(sessionID?: string, signal?: AbortSignal) {
     const active = sessionID ? await load(sessionID, signal) : undefined
@@ -151,7 +160,7 @@ export function registerOrganizationKnowledge(
         manifestHash: current.release.manifestHash,
       }
       const guard = async () => {
-        const latest = await load(sessionID, signal)
+        const latest = await load(sessionID, signal, active)
         const selected = await selectedKnowledge(latest, reference.itemID)
         if (
           latest.orgID !== active.orgID ||
@@ -170,15 +179,21 @@ export function registerOrganizationKnowledge(
         provenance: reference,
         content: async () => {
           await guard()
-          return entry.content()
+          const content = await entry.content()
+          await guard()
+          return content
         },
         references: async () => {
           await guard()
-          return entry.references()
+          const references = await entry.references()
+          await guard()
+          return references
         },
         reference: async (name) => {
           await guard()
-          return entry.reference(name)
+          const reference = await entry.reference(name)
+          await guard()
+          return reference
         },
       }
     })

@@ -21,6 +21,8 @@ Native stream greetings do not prove cancellation readiness. Wait for the worker
 
 Do not forward a queued stdin EOF after the native worker confirms whole-tree drainage. Exercise a late EOF against a real drained worker, retaining output bytes, exit status and lease release; keep pre-completion transport failures observable and preserve byte-counted EOF for live readers.
 
+For organization Skill loads, retain the immutable version selected at the load boundary while obtaining fresh accepted authority for deferred content and references. Do not infer revocation from a newer desired collection or authorize from cached bytes alone. Test a permission wait with public application of a new collection, overlapping activation without pointer rollback, and real withdrawal before content is returned. Reuse the original verifier and activated-selection owner; retained revalidation must not write pointers or seals.
+
 ## Trace the Whole Decision
 
 For multi-target approvals, exercise both ask/deny target orders before publication of any pending event, including mandatory confirmation and persisted rules. Verify that multiple ask targets produce one complete request, cancellation removes it, and all-allow requests still resolve without prompting.

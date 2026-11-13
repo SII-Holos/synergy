@@ -10,107 +10,10 @@ import { OrganizationKnowledgeProtocol as Knowledge } from "@ericsanchezok/syner
 import { loadOrganizationKnowledge } from "../src/knowledge-source"
 import { createMemberKnowledgeTool } from "../src/tools/knowledge"
 import { executionFixture } from "./support/execution"
-import { knowledgePage } from "../src/knowledge"
+import { activeKnowledge, knowledgePage } from "../src/knowledge"
+import { applySelection, publish } from "./support/knowledge"
 
 const hash = (value: string) => createHash("sha256").update(value).digest("hex")
-
-async function applySelection(
-  f: Awaited<ReturnType<typeof executionFixture>>,
-  input: { projectID: string; expectedRevision: number; releases: Knowledge.Reference[] },
-) {
-  const options = { headers: f.headers, throwOnError: true as const }
-  const update = (
-    await f.client.orgKnowledge.beginSelectionUpdate(
-      {
-        requestID: crypto.randomUUID(),
-        target: { kind: "member", projectID: input.projectID },
-        expectedRevision: input.expectedRevision,
-      },
-      options,
-    )
-  ).data
-  const previous: Knowledge.Reference[] = []
-  let cursor: string | undefined
-  do {
-    const page = (await f.client.orgKnowledge.appliedPage({ projectID: input.projectID, cursor, limit: 100 }, options))
-      .data
-    previous.push(...page.items)
-    cursor = page.cursor
-  } while (cursor)
-  const selected = new Set(input.releases.map((reference) => reference.itemID))
-  const changes = [
-    ...previous
-      .filter((reference) => !selected.has(reference.itemID))
-      .map((reference) => ({ itemID: reference.itemID })),
-    ...input.releases.map((reference) => ({ itemID: reference.itemID, reference })),
-  ]
-  let sequence = 0
-  for (let start = 0; start < changes.length; start += 100)
-    await f.client.orgKnowledge.patchSelectionUpdate(
-      { updateID: update.updateID, sequence: sequence++, changes: changes.slice(start, start + 100) },
-      options,
-    )
-  return (
-    await f.client.orgKnowledge.commitSelectionUpdate(
-      { updateID: update.updateID, expectedSequence: sequence },
-      options,
-    )
-  ).data
-}
-
-async function publish(
-  f: Awaited<ReturnType<typeof executionFixture>>,
-  projectID: string,
-  body: string,
-  expectedRevision: number,
-) {
-  const options = { headers: f.headers, throwOnError: true as const }
-  const upload = (
-    await f.client.orgPublications.createUpload(
-      { requestID: crypto.randomUUID(), purpose: "knowledge", scope: { kind: "project", projectID } },
-      options,
-    )
-  ).data
-  const file = (
-    await f.client.orgPublications.putFile(
-      {
-        uploadID: upload.uploadID,
-        path: "SKILL.md",
-        bytes: Buffer.byteLength(body),
-        sha256: hash(body),
-        mediaType: "text/markdown",
-      },
-      options,
-    )
-  ).data
-  await f.client.orgPublications.putChunk(
-    { uploadID: upload.uploadID, fileID: file.fileID, offset: 0, body: new Blob([body]) },
-    options,
-  )
-  await f.client.orgPublications.seal(
-    { uploadID: upload.uploadID, fileCount: 1, totalBytes: Buffer.byteLength(body) },
-    options,
-  )
-  const release = (
-    await f.client.orgKnowledge.publish(
-      {
-        requestID: crypto.randomUUID(),
-        itemID: "team",
-        expectedRevision,
-        uploadID: upload.uploadID,
-        title: "Team",
-        kind: "skill",
-      },
-      options,
-    )
-  ).data
-  const reference = Knowledge.Reference.parse({
-    itemID: release.itemID,
-    version: release.version,
-    manifestHash: release.manifestHash,
-  })
-  return { release, reference, file }
-}
 
 test("signed machine knowledge reads selected versions and fences removed selections", async () => {
   await using f = await executionFixture({ execution: true, knowledge: true })
@@ -243,4 +146,132 @@ test("signed machine knowledge reads selected versions and fences removed select
   await expect(
     f.connection.resources.knowledgeContent(await f.description(), reference, file.fileID, 0, 128),
   ).rejects.toMatchObject({ data: { code: "PERMISSION_DENIED" } })
+})
+
+test("an applied Skill update preserves the authorized load awaiting permission and rechecks withdrawal", async () => {
+  await using f = await executionFixture({ execution: true, knowledge: true })
+  const options = { headers: f.headers, throwOnError: true as const }
+  const session = await f.runtime.run(() => Session.get(f.sessionID))
+  const firstContent = "Original authorized instructions"
+  const secondContent = "Explicitly updated instructions"
+  const skill = (content: string) => `---\nname: team-work\ndescription: Team work\n---\n${content}`
+  const first = await publish(f, session.scope.id, skill(firstContent), 0)
+  await applySelection(f, { projectID: session.scope.id, expectedRevision: 0, releases: [first.reference] })
+  const second = await publish(f, session.scope.id, skill(secondContent), 1)
+  await f.binding()
+  await f.runtime.run(() =>
+    ScopeContext.provide({
+      scope: session.scope,
+      workspace: null,
+      fn: async () => {
+        const captured: Array<{ content: string; sha256: string; provenance: Knowledge.Reference }> = []
+        const awaitingPermission = Promise.withResolvers<void>()
+        const permitted = Promise.withResolvers<void>()
+        let firstPermission = true
+        const ctx: Tool.Context = {
+          sessionID: f.sessionID,
+          messageID: "knowledge-boundary-tool",
+          agent: "atlas",
+          abort: new AbortController().signal,
+          metadata() {},
+          async ask() {
+            if (!firstPermission) return
+            firstPermission = false
+            awaitingPermission.resolve()
+            await permitted.promise
+          },
+          async captureResult(value) {
+            const evidence = z
+              .object({ content: z.string(), sha256: z.string(), provenance: Knowledge.Reference })
+              .safeParse(value)
+            if (evidence.success) captured.push(evidence.data)
+            else
+              z.object({ title: z.string(), output: z.string(), metadata: z.record(z.string(), z.unknown()) }).parse(
+                value,
+              )
+          },
+        }
+        const tool = await SkillTool.init()
+        const pending = tool.execute({ name: "team-work" }, ctx)
+        try {
+          await awaitingPermission.promise
+          expect((await f.client.orgKnowledge.status({ sessionID: f.sessionID }, options)).data).toMatchObject({
+            state: "active",
+            activated: { manifestHash: hash(JSON.stringify([first.reference])) },
+          })
+          await applySelection(f, {
+            projectID: session.scope.id,
+            expectedRevision: 1,
+            releases: [second.reference],
+          })
+          const overlapping = await tool.execute({ name: "team-work" }, ctx)
+          expect(overlapping.output).toContain(secondContent)
+          expect(captured).toHaveLength(1)
+          expect(captured[0]?.provenance).toEqual(second.reference)
+          permitted.resolve()
+          const original = await pending
+          expect(original.output).toContain(firstContent)
+          expect(original.output).not.toContain(secondContent)
+          expect(captured).toHaveLength(2)
+          const originalEvidence = captured[1]
+          if (!originalEvidence) throw new Error("The original Skill load did not record its content")
+          expect(originalEvidence.content.trim()).toBe(firstContent)
+          expect(originalEvidence.sha256).toBe(hash(originalEvidence.content))
+          expect(originalEvidence.provenance).toEqual(first.reference)
+          expect((await activeKnowledge(f.sessionID))?.selection.manifestHash).toBe(
+            hash(JSON.stringify([second.reference])),
+          )
+
+          const next = await tool.execute({ name: "team-work" }, ctx)
+          expect(next.output).toContain(secondContent)
+          expect(next.output).not.toContain(firstContent)
+          expect(captured).toHaveLength(3)
+          const nextEvidence = captured[2]
+          if (!nextEvidence) throw new Error("The updated Skill load did not record its content")
+          expect(nextEvidence.content.trim()).toBe(secondContent)
+          expect(nextEvidence.sha256).toBe(hash(nextEvidence.content))
+          expect(nextEvidence.provenance).toEqual(second.reference)
+
+          const catalog = (await f.client.orgKnowledge.list({ projectID: session.scope.id, limit: 100 }, options)).data
+          const current = catalog.items.find((item) => item.itemID === second.reference.itemID)
+          if (!current) throw new Error("The published Skill is missing from its authorized catalog")
+          await expect(
+            tool.execute(
+              { name: "team-work" },
+              {
+                ...ctx,
+                async ask() {
+                  await f.client.orgKnowledge.withdraw(
+                    { itemID: current.itemID, expectedRevision: current.revision },
+                    options,
+                  )
+                },
+              },
+            ),
+          ).rejects.toThrow()
+          expect(captured).toHaveLength(3)
+          expect(
+            (
+              await f.client.orgKnowledge.appliedReferences(
+                { projectID: session.scope.id, itemIDs: [second.reference.itemID] },
+                options,
+              )
+            ).data.items,
+          ).toEqual([second.reference])
+          await expect(
+            f.connection.resources.knowledgeContent(
+              await f.description(),
+              second.reference,
+              second.file.fileID,
+              0,
+              1024,
+            ),
+          ).rejects.toMatchObject({ data: { code: "NOT_FOUND" } })
+        } finally {
+          permitted.resolve()
+          await pending.catch(() => {})
+        }
+      },
+    }),
+  )
 })
