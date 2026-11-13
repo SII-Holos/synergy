@@ -59,6 +59,17 @@ function sourceAcknowledgementUnknown(cause: unknown): never {
     { cause },
   )
 }
+function targetAcknowledgementUnknown(cause: unknown): never {
+  throw new OrganizationRuntimeError(
+    {
+      code: "SERVICE_UNAVAILABLE",
+      message: "The accepted Target cleanup could not be acknowledged by its original owner",
+      outcome: "unknown",
+      retryable: false,
+    },
+    { cause },
+  )
+}
 export function registerHandoffCleanup(input: Owner) {
   const value = state()
   if (value.owner) fail("The original Runtime already owns its Handoff cleanup controller")
@@ -363,68 +374,92 @@ export namespace OrganizationHandoffCleanup {
           fail("Cleanup authorization changed its original participant or binding")
         const capability: HandoffCleanupAuthorization = Object.freeze({ kind: "original-handoff-cleanup" })
         let open = true
-        const assert = WorkspaceContent.captureOwner(work)
+        const assertStore = WorkspaceContent.captureOwner(work)
+        const assert = () => {
+          owner.assertPrimary()
+          assertStore()
+          work.throwIfAborted()
+          if (state().owner !== owner || plan.expiresAt <= Date.now())
+            fail("Cleanup acknowledgement outlived its original HTTP callback")
+        }
         authorizations.set(capability, {
           authorization,
           signingIdentity: response.signingIdentity,
           assert() {
-            owner.assertPrimary()
             assert()
-            work.throwIfAborted()
-            if (!open || state().owner !== owner || plan.expiresAt <= Date.now())
-              fail("Cleanup authorization outlived its original HTTP callback")
+            if (!open) fail("Cleanup authorization outlived its original HTTP callback")
           },
         })
         let execution: Handoff.MachineExecution
         try {
-          execution = Handoff.MachineExecution.parse(await owner.target({ authorization: capability, signal: work }))
+          execution = await owner.target({ authorization: capability, signal: work })
         } finally {
           open = false
           authorizations.delete(capability)
         }
-        const result = Handoff.MachineResult.parse({
-          ...execution,
-          facts: await Promise.all(
-            execution.facts.map(async (proof) => ({ proof, signature: await Handoff.signProof(proof, key) })),
-          ),
-        })
-        if (
-          result.operation !== action ||
-          result.handoffID !== plan.handoffID ||
-          result.runtimeID !== plan.runtimeID ||
-          result.requestID !== plan.requestID ||
-          result.object ||
-          result.workspaceDifference ||
-          result.differencePage ||
-          result.requirements.length ||
-          result.facts.some(
-            ({ proof }) =>
-              !["target-never-activate", "target-preview-released"].includes(proof.purpose) ||
-              proof.manifestHash !== plan.manifestHash ||
-              (Object.keys(Handoff.Binding.shape) as (keyof z.infer<typeof Handoff.Binding>)[]).some(
-                (field) => proof[field] !== plan[field],
-              ),
+        let result: Handoff.MachineResult
+        try {
+          assert()
+          execution = Handoff.MachineExecution.parse(execution)
+          result = Handoff.MachineResult.parse({
+            ...execution,
+            facts: await Promise.all(
+              execution.facts.map(async (proof) => ({ proof, signature: await Handoff.signProof(proof, key) })),
+            ),
+          })
+          if (
+            result.operation !== action ||
+            result.handoffID !== plan.handoffID ||
+            result.runtimeID !== plan.runtimeID ||
+            result.requestID !== plan.requestID ||
+            result.object ||
+            result.workspaceDifference ||
+            result.differencePage ||
+            result.requirements.length ||
+            result.facts.some(
+              ({ proof }) =>
+                !["target-never-activate", "target-preview-released"].includes(proof.purpose) ||
+                proof.manifestHash !== plan.manifestHash ||
+                (Object.keys(Handoff.Binding.shape) as (keyof z.infer<typeof Handoff.Binding>)[]).some(
+                  (field) => proof[field] !== plan[field],
+                ),
+            )
           )
-        )
-          fail("Cleanup controller returned more than its original inactive fact")
+            fail("Cleanup controller returned more than its original inactive fact")
+          assert()
+        } catch (cause) {
+          targetAcknowledgementUnknown(cause)
+        }
         for (const fact of result.facts) {
-          const acknowledged = await client.orgHandoff.proof({ orgHandoffSignedProof: fact }, { signal: work })
+          const acknowledged = await client.orgHandoff
+            .proof({ orgHandoffSignedProof: fact }, { signal: work })
+            .catch(targetAcknowledgementUnknown)
           if (!acknowledged.data) {
             const error = OrganizationProtocol.Error.safeParse(acknowledged.error)
             if (error.success) throw new OrganizationRuntimeError(error.data)
-            fail("Cleanup proof acknowledgement is unknown")
           }
-          const receipt = Handoff.FactAcknowledgement.parse(acknowledged.data)
-          if (
-            receipt.purpose !== fact.proof.purpose ||
-            receipt.factHash !== (await Handoff.proofHash(fact.proof)) ||
-            (Object.keys(Handoff.Binding.shape) as (keyof z.infer<typeof Handoff.Binding>)[]).some(
-              (field) => receipt[field] !== plan[field],
+          try {
+            assert()
+            const receipt = Handoff.FactAcknowledgement.parse(acknowledged.data)
+            if (
+              receipt.purpose !== fact.proof.purpose ||
+              receipt.factHash !== (await Handoff.proofHash(fact.proof)) ||
+              (Object.keys(Handoff.Binding.shape) as (keyof z.infer<typeof Handoff.Binding>)[]).some(
+                (field) => receipt[field] !== plan[field],
+              )
             )
-          )
-            fail("Cleanup acknowledgement belongs to another fact")
+              throw new Error("Cleanup acknowledgement belongs to another fact")
+            assert()
+          } catch (cause) {
+            targetAcknowledgementUnknown(cause)
+          }
         }
-        return result
+        try {
+          assert()
+          return result
+        } catch (cause) {
+          targetAcknowledgementUnknown(cause)
+        }
       },
     )
   }

@@ -19,6 +19,7 @@
 
 ## Index
 
+- [0174](0174-target-cleanup-misreported-a-lost-acknowledgement.md)
 - [0173](0173-received-workspace-copy-could-not-be-transferred-again.md)
 - [0172](0172-handoff-response-crossed-cleanup-authorization-mode.md)
 - [0171](0171-native-move-cold-open-changed-dispatch-identity.md)

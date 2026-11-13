@@ -5,6 +5,7 @@ import { z } from "zod"
 import { createSynergyClient } from "@ericsanchezok/synergy-sdk"
 import { createOrganizationClient } from "@ericsanchezok/synergy-sdk/organization"
 import { OrganizationHandoffCleanup as Cleanup } from "../src/handoff-recovery"
+import { openHandoffCleanup } from "../src/handoff-cleanup-runtime"
 import { openMemberConnection } from "../src/connection"
 import { memberEnvironment } from "../src/environment"
 import {
@@ -1169,6 +1170,7 @@ for (const scenario of [
               state: "published",
               nativeRequested: true,
             })
+            let targetRetired = false
             try {
               if (scenario === "return-adopt-runtime-revoked-cleanup") {
                 await receiver.runtime.run(async () => {
@@ -1483,37 +1485,31 @@ for (const scenario of [
                 return
               }
               let proofPosts = 0
+              let committedAcknowledgement: z.infer<typeof Handoff.FactAcknowledgement> | undefined
               if (scenario === "return-adopt-runtime-revoked-cleanup")
                 f.interceptHTTP(async (request) => {
                   if (new URL(request.url).pathname !== "/runtime/v1/handoffs/proof") return
                   proofPosts++
                   const result = await f.service.fetch(request)
                   if (result.status !== 200) return result
-                  return Response.json(
-                    {
-                      code: "SERVICE_UNAVAILABLE",
-                      message: "Lost committed cleanup proof acknowledgement",
-                      outcome: "unknown",
-                      retryable: false,
-                    },
-                    { status: 503 },
-                  )
+                  committedAcknowledgement = Handoff.FactAcknowledgement.parse(await result.json())
+                  return Response.json(null)
                 })
               using releases = spyOn(WorkspaceMove, "release")
+              let retirementError: unknown
               if (scenario === "return-adopt-runtime-revoked-cleanup")
-                await expect(receiver.runtime.run(() => Cleanup.retire(descriptor))).rejects.toMatchObject({
-                  data: { outcome: "unknown" },
-                })
+                retirementError = await receiver.runtime
+                  .run(() => Cleanup.retire(descriptor))
+                  .then(
+                    () => undefined,
+                    (error: unknown) => error,
+                  )
               else
                 expect((await receiver.runtime.run(() => Cleanup.retire(descriptor))).facts[0]?.proof.purpose).toBe(
                   "target-never-activate",
                 )
               f.interceptHTTP(undefined)
               const released = releases.mock.calls.length
-              const checked = await receiver.runtime.run(() => Cleanup.inspect(descriptor))
-              expect(checked).toMatchObject({ state: "complete", stage: "target-never-activate" })
-              expect(releases.mock.calls.length).toBe(released)
-              if (scenario === "return-adopt-runtime-revoked-cleanup") expect(proofPosts).toBe(1)
               await receiver.runtime.run(async () => {
                 expect(await Epochs.inspect(selected)).toMatchObject({ phase: "never_activate" })
                 expect(await WorkspaceMove.inspect(original.request)).toMatchObject({
@@ -1526,10 +1522,21 @@ for (const scenario of [
                   (claim) => claim.state === "active" && claim.roots?.some((root) => root.path === receiverDirectory),
                 ),
               ).toBe(false)
+              targetRetired = true
+              if (scenario === "return-adopt-runtime-revoked-cleanup") {
+                expect(proofPosts).toBe(1)
+                expect(committedAcknowledgement?.purpose).toBe("target-never-activate")
+                expect(retirementError).toMatchObject({ data: { outcome: "unknown" } })
+              }
+              const checked = await receiver.runtime.run(() => Cleanup.inspect(descriptor))
+              expect(checked).toMatchObject({ state: "complete", stage: "target-never-activate" })
+              expect(releases.mock.calls.length).toBe(released)
+              if (committedAcknowledgement)
+                expect(await Handoff.proofHash(checked.facts[0]!.proof)).toBe(committedAcknowledgement.factHash)
               expect(allocations).toBe(0)
             } finally {
               if (cliCleanup) await (await workspaceCoordinator.recover(original.native.claim)).release()
-              else
+              else if (!targetRetired)
                 await receiver.runtime.run(async () => {
                   await Epochs.neverActivate(selected, returning.data.manifestHash ?? returnedFrozen!.manifestHash!)
                   await WorkspaceMove.release(original.request, "retired")
@@ -1979,6 +1986,104 @@ for (const scenario of [
             }
           }
           await cancelled(true)
+          if (scenario === "return-adopt-runtime-revoked-cleanup") {
+            const descriptor = Recovery.Descriptor.parse({
+              ...Handoff.Binding.strip().parse(returning.data),
+              manifestHash: returnedFrozen!.manifestHash,
+            })
+            await receiver.runtime.close()
+            const open = () =>
+              openHandoffCleanup(
+                {
+                  version: 1,
+                  home: receiver.home.home,
+                  identity: receiver.home.identity,
+                  deploymentIncarnation: receiver.registration.deploymentIncarnation,
+                  ca: f.ca,
+                  readonly: true,
+                },
+                { workspaceCoordinator },
+              )
+            let recovery = await open()
+            using releases = spyOn(WorkspaceMove, "release")
+            let originalAcknowledgement: z.infer<typeof Handoff.FactAcknowledgement> | undefined
+            try {
+              for (const fault of ["wrong", "abort", "close"] as const) {
+                const committed = Promise.withResolvers<void>(),
+                  reply = Promise.withResolvers<void>(),
+                  observer = new AbortController(),
+                  order: string[] = []
+                let rescued = false
+                const rescue = setTimeout(() => {
+                  rescued = true
+                  reply.resolve()
+                  committed.reject(new Error("Target cleanup did not reach its real proof commit"))
+                }, 5000)
+                f.interceptHTTP(async (request) => {
+                  if (new URL(request.url).pathname !== "/runtime/v1/handoffs/proof") return
+                  const response = await f.service.fetch(request)
+                  expect(response.status).toBe(200)
+                  const acknowledged = Handoff.FactAcknowledgement.parse(await response.clone().json())
+                  if (originalAcknowledgement) expect(acknowledged).toEqual(originalAcknowledgement)
+                  else originalAcknowledgement = acknowledged
+                  committed.resolve()
+                  if (fault === "wrong") return Response.json({ ...acknowledged, factHash: "f".repeat(64) })
+                  await reply.promise
+                  return response
+                })
+                const inspecting = recovery.inspect(descriptor, { signal: observer.signal }).then(
+                  (value) => {
+                    order.push("operation")
+                    return { kind: "fulfilled", value } as const
+                  },
+                  (error: unknown) => {
+                    order.push("operation")
+                    return { kind: "rejected", error } as const
+                  },
+                )
+                let closing: Promise<void> | undefined
+                try {
+                  await Promise.race([
+                    committed.promise,
+                    inspecting.then(() => {
+                      throw new Error("Target inspection ended before its real proof commit")
+                    }),
+                  ])
+                  if (fault === "abort") observer.abort(new Error("Original Target proof observer ended"))
+                  if (fault === "close")
+                    closing = recovery.close().then(() => {
+                      order.push("close")
+                    })
+                  reply.resolve()
+                  const outcome = await inspecting
+                  expect(outcome.kind).toBe("rejected")
+                  expect(outcome.kind === "rejected" ? outcome.error : undefined).toMatchObject({
+                    data: { outcome: "unknown" },
+                  })
+                  if (closing) {
+                    await closing
+                    expect(order).toEqual(["operation", "close"])
+                  }
+                  expect(rescued).toBe(false)
+                  expect(releases.mock.calls.length).toBe(0)
+                } finally {
+                  reply.resolve()
+                  clearTimeout(rescue)
+                  await Promise.allSettled([inspecting, ...(closing ? [closing] : [])])
+                  f.interceptHTTP(undefined)
+                }
+              }
+              recovery = await open()
+              const checked = await recovery.inspect(descriptor)
+              expect(checked).toMatchObject({ state: "complete", stage: "target-never-activate" })
+              expect(await Handoff.proofHash(checked.facts[0]!.proof)).toBe(originalAcknowledgement!.factHash)
+              expect(releases.mock.calls.length).toBe(0)
+              expect(allocations).toBe(0)
+            } finally {
+              f.interceptHTTP(undefined)
+              await recovery.close()
+            }
+          }
           return
         }
       } else {
