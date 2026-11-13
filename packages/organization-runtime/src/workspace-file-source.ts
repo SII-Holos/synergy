@@ -2,6 +2,7 @@ import { z } from "zod"
 import { OrganizationCloudProtocol as Cloud } from "@ericsanchezok/synergy-organization-protocol"
 import { WorkspaceFileSource as Source } from "@ericsanchezok/synergy-harness/workspace/file-source"
 import { WorkspaceContent } from "@ericsanchezok/synergy-harness/workspace/content"
+import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
 import { WorkspaceProtocol } from "@ericsanchezok/synergy-harness/workspace/protocol"
 import { WorkspaceErrors } from "@ericsanchezok/synergy-harness/workspace/errors"
 import { OrganizationExecutionLeases as Leases } from "./execution-leases"
@@ -32,11 +33,28 @@ export namespace OrganizationWorkspaceFileSource {
   }
   export function register(value: RuntimeIdentity) {
     const identity = RuntimeIdentity.parse(value)
+    const inspectBinding = (workspace: Readonly<WorkspaceCatalog.Info>) => {
+      const spec = Cloud.FileLocator.parse(workspace.backend?.spec)
+      if (
+        workspace.backend?.provider !== "organization" ||
+        workspace.binding.hostID !== "organization:" + identity.orgID ||
+        spec.orgID !== identity.orgID ||
+        spec.projectID !== workspace.scopeID ||
+        workspace.content
+      )
+        denied("Organization Locator belongs to another file owner")
+      return spec
+    }
     Source.register("organization", {
+      inspectBinding(workspace) {
+        inspectBinding(workspace)
+        return undefined
+      },
       async open(input) {
         const workspace = input.workspace
         const signal = input.signal
-        const spec = Cloud.FileLocator.parse(workspace.backend?.spec)
+        const spec = inspectBinding(workspace)
+        const rootPath = spec.path || undefined
         const owner = WorkspaceContent.captureOwner()
         if (spec.orgID !== identity.orgID || spec.projectID !== workspace.scopeID || workspace.content)
           denied("Organization Locator belongs to another file owner")
@@ -53,7 +71,7 @@ export namespace OrganizationWorkspaceFileSource {
             remote.resourceID !== spec.resourceID ||
             remote.workspaceID !== spec.workspaceID ||
             remote.generation !== spec.generation ||
-            remote.rootPath !== spec.path
+            remote.rootPath !== rootPath
           )
             denied("Organization files differ from the original remote Locator")
         }
@@ -89,7 +107,7 @@ export namespace OrganizationWorkspaceFileSource {
             reference,
             directory: "/workspace",
             binding,
-            files: createWorkspaceFileHost(reference, perform, assert, spec.path),
+            files: createWorkspaceFileHost(reference, perform, assert, rootPath),
             assert,
             async release() {
               owner()
@@ -131,7 +149,10 @@ export namespace OrganizationWorkspaceFileSource {
             const described = await send(authority, { operation: { action: "describe" } }, cancellation)
             assert()
             await resolution.assertCaller()
-            const remote = Cloud.FileReference.parse({ ...described.reference, rootPath: spec.path })
+            const remote = Cloud.FileReference.parse({
+              ...described.reference,
+              ...(rootPath === undefined ? {} : { rootPath }),
+            })
             check(remote)
             const binding = Binding.parse({
               version: 1,
@@ -160,7 +181,7 @@ export namespace OrganizationWorkspaceFileSource {
               reference,
               directory: "/workspace",
               binding,
-              files: createWorkspaceFileHost(reference, perform, assert, spec.path),
+              files: createWorkspaceFileHost(reference, perform, assert, rootPath),
               assert,
               async release() {
                 owner()

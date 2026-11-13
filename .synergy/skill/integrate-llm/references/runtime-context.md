@@ -1,5 +1,7 @@
 # Runtime context and request stability
 
+Preparation that needs an accepted task's native binding proof belongs after materialization and before model/tool discovery. Use the existing model-preparation contribution and reload the owning Session after it publishes Working or selection metadata. Early admission must not manufacture a materialized root. Exercise ordinary tools through that same preparation path, cancellation ACK before actual native termination, and a later independent task after interrupted publication.
+
 When a host selects exclusive instructions, register `InstructionSource` before sealing composition and in every prompt-preparing worker. Exercise `SystemPrompt.custom()` with separate real Runtime homes containing conflicting global and explicit instructions; verify source errors and empty snapshots never invoke implicit discovery. For project-only sources, cover ancestor paths, fallback filenames with `..`, external symlinks and replacement between discovery and file read, alongside the personal loader regression tests.
 
 For host-owned project configuration, select explicit registered fields through `ProjectConfig` rather than loading personal configuration and deleting keys afterward. Test that excluded domain files are never required, references remain unexpanded, legacy files are unchanged and malformed selected values fail execution resolution. Include real file replacement and out-of-project links; preserve ordinary personal discovery tests separately.

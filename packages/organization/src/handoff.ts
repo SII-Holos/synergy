@@ -35,6 +35,12 @@ import { WorkspaceArchive } from "@ericsanchezok/synergy-harness/workspace/archi
 import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
 import { OrganizationResources } from "./resources"
 
+function wholeWorkspace(mapping: Handoff.WorkspaceMapping) {
+  return (
+    (mapping.kind === "organization-live" || mapping.kind === "organization-native") && mapping.resource.path === ""
+  )
+}
+
 const LegacyStored = Handoff.LegacyView.omit({
   missingRequirements: true,
   canCancel: true,
@@ -1361,13 +1367,18 @@ export function createHandoffs(options: {
             )
             if (catalog.activeMount || catalog.binding.generation !== source.resource.generation)
               fail("RESOURCE_UNAVAILABLE", "Handoff source requires its current dormant Workspace generation")
-            choices.push({ kind: "organization-live", requiresDifference: false })
+            const completeRoot =
+              source.resource.path !== "" ||
+              admitted.participants.every((participant) => participant.connection.handshake.schemas.handoffs >= 7)
+            if (completeRoot) choices.push({ kind: "organization-live", requiresDifference: false })
             if (
+              completeRoot &&
               native &&
               admitted.participants.every((participant) => participant.connection.handshake.schemas.handoffs >= 5)
             )
               choices.push({ kind: "organization-native", targetKind: "existing", requiresDifference: true })
             if (
+              completeRoot &&
               current.target.runtimeKind === "member" &&
               !contract?.selection?.infrastructure.environment &&
               admitted.participants.every((participant) => participant.connection.handshake.schemas.handoffs >= 6)
@@ -1453,6 +1464,8 @@ export function createHandoffs(options: {
           scopeID = OrganizationCloud.scopeID(record.orgID, access.current.projectID)
           const mapping = record.request.workspaceMapping
           if (mapping.kind === "organization-live" || mapping.kind === "organization-native") {
+            if (wholeWorkspace(mapping) && connection.handshake.schemas.handoffs < 7)
+              fail("HANDOFF_BLOCKED", "Whole Workspace handoff requires both participants' root reader")
             if (
               connection.handshake.schemas.handoffs < 3 ||
               !["source", "source-object", "source-validate"].includes(proof.operation.action)
@@ -1726,6 +1739,8 @@ export function createHandoffs(options: {
         const runtime = role === "source" ? record.source : record.target
         const connection = options.connections.captureHandoff(runtime.runtimeID)
         const mapping = record.request.workspaceMapping
+        if (wholeWorkspace(mapping) && connection.handshake.schemas.handoffs < 7)
+          fail("HANDOFF_BLOCKED", "Whole Workspace handoff requires both participants' root reader")
         if (
           mapping.kind === "organization-native" &&
           connection.handshake.schemas.handoffs < (mapping.target.kind === "private-copy" ? 6 : 5)
@@ -1964,6 +1979,8 @@ export function createHandoffs(options: {
           ] as const) {
             const files = options.connections.captureHandoff(runtime.runtimeID)
             files.assertCurrent()
+            if (wholeWorkspace(request.workspaceMapping) && files.handshake.schemas.handoffs < 7)
+              fail("HANDOFF_BLOCKED", "Whole Workspace handoff requires both participants' root reader")
             if (request.workspaceMapping.kind === "organization-object" && files.handshake.schemas.handoffs < 2)
               fail("HANDOFF_BLOCKED", "Both participants must support complete mapped Workspace files")
             if (request.workspaceMapping.kind === "organization-live" && files.handshake.schemas.handoffs < 3)

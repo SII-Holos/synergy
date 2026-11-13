@@ -87,7 +87,7 @@ export function createHandoffInspection(input: {
               resourceID: locator.resourceID,
               workspaceID: locator.workspaceID,
               generation: locator.generation,
-              path: locator.path,
+              path: locator.version === 3 ? "" : locator.path,
             }
           }
         }

@@ -39,6 +39,7 @@ export namespace WorkspaceFileSource {
     release(): Promise<void>
   }
   export interface Provider {
+    inspectBinding?(workspace: Readonly<WorkspaceCatalog.Info>): undefined
     open(input: Input): Promise<Lease>
   }
   interface Frame {
@@ -58,10 +59,33 @@ export namespace WorkspaceFileSource {
     id = Record.shape.provider.parse(id)
     if (id === "objects" || id === "directory" || providers().has(id))
       throw new Error("Workspace file source is canonical or already registered")
-    providers().set(id, { open: provider.open.bind(provider) })
+    providers().set(id, {
+      open: provider.open.bind(provider),
+      inspectBinding: provider.inspectBinding?.bind(provider),
+    })
   }
   export function has(id: string) {
     return providers().has(id)
+  }
+  export async function inspectBinding(input: { workspaceID: string; scopeID: string; generation?: number }) {
+    const owner = WorkspaceContent.captureOwner()
+    const workspace = await WorkspaceCatalog.get(input.workspaceID, input.scopeID)
+    if (
+      workspace.binding.state !== "bound" ||
+      workspace.binding.path !== null ||
+      workspace.binding.physicalID ||
+      workspace.content ||
+      workspace.activeMount ||
+      workspace.sharedWritableWorkspaceIDs.length ||
+      workspace.lifecycle !== "active" ||
+      (input.generation !== undefined && input.generation !== workspace.binding.generation)
+    )
+      unavailable(workspace.id, "Remote Workspace binding changed its original file owner")
+    const inspect = workspace.backend && providers().get(workspace.backend.provider)?.inspectBinding
+    if (!inspect) unavailable(workspace.id, "Remote Workspace has no installed binding inspection owner")
+    inspect(Object.freeze(structuredClone(workspace)))
+    owner()
+    return workspace
   }
   export function capture(lease: Lease, workspace: WorkspaceCatalog.Info): Record {
     const frame = leases.get(lease)

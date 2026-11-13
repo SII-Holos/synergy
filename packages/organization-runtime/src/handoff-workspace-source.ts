@@ -61,7 +61,7 @@ export namespace OrganizationHandoffWorkspaceSource {
               spec.resourceID !== mapping.resource.resourceID ||
               spec.workspaceID !== mapping.resource.workspaceID ||
               spec.generation !== mapping.resource.generation ||
-              spec.path !== mapping.resource.path
+              (spec.version === 3 ? "" : spec.path) !== mapping.resource.path
             )
               fail("Remote capture differs from its original Locator and service selection")
             await WorkspaceArchive.copyManifest(

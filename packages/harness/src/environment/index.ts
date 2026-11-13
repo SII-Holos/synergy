@@ -712,6 +712,17 @@ export namespace Environment {
     }
   }
 
+  export async function retireRecoveredAdmission(value: EnvironmentSchema.Use, scopeID: string) {
+    const previous = EnvironmentSchema.Use.parse(structuredClone(value))
+    const runtime = RuntimeContext.current(), primary = runtime.storage, current = Storage.current()
+    if (!primary || current.store !== primary.store || current.artifactDirectory !== primary.artifactDirectory ||
+      current.artifactObjects !== primary.artifactObjects || current.store.options.readonly ||
+      previous.kind !== "admission" || previous.ownership.kind === "legacy-unknown" || previous.ownerEpoch === epoch())
+      throw new Unavailable({ environmentID: previous.target.environmentID,
+        message: "Recovered admission requires its actual old native Use and writable primary" })
+    return releaseRecoveredAdmission(previous, scopeID)
+  }
+
   async function releaseRecoveredAdmission(previous: EnvironmentSchema.Use, scopeID: string) {
     const runtime = RuntimeContext.current()
     const { store, artifactDirectory, artifactObjects } = Storage.current()

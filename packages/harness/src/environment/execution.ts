@@ -656,6 +656,36 @@ export namespace EnvironmentExecution {
     })()
   }
 
+  export function activeEntries(): AsyncIterable<Info> {
+    const current = EnvironmentUseOwnership.captureStorage()
+    return (async function* () {
+      current()
+      for await (const row of Storage.records({ prefix: StoragePath.environmentExecutionActive(), limit: 128 })) {
+        current()
+        if (row.key.length !== 3 || row.value !== true)
+          throw new Error("Active Environment execution has another canonical address")
+        const info = await get(row.key[2], row.key[1])
+        current()
+        if (info.state === "completed") throw new Error("Completed Environment execution retains an active index")
+        yield info
+      }
+      current()
+    })()
+  }
+
+  export async function retireRetainedSource(id: string, scopeID: string, signal?: AbortSignal) {
+    if (Storage.inTransaction()) throw new Error("Original Environment cleanup must run outside a native transaction")
+    const info = await get(id, scopeID)
+    if (!info.source) throw new Error("Original Environment cleanup requires its retained native source")
+    Sources.assertRegisteredOwner(info.source.provider)
+    if (info.state === "completed") return info
+    if (originalSource(info)) throw new Error("Live Environment operations retain their original completion owner")
+    const observed = await Sources.retireOriginal(info.id, info.scopeID, signal)
+    if (observed.state !== "completed") throw new Error("Original Environment cleanup has no complete native receipt")
+    const accepted = await acceptSource(info, observed)
+    return complete(accepted.id, accepted.scopeID)
+  }
+
   export async function listActive(scopeID: string): Promise<Info[]> {
     const keys = await Storage.list(StoragePath.environmentExecutionActive(scopeID))
     return Promise.all(keys.map((key) => get(key[2], scopeID)))

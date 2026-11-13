@@ -3,6 +3,7 @@ import {
   OrganizationExecutionProtocol as Execution,
   OrganizationGatewayProtocol as Gateway,
   OrganizationCloudExecutionProtocol as CloudEnvironment,
+  OrganizationCloudCleanupProtocol as CloudCleanup,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { Provider } from "@ericsanchezok/synergy-harness/provider/provider"
@@ -14,6 +15,7 @@ import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
 import { SessionExecutionOwners } from "@ericsanchezok/synergy-harness/session/execution-owners"
 import { SessionExecutionSource } from "@ericsanchezok/synergy-harness/session/execution-source"
+import { SessionExecutionContributions } from "@ericsanchezok/synergy-harness/session/execution-contributions"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { Lock } from "@ericsanchezok/synergy-harness/util/lock"
 import { RuntimeIdentity } from "./home"
@@ -27,6 +29,7 @@ import { SessionTransferEpochs as Epochs } from "@ericsanchezok/synergy-harness/
 import { WorkspaceContent } from "@ericsanchezok/synergy-harness/workspace/content"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { EnvironmentExecutionSource } from "@ericsanchezok/synergy-harness/environment/execution-source"
+import { prepareInitialWorkspace } from "./initial-workspace"
 
 interface Connection {
   connection: MemberConnection["connected"]
@@ -441,6 +444,100 @@ export function inspectMemberEnvironmentRetirement(
   return environmentRetirement(authority, selector, query, signal, "inspectEnvironmentRetirement")
 }
 
+async function withNativeCleanupProof<T>(
+  authority: Leases.Authority,
+  selector: { grantID: string; generation: number } | undefined,
+  signal: AbortSignal | undefined,
+  body: (proof: Execution.InspectionProof, resources: MemberConnection["resources"], signal: AbortSignal) => Promise<T>,
+) {
+  if (Storage.inTransaction()) throw denied("Native Environment cleanup must run outside a native transaction")
+  const original = Leases.Authority.parse(structuredClone(authority))
+  const selected = selector && { ...selector }
+  const source = current(),
+    owner = WorkspaceContent.captureOwner(signal)
+  const assert = () => {
+    owner()
+    EnvironmentExecutionSource.assertRegisteredOwner("organization")
+    source.signal.throwIfAborted()
+    if (
+      state().connection !== source ||
+      original.runtimeID !== source.connection.runtimeID ||
+      original.orgID !== source.connection.orgID ||
+      original.deploymentIncarnation !== source.connection.deploymentIncarnation
+    )
+      throw denied("Native cleanup lost its original enrolled Runtime connection")
+  }
+  assert()
+  const cancellation = AbortSignal.any([source.signal, ...(signal ? [signal] : [])])
+  const proof = await source.intake.cleanupProof(original, selected)
+  assert()
+  let result: T
+  try {
+    result = await body(proof, source.resources, cancellation)
+  } catch (error) {
+    if (error instanceof OrganizationRuntimeError) throw error
+    throw new OrganizationRuntimeError(
+      {
+        code: "SERVICE_UNAVAILABLE",
+        outcome: "unknown",
+        retryable: false,
+        message: "Original native cleanup has no confirmed response",
+      },
+      { cause: error },
+    )
+  }
+  try {
+    assert()
+    cancellation.throwIfAborted()
+  } catch (error) {
+    throw new OrganizationRuntimeError(
+      {
+        code: "SERVICE_UNAVAILABLE",
+        outcome: "unknown",
+        retryable: false,
+        message: "Native cleanup lost its original owner before acknowledgement",
+      },
+      { cause: error },
+    )
+  }
+  return result
+}
+
+export function inspectMemberNativeGrant(
+  authority: Leases.Authority,
+  selector?: { grantID: string; generation: number },
+  signal?: AbortSignal,
+) {
+  return withNativeCleanupProof(authority, selector, signal, (proof, resources, cancellation) =>
+    resources.inspectRetention(proof, cancellation),
+  )
+}
+
+export function discoverMemberEnvironmentCleanup(
+  authority: Leases.Authority,
+  selector: { grantID: string; generation: number },
+  page: { limit?: number; cursor?: string },
+  signal?: AbortSignal,
+) {
+  const selected = CloudCleanup.DiscoveryProof.shape.page.parse(structuredClone(page))
+  return withNativeCleanupProof(authority, selector, signal, (proof, resources, cancellation) =>
+    resources.discoverEnvironmentCleanup(proof, selected, cancellation),
+  )
+}
+
+export function reconcileMemberEnvironmentCleanup(
+  authority: Leases.Authority,
+  selector: { grantID: string; generation: number },
+  action: "inspect" | "retire",
+  candidate: CloudCleanup.Candidate,
+  signal?: AbortSignal,
+) {
+  const selected = CloudCleanup.Candidate.parse(structuredClone(candidate))
+  return withNativeCleanupProof(authority, selector, signal, (proof, resources, cancellation) =>
+    resources.reconcileEnvironmentCleanup(proof, action, selected, cancellation),
+  )
+}
+
 async function withMemberResolution<T>(
   identity: RuntimeIdentity,
   input: { sessionID: string; scopeID?: string; parentSessionID?: string; signal?: AbortSignal },
@@ -600,6 +697,52 @@ export function registerMemberExecution(identity: RuntimeIdentity) {
             await Session.setModelSelection(session.id, { model: { providerID: provider.id, modelID } })
         },
       })
+    },
+  })
+  SessionExecutionContributions.register({
+    id: "organization-initial-workspace",
+    async prepareModel(session, context) {
+      if (!session.organization || session.organization.orgID !== identity.orgID) return
+      await withMemberResolution(
+        identity,
+        {
+          sessionID: session.id,
+          scopeID: session.scope.id,
+          parentSessionID: session.parentID,
+          signal: context.signal,
+        },
+        async (resolution, signal) => {
+          if (!resolution.description.grant.selection.infrastructure.workspace) return
+          const root = await SessionExecutionOwners.latestRoot(session.id)
+          if (root?.id !== context.rootMessageID || (!resolution.lineage && resolution.accepted.rootID !== root.id))
+            throw denied("Initial Working requires its exact materialized native task")
+          const source = resolution.source
+          const grant = await source.resources.bind(resolution.proof, signal)
+          const files = await source.resources.workspaceFiles(
+            resolution.proof,
+            { operation: { action: "describe" } },
+            signal,
+          )
+          signal.throwIfAborted()
+          if (
+            resolution.description.grant.grantID !== grant.grantID ||
+            grant.deploymentIncarnation !== source.connection.deploymentIncarnation ||
+            JSON.stringify(resolution.description.grant.selection) !== JSON.stringify(grant.selection)
+          )
+            throw denied("Initial Working changed its original accepted resource selection")
+          await prepareInitialWorkspace({
+            sessionID: session.id,
+            grant,
+            reference: files.reference,
+            signal,
+            assert() {
+              signal.throwIfAborted()
+              if (current() !== source) throw denied("Initial Working lost its original machine connection")
+            },
+          })
+        },
+        true,
+      )
     },
   })
   ProviderRequestSource.register({

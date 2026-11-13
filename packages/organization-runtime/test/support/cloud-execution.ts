@@ -19,6 +19,7 @@ import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { SessionExecutionSource } from "@ericsanchezok/synergy-harness/session/execution-source"
+import { SessionExecutionContributions } from "@ericsanchezok/synergy-harness/session/execution-contributions"
 import { SessionExecutionOwners } from "@ericsanchezok/synergy-harness/session/execution-owners"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/ledger"
@@ -44,6 +45,32 @@ import { enrollMemberRuntime } from "../../src/enrollment"
 import { openMemberRuntime } from "../../src/runtime"
 import { fixture } from "./organization"
 
+type FailureMetadata = {
+  name: string
+  message?: string
+  code?: string
+  outcome?: string
+  cause?: FailureMetadata
+  errors?: FailureMetadata[]
+}
+
+function failureMetadata(error: unknown, depth = 0): FailureMetadata {
+  if (depth > 12) return { name: "Failure depth exceeded" }
+  if (!(error instanceof Error)) return { name: "Non-Error failure" }
+  const details = z
+    .object({ code: z.string().optional(), message: z.string().optional(), outcome: z.string().optional() })
+    .safeParse("data" in error ? error.data : error)
+  return {
+    name: error.name,
+    message: error.message,
+    ...(details.success ? details.data : {}),
+    ...(error.cause !== undefined ? { cause: failureMetadata(error.cause, depth + 1) } : {}),
+    ...(error instanceof AggregateError
+      ? { errors: error.errors.slice(0, 32).map((item) => failureMetadata(item, depth + 1)) }
+      : {}),
+  }
+}
+
 async function availablePort() {
   const probe = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() })
   const port = probe.port!
@@ -55,6 +82,9 @@ function bindPhysicalExecutor(
   executor: NativeExecutor,
   physical: Awaited<ReturnType<typeof physicalRuntime>>,
   observedStdin: (id: string, data: Uint8Array, end: boolean) => void,
+  preparedSandbox: (input: ExecutionProtocol.SandboxInput, result: ExecutionProtocol.Sandbox) => Promise<void>,
+  started: () => void,
+  effect: (action: "cancel" | "release" | "preparation", id: string) => void,
 ) {
   const files = executor.files
   return {
@@ -77,12 +107,22 @@ function bindPhysicalExecutor(
     },
     describe: physical.bind(executor.describe.bind(executor)),
     inspectPreparation: physical.bind(executor.inspectPreparation.bind(executor)),
-    releasePreparation: physical.bind(executor.releasePreparation.bind(executor)),
+    releasePreparation: physical.bind(async (id: string) => {
+      effect("preparation", id)
+      return executor.releasePreparation(id)
+    }),
     prepareInputs: physical.bind(executor.prepareInputs.bind(executor)),
     discardInputs: physical.bind(executor.discardInputs.bind(executor)),
-    prepareSandbox: physical.bind(executor.prepareSandbox.bind(executor)),
+    prepareSandbox: physical.bind(async (input: ExecutionProtocol.SandboxInput) => {
+      const result = await executor.prepareSandbox(input)
+      await preparedSandbox(input, result)
+      return result
+    }),
     releaseSandbox: physical.bind(executor.releaseSandbox.bind(executor)),
-    start: physical.bind(executor.start.bind(executor)),
+    start: physical.bind(async (input: ExecutionProtocol.Request) => {
+      started()
+      return executor.start(input)
+    }),
     status: physical.bind(executor.status.bind(executor)),
     output: physical.bind(executor.output.bind(executor)),
     stdin: physical.bind(async (id: string, data: Uint8Array, end: boolean = false) => {
@@ -90,8 +130,14 @@ function bindPhysicalExecutor(
       observedStdin(id, data, end)
     }),
     resize: physical.bind(executor.resize.bind(executor)),
-    cancel: physical.bind(executor.cancel.bind(executor)),
-    release: physical.bind(executor.release.bind(executor)),
+    cancel: physical.bind(async (id: string, digest: string) => {
+      effect("cancel", id)
+      return executor.cancel(id, digest)
+    }),
+    release: physical.bind(async (id: string) => {
+      effect("release", id)
+      return executor.release(id)
+    }),
     waitForChange: physical.bind(executor.waitForChange.bind(executor)),
     close: physical.bind(executor.close.bind(executor)),
   }
@@ -106,7 +152,11 @@ function controlledEnvironment(
   const Allocation = z.strictObject({ version: z.literal(1), target: Environment.Target })
   const executors = new Map<string, ReturnType<typeof bindPhysicalExecutor>>()
   const stdin = new Map<string, { calls: number; finishInput: boolean; ended: boolean }>()
-  let allocations = 0
+  const effects = new Map<string, { cancel: number; release: number; preparation: number }>()
+  let allocations = 0,
+    starts = 0
+  type HeldSandbox = { operationID: string; target: Environment.Target; sandboxed: boolean }
+  let sandboxGate: { enter(value: HeldSandbox): void; resume: Promise<void>; done(): void } | undefined
   const location = (request: EnvironmentRequest) =>
     path.join(directory, createHash("sha256").update(request.environmentID).digest("hex"))
   const target = (request: EnvironmentRequest) =>
@@ -146,14 +196,36 @@ function controlledEnvironment(
           },
         }),
       )
-      executor = bindPhysicalExecutor(native, physical, (id, data, end) => {
-        const previous = stdin.get(id)
-        stdin.set(id, {
-          calls: (previous?.calls ?? 0) + 1,
-          finishInput: previous?.finishInput === true || Buffer.from(data).equals(Buffer.from("finish\n")),
-          ended: previous?.ended === true || end,
-        })
-      })
+      executor = bindPhysicalExecutor(
+        native,
+        physical,
+        (id, data, end) => {
+          const previous = stdin.get(id)
+          stdin.set(id, {
+            calls: (previous?.calls ?? 0) + 1,
+            finishInput: previous?.finishInput === true || Buffer.from(data).equals(Buffer.from("finish\n")),
+            ended: previous?.ended === true || end,
+          })
+        },
+        async (input, result) => {
+          const gate = sandboxGate
+          if (!gate) return
+          sandboxGate = undefined
+          if (!input.operationID) throw new Error("Native sandbox has no original physical preparation identity")
+          gate.enter({ operationID: input.operationID, target: selected, sandboxed: result.sandboxed })
+          try {
+            await gate.resume
+          } finally {
+            gate.done()
+          }
+        },
+        () => starts++,
+        (action, id) => {
+          const current = effects.get(id) ?? { cancel: 0, release: 0, preparation: 0 }
+          current[action]++
+          effects.set(id, current)
+        },
+      )
       executors.set(request.requestID, executor)
     }
     return executor
@@ -214,6 +286,24 @@ function controlledEnvironment(
   return {
     provider,
     allocations: () => allocations,
+    nativeStarts: () => starts,
+    nativeEffects: (id: string) => ({ ...(effects.get(id) ?? { cancel: 0, release: 0, preparation: 0 }) }),
+    holdSandboxOnce() {
+      if (sandboxGate) throw new Error("A native sandbox is already held")
+      const entered = Promise.withResolvers<HeldSandbox>(),
+        released = Promise.withResolvers<void>(),
+        finished = Promise.withResolvers<void>()
+      sandboxGate = { enter: entered.resolve, resume: released.promise, done: finished.resolve }
+      return { entered: entered.promise, release: () => released.resolve(), finished: finished.promise }
+    },
+    async preparation(target: Environment.Target, id: string) {
+      const executor = executors.get(target.allocationID)
+      if (!executor) throw new Error("The original physical preparation executor is unavailable")
+      const result = await executor.inspectPreparation(id)
+      if (!Environment.sameTarget(result.target, target))
+        throw new Error("The original physical preparation belongs to another native allocation")
+      return result
+    },
     async observation(id: string) {
       for (const executor of executors.values()) {
         const status = await executor.status(id)
@@ -375,32 +465,45 @@ export async function cloudExecutionFixture() {
         ca: service.ca,
         ticket: await service.ticket(deviceID, home.publicKey),
       })
-      const online = Promise.withResolvers<void>()
-      const sockets = new Set<unknown>()
-      service.interceptFrames((socket, raw) => {
-        const frame = Runtime.ClientFrame.parse(JSON.parse(String(raw)))
-        if (frame.type === "handshake" && frame.proof.handshake.runtimeID === registration.runtimeID)
-          sockets.add(socket)
-        if (frame.type === "heartbeat" && sockets.has(socket)) online.resolve()
-        return false
-      })
       const port = await availablePort(),
         token = crypto.randomUUID().replaceAll("-", "").repeat(2)
-      const runtime = await openMemberRuntime({
-        home: home.home,
-        identity: home.identity,
-        ca: service.ca,
-        workspaceCoordinator: coordinator,
-        listen: { port, token },
-      })
-      resources.defer("original member Runtime", () => runtime.close())
-      const timer = setTimeout(() => online.reject(new Error("Original member did not connect")), 5000)
-      try {
-        await online.promise
-      } finally {
-        clearTimeout(timer)
-        service.interceptFrames(undefined)
+      async function open() {
+        const online = Promise.withResolvers<void>()
+        const sockets = new Set<unknown>()
+        service.interceptFrames((socket, raw) => {
+          const frame = Runtime.ClientFrame.parse(JSON.parse(String(raw)))
+          if (frame.type === "handshake" && frame.proof.handshake.runtimeID === registration.runtimeID)
+            sockets.add(socket)
+          if (frame.type === "heartbeat" && sockets.has(socket)) online.resolve()
+          return false
+        })
+        let opened: Awaited<ReturnType<typeof openMemberRuntime>> | undefined
+        let timer: ReturnType<typeof setTimeout> | undefined
+        try {
+          opened = await openMemberRuntime({
+            home: home.home,
+            identity: home.identity,
+            ca: service.ca,
+            workspaceCoordinator: coordinator,
+            listen: { port, token },
+          })
+          timer = setTimeout(() => online.reject(new Error("Original member did not connect")), 5000)
+          await online.promise
+          return opened
+        } catch (error) {
+          try {
+            await opened?.close()
+          } catch (failure) {
+            throw new AggregateError([error, failure], "Original member startup and cleanup failed")
+          }
+          throw error
+        } finally {
+          clearTimeout(timer)
+          service.interceptFrames(undefined)
+        }
       }
+      let runtime = await open()
+      resources.defer("original member Runtime", () => runtime.close())
       let sequence = 0
       async function newSession(input?: { inputHeaders?: Record<string, string>; environment?: null }) {
         const sessionKey = ++sequence === 1 ? deviceID : `${deviceID}-${sequence}`
@@ -441,7 +544,7 @@ export async function cloudExecutionFixture() {
         )
         if (input?.inputHeaders)
           await service.client.orgSessions.share({ sessionID, orgShareChange: { expectedShareGeneration: 0 } }, options)
-        const accepted = (
+        let accepted = (
           await service.client.orgCommands.input(
             {
               sessionID,
@@ -467,7 +570,10 @@ export async function cloudExecutionFixture() {
           runtime.run(async () => {
             if (!rootID) return
             const session = await Session.get(sessionID)
-            await RolloutLedger.finishRun(RolloutLifecycle.owner(session), rootID, "completed")
+            const owner = RolloutLifecycle.owner(session)
+            const run = await RolloutLedger.getRun(owner, rootID)
+            if (run.status === "running")
+              await RolloutLedger.finishRun(owner, rootID, run.recording === "failed" ? "failed" : "completed")
           }),
         )
         async function inRun<T>(
@@ -498,7 +604,12 @@ export async function cloudExecutionFixture() {
             })
           })
         }
-        async function tool(name: "bash" | "process" | "read", callID: string, args: Record<string, unknown>) {
+        async function tool(
+          name: "bash" | "process" | "read",
+          callID: string,
+          args: Record<string, unknown>,
+          signal?: AbortSignal,
+        ) {
           return inRun(async (session, root) => {
             const messageID = Identifier.ascending("message")
             const assistantMessage = MessageV2.Assistant.parse({
@@ -523,16 +634,34 @@ export async function cloudExecutionFixture() {
             const model = await Provider.getModel(root.model.providerID, root.model.modelID)
             const agent = await Agent.get(PrimaryAgentIdentity.names.general)
             if (!agent) throw new Error("The original Runtime did not register its primary Agent")
+            const toolSignal = signal
+              ? AbortSignal.any([signal, AbortSignal.timeout(10000)])
+              : AbortSignal.timeout(10000)
             const processor = SessionProcessor.create({
               assistantMessage,
               sessionID,
               model,
-              abort: AbortSignal.timeout(10000),
+              abort: toolSignal,
             })
             let failed: { error: unknown } | undefined
             try {
+              await SessionExecutionContributions.prepareModel(session, {
+                messageID,
+                rootMessageID: root.id,
+                agent: agent.name,
+                signal: toolSignal,
+              })
+              const preparedSession = await Session.get(sessionID)
               const selected = await ToolResolver.runtimeToolFor(
-                { agent, model, sessionID, session, processor, userTools: { [name]: true }, includeMCP: false },
+                {
+                  agent,
+                  model,
+                  sessionID,
+                  session: preparedSession,
+                  processor,
+                  userTools: { [name]: true },
+                  includeMCP: false,
+                },
                 name,
               )
               if (!selected) throw new Error("The original Runtime did not expose its ordinary " + name + " tool")
@@ -574,13 +703,57 @@ export async function cloudExecutionFixture() {
         const filesResponse = (input: Cloud.LocalFileRequest) =>
           client.orgLocalWorkspaceFiles.request({ sessionID, orgCloudLocalFileRequest: input })
         return {
-          runtime,
+          get runtime() {
+            return runtime
+          },
           home,
           registration,
           sessionID,
-          accepted,
-          async bash(command: string) {
-            return tool("bash", "selected-cloud-command", { command, yieldSeconds: 0.05 })
+          get accepted() {
+            return accepted
+          },
+          async nextTask() {
+            await runtime.run(async () => {
+              if (!rootID) throw new Error("The original task has not been materialized")
+              const session = await Session.get(sessionID)
+              const run = await RolloutLedger.getRun(RolloutLifecycle.owner(session), rootID)
+              if (!["completed", "cancelled", "failed"].includes(run.status))
+                throw new Error("The original task must settle before accepting an independent task")
+            })
+            const next = (
+              await service.client.orgCommands.input(
+                {
+                  sessionID,
+                  orgCommandInputRequest: {
+                    schemaVersion: 1,
+                    orgID: service.identity.orgID,
+                    sessionID,
+                    projectID: project.projectID,
+                    runtimeID: registration.runtimeID,
+                    requestID: "input-" + sessionKey + "-" + crypto.randomUUID(),
+                    input: {
+                      operation: "input",
+                      mode: "task",
+                      parts: [{ type: "text", text: "Read the explicitly selected shared files in a new task" }],
+                    },
+                  },
+                },
+                { headers: input?.inputHeaders ?? service.headers, throwOnError: true },
+              )
+            ).data
+            accepted = next
+            rootID = undefined
+            return next
+          },
+          close: () => runtime.close(),
+          async reopen() {
+            if (runtime.status !== "closed")
+              throw new Error("The original Runtime must actually close before reopening")
+            runtime = await open()
+            return runtime
+          },
+          async bash(command: string, signal?: AbortSignal) {
+            return tool("bash", "selected-cloud-command", { command, yieldSeconds: 0.05 }, signal)
           },
           async process(input: Parameters<Awaited<ReturnType<typeof ProcessTool.init>>["execute"]>[0]) {
             return (await tool("process", "process-" + input.action + "-" + crypto.randomUUID(), input)).result
@@ -597,7 +770,7 @@ export async function cloudExecutionFixture() {
           },
         }
       }
-      return { ...(await newSession()), sibling: newSession }
+      return Object.assign(await newSession(), { sibling: newSession })
     }
     return {
       service,
@@ -608,6 +781,10 @@ export async function cloudExecutionFixture() {
       member,
       coordinator,
       allocations: controlled.allocations,
+      nativeStarts: controlled.nativeStarts,
+      nativeEffects: controlled.nativeEffects,
+      holdSandboxOnce: controlled.holdSandboxOnce,
+      preparation: controlled.preparation,
       async observation(id: string) {
         const original = nativeOperations.get(id)
         if (!original) throw new Error("Command has no original native controller receipt")
@@ -635,7 +812,13 @@ export async function cloudExecutionFixture() {
       async head() {
         return (await service.client.orgCloudWorkspaces.get({ workspaceID: workspace.workspaceID }, options)).data
       },
-      [Symbol.asyncDispose]: resources.close,
+      async [Symbol.asyncDispose]() {
+        try {
+          await resources.close()
+        } catch (error) {
+          throw new Error("Cloud execution cleanup failed: " + JSON.stringify(failureMetadata(error)), { cause: error })
+        }
+      },
     }
   } catch (error) {
     try {

@@ -7,6 +7,7 @@ import {
   OrganizationHandoffProtocol as Handoff,
   OrganizationCloudProtocol as Cloud,
   OrganizationCloudExecutionProtocol as CloudEnvironment,
+  OrganizationCloudCleanupProtocol as CloudCleanup,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { OrganizationSessionResources as Resources } from "./session-resources"
 import { assertRuntimeConnection, runtimeAuthority } from "./runtime-authority"
@@ -53,6 +54,17 @@ const environmentAuthorities = new WeakMap<
   OrganizationExecutionGrants.EnvironmentAuthority,
   EnvironmentAuthorityFrame
 >()
+interface NativeCleanupAuthorityFrame {
+  grant: Execution.BoundGrant
+  generation: number
+  request: CloudCleanup.DiscoveryRequest | CloudCleanup.ReconciliationRequest
+  assert(): void
+  recheck(): Promise<void>
+}
+const nativeCleanupAuthorities = new WeakMap<
+  OrganizationExecutionGrants.NativeCleanupAuthority,
+  NativeCleanupAuthorityFrame
+>()
 function environmentReference(
   grant: Execution.BoundGrant,
   rootID: string,
@@ -87,6 +99,24 @@ function environmentReference(
 }
 
 export namespace OrganizationExecutionGrants {
+  export interface NativeCleanupAuthority {
+    readonly kind: "organization-native-cleanup-authority"
+  }
+  export function nativeCleanupAuthority(evidence: NativeCleanupAuthority) {
+    const frame = nativeCleanupAuthorities.get(evidence)
+    if (!frame) fail("PERMISSION_DENIED", "Native cleanup requires its original signed retention owner")
+    frame.assert()
+    return {
+      grant: Execution.BoundGrant.parse(frame.grant),
+      generation: frame.generation,
+      request:
+        frame.request.proof.purpose === "organization-environment-cleanup-discovery"
+          ? CloudCleanup.DiscoveryRequest.parse(frame.request)
+          : CloudCleanup.ReconciliationRequest.parse(frame.request),
+      assert: frame.assert,
+      recheck: frame.recheck,
+    }
+  }
   export function assertRetainedEnvironmentReference(
     grant: Execution.BoundGrant,
     reference: CloudEnvironment.Reference,
@@ -848,7 +878,86 @@ export function createExecutionGrants(options: {
       open = false
     }
   }
+  async function withNativeCleanupOwner<T>(
+    request: CloudCleanup.DiscoveryRequest | CloudCleanup.ReconciliationRequest,
+    signal: AbortSignal | undefined,
+    body: (authority: OrganizationExecutionGrants.NativeCleanupAuthority) => Promise<T>,
+  ) {
+    if (Storage.inTransaction()) fail("INVALID_REQUEST", "Native cleanup must own its original retention boundary")
+    const signed = request.proof,
+      { proof, signature } = signed.authority
+    const grantID = proof.grantID,
+      generation = proof.generation
+    if (!grantID || generation === undefined)
+      fail("PROTOCOL_MISMATCH", "Native cleanup requires its exact inspected grant and retention generation")
+    const owner = WorkspaceContent.captureOwner(signal)
+    window(proof)
+    const registered = await Storage.snapshot(() => machine(proof))
+    const verified =
+      signed.purpose === "organization-environment-cleanup-discovery"
+        ? await CloudCleanup.verifyDiscovery(signed, request.signature, registered.runtime.publicKey)
+        : await CloudCleanup.verifyReconciliation(signed, request.signature, registered.runtime.publicKey)
+    if (!verified || !(await Execution.verifyInspection(proof, signature, registered.runtime.publicKey)))
+      fail("PERMISSION_DENIED", "Native cleanup requires both original signed retention domains")
+    const connection = capture(proof, registered.runtime)
+    let open = true,
+      selected: Execution.BoundGrant | undefined
+    const assert = () => {
+      owner()
+      window(proof)
+      connection.assertCurrent()
+      if (!open) fail("PERMISSION_DENIED", "Native cleanup callback has ended")
+    }
+    const recheck = async () => {
+      assert()
+      const inspected = await retention(signed.authority)
+      if (
+        inspected.state !== "known" ||
+        inspected.grant.state !== "bound" ||
+        inspected.grant.grantID !== grantID ||
+        generation > inspected.grant.retention.generation
+      )
+        fail("RESOURCE_UNAVAILABLE", "Native cleanup has no original inspected bound grant")
+      const grant = Execution.BoundGrant.parse(inspected.grant)
+      if (selected && (!same(selected.selection, grant.selection) || selected.rootID !== grant.rootID))
+        fail("PROTOCOL_MISMATCH", "Native cleanup changed its original retained resource selection")
+      selected ??= grant
+      assert()
+    }
+    await recheck()
+    const evidence: OrganizationExecutionGrants.NativeCleanupAuthority = Object.freeze({
+      kind: "organization-native-cleanup-authority",
+    })
+    nativeCleanupAuthorities.set(evidence, {
+      grant: Execution.BoundGrant.parse(selected),
+      generation,
+      request,
+      assert,
+      recheck,
+    })
+    try {
+      const result = await body(evidence)
+      await recheck()
+      return result
+    } finally {
+      open = false
+    }
+  }
   return {
+    withNativeCleanupDiscovery<T>(
+      value: CloudCleanup.DiscoveryRequest,
+      signal: AbortSignal | undefined,
+      body: (authority: OrganizationExecutionGrants.NativeCleanupAuthority) => Promise<T>,
+    ) {
+      return withNativeCleanupOwner(CloudCleanup.DiscoveryRequest.parse(structuredClone(value)), signal, body)
+    },
+    withNativeCleanupReconciliation<T>(
+      value: CloudCleanup.ReconciliationRequest,
+      signal: AbortSignal | undefined,
+      body: (authority: OrganizationExecutionGrants.NativeCleanupAuthority) => Promise<T>,
+    ) {
+      return withNativeCleanupOwner(CloudCleanup.ReconciliationRequest.parse(structuredClone(value)), signal, body)
+    },
     withEnvironmentRetirement<T>(
       value: CloudEnvironment.RetirementRequest,
       signal: AbortSignal | undefined,

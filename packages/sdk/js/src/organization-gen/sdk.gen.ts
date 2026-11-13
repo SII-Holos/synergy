@@ -57,6 +57,12 @@ import type {
   OrgAuthSessionResponses,
   OrgBootstrapInput,
   OrgClientRevocationInput,
+  OrgCloudCleanupDiscoverErrors,
+  OrgCloudCleanupDiscoverResponses,
+  OrgCloudCleanupDiscoveryRequest,
+  OrgCloudCleanupReconcileErrors,
+  OrgCloudCleanupReconcileResponses,
+  OrgCloudCleanupReconciliationRequest,
   OrgCloudEnvironmentCreate,
   OrgCloudEnvironmentsCreateErrors,
   OrgCloudEnvironmentsCreateResponses,
@@ -3678,6 +3684,66 @@ export class OrgCloudEnvironments extends HeyApiClient {
   }
 }
 
+export class OrgCloudCleanup extends HeyApiClient {
+  /**
+   * Discover only original retained native cleanup selectors
+   */
+  public discover<ThrowOnError extends boolean = false>(
+    parameters: {
+      orgCloudCleanupDiscoveryRequest: OrgCloudCleanupDiscoveryRequest
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [{ args: [{ key: "orgCloudCleanupDiscoveryRequest", map: "body" }] }],
+    )
+    return (options?.client ?? this.client).post<
+      OrgCloudCleanupDiscoverResponses,
+      OrgCloudCleanupDiscoverErrors,
+      ThrowOnError
+    >({
+      url: "/runtime/v1/environments/cleanups",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Reconcile only an original native cleanup selector
+   */
+  public reconcile<ThrowOnError extends boolean = false>(
+    parameters: {
+      orgCloudCleanupReconciliationRequest: OrgCloudCleanupReconciliationRequest
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [{ args: [{ key: "orgCloudCleanupReconciliationRequest", map: "body" }] }],
+    )
+    return (options?.client ?? this.client).post<
+      OrgCloudCleanupReconcileResponses,
+      OrgCloudCleanupReconcileErrors,
+      ThrowOnError
+    >({
+      url: "/runtime/v1/environments/cleanups/reconciliation",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
 export class OrgCloudExecution extends HeyApiClient {
   /**
    * Use the original selected Environment through accepted native execution
@@ -4972,6 +5038,8 @@ export class OrganizationClient extends HeyApiClient {
   orgCloudWorkspaces = new OrgCloudWorkspaces({ client: this.client })
 
   orgCloudEnvironments = new OrgCloudEnvironments({ client: this.client })
+
+  orgCloudCleanup = new OrgCloudCleanup({ client: this.client })
 
   orgCloudExecution = new OrgCloudExecution({ client: this.client })
 

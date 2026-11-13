@@ -10,6 +10,7 @@ import {
   OrganizationHandoffObjectProtocol as Objects,
   OrganizationCloudProtocol as Cloud,
   OrganizationCloudExecutionProtocol as CloudEnvironment,
+  OrganizationCloudCleanupProtocol as CloudCleanup,
   OrganizationSessionToolProtocol as SessionTool,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { createOrganizationClient } from "@ericsanchezok/synergy-sdk/organization"
@@ -19,6 +20,17 @@ import { WorkspaceArchive } from "@ericsanchezok/synergy-harness/workspace/archi
 import { WorkspaceTree } from "@ericsanchezok/synergy-harness/workspace/tree"
 
 export interface MemberResourceClient {
+  discoverEnvironmentCleanup(
+    proof: Execution.InspectionProof,
+    page: { limit?: number; cursor?: string },
+    signal?: AbortSignal,
+  ): Promise<CloudCleanup.Page>
+  reconcileEnvironmentCleanup(
+    proof: Execution.InspectionProof,
+    action: "inspect" | "retire",
+    candidate: CloudCleanup.Candidate,
+    signal?: AbortSignal,
+  ): Promise<CloudCleanup.Result>
   retireEnvironment(
     proof: Execution.InspectionProof,
     query: CloudEnvironment.RetirementQuery,
@@ -199,14 +211,17 @@ export function createMemberResourceClient(options: {
         try {
           const pathname = new URL(input instanceof Request ? input.url : String(input), options.origin).pathname
           const maximum =
-            pathname === "/runtime/v1/environments/execution" ||
-            pathname === "/runtime/v1/environments/execution/inspection"
-              ? 16 * 1024 * 1024
-              : pathname === "/runtime/v1/workspaces/files" || pathname === "/runtime/v1/handoffs/workspace"
-                ? 6 * 1024 * 1024
-                : /\/runtime\/v1\/gateway\/connections\/[^/]+\/mcp$/.test(pathname)
-                  ? 16 * 1024 * 1024
-                  : 256 * 1024
+            pathname === "/runtime/v1/environments/cleanups" ||
+            pathname === "/runtime/v1/environments/cleanups/reconciliation"
+              ? 1024 * 1024
+              : pathname === "/runtime/v1/environments/execution" ||
+                  pathname === "/runtime/v1/environments/execution/inspection"
+                ? 16 * 1024 * 1024
+                : pathname === "/runtime/v1/workspaces/files" || pathname === "/runtime/v1/handoffs/workspace"
+                  ? 6 * 1024 * 1024
+                  : /\/runtime\/v1\/gateway\/connections\/[^/]+\/mcp$/.test(pathname)
+                    ? 16 * 1024 * 1024
+                    : 256 * 1024
           while (true) {
             const next = await reader.read()
             if (next.done) break
@@ -395,6 +410,57 @@ export function createMemberResourceClient(options: {
     return permit
   }
   const resources: MemberResourceClient = {
+    async discoverEnvironmentCleanup(value, input, signal) {
+      const authority = Execution.InspectionProof.parse(structuredClone(value))
+      if (!authority.grantID || authority.generation === undefined)
+        throw failure(
+          "PROTOCOL_MISMATCH",
+          "Native cleanup discovery requires its exact retained generation",
+          "not_dispatched",
+        )
+      const page = CloudCleanup.DiscoveryProof.shape.page.parse(structuredClone(input))
+      const proof = CloudCleanup.DiscoveryProof.parse({
+        version: 1,
+        purpose: "organization-environment-cleanup-discovery",
+        page,
+        authority: { proof: authority, signature: await Execution.signInspection(authority, options.key) },
+      })
+      const request = { proof, signature: await CloudCleanup.signDiscovery(proof, options.key) }
+      return invoke(
+        authority,
+        CloudCleanup.Page,
+        (signal) => client.orgCloudCleanup.discover({ orgCloudCleanupDiscoveryRequest: request }, { signal }),
+        (result) => {
+          if (result.grantID !== authority.grantID || result.generation !== authority.generation)
+            throw failure("PROTOCOL_MISMATCH", "Native cleanup discovery returned another retained generation")
+        },
+        signal,
+      )
+    },
+    async reconcileEnvironmentCleanup(value, action, input, signal) {
+      const authority = Execution.InspectionProof.parse(structuredClone(value))
+      const candidate = CloudCleanup.Candidate.parse(structuredClone(input))
+      if (!authority.grantID || authority.generation === undefined)
+        throw failure("PROTOCOL_MISMATCH", "Native cleanup requires its exact retained generation", "not_dispatched")
+      const proof = CloudCleanup.ReconciliationProof.parse({
+        version: 1,
+        purpose: "organization-environment-cleanup-reconciliation",
+        action,
+        candidate,
+        authority: { proof: authority, signature: await Execution.signInspection(authority, options.key) },
+      })
+      const request = { proof, signature: await CloudCleanup.signReconciliation(proof, options.key) }
+      return invoke(
+        authority,
+        CloudCleanup.Result,
+        (signal) => client.orgCloudCleanup.reconcile({ orgCloudCleanupReconciliationRequest: request }, { signal }),
+        (result) => {
+          if (JSON.stringify(result.candidate) !== JSON.stringify(candidate))
+            throw failure("PROTOCOL_MISMATCH", "Native cleanup returned another original candidate")
+        },
+        signal,
+      )
+    },
     async retireEnvironment(value, input, signal) {
       const authority = Execution.InspectionProof.parse(structuredClone(value))
       const query = CloudEnvironment.RetirementQuery.parse(structuredClone(input))

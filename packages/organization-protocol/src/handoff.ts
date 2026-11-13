@@ -199,7 +199,7 @@ export namespace OrganizationHandoffProtocol {
         resourceID: Identity.ID,
         workspaceID: Identity.ID,
         generation: OrganizationProtocol.Epoch,
-        path: WorkspacePath,
+        path: z.union([WorkspacePath, z.literal("")]),
       }),
     }),
     z.strictObject({
@@ -210,7 +210,7 @@ export namespace OrganizationHandoffProtocol {
         resourceID: Identity.ID,
         workspaceID: Identity.ID,
         generation: OrganizationProtocol.Epoch,
-        path: WorkspacePath,
+        path: z.union([WorkspacePath, z.literal("")]),
       }),
       target: z.discriminatedUnion("kind", [
         z.strictObject({
@@ -278,7 +278,7 @@ export namespace OrganizationHandoffProtocol {
     resourceID: Identity.ID,
     workspaceID: Identity.ID,
     generation: OrganizationProtocol.Epoch,
-    path: WorkspacePath,
+    path: z.union([WorkspacePath, z.literal("")]),
   })
   export const SourceWorkspace = z
     .strictObject({

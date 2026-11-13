@@ -7,6 +7,8 @@ description: Add or modify a Synergy HTTP route, request/response schema, OpenAP
 
 ## Trace the Contract
 
+Reuse the identifier schema of the actual producing domain. A native Use identifier can contain a serialized tuple and must not inherit an unrelated organization-name regular expression. Verify real producer output, exact canonical lookup and bounded transport size; opaque identifiers never supply authorization or proof of completion.
+
 1. Inspect the nearest route, its owning domain service, route tests, generated SDK method, and every first-party consumer.
 2. Decide whether the route is global, home-scoped, project-scoped, session-owned, or workspace-owned. Preserve Scope/directory resolution and authorization.
 
@@ -32,6 +34,7 @@ For authoritative machine observations, trace every writer into the ledger, incl
 3. Keep business logic in the owning domain rather than the route handler. For binary media, document the supported MIME types, preserve structured error reasons and propagate the request abort signal. Test the generated SDK blob path as well as the mounted route; request previews must use saved owner configuration without creating task sessions.
 
    Native attachment reads require canonical producer evidence for the exact current message/part version. Never capture a global asset hash on demand to establish read authority. Verify owner/reference mismatches, unavailable retained bytes and part changes across a held bounded read. Native saves derive their immutable descriptor before choosing a destination and abort staged output if evidence disappears during transfer.
+
 4. For state changes, persist first and publish the established event shape so frontend state can reconcile without per-event refetches.
 5. Preserve scoped snapshot watermark headers where middleware supplies them. Do not claim Web snapshot gating that the client does not implement.
    Optional owner schemas must also project actual HTTP and event payloads. Use `Session.publicInfo()` at Session response boundaries; internal reads, imports and archive exports retain canonical metadata. Verify owner selection, absence while a different owner remains selected, ordinary mutation, and reinstall against the same stored records. Dynamic schema facades must retain named OpenAPI references on the facade itself so generated SDK body argument names remain stable.
@@ -66,6 +69,7 @@ For authoritative machine observations, trace every writer into the ledger, incl
 7. File response bodies can outlive their HTTP handlers. Capture native file identity before returning and retain the Workspace binding until body completion or cancellation. Exercise unread bodies, caller abort, Workspace disposal and atomic pathname replacement; returning a lazy path-based stream does not establish resource ownership.
 
    For live metadata subscriptions, bound raw frames before an SDK parser buffers them. Capture the subscriber's exact identity and retire it on replacement; perform current authorization and the actual enqueue inside the same admitted callback. Do not retain a maintenance operation for the entire connection. Test an operation ending immediately after authorization, slow consumers and renderer acknowledgement separately from network backpressure. Reconnect without retained history must start a new stream identity rather than reuse an old cursor.
+
 8. Native WebSocket callbacks do not inherit the upgrading request's Scope. Capture the owning request context for callbacks that read scoped state or emit scoped telemetry, and test an actual server socket alongside an unrelated Scope request. Directly calling a route or domain callback inside a test Scope hides this boundary.
    Await the WebSocket helper before transferring admission ownership. Hono's Bun middleware calls `next()` and returns no response when native upgrade returns false; no socket event will release a never-opened lease. Dispose that lease on the non-upgrade return, and keep asynchronous helper rejection inside the cleanup `catch`. Test the actual helper with native false, throw and true outcomes on each transport leg, retaining real pairing/admission and verifying watcher removal through subsequent revocation.
 
@@ -95,6 +99,7 @@ For authoritative machine observations, trace every writer into the ledger, incl
 10. Resource APIs select catalog identities without allocating compute. Test stale selection/generation conflicts, Scope mismatches, retained uses and save retry without command replay. Keep file-operation payloads out of activity responses. Session turn admission must wait for resource binding changes before reading its execution context.
 
     Register an HTTP resource origin through the selected Server composition before opening the Runtime. Capture original selectors, Scope, signal and read/write mode before awaiting resolution. Inherit a present resource frame's opaque origin and reject missing provenance instead of replacing it with a Host origin. Test actual HTTP bytes through the canonical storage-backed file owner, compare inherited origin identity, reject malformed frames before body reads, and count provider allocations during dormant browsing. Minimal route fixtures must explicitly compose the HTTP owner.
+
 11. Built Web page paths may overlap domain APIs. Test direct browser navigation with the owner both selected and absent, waiting for rendered page content and successful browser API reads. An unchanged URL alone cannot prove that the Web shell loaded. Keep early HTML negotiation restricted to known page paths; both it and the final SPA fallback must reject API/fetch requests using the same document-navigation rule. Verify absent APIs return 404 with the Web adapter mounted, including SDK requests without an Accept header. Retain authentication, Scope, CORS, CSP and API errors, and verify generated OpenAPI operations survive the navigation handler.
 
 Update [Frontend data sync](../../../docs/architecture/frontend-data-sync.md) when snapshot/event/replay semantics change, and update API/help/product docs when the route is a public or user-facing contract.

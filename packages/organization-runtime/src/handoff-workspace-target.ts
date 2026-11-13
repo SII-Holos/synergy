@@ -68,6 +68,7 @@ export namespace OrganizationHandoffWorkspaceTarget {
   function locator(catalog: WorkspaceCatalog.Info) {
     const frame = current()
     const spec = Cloud.FileLocator.parse(catalog.backend?.spec)
+    if (spec.version === 3) fail("Initial Working Locator cannot substitute a handoff target receipt")
     const mapping = frame.plan.workspacePlan?.mapping
     if (
       !mapping ||

@@ -11,6 +11,7 @@ import { Environment } from "@ericsanchezok/synergy-harness/environment"
 import { ExecutionProtocol, type Executor } from "@ericsanchezok/synergy-harness/environment/executor"
 import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
 import { WorkspaceProtocol } from "@ericsanchezok/synergy-harness/workspace/protocol"
+import { WorkspaceFileSource } from "@ericsanchezok/synergy-harness/workspace/file-source"
 import { JsonValue } from "@ericsanchezok/synergy-util/json-value"
 import { OrganizationExecutionLeases as Leases } from "./execution-leases"
 import {
@@ -18,12 +19,20 @@ import {
   inspectMemberEnvironment,
   retireMemberEnvironment,
   inspectMemberEnvironmentRetirement,
+  inspectMemberNativeGrant,
+  discoverMemberEnvironmentCleanup,
+  reconcileMemberEnvironmentCleanup,
 } from "./execution-source"
 import { ProcessAccessSource } from "@ericsanchezok/synergy-harness/process/access-source"
 import { RuntimeIdentity } from "./home"
 import { OrganizationRuntimeError } from "./error"
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 
 export namespace OrganizationEnvironmentExecutionSource {
+  type RecoveryTarget = { sessionID: string; rootID: string }
+  const recovery = RuntimeContext.state(() => ({
+    run: undefined as ((target?: RecoveryTarget, signal?: AbortSignal) => Promise<void>) | undefined,
+  }))
   const Binding = z.strictObject({
     version: z.literal(2),
     reference: Protocol.Reference,
@@ -114,21 +123,30 @@ export namespace OrganizationEnvironmentExecutionSource {
   export function register(value: RuntimeIdentity, selectedRuntimeID: string) {
     const identity = RuntimeIdentity.parse(value)
     const runtimeID = Protocol.Reference.shape.runtimeID.parse(selectedRuntimeID)
-    const live = new Set<{ close(): Promise<void> }>()
-    const unresolved = new Set<{ close(): Promise<void> }>()
+    const live = new Set<{ authority: Leases.Authority; close(): Promise<void> }>()
+    const unresolved = new Set<{ authority: Leases.Authority; close(): Promise<void> }>()
     Source.register("organization", {
       async selected(selection, signal) {
         return withMemberEnvironment(
           { sessionID: selection.ownerID, scopeID: selection.scopeID, signal },
           async (resolution) => {
+            const generation =
+              resolution.session.workspaceID && !resolution.session.workspace
+                ? (
+                    await WorkspaceFileSource.inspectBinding({
+                      workspaceID: resolution.session.workspaceID,
+                      scopeID: selection.scopeID,
+                      generation: selection.workspaceGeneration,
+                    })
+                  ).binding.generation
+                : resolution.session.workspace?.generation
             if (
               resolution.source.connection.runtimeID !== runtimeID ||
               (selection.environmentID !== undefined &&
                 (selection.environmentID ?? null) !== (resolution.session.environmentID ?? null)) ||
               (selection.workspaceID !== undefined &&
                 (selection.workspaceID ?? null) !== (resolution.session.workspaceID ?? null)) ||
-              (selection.workspaceGeneration !== undefined &&
-                selection.workspaceGeneration !== resolution.session.workspace?.generation)
+              (selection.workspaceGeneration !== undefined && selection.workspaceGeneration !== generation)
             )
               denied("Native-only metadata changed its original enrolled Session selection")
             const selected = resolution.description.grant.selection.infrastructure
@@ -166,7 +184,9 @@ export namespace OrganizationEnvironmentExecutionSource {
               denied("Environment resolution changed its original Working selection")
             if (
               input.selection.workspaceGeneration !== undefined &&
-              input.selection.workspaceGeneration !== resolution.session.workspace?.generation
+              (!resolution.session.workspaceID ||
+                (resolution.session.workspace &&
+                  input.selection.workspaceGeneration !== resolution.session.workspace.generation))
             )
               denied("Environment resolution changed its original Working generation")
             if (resolution.source.connection.runtimeID !== runtimeID)
@@ -185,14 +205,20 @@ export namespace OrganizationEnvironmentExecutionSource {
               denied("The selected infrastructure changed while its original root was binding")
             let rootPath: string | undefined
             let locator: Cloud.FileLocator | undefined
+            let alias: WorkspaceCatalog.Info | undefined
             if (resolution.session.workspaceID) {
-              const workspace = await WorkspaceCatalog.get(resolution.session.workspaceID, caller.scopeID)
+              const workspace = await WorkspaceFileSource.inspectBinding({
+                workspaceID: resolution.session.workspaceID,
+                scopeID: caller.scopeID,
+                generation: input.selection.workspaceGeneration ?? resolution.session.workspace?.generation,
+              })
               if (
                 workspace.backend?.provider !== "organization" ||
                 workspace.content ||
                 workspace.lifecycle !== "active" ||
                 workspace.binding.state !== "bound" ||
-                workspace.binding.generation !== resolution.session.workspace?.generation
+                (resolution.session.workspace &&
+                  workspace.binding.generation !== resolution.session.workspace.generation)
               )
                 denied("Organization execution cannot reinterpret an existing native or object Working location")
               locator = Cloud.FileLocator.parse(workspace.backend.spec)
@@ -204,7 +230,18 @@ export namespace OrganizationEnvironmentExecutionSource {
                 locator.workspaceID !== selected.workspace.workspaceID
               )
                 denied("The Working Locator differs from the accepted service selection")
-              rootPath = locator.path
+              alias = workspace
+              rootPath = "path" in locator && locator.path ? locator.path : undefined
+            }
+            const assertAlias = async () => {
+              if (!alias) return
+              const current = await WorkspaceFileSource.inspectBinding({
+                workspaceID: alias.id,
+                scopeID: alias.scopeID,
+                generation: alias.binding.generation,
+              })
+              if (!same(current.backend, alias.backend)) denied("The original Working alias changed its remote binding")
+              resolution.assertConnection()
             }
             const described = await files(
               await proof(accepted.actor, accepted.rootID),
@@ -223,7 +260,8 @@ export namespace OrganizationEnvironmentExecutionSource {
               denied("Environment resolution described another selected Workspace")
             if (locator && workspace.generation !== locator.generation)
               denied("The original service Working generation changed")
-            const admission: { close(): Promise<void> } = {
+            const admission: { authority: Leases.Authority; close(): Promise<void> } = {
+              authority: Leases.reference(resolution.proof),
               async close() {
                 unknown("Original Environment admission has no confirmed reference; reconcile its original grant")
               },
@@ -326,12 +364,14 @@ export namespace OrganizationEnvironmentExecutionSource {
                 cancellation?: AbortSignal,
               ) => {
                 checked()
+                await assertAlias()
                 await resolution.assertCaller(phase)
                 const authority = await proof(accepted.actor, accepted.rootID)
                 checked()
                 const result = await send(authority, operation, cancellation ?? resolution.source.signal)
                 checked()
                 await resolution.assertCaller(phase)
+                await assertAlias()
                 return result
               }
               const inspect = async (
@@ -545,6 +585,7 @@ export namespace OrganizationEnvironmentExecutionSource {
                 },
               }
               const owned = {
+                authority: binding.authority,
                 async close() {
                   const cancellation = AbortSignal.timeout(15_000)
                   for (const [id, operation] of operations) {
@@ -564,6 +605,7 @@ export namespace OrganizationEnvironmentExecutionSource {
                 live.delete(owned)
               }
               await resolution.assertCaller("admission")
+              await assertAlias()
               if (
                 ref.grantID !== grant.grantID ||
                 ref.retentionGeneration !== grant.retention.generation ||
@@ -634,6 +676,30 @@ export namespace OrganizationEnvironmentExecutionSource {
           output: z.array(ExecutionProtocol.Chunk).parse(observed.output),
         }
       },
+      async retire(input) {
+        const binding = retained(input.binding, identity, runtimeID, input.scopeID, input.origin)
+        if (
+          input.operationID !== binding.reference.nativeOperationID ||
+          !Environment.sameTarget(input.target, Environment.Target.parse(binding.reference.target))
+        )
+          denied("Cold cleanup changed its original native operation or actual target")
+        const query: Protocol.RetirementQuery = {
+          kind: "execution",
+          reference: binding.reference,
+          id: input.operationID,
+          digest: input.digest,
+          origin: binding.origin,
+        }
+        let observed = await inspectMemberEnvironmentRetirement(binding.authority, binding, query, input.signal)
+        if (observed.kind !== "execution") unknown("Cold cleanup returned another original receipt kind")
+        if (observed.execution === null)
+          observed = await retireMemberEnvironment(binding.authority, binding, query, input.signal)
+        if (observed.kind !== "execution" || observed.execution === null)
+          unknown("Cold cleanup has no confirmed original native completion")
+        const completed = await mirror(binding, input.operationID, input.digest, observed.execution)
+        if (completed.state !== "completed") unknown("Cold cleanup returned an incomplete native receipt")
+        return completed
+      },
       async close() {
         const results = await Promise.allSettled([...unresolved, ...live].map((lease) => lease.close()))
         const failures = results.flatMap((result) => (result.status === "rejected" ? [result.reason] : []))
@@ -641,5 +707,67 @@ export namespace OrganizationEnvironmentExecutionSource {
           throw new AggregateError(failures, "Original Environment execution sources remain retained")
       },
     })
+    recovery().run = async (target, signal) => {
+      Source.assertRegisteredOwner("organization")
+      const warm = (authority: Leases.Authority) =>
+        [...unresolved, ...live].some(
+          (owner) => owner.authority.sessionID === authority.sessionID && owner.authority.rootID === authority.rootID,
+        )
+      for await (const info of EnvironmentExecution.activeEntries()) {
+        signal?.throwIfAborted()
+        if (info.source?.provider !== "organization") continue
+        const binding = retained(info.source.binding, identity, runtimeID, info.scopeID, info.origin)
+        if (target && (binding.authority.sessionID !== target.sessionID || binding.authority.rootID !== target.rootID))
+          continue
+        if (warm(binding.authority)) continue
+        await EnvironmentExecution.retireRetainedSource(info.id, info.scopeID, signal)
+      }
+      let after: string | undefined
+      do {
+        signal?.throwIfAborted()
+        const entries = await Leases.page(runtimeID, { after, limit: 16, target })
+        for (const entry of entries.items) {
+          if (warm(entry.authority)) continue
+          if (entry.uncertainUntil !== undefined && entry.uncertainUntil > Date.now()) continue
+          const inspected = await inspectMemberNativeGrant(entry.authority, entry.hint, signal)
+          if (inspected.state !== "known" || inspected.grant.state !== "bound") continue
+          const grant = inspected.grant
+          if (!grant.selection.infrastructure.workspace && !grant.selection.infrastructure.environment) continue
+          const current = await Leases.observe(entry, grant, inspected.inspectedAt)
+          if (current.state !== "pending" || warm(current.authority)) continue
+          const hint = current.hint
+          if (!hint || hint.generation === 0) unknown("Native cleanup has no exact retained generation")
+          let cursor: string | undefined
+          do {
+            signal?.throwIfAborted()
+            if (warm(current.authority)) break
+            const page = await discoverMemberEnvironmentCleanup(current.authority, hint, { limit: 16, cursor }, signal)
+            for (const candidate of page.items) {
+              if (warm(current.authority)) break
+              let result = await reconcileMemberEnvironmentCleanup(
+                current.authority,
+                hint,
+                "inspect",
+                candidate,
+                signal,
+              )
+              if (result.state === "pending") {
+                if (warm(current.authority)) break
+                result = await reconcileMemberEnvironmentCleanup(current.authority, hint, "retire", candidate, signal)
+              }
+              if (result.state === "pending") unknown("Original native cleanup still has unsettled effects")
+            }
+            cursor = page.cursor
+          } while (cursor)
+        }
+        after = entries.cursor
+      } while (after)
+      Source.assertRegisteredOwner("organization")
+    }
+  }
+  export async function recoverOriginalResources(target?: RecoveryTarget, signal?: AbortSignal) {
+    const run = recovery().run
+    if (!run) denied("Original Environment cleanup has no registered Runtime owner")
+    return run(target && { ...target }, signal)
   }
 }

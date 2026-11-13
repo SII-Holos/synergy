@@ -79,6 +79,15 @@ export namespace EnvironmentExecutionSource {
       limit: number
       signal?: AbortSignal
     }): Promise<Inspection>
+    retire?(input: {
+      binding: z.infer<typeof JsonValue>
+      target: EnvironmentSchema.Target
+      scopeID: string
+      operationID: string
+      digest: string
+      origin: EnvironmentOrigin.Info
+      signal?: AbortSignal
+    }): Promise<EnvironmentExecutionSchema.Info>
     close?(): Promise<void>
   }
   const brand: unique symbol = Symbol("registered Environment execution source")
@@ -195,6 +204,7 @@ export namespace EnvironmentExecutionSource {
         selected: port.selected?.bind(port),
         open: port.open.bind(port),
         inspect: port.inspect.bind(port),
+        retire: port.retire?.bind(port),
         close: port.close?.bind(port),
       },
       owner: primaryOwner(),
@@ -208,6 +218,12 @@ export namespace EnvironmentExecutionSource {
   export function has(provider: string) {
     const registration = state().get(provider)
     return !!registration?.accepting && !registration.closed
+  }
+  export function assertRegisteredOwner(provider: string) {
+    const registration = state().get(Record.shape.provider.parse(provider))
+    if (!registration || registration.closed) fail("The original Environment source is unavailable")
+    registration.owner()
+    if (Storage.current().store.options.readonly) fail("Environment cleanup requires its writable actual primary Store")
   }
   export async function selected(value: Selection, signal?: AbortSignal) {
     const selection = Object.freeze({ ...value })
@@ -718,6 +734,55 @@ export namespace EnvironmentExecutionSource {
     })
     frame.originalOperations.set(selected.id, { identity: original, operation })
     return operation
+  }
+  export async function retireOriginal(operationID: string, scopeID: string, signal?: AbortSignal) {
+    outsideTransaction()
+    const { EnvironmentExecution } = await import("./execution")
+    const info = await EnvironmentExecution.get(operationID, scopeID)
+    const source = Record.parse(info.source)
+    assertRegisteredOwner(source.provider)
+    const registration = state().get(source.provider)
+    if (!registration) fail("The original Environment source is unavailable")
+    const retire = registration.port.retire
+    if (!retire) fail("The original Environment source cannot retire its retained native operation")
+    const identity = (value: EnvironmentExecutionSchema.Info) =>
+      JSON.stringify({
+        id: value.id,
+        scopeID: value.scopeID,
+        source: value.source,
+        origin: value.origin,
+        target: value.target,
+        digest: value.digest,
+        intentDigest: value.intentDigest,
+        workspaces: value.workspaces,
+      })
+    const original = identity(info)
+    signal?.throwIfAborted()
+    const observed = EnvironmentExecutionSchema.Info.parse(
+      await tracked(registration, () =>
+        retire({
+          binding: source.binding,
+          target: source.target,
+          scopeID: info.scopeID,
+          operationID: info.id,
+          digest: info.digest,
+          origin: info.origin,
+          signal,
+        }),
+      ),
+    )
+    assertRegisteredOwner(source.provider)
+    signal?.throwIfAborted()
+    if (
+      identity(await EnvironmentExecution.get(info.id, info.scopeID)) !== original ||
+      observed.id !== info.id ||
+      observed.scopeID !== info.scopeID ||
+      observed.digest !== info.digest ||
+      JSON.stringify(observed.origin) !== JSON.stringify(info.origin) ||
+      !EnvironmentSchema.sameTarget(observed.target, source.target)
+    )
+      fail("Original Environment cleanup returned another retained native operation")
+    return observed
   }
   export async function inspect(
     record: Record,

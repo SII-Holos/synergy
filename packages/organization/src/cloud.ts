@@ -25,6 +25,8 @@ import { OrganizationHandoffExecution } from "./handoff"
 import { WorkspaceMove } from "@ericsanchezok/synergy-harness/workspace/move"
 import { WorkspaceArchive } from "@ericsanchezok/synergy-harness/workspace/archive"
 import { WorkspaceProtocol } from "@ericsanchezok/synergy-harness/workspace/protocol"
+import { WorkspaceOperations } from "@ericsanchezok/synergy-harness/workspace/operations"
+import { WorkspaceMounts } from "@ericsanchezok/synergy-harness/workspace/mount"
 import { OrganizationCloudRecord as CloudRecord } from "./cloud-records"
 
 export interface OrganizationCloudOptions {
@@ -40,10 +42,20 @@ export namespace OrganizationCloud {
       canonical(path: string, follow: boolean): Promise<string>
       stat(path: string, follow?: boolean): Promise<WorkspaceProtocol.Item | undefined>
       read(input: Omit<WorkspaceProtocol.ReadInput, "mount">): Promise<WorkspaceProtocol.Read>
+      list(path: string): Promise<WorkspaceProtocol.Item[]>
     }>
     mount: WorkspaceProtocol.Mount
     assert(): void
     recheck(): Promise<void>
+    publish<T>(
+      id: string,
+      operation: Extract<Cloud.FileOperation, { action: "write" | "mutate" }>,
+      complete: (
+        saved: WorkspaceCatalog.Info,
+        checkpoint: WorkspaceProtocol.Checkpoint,
+        assert: () => void,
+      ) => Promise<T>,
+    ): Promise<T>
   }
   export type LiveFileOwner = <T>(
     evidence: OrganizationExecutionGrants.WorkspaceAuthority,
@@ -416,39 +428,6 @@ export namespace OrganizationCloud {
       authority.assert()
       return Cloud.FileResult.parse({ reference: receiptOnly ? ref : reference(info), result })
     }
-    if (!receiptOnly && info.activeMount) {
-      if (!live) fail("RESOURCE_UNAVAILABLE", "Live Workspace files require their original mounted owner")
-      if (!["describe", "canonical", "stat", "read"].includes(operation.action))
-        fail("RESOURCE_UNAVAILABLE", "This live Workspace operation requires its original publication owner")
-      return live(evidence, info, signal, async (current) => {
-        const result = async (value: Cloud.FileResult["result"]) => {
-          await current.recheck()
-          current.assert()
-          return finish(value)
-        }
-        if (operation.action === "describe") return result({ action: "describe" })
-        if (!ref) fail("INVALID_REQUEST", "File operations require their original Workspace version")
-        if (!("path" in operation)) fail("INVALID_REQUEST", "Live Workspace operation requires its original path")
-        within(operation.path)
-        const path = await current.files.canonical(
-          operation.path,
-          operation.action === "canonical"
-            ? operation.follow
-            : operation.action === "stat"
-              ? (operation.follow ?? true)
-              : true,
-        )
-        within(path)
-        await current.recheck()
-        if (operation.action === "canonical") return result({ action: "canonical", path })
-        if (operation.action === "stat")
-          return result({ action: "stat", item: await current.files.stat(path, operation.follow) })
-        if (operation.action !== "read") fail("RESOURCE_UNAVAILABLE", "Live Workspace operation is unsupported")
-        return result({ action: "read", ...(await current.files.read({ ...operation, path })) })
-      })
-    }
-    if (operation.action === "describe") return finish({ action: "describe" })
-    if (!ref) fail("INVALID_REQUEST", "File operations require their original Workspace version")
     const id =
       "id" in operation
         ? "file_" +
@@ -465,23 +444,252 @@ export namespace OrganizationCloud {
           ])
         : undefined
     const operationKey = id ? [...receiptKey(info.id, "file"), id] : undefined
+    async function savedLive(receipt: z.infer<typeof FileReceipt>) {
+      if (!id || receipt.result.result.action !== "receipt") return
+      const publication = await WorkspaceOperations.inspectPublication(id, scope).catch((error: unknown) => {
+        if (error instanceof Storage.NotFoundError) return
+        throw error
+      })
+      if (!publication) return
+      const original = publication.operation
+      if (
+        original.workspaceID !== info.id ||
+        original.scopeID !== scope ||
+        original.generation !== receipt.reference.generation ||
+        !("mount" in original.input)
+      )
+        fail("PROTOCOL_MISMATCH", "File receipt has another original native operation")
+      if (original.state !== "completed" || !publication.checkpoint) return
+      const saved = publication.checkpoint.saved
+      const files = await WorkspaceMounts.connect(saved)
+      const status = await files.checkpointStatus(publication.checkpoint.id)
+      const checkpoint = status?.checkpoint
+      if (
+        !checkpoint ||
+        checkpoint.id !== publication.checkpoint.id ||
+        JSON.stringify(checkpoint.mount) !== JSON.stringify(original.input.mount) ||
+        checkpoint.manifest !== (saved.content?.manifest ?? null)
+      )
+        fail("RESOURCE_UNAVAILABLE", "File publication has no original physical checkpoint")
+      return liveResult(saved, checkpoint, "change" in original.input ? "mutate" : "write")
+    }
+    function liveResult(
+      saved: WorkspaceCatalog.Info,
+      checkpoint: WorkspaceProtocol.Checkpoint,
+      action: "write" | "mutate",
+    ) {
+      return Cloud.FileResult.parse({
+        reference: reference(saved),
+        result: {
+          action,
+          checkpoint: {
+            id: "id" in operation ? operation.id : undefined,
+            mount: checkpoint.mount,
+            manifest: checkpoint.manifest,
+            ...(checkpoint.beforeManifest && { beforeManifest: checkpoint.beforeManifest }),
+            ...(checkpoint.isolated !== undefined && { isolated: checkpoint.isolated }),
+          },
+        },
+      })
+    }
+    if (!receiptOnly && info.activeMount) {
+      if (!live) fail("RESOURCE_UNAVAILABLE", "Live Workspace files require their original mounted owner")
+      return live(evidence, info, signal, async (mounted) => {
+        const result = async (value: Cloud.FileResult["result"]) => {
+          await mounted.recheck()
+          mounted.assert()
+          return finish(value)
+        }
+        if (operation.action === "describe") return result({ action: "describe" })
+        if (!ref) fail("INVALID_REQUEST", "File operations require their original Workspace version")
+        if (operation.action === "write" || operation.action === "mutate") {
+          const bytes =
+            operation.action === "write"
+              ? operation.data
+              : operation.change.kind === "replace"
+                ? operation.change.data
+                : undefined
+          if (bytes !== undefined && Buffer.from(bytes, "base64").toString("base64") !== bytes)
+            fail("INVALID_REQUEST", "File bytes must be canonical base64")
+          const paths =
+            operation.action === "write"
+              ? [{ path: operation.path, follow: true }]
+              : "path" in operation.change
+                ? [{ path: operation.change.path, follow: false }]
+                : [
+                    { path: operation.change.from, follow: false },
+                    { path: operation.change.to, follow: false },
+                  ]
+          for (const path of paths) {
+            within(path.path)
+            within(await mounted.files.canonical(path.path, path.follow))
+          }
+          await mounted.recheck()
+          const requestHash = digest({ reference: ref, operation })
+          const [raw] = await Storage.readMany([operationKey!])
+          if (raw !== undefined) {
+            const previous = FileReceipt.parse(raw)
+            if (previous.digest !== requestHash)
+              fail("REVISION_CONFLICT", "File operation identity already has different input")
+            if (previous.result.result.action === "write" || previous.result.result.action === "mutate")
+              return previous.result
+          } else {
+            revision(ref.revision, info.revision)
+            await Storage.transaction(
+              async () => {
+                const latest = await current()
+                const [retained] = await Storage.readMany([operationKey!])
+                if (retained !== undefined) {
+                  if (FileReceipt.parse(retained).digest !== requestHash)
+                    fail("REVISION_CONFLICT", "File operation identity already has different input")
+                  return
+                }
+                revision(ref.revision, latest.revision)
+                await Storage.write(
+                  operationKey!,
+                  FileReceipt.parse({
+                    version: 1,
+                    digest: requestHash,
+                    reference: ref,
+                    result: {
+                      reference: ref,
+                      result: {
+                        action: "receipt",
+                        status: {
+                          id: operation.id,
+                          mount: { id: mounted.mount.id, workspaceID: info.id, generation: ref.generation },
+                          state: "pending",
+                        },
+                      },
+                    },
+                  }),
+                )
+              },
+              { commitGuard: mounted.assert },
+            )
+          }
+          return mounted.publish(id!, operation, async (saved, checkpoint, nativeOwner) => {
+            const value = liveResult(saved, checkpoint, operation.action)
+            return Storage.transaction(
+              async () => {
+                nativeOwner()
+                const previous = FileReceipt.parse(await Storage.read(operationKey!))
+                if (previous.digest !== requestHash || JSON.stringify(previous.reference) !== JSON.stringify(ref))
+                  fail("REVISION_CONFLICT", "Native file completion changed its original publication intent")
+                await Storage.write(
+                  operationKey!,
+                  FileReceipt.parse({ version: 1, digest: requestHash, reference: ref, result: value }),
+                )
+                return value
+              },
+              { commitGuard: nativeOwner },
+            )
+          })
+        }
+        if (!("path" in operation)) fail("INVALID_REQUEST", "Live Workspace operation requires its original path")
+        within(operation.path)
+        const canonical = await mounted.files.canonical(
+          operation.path,
+          operation.action === "canonical"
+            ? operation.follow
+            : operation.action === "stat"
+              ? (operation.follow ?? true)
+              : true,
+        )
+        within(canonical)
+        await mounted.recheck()
+        if (operation.action === "canonical") return result({ action: "canonical", path: canonical })
+        if (operation.action === "stat")
+          return result({ action: "stat", item: await mounted.files.stat(canonical, operation.follow) })
+        if (operation.action === "list") {
+          if (operation.cursor !== undefined && operation.revision === undefined)
+            fail("INVALID_REQUEST", "Workspace list cursors require their original revision")
+          const before = await mounted.files.stat(canonical, true)
+          if (before?.kind !== "directory") fail("INVALID_REQUEST", "Workspace path is not a directory")
+          const entries = (await mounted.files.list(canonical))
+            .map((value) => Cloud.FileItem.parse(value))
+            .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
+          const seen = new Set<string>()
+          for (const entry of entries) {
+            within(entry.path)
+            if (entry.path.slice(0, Math.max(0, entry.path.lastIndexOf("/"))) !== canonical || seen.has(entry.path))
+              fail("PROTOCOL_MISMATCH", "Workspace list returned another canonical directory")
+            seen.add(entry.path)
+          }
+          const retained = await mounted.files.stat(canonical, true)
+          if (
+            !retained ||
+            retained.entryVersion !== before.entryVersion ||
+            (await mounted.files.canonical(canonical, true)) !== canonical
+          )
+            fail("REVISION_CONFLICT", "Workspace directory changed during its original page")
+          const revision =
+            Number.parseInt(
+              digest({ generation: ref.generation, directory: retained.entryVersion, entries }).slice(0, 13),
+              16,
+            ) + 1
+          if (operation.revision !== undefined && operation.revision !== revision)
+            fail("REVISION_CONFLICT", "Workspace directory changed between its original pages")
+          if (
+            operation.cursor !== undefined &&
+            operation.cursor.slice(0, Math.max(0, operation.cursor.lastIndexOf("/"))) !== canonical
+          )
+            fail("INVALID_REQUEST", "Workspace cursor is not a direct child of its canonical directory")
+          const selected = entries.filter((entry) => operation.cursor === undefined || entry.path > operation.cursor)
+          return result({
+            action: "list",
+            items: selected.slice(0, operation.limit),
+            revision,
+            ...(selected.length > operation.limit && { cursor: selected[operation.limit - 1]!.path }),
+          })
+        }
+        if (operation.action !== "read") fail("RESOURCE_UNAVAILABLE", "Live Workspace operation is unsupported")
+        return result({ action: "read", ...(await mounted.files.read({ ...operation, path: canonical })) })
+      })
+    }
+    if (operation.action === "describe") return finish({ action: "describe" })
+    if (!ref) fail("INVALID_REQUEST", "File operations require their original Workspace version")
     if (operation.action === "receipt" || operation.action === "acknowledge") {
       const [raw] = await Storage.readMany([operationKey!])
       const saved = raw === undefined ? undefined : FileReceipt.parse(raw)
       if (saved && JSON.stringify(saved.reference) !== JSON.stringify(ref))
         fail("REVISION_CONFLICT", "File receipt belongs to another original Workspace version")
-      const result = saved?.result.result
+      const completed = saved && (await savedLive(saved))
+      const result = completed?.result ?? saved?.result.result
       const checkpoint =
         result && (result.action === "write" || result.action === "mutate") ? result.checkpoint : undefined
       if (operation.action === "acknowledge") {
         if (!checkpoint) fail("RESOURCE_UNAVAILABLE", "File publication has no confirmed receipt")
+        if (saved && completed) {
+          const owner = WorkspaceContent.captureOwner()
+          await Storage.transaction(
+            async () => {
+              authority.assert()
+              const original = FileReceipt.parse(await Storage.read(operationKey!))
+              if (original.digest !== saved.digest || JSON.stringify(original.reference) !== JSON.stringify(ref))
+                fail("REVISION_CONFLICT", "File acknowledgement changed its original publication intent")
+              await Storage.write(operationKey!, FileReceipt.parse({ ...original, result: completed }))
+            },
+            {
+              commitGuard: () => {
+                owner()
+                authority.assert()
+              },
+            },
+          )
+        }
         return finish({ action: "acknowledge", id: operation.id })
       }
       return finish({
         action: "receipt",
-        status: checkpoint ? { id: operation.id, mount: checkpoint.mount, state: "saved", checkpoint } : undefined,
+        status: checkpoint
+          ? { id: operation.id, mount: checkpoint.mount, state: "saved", checkpoint }
+          : result?.action === "receipt"
+            ? result.status
+            : undefined,
       })
     }
+
     if (operation.action === "write" || operation.action === "mutate") {
       const requestHash = digest({ reference: ref, operation })
       const [raw] = await Storage.readMany([operationKey!])

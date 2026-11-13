@@ -21,6 +21,7 @@ export function startExecutionReleaseObserver(input: {
   intake: Intake
   resources: MemberConnection["resources"]
   signal: AbortSignal
+  recoverResources?: (target: { sessionID: string; rootID: string } | undefined, signal: AbortSignal) => Promise<void>
 }) {
   const controller = new AbortController()
   const signal = AbortSignal.any([input.signal, controller.signal])
@@ -141,6 +142,7 @@ export function startExecutionReleaseObserver(input: {
     if (!enqueue(retry, target)) retryFull = true
   }
   async function scan(target?: Target) {
+    await input.recoverResources?.(target, signal)
     let after: string | undefined
     do {
       signal.throwIfAborted()

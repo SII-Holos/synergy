@@ -195,10 +195,13 @@ export function organizationApp(
     .route("/org/v1", cloudRoutes(publicOrigin))
     .route(
       "/runtime/v1",
-      cloudEnvironmentExecutionRoutes(() => {
-        if (!environments) fail("SERVICE_UNAVAILABLE", "Native Environment execution is unavailable")
-        return environments
-      }),
+      cloudEnvironmentExecutionRoutes(
+        () => environments,
+        () => {
+          if (!execution) fail("SERVICE_UNAVAILABLE", "Native cleanup retention authority is unavailable")
+          return execution
+        },
+      ),
     )
     .route(
       "/runtime/v1",

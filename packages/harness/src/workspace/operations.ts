@@ -33,7 +33,12 @@ export namespace WorkspaceOperations {
     source: WorkspaceFileSource.Record,
     reference: WorkspaceProtocol.Reference,
   })
-  type Selection = {
+  type Effect = {
+    beforeEffect?(): Promise<void>
+    assertCurrent?(): void
+    effectScope?<T>(body: () => Promise<T>): Promise<T>
+  }
+  type Selection = Effect & {
     id: string
     scopeID: string
     workspaceID: string
@@ -311,6 +316,22 @@ export namespace WorkspaceOperations {
     return Info.parse(await Storage.read(StoragePath.workspaceOperation(scopeID, id)))
   }
 
+  export async function inspectPublication(id: string, scopeID: string) {
+    const owner = WorkspaceContent.captureOwner()
+    const operation = await get(id, scopeID)
+    const attempt = await WorkspaceCheckpoints.inspect({ id: operation.workspaceID, scopeID }, id)
+    owner()
+    if (!attempt || attempt.state !== "saved" || !attempt.saved) return { operation }
+    const saved = attempt.saved
+    if (
+      saved.id !== operation.workspaceID ||
+      saved.scopeID !== operation.scopeID ||
+      saved.binding.generation !== operation.generation
+    )
+      throw new Error("Workspace publication has another original saved operation")
+    return { operation, checkpoint: { id: attempt.id, saved } }
+  }
+
   export async function listActive(scopeID: string) {
     const keys = await Storage.list(StoragePath.workspaceOperationActive(scopeID))
     return Promise.all(keys.map(async (key) => Summary.parse(await get(key[2], scopeID))))
@@ -342,20 +363,22 @@ export namespace WorkspaceOperations {
     }
   }
 
-  export async function write(input: {
-    id: string
-    scopeID: string
-    workspaceID: string
-    generation?: number
-    path: string
-    data: Uint8Array
-    expectedVersion: string | null
-    expectedEntryVersion?: string | null
-    mode?: number
-    protectSensitive?: boolean
-    signal?: AbortSignal
-    files?: WorkspaceFileSource.Lease
-  }) {
+  export async function write(
+    input: {
+      id: string
+      scopeID: string
+      workspaceID: string
+      generation?: number
+      path: string
+      data: Uint8Array
+      expectedVersion: string | null
+      expectedEntryVersion?: string | null
+      mode?: number
+      protectSensitive?: boolean
+      signal?: AbortSignal
+      files?: WorkspaceFileSource.Lease
+    } & Effect,
+  ) {
     return operate(input, {
       path: input.path,
       data: Buffer.from(input.data).toString("base64"),
@@ -384,6 +407,7 @@ export namespace WorkspaceOperations {
     const owner = WorkspaceContent.captureOwner(input.signal)
     const assert = () => {
       sourceGuard?.()
+      input.assertCurrent?.()
       owner()
     }
     const digest = WorkspaceTree.hash(
@@ -395,8 +419,10 @@ export namespace WorkspaceOperations {
       if (existing) {
         if (existing.digest !== digest || (input.generation !== undefined && existing.generation !== input.generation))
           throw new Error("Workspace operation already has different input")
-        return completed(await resume(existing))
+        return completed(await resume(existing, input))
       }
+      assert()
+      await input.beforeEffect?.()
       assert()
       await RuntimeMaintenance.assertAdmission()
       assert()
@@ -543,69 +569,110 @@ export namespace WorkspaceOperations {
               ...change,
             })
           : WorkspaceProtocol.WriteInput.parse({ id: input.id, mount: WorkspaceMounts.reference(workspace), ...change })
-      const use = await Environment.acquire(workspace.activeMount.target.environmentID, {
-        scopeID: input.scopeID,
-        useID: useID(input.scopeID, input.id),
-        kind: "admission",
-        capabilities: ["files"],
-        signal: input.signal,
-        ownership: uses().admission({
-          id: input.id,
+      let use: Awaited<ReturnType<typeof Environment.acquire>> | undefined
+      let recorded: Info | undefined
+      let dispatched = false
+      const retain = WorkspaceContent.captureOwner()
+      const admission = async () => {
+        await input.beforeEffect?.()
+        assert()
+        use = await Environment.acquire(workspace.activeMount!.target.environmentID, {
           scopeID: input.scopeID,
-          workspaceID: workspace.id,
-          generation: workspace.binding.generation,
-          target: workspace.activeMount.target,
-          digest,
-          mount: WorkspaceMounts.reference(workspace),
-        }),
-      })
-      let recorded = false
-      try {
-        const info = await Storage.transaction(async () => {
-          await RuntimeMaintenance.assertAdmission()
-          const latest = await WorkspaceCatalog.get(workspace.id, input.scopeID)
-          if (
-            latest.activeMount?.id !== workspace.activeMount!.id ||
-            latest.activeMount?.state !== "active" ||
-            latest.binding.generation !== workspace.binding.generation ||
-            !Environment.sameTarget(use.target, workspace.activeMount!.target)
-          )
-            throw new WorkspaceCatalog.BindingChanged({ workspaceID: workspace.id, message: "Workspace mount changed" })
-          const info = await persist(
-            Info.parse({
-              id: input.id,
-              scopeID: input.scopeID,
-              workspaceID: workspace.id,
-              generation: workspace.binding.generation,
-              target: use.target,
-              input: operation,
-              digest,
-              state: "submitted",
-              evidence: await WorkspaceEvidence.begin(latest),
-              createdAt: Date.now(),
-              updatedAt: Date.now(),
-            }),
-          )
-          await Environment.retainUse(
-            use.target,
-            input.scopeID,
-            useID(input.scopeID, input.id),
-            uses().retention(useInput(info)),
-          )
-          return info
+          useID: useID(input.scopeID, input.id),
+          kind: "admission",
+          capabilities: ["files"],
+          signal: input.signal,
+          ownership: uses().admission({
+            id: input.id,
+            scopeID: input.scopeID,
+            workspaceID: workspace.id,
+            generation: workspace.binding.generation,
+            target: workspace.activeMount!.target,
+            digest,
+            mount: WorkspaceMounts.reference(workspace),
+          }),
         })
-        recorded = true
+        recorded = await Storage.transaction(
+          async () => {
+            assert()
+            await RuntimeMaintenance.assertAdmission()
+            const latest = await WorkspaceCatalog.get(workspace.id, input.scopeID)
+            if (
+              latest.activeMount?.id !== workspace.activeMount!.id ||
+              latest.activeMount?.state !== "active" ||
+              latest.binding.generation !== workspace.binding.generation ||
+              !Environment.sameTarget(use!.target, workspace.activeMount!.target)
+            )
+              throw new WorkspaceCatalog.BindingChanged({
+                workspaceID: workspace.id,
+                message: "Workspace mount changed",
+              })
+            const info = await persist(
+              Info.parse({
+                id: input.id,
+                scopeID: input.scopeID,
+                workspaceID: workspace.id,
+                generation: workspace.binding.generation,
+                target: use!.target,
+                input: operation,
+                digest,
+                state: "submitted",
+                evidence: await WorkspaceEvidence.begin(latest),
+                createdAt: Date.now(),
+                updatedAt: Date.now(),
+              }),
+            )
+            await Environment.retainUse(
+              use!.target,
+              input.scopeID,
+              useID(input.scopeID, input.id),
+              uses().retention(useInput(info)),
+            )
+            return info
+          },
+          { commitGuard: assert },
+        )
         const files = await WorkspaceMounts.connect(workspace)
-        await WorkspaceCheckpoints.begin(workspace, info.id)
+        await WorkspaceCheckpoints.begin(workspace, recorded.id)
+        await input.beforeEffect?.()
+        assert()
+        dispatched = true
         await ("change" in operation ? files.mutate(operation) : files.write(operation))
-        return completed(await resume(info))
+      }
+      try {
+        await (input.effectScope ? input.effectScope(admission) : admission())
+        if (!recorded) throw new Error("Workspace dispatch has no original native request")
+        return completed(await resume(recorded, { replay: false }))
       } catch (error) {
-        if (!recorded) await use.release()
-        else {
+        retain()
+        if (!recorded) await use?.release()
+        else if (!dispatched) {
+          const original = recorded
+          await WorkspaceEvidence.incomplete(original.evidence)
+          await Storage.transaction(
+            async () => {
+              retain()
+              await Environment.releaseUse(
+                original.target!,
+                input.scopeID,
+                useID(input.scopeID, input.id),
+                uses().retirement(useInput(original)),
+              )
+              await persist({
+                ...original,
+                state: "failed",
+                failure: WorkspaceErrors.failure(error),
+                error: error instanceof Error ? error.message : String(error),
+                updatedAt: Date.now(),
+              })
+            },
+            { commitGuard: retain },
+          )
+        } else {
           try {
             const files = await WorkspaceMounts.connect(workspace)
             if ((await files.checkpointStatus(input.id))?.state === "failed")
-              await resume(await get(input.id, input.scopeID))
+              await resume(await get(input.id, input.scopeID), { replay: false })
           } catch (cause) {
             Log.create({ service: "workspace-operations" }).warn("Rejected operation could not release its use", {
               id: input.id,
@@ -618,11 +685,11 @@ export namespace WorkspaceOperations {
     })
   }
 
-  export function reconcile(id: string, scopeID: string) {
-    return serial(id, scopeID, async () => resume(await get(id, scopeID)))
+  export function reconcile(id: string, scopeID: string, options?: { replay: false }) {
+    return serial(id, scopeID, async () => resume(await get(id, scopeID), options))
   }
 
-  async function resume(info: Info): Promise<Info> {
+  async function resume(info: Info, effect?: Effect & { replay?: false }): Promise<Info> {
     if (info.state === "completed" || info.state === "failed") return info
     const workspace = await WorkspaceCatalog.get(info.workspaceID, info.scopeID)
     if ("kind" in info.input && (info.input.kind === "files-write" || info.input.kind === "files-change")) {
@@ -695,8 +762,15 @@ export namespace WorkspaceOperations {
       })
     }
     try {
-      const original =
-        receipt.checkpoint ?? (await ("change" in info.input ? files.mutate(info.input) : files.write(info.input)))
+      if (!receipt.checkpoint && effect?.replay === false)
+        return persist({ ...info, state: "unknown", updatedAt: Date.now() })
+      const operation = info.input
+      const dispatch = async () => {
+        await effect?.beforeEffect?.()
+        effect?.assertCurrent?.()
+        return "change" in operation ? files.mutate(operation) : files.write(operation)
+      }
+      const original = receipt.checkpoint ?? (await (effect?.effectScope ? effect.effectScope(dispatch) : dispatch()))
       const attempt = await WorkspaceCheckpoints.begin(workspace, info.id)
       const checkpoint =
         attempt.id === info.id

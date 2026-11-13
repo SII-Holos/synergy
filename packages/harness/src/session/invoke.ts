@@ -1107,6 +1107,7 @@ export namespace SessionInvoke {
                     agent: agent.name,
                     signal: abort,
                   })
+                  session = await SessionExecutionOwners.currentSession(await Session.get(sessionID))
                   await Plugin.trigger("experimental.chat.messages.transform", {}, { messages: sessionMessages })
                 } catch (error) {
                   await completeAssistantWithError({ sessionID, processor, model, error, abort })

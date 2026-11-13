@@ -194,7 +194,13 @@ async function openOrganizationRuntime(input: MemberRuntimeOptions) {
                 signal,
               })
               attachMemberExecution({ connection, signal, resources, intake, origin: member.origin, ca: input.ca })
-              const closeReleaseObserver = startExecutionReleaseObserver({ connection, intake, resources, signal })
+              const closeReleaseObserver = startExecutionReleaseObserver({
+                connection,
+                intake,
+                resources,
+                signal,
+                recoverResources: context.bind(OrganizationEnvironmentExecutionSource.recoverOriginalResources),
+              })
               return {
                 create: context.bind(intake.create),
                 control: context.bind(intake.control),
@@ -210,7 +216,7 @@ async function openOrganizationRuntime(input: MemberRuntimeOptions) {
               ? {
                   handoff: context.bind(handoff.dispatch),
                   handoffInspection: context.bind(handoff.inspection),
-                  handoffVersion: 6 as const,
+                  handoffVersion: 7 as const,
                 }
               : {}),
             notifications: true,
@@ -244,10 +250,17 @@ async function openOrganizationRuntime(input: MemberRuntimeOptions) {
               const failures: unknown[] = []
               for (const stop of [
                 () => EnvironmentExecutionSource.close(),
-                async () => { await bridge?.close(); bridgeDrained = true },
+                async () => {
+                  await bridge?.close()
+                  bridgeDrained = true
+                },
                 () => handoff?.close(),
               ]) {
-                try { await stop() } catch (error) { failures.push(error) }
+                try {
+                  await stop()
+                } catch (error) {
+                  failures.push(error)
+                }
               }
               bridgeLifetime.abort(new Error("Organization Runtime resident stopped"))
               if (failures.length) throw new AggregateError(failures, "Organization execution and bridge did not close")

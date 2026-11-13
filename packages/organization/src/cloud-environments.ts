@@ -17,6 +17,8 @@ import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
 import { WorkspaceContent } from "@ericsanchezok/synergy-harness/workspace/content"
 import { WorkspaceProtocol } from "@ericsanchezok/synergy-harness/workspace/protocol"
 import { OrganizationCloudExecutionProtocol as Protocol } from "@ericsanchezok/synergy-organization-protocol"
+import { OrganizationCloudCleanupProtocol as Cleanup } from "@ericsanchezok/synergy-organization-protocol"
+import type { OrganizationCloudProtocol as FileProtocol } from "@ericsanchezok/synergy-organization-protocol"
 import { OrganizationExecutionGrants as Grants, type ExecutionGrants } from "./execution-grants"
 import { OrganizationCloud } from "./cloud"
 import { OrganizationRecord as Record } from "./storage/records"
@@ -1407,7 +1409,321 @@ export function createOrganizationCloudEnvironments(options: { grants: Execution
     await readBlockers()
     return retirementReceipt(query)
   }
+  type CleanupFrame = ReturnType<typeof Grants.nativeCleanupAuthority>
+  const cleanupCursor = z.strictObject({
+    version: z.literal(1),
+    grantID: z.string(),
+    generation: z.number().int().positive(),
+    after: z.string().max(1024),
+  })
+  function cleanupScope(frame: CleanupFrame) {
+    return OrganizationCloud.scopeID(frame.grant.orgID, frame.grant.projectID)
+  }
+  function cleanupReference(frame: CleanupFrame, reference: Protocol.Reference) {
+    Grants.assertRetainedEnvironmentReference(frame.grant, reference)
+    if (reference.retentionGeneration !== frame.generation || reference.serviceScopeID !== cleanupScope(frame))
+      fail("PERMISSION_DENIED", "Native cleanup has another original retention generation or Scope")
+  }
+  async function cleanupExecution(frame: CleanupFrame, info: EnvironmentExecution.Info) {
+    if (info.scopeID !== cleanupScope(frame)) return
+    if (info.origin.kind !== "host" || info.origin.owner !== hostOwner)
+      fail("RESOURCE_UNAVAILABLE", "Native cleanup found an execution without its original service owner")
+    const binding = Protocol.readHostInvocation(info.origin.invocationID)
+    if (binding.kind !== "execution" || binding.operationID !== info.id)
+      fail("PROTOCOL_MISMATCH", "Native cleanup execution changed its canonical operation identity")
+    if (binding.grantID !== frame.grant.grantID || binding.retentionGeneration !== frame.generation) return
+    cleanupReference(frame, binding.reference)
+    const identity = await Protocol.operationIdentity(
+      binding.reference,
+      binding.reference.nativeOperationID,
+      binding.nativeOrigin,
+    )
+    await actual(info, binding.reference, identity.invocationID, info.digest)
+    if (identity.operationID !== info.id)
+      fail("PROTOCOL_MISMATCH", "Native cleanup execution changed its original native address")
+    return binding
+  }
+  async function cleanupUse(frame: CleanupFrame, use: Environment.Use) {
+    const environment = await Environment.get(use.target.environmentID, cleanupScope(frame))
+    const inspected = await Environment.inspectUse(use)
+    const origin = inspected?.origin
+    if (!origin || origin.kind !== "host") {
+      if (use.ownership.kind === "workspace-mount") return
+      fail("RESOURCE_UNAVAILABLE", "Native cleanup found a Use without its original service owner")
+    }
+    if (origin.owner === filesHostOwner) {
+      const binding = filesBinding(origin.invocationID)
+      if (binding.grantID !== frame.grant.grantID || binding.generation !== frame.generation) return
+      const selected = frame.grant.selection.infrastructure.workspace
+      if (
+        use.kind !== "admission" ||
+        !selected ||
+        binding.scopeID !== cleanupScope(frame) ||
+        binding.workspaceID !== selected.workspaceID ||
+        !Environment.sameTarget(use.target, binding.target)
+      )
+        fail("PROTOCOL_MISMATCH", "Native Workspace cleanup changed its original retained admission")
+      const workspace = await WorkspaceCatalog.get(binding.workspaceID, binding.scopeID)
+      if (
+        workspace.binding.generation !== binding.workspaceGeneration ||
+        workspace.activeMount?.state !== "active" ||
+        workspace.activeMount.path !== binding.path ||
+        !Environment.sameTarget(workspace.activeMount.target, binding.target) ||
+        !same(WorkspaceMounts.reference(workspace), binding.mount)
+      )
+        fail("PROTOCOL_MISMATCH", "Native Workspace cleanup lost its original mounted Workspace")
+      return { kind: "admission" as const, key: binding.requestID, use, environment }
+    }
+    if (origin.owner !== hostOwner) fail("RESOURCE_UNAVAILABLE", "Native cleanup found an unknown Host Use owner")
+    const binding = Protocol.readHostInvocation(origin.invocationID)
+    if (binding.grantID !== frame.grant.grantID || binding.retentionGeneration !== frame.generation) return
+    if (binding.kind === "execution") {
+      cleanupReference(frame, binding.reference)
+      const identity = await Protocol.operationIdentity(
+        binding.reference,
+        binding.reference.nativeOperationID,
+        binding.nativeOrigin,
+      )
+      if (
+        use.ownership.kind !== "execution-preparation" ||
+        use.ownership.scopeID !== cleanupScope(frame) ||
+        use.ownership.operationID !== identity.operationID ||
+        origin.invocationID !== identity.invocationID ||
+        !Environment.sameTarget(use.target, Environment.Target.parse(binding.reference.target))
+      ) {
+        if (use.ownership.kind === "execution") return
+        fail("PROTOCOL_MISMATCH", "Native preparation cleanup changed its original canonical Use")
+      }
+      return { kind: "preparation" as const, binding, use, environment }
+    }
+    if (
+      use.kind !== "admission" ||
+      use.ownership.kind !== "admission" ||
+      !frame.grant.selection.infrastructure.environment ||
+      frame.grant.selection.infrastructure.environment.environmentID !== environment.id ||
+      binding.leaseID !== "org_admission_" + binding.bindingDigest
+    )
+      fail("PROTOCOL_MISMATCH", "Native Environment cleanup changed its original retained admission")
+    return { kind: "admission" as const, key: binding.leaseID, use, environment }
+  }
+  async function* cleanupCandidates(frame: CleanupFrame) {
+    for await (const info of EnvironmentExecution.activeEntries()) {
+      frame.assert()
+      const binding = await cleanupExecution(frame, info)
+      if (binding)
+        yield {
+          key: "0:" + info.scopeID + ":" + info.id,
+          candidate: Cleanup.Candidate.parse({
+            kind: "execution",
+            scopeID: info.scopeID,
+            environmentID: info.target.environmentID,
+            id: info.id,
+            digest: info.digest,
+          }),
+        }
+    }
+    for await (const use of Environment.useEntries()) {
+      frame.assert()
+      const selected = await cleanupUse(frame, use).catch((error: unknown) => {
+        if (error instanceof Storage.NotFoundError) return
+        throw error
+      })
+      if (selected)
+        yield {
+          key: "1:" + use.target.environmentID + ":" + use.id,
+          candidate: Cleanup.Candidate.parse({
+            kind: selected.kind,
+            scopeID: selected.environment.scopeID,
+            environmentID: use.target.environmentID,
+            useID: use.id,
+            useHash: digest(use),
+          }),
+        }
+    }
+    frame.assert()
+  }
+  async function nativeUse(candidate: Extract<Cleanup.Candidate, { kind: "admission" | "preparation" }>) {
+    for await (const use of Environment.useEntries(candidate.environmentID)) {
+      if (use.id !== candidate.useID) continue
+      if (digest(use) !== candidate.useHash)
+        fail("REVISION_CONFLICT", "Native cleanup Use changed since its original discovery")
+      return use
+    }
+  }
+  async function reconcileCleanup(
+    frame: CleanupFrame,
+    candidate: Cleanup.Candidate,
+    action: "inspect" | "retire",
+    markEffect: () => void,
+  ) {
+    frame.assert()
+    if (candidate.scopeID !== cleanupScope(frame))
+      fail("PERMISSION_DENIED", "Native cleanup selector belongs to another original Scope")
+    if (candidate.kind === "execution") {
+      const info = await EnvironmentExecution.get(candidate.id, candidate.scopeID).catch((error: unknown) => {
+        if (error instanceof Storage.NotFoundError) return
+        throw error
+      })
+      if (!info) return "absent" as const
+      if (info.target.environmentID !== candidate.environmentID || info.digest !== candidate.digest)
+        fail("PROTOCOL_MISMATCH", "Native cleanup selector changed its original execution")
+      const binding = await cleanupExecution(frame, info)
+      if (!binding) fail("PERMISSION_DENIED", "Native cleanup execution belongs to another original retained grant")
+      if (info.state === "completed") return "released" as const
+      if (action === "inspect") return "pending" as const
+      await frame.recheck()
+      const result = await retireOriginal(
+        {
+          kind: "execution",
+          reference: binding.reference,
+          origin: binding.nativeOrigin,
+          id: binding.reference.nativeOperationID,
+          digest: info.digest,
+        },
+        markEffect,
+      )
+      return result.kind === "execution" && result.execution ? ("released" as const) : ("pending" as const)
+    }
+    const use = await nativeUse(candidate)
+    if (!use) return "absent" as const
+    const selected = await cleanupUse(frame, use)
+    if (!selected || selected.kind !== candidate.kind)
+      fail("PERMISSION_DENIED", "Native cleanup Use belongs to another original retained grant or owner")
+    if (action === "inspect") return "pending" as const
+    await frame.recheck()
+    const retained = await nativeUse(candidate)
+    if (!retained) return "absent" as const
+    if (selected.kind === "preparation") {
+      const preparation = await EnvironmentExecution.retainedPreparation(retained)
+      const lease = leases.get(selected.binding.reference.leaseID)
+      const tail = lease?.tail ?? coldTail
+      if (!tail) fail("RESOURCE_UNAVAILABLE", "Native preparation cleanup lost its original completion owner")
+      markEffect()
+      await withPreparationCompletion(
+        preparation,
+        selected.binding.reference,
+        selected.binding.nativeOrigin,
+        tail,
+        () => preparation.release(),
+      )
+    } else {
+      if (active.get(frame.grant.grantID)) return "pending" as const
+      const lease = leases.get(selected.key)
+      const pending = admissionCleanups.get(selected.key)
+      const admission = retiring.get(selected.key)
+      if (lease) {
+        if (lease.reference.grantID !== frame.grant.grantID || lease.reference.retentionGeneration !== frame.generation)
+          fail("PERMISSION_DENIED", "Native cleanup changed its original live admission")
+        markEffect()
+        await withoutAuthority(() => releaseAdmission(lease))
+        closeTail(lease)
+      } else if (pending) {
+        if (pending.grantID !== frame.grant.grantID)
+          fail("PERMISSION_DENIED", "Native cleanup changed its original pending admission")
+        markEffect()
+        await withoutAuthority(() => pending.tail.run(() => pending.cleanup.release()))
+        admissionCleanups.delete(selected.key)
+        pending.tail.close()
+      } else if (admission) {
+        if (admission.grantID !== frame.grant.grantID)
+          fail("PERMISSION_DENIED", "Native cleanup changed its original retiring admission")
+        markEffect()
+        await withoutAuthority(() => admission.tail.run(() => admission.resources.release()))
+        retiring.delete(selected.key)
+        admission.tail.close()
+      } else {
+        if (!coldTail) fail("RESOURCE_UNAVAILABLE", "Cold admission cleanup lost its original native completion owner")
+        markEffect()
+        await coldTail.run(() => Environment.retireRecoveredAdmission(retained, candidate.scopeID))
+      }
+    }
+    await readBlockers()
+    if (await nativeUse(candidate)) fail("RESOURCE_UNAVAILABLE", "Native cleanup has not drained its original Use")
+    return "released" as const
+  }
   return {
+    async discover(value: Cleanup.DiscoveryRequest, signal?: AbortSignal) {
+      owner()
+      return options.grants.withNativeCleanupDiscovery(value, signal, async (evidence) => {
+        const frame = Grants.nativeCleanupAuthority(evidence)
+        const request = Cleanup.DiscoveryRequest.parse(frame.request)
+        let after: string | undefined
+        if (request.proof.page.cursor) {
+          let cursor: z.infer<typeof cleanupCursor>
+          try {
+            cursor = cleanupCursor.parse(
+              JSON.parse(Buffer.from(request.proof.page.cursor, "base64url").toString("utf8")),
+            )
+          } catch {
+            fail("INVALID_REQUEST", "Native cleanup cursor is invalid")
+          }
+          if (cursor.grantID !== frame.grant.grantID || cursor.generation !== frame.generation)
+            fail("PERMISSION_DENIED", "Native cleanup cursor belongs to another retained grant")
+          after = cursor.after
+        }
+        await readBlockers()
+        if (unknown) fail("RESOURCE_UNAVAILABLE", unknown)
+        const result = await Storage.snapshot(async () => {
+          const items: Cleanup.Candidate[] = []
+          let last: string | undefined,
+            more = false
+          for await (const entry of cleanupCandidates(frame)) {
+            if (after && entry.key <= after) continue
+            if (items.length === request.proof.page.limit) {
+              more = true
+              break
+            }
+            items.push(entry.candidate)
+            last = entry.key
+          }
+          return Cleanup.Page.parse({
+            version: 1,
+            grantID: frame.grant.grantID,
+            generation: frame.generation,
+            items,
+            ...(more &&
+              last && {
+                cursor: Buffer.from(
+                  JSON.stringify({
+                    version: 1,
+                    grantID: frame.grant.grantID,
+                    generation: frame.generation,
+                    after: last,
+                  }),
+                ).toString("base64url"),
+              }),
+          })
+        })
+        await frame.recheck()
+        return result
+      })
+    },
+    async reconcileNative(value: Cleanup.ReconciliationRequest, signal?: AbortSignal) {
+      owner()
+      let dispatched = false
+      try {
+        return await options.grants.withNativeCleanupReconciliation(value, signal, async (evidence) => {
+          const frame = Grants.nativeCleanupAuthority(evidence)
+          const request = Cleanup.ReconciliationRequest.parse(frame.request)
+          await readBlockers()
+          if (unknown) fail("RESOURCE_UNAVAILABLE", unknown)
+          const result = await reconcileCleanup(frame, request.proof.candidate, request.proof.action, () => {
+            dispatched = true
+          })
+          await frame.recheck()
+          return Cleanup.Result.parse({ candidate: request.proof.candidate, state: result })
+        })
+      } catch (error) {
+        if (!dispatched) throw error
+        throw new OrganizationError({
+          ...(error instanceof OrganizationError ? error.data : {}),
+          code: error instanceof OrganizationError ? error.data.code : "SERVICE_UNAVAILABLE",
+          message: error instanceof Error ? error.message : "Native cleanup outcome is unconfirmed",
+          outcome: "unknown",
+          retryable: false,
+        })
+      }
+    },
     async retire(value: Protocol.RetirementRequest, signal?: AbortSignal) {
       owner()
       let dispatched = false
@@ -1580,7 +1896,97 @@ export function createOrganizationCloudEnvironments(options: { grants: Execution
                   mount: WorkspaceProtocol.Mount.parse(actual),
                   assert,
                   recheck: current,
+                  async publish<R>(
+                    id: string,
+                    operation: Extract<FileProtocol.FileOperation, { action: "write" | "mutate" }>,
+                    complete: (
+                      saved: WorkspaceCatalog.Info,
+                      checkpoint: WorkspaceProtocol.Checkpoint,
+                      assert: () => void,
+                    ) => Promise<R>,
+                  ): Promise<R> {
+                    assert()
+                    const work = filesAuthority.run(undefined, () =>
+                      withoutAuthority(() =>
+                        tail.run(async () => {
+                          const effect = {
+                            id,
+                            scopeID,
+                            workspaceID: workspace.id,
+                            generation: workspace.binding.generation,
+                            beforeEffect: current,
+                            assertCurrent: assert,
+                            effectScope: <R>(body: () => Promise<R>) => filesAuthority.run(nativeFrame, body),
+                          }
+                          let accepted: WorkspaceOperations.Info
+                          try {
+                            accepted =
+                              operation.action === "write"
+                                ? await WorkspaceOperations.write({
+                                    ...effect,
+                                    ...operation,
+                                    id,
+                                    data: Buffer.from(operation.data, "base64"),
+                                  })
+                                : await WorkspaceOperations.mutate({
+                                    ...effect,
+                                    change: operation.change,
+                                    protectSensitive: operation.protectSensitive,
+                                  })
+                          } catch (error) {
+                            const original = await WorkspaceOperations.get(id, scopeID).catch((cause: unknown) => {
+                              if (cause instanceof Storage.NotFoundError) return
+                              throw cause
+                            })
+                            if (!original) throw error
+                            accepted = await WorkspaceOperations.reconcile(id, scopeID, { replay: false })
+                            if (accepted.state !== "completed") throw error
+                          }
+                          owner()
+                          if (
+                            accepted.state !== "completed" ||
+                            accepted.workspaceID !== workspace.id ||
+                            accepted.generation !== workspace.binding.generation
+                          )
+                            fail(
+                              "RESOURCE_UNAVAILABLE",
+                              "Live file publication has no original completed native operation",
+                            )
+                          const publication = await WorkspaceOperations.inspectPublication(id, scopeID)
+                          const attempt = publication.checkpoint
+                          if (!attempt)
+                            fail("RESOURCE_UNAVAILABLE", "Live file publication has no original saved checkpoint")
+                          const receipt = await files.checkpointStatus(attempt.id)
+                          const checkpoint = receipt?.checkpoint
+                          if (
+                            !checkpoint ||
+                            !same(checkpoint.mount, binding.mount) ||
+                            checkpoint.id !== attempt.id ||
+                            checkpoint.manifest !== (attempt.saved.content?.manifest ?? null)
+                          )
+                            fail("PROTOCOL_MISMATCH", "Live file publication lost its actual native checkpoint")
+                          let publishing = true
+                          const retained = () => {
+                            owner()
+                            if (!publishing) fail("PERMISSION_DENIED", "Original file publication callback has ended")
+                          }
+                          try {
+                            return await complete(attempt.saved, checkpoint, retained)
+                          } finally {
+                            publishing = false
+                          }
+                        }),
+                      ),
+                    )
+                    pending.add(work)
+                    try {
+                      return await work
+                    } finally {
+                      pending.delete(work)
+                    }
+                  },
                   files: Object.freeze({
+                    list: (path: string) => call(() => files.list(binding.mount, path)),
                     canonical: (path: string, follow: boolean) =>
                       call(() => files.canonical(binding.mount, path, follow)),
                     stat: (path: string, follow?: boolean) => call(() => files.stat(binding.mount, path, follow)),

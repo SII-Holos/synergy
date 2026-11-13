@@ -117,8 +117,23 @@ export namespace OrganizationCloudProtocol {
     LegacyFileLocator,
     LegacyFileLocator.omit({ moveID: true, workspaceMoveReceiptHash: true }).extend({
       version: z.literal(2),
+      path: RootPath,
       handoffID: Identity.ID,
       workspaceSourceHash: Hash,
+    }),
+    LegacyFileLocator.omit({
+      moveID: true,
+      workspaceMoveReceiptHash: true,
+      mappingRevision: true,
+      path: true,
+    }).extend({
+      version: z.literal(3),
+      path: z.never().optional(),
+      ownerSessionID: Identity.ID,
+      sessionID: Identity.ID,
+      rootID: Identity.ID,
+      grantID: Identity.ID,
+      selectionRevision: Identity.Revision,
     }),
   ])
   export type FileLocator = z.infer<typeof FileLocator>

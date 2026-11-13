@@ -5,6 +5,7 @@ import { ResourceReference } from "@ericsanchezok/synergy-util/resource-referenc
 import { attachmentPurpose } from "@ericsanchezok/synergy-util/attachment-presentation"
 import { WorkspaceBinding } from "../workspace/binding"
 import { WorkspaceCatalog } from "../workspace/catalog"
+import { WorkspaceFileSource } from "../workspace/file-source"
 import { Environment } from "../environment"
 import { WorkspaceMounts } from "../workspace/mount"
 import { SessionRecords } from "./records"
@@ -1036,6 +1037,12 @@ export namespace Session {
     const session = await get(sessionID)
     const { workspace } = session
     if (session.workspaceID) {
+      const record = await WorkspaceCatalog.get(session.workspaceID, session.scope.id)
+      if (record.backend && !["directory", "objects"].includes(record.backend.provider)) {
+        if (workspace) throw new Error("Remote Workspace cannot carry a native Session directory")
+        await WorkspaceFileSource.inspectBinding({ workspaceID: record.id, scopeID: session.scope.id })
+        return
+      }
       await WorkspaceBinding.validate(session.workspaceID, session.scope.id, workspace?.generation)
       return
     }
@@ -1062,6 +1069,7 @@ export namespace Session {
         const reference =
           options?.reference ??
           (workspace?.id ? { workspaceID: workspace.id, workspaceGeneration: workspace.generation } : undefined)
+        let remoteWorkspace: WorkspaceCatalog.Info | undefined
         const resolve = async () => {
           if (!reference) return WorkspaceBinding.adopt(workspace, session.scope.id)
           const record = await WorkspaceCatalog.get(reference.workspaceID, session.scope.id)
@@ -1075,9 +1083,22 @@ export namespace Session {
             reference.workspaceGeneration !== record.binding.generation
           )
             throw new WorkspaceCatalog.BindingChanged({ workspaceID: record.id, message: "Workspace binding changed" })
-          return record.backend?.provider === "objects"
-            ? null
-            : WorkspaceBinding.validate(record.id, session.scope.id, reference.workspaceGeneration)
+          if (record.backend?.provider === "objects") return null
+          if (record.backend && !["directory", "objects"].includes(record.backend.provider)) {
+            const inspected = await WorkspaceFileSource.inspectBinding({
+              workspaceID: record.id,
+              scopeID: session.scope.id,
+              generation: reference.workspaceGeneration,
+            })
+            if (remoteWorkspace && JSON.stringify(inspected) !== JSON.stringify(remoteWorkspace))
+              throw new WorkspaceCatalog.BindingChanged({
+                workspaceID: record.id,
+                message: "Remote Workspace changed before Session binding",
+              })
+            remoteWorkspace = inspected
+            return null
+          }
+          return WorkspaceBinding.validate(record.id, session.scope.id, reference.workspaceGeneration)
         }
         workspace = await resolve()
         const workspaceID = reference?.workspaceID ?? workspace?.id ?? null
@@ -1107,7 +1128,7 @@ export namespace Session {
               draft.workspace = workspace
               draft.workspaceID = workspaceID
             },
-            { ...options, workspaceChange: true },
+            { ...options, workspaceChange: true, remoteWorkspace },
           )
         }
         return owns
@@ -1467,6 +1488,7 @@ export namespace Session {
       forcePublish?: boolean
       workspaceChange?: boolean
       environmentChange?: boolean
+      remoteWorkspace?: WorkspaceCatalog.Info
     },
   ) {
     await SessionCompat.requireImported(id)
@@ -1495,6 +1517,19 @@ export namespace Session {
       }
       if (result.workspaceID != null && (options?.workspaceChange || result.workspaceID !== before.workspaceID))
         await WorkspaceCatalog.assertActive(result.workspaceID, scope.id)
+      if (options?.remoteWorkspace) {
+        const selected = options.remoteWorkspace
+        const actual = await WorkspaceFileSource.inspectBinding({
+          workspaceID: selected.id,
+          scopeID: scope.id,
+          generation: selected.binding.generation,
+        })
+        if (result.workspace || result.workspaceID !== actual.id || JSON.stringify(actual) !== JSON.stringify(selected))
+          throw new WorkspaceCatalog.BindingChanged({
+            workspaceID: selected.id,
+            message: "Remote Workspace changed before Session publication",
+          })
+      }
       if (result.workspaceID != null && before.time.archived && !result.time.archived) {
         const workspace = await WorkspaceCatalog.get(result.workspaceID, scope.id)
         if (workspace.lifecycle === "deleting")

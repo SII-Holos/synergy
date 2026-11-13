@@ -2076,6 +2076,304 @@ export type OrgCloudEnvironmentCreate = {
   name: string
 }
 
+export type OrgCloudCleanupPage = {
+  version: 1
+  grantID: string
+  generation: number
+  items: Array<
+    | {
+        scopeID: string
+        environmentID: string
+        kind: "execution"
+        id: string
+        digest: string
+      }
+    | {
+        scopeID: string
+        environmentID: string
+        useID: string
+        useHash: string
+        kind: "preparation"
+      }
+    | {
+        scopeID: string
+        environmentID: string
+        useID: string
+        useHash: string
+        kind: "admission"
+      }
+  >
+  cursor?: string
+}
+
+export type OrgCommandPermit = {
+  schemaVersion: 1
+  purpose: "session-command"
+  orgID: string
+  deploymentIncarnation: string
+  keyID: string
+  requestID: string
+  payloadHash: string
+  sessionID: string
+  projectID: string
+  runtimeID: string
+  bindingEpoch: number
+  connectionEpoch: number
+  commandSeq: number
+  shareGeneration: number
+  controlRevision: number
+  authRevision: number
+  admissionID: string
+  attemptID: string
+  actor: {
+    subjectID: string
+    displayName: string
+    clientKind: "web" | "desktop" | "cli" | "api"
+    requestID: string
+    kind: "account"
+    orgID: string
+    tokenID?: string
+  }
+  operation: "create" | "input" | "pause" | "continue" | "cancel" | "decision"
+  authorizedAt: number
+  deadline: number
+  provisionalGrantID?: string
+}
+
+export type OrgCommandInputAccepted = {
+  schemaVersion: 1
+  permit: OrgCommandPermit
+  acceptedAt: number
+  intakeSeq: number
+  effect: {
+    kind: "inbox"
+    itemID: string
+    messageID: string
+    mode: "task" | "steer" | "context"
+  }
+}
+
+export type OrgCommandControlAccepted = {
+  schemaVersion: 1
+  permit: OrgCommandPermit
+  acceptedAt: number
+  intakeSeq: number
+  effect:
+    | {
+        kind: "control"
+        controlVersion: number
+        pausedSince: number
+        operation: "pause"
+        changed: boolean
+      }
+    | {
+        kind: "control"
+        controlVersion: number
+        pausedSince: number
+        operation: "continue"
+        itemID: string
+        messageID: string
+        rootID?: string
+      }
+    | {
+        kind: "control"
+        operation: "cancel"
+        controlVersion: number
+        runID: string
+        runStatusAtReception: "running" | "completed" | "failed" | "cancelled" | "interrupted"
+        cancelRequestedAt?: number
+      }
+}
+
+export type OrgExecutionInspectionProof = {
+  schemaVersion: 1
+  orgID: string
+  deploymentIncarnation: string
+  runtimeID: string
+  connectionEpoch: number
+  receipt: {
+    attempt:
+      | {
+          schemaVersion: 1
+          permit: OrgCommandPermit
+          receivedAt: number
+          status: "accepted"
+          acceptedAttemptID: string
+        }
+      | {
+          schemaVersion: 1
+          permit: OrgCommandPermit
+          receivedAt: number
+          status: "rejected"
+          reason:
+            | "EXPIRED_PERMIT"
+            | "STALE_CONNECTION"
+            | "STALE_BINDING"
+            | "SESSION_UNAVAILABLE"
+            | "TRANSFER_BLOCKED"
+            | "SEQUENCE_GAP"
+            | "SEQUENCE_CLOSED"
+            | "REQUEST_CONFLICT"
+            | "PAYLOAD_MISMATCH"
+            | "CONTROL_CONFLICT"
+        }
+      | {
+          schemaVersion: 1
+          permit: OrgCommandPermit
+          receivedAt: number
+          status: "skipped"
+        }
+    accepted?: OrgCommandInputAccepted
+    skip?: {
+      schemaVersion: 1
+      permit: {
+        schemaVersion: 1
+        purpose: "session-command-skip"
+        command: OrgCommandPermit
+        connectionEpoch: number
+        authorizedAt: number
+        deadline: number
+      }
+      receivedAt: number
+    }
+  }
+  continuation?: {
+    handoffID: string
+    receipt: {
+      attempt:
+        | {
+            schemaVersion: 1
+            permit: OrgCommandPermit
+            receivedAt: number
+            status: "accepted"
+            acceptedAttemptID: string
+          }
+        | {
+            schemaVersion: 1
+            permit: OrgCommandPermit
+            receivedAt: number
+            status: "rejected"
+            reason:
+              | "EXPIRED_PERMIT"
+              | "STALE_CONNECTION"
+              | "STALE_BINDING"
+              | "SESSION_UNAVAILABLE"
+              | "TRANSFER_BLOCKED"
+              | "SEQUENCE_GAP"
+              | "SEQUENCE_CLOSED"
+              | "REQUEST_CONFLICT"
+              | "PAYLOAD_MISMATCH"
+              | "CONTROL_CONFLICT"
+          }
+        | {
+            schemaVersion: 1
+            permit: OrgCommandPermit
+            receivedAt: number
+            status: "skipped"
+          }
+      accepted?: OrgCommandControlAccepted
+      skip?: {
+        schemaVersion: 1
+        permit: {
+          schemaVersion: 1
+          purpose: "session-command-skip"
+          command: OrgCommandPermit
+          connectionEpoch: number
+          authorizedAt: number
+          deadline: number
+        }
+        receivedAt: number
+      }
+    }
+  }
+  issuedAt: number
+  expiresAt: number
+  purpose: "execution-retention-inspection"
+  rootID: string
+  grantID?: string
+  generation?: number
+}
+
+export type OrgExecutionInspectionRequest = {
+  proof: OrgExecutionInspectionProof
+  signature: string
+}
+
+export type OrgCloudCleanupDiscoveryProof = {
+  version: 1
+  authority: OrgExecutionInspectionRequest
+  purpose: "organization-environment-cleanup-discovery"
+  page: {
+    limit?: number
+    cursor?: string
+  }
+}
+
+export type OrgCloudCleanupDiscoveryRequest = {
+  proof: OrgCloudCleanupDiscoveryProof
+  signature: string
+}
+
+export type OrgCloudCleanupResult = {
+  candidate:
+    | {
+        scopeID: string
+        environmentID: string
+        kind: "execution"
+        id: string
+        digest: string
+      }
+    | {
+        scopeID: string
+        environmentID: string
+        useID: string
+        useHash: string
+        kind: "preparation"
+      }
+    | {
+        scopeID: string
+        environmentID: string
+        useID: string
+        useHash: string
+        kind: "admission"
+      }
+  state: "pending" | "released" | "absent"
+}
+
+export type OrgCloudCleanupReconciliationProof = {
+  version: 1
+  authority: OrgExecutionInspectionRequest
+  purpose: "organization-environment-cleanup-reconciliation"
+  action: "inspect" | "retire"
+  candidate:
+    | {
+        scopeID: string
+        environmentID: string
+        kind: "execution"
+        id: string
+        digest: string
+      }
+    | {
+        scopeID: string
+        environmentID: string
+        useID: string
+        useHash: string
+        kind: "preparation"
+      }
+    | {
+        scopeID: string
+        environmentID: string
+        useID: string
+        useHash: string
+        kind: "admission"
+      }
+}
+
+export type OrgCloudCleanupReconciliationRequest = {
+  proof: OrgCloudCleanupReconciliationProof
+  signature: string
+}
+
 export type Schema0 =
   | string
   | number
@@ -2200,85 +2498,6 @@ export type Schema6 =
   | {
       [key: string]: Schema6
     }
-
-export type OrgCommandPermit = {
-  schemaVersion: 1
-  purpose: "session-command"
-  orgID: string
-  deploymentIncarnation: string
-  keyID: string
-  requestID: string
-  payloadHash: string
-  sessionID: string
-  projectID: string
-  runtimeID: string
-  bindingEpoch: number
-  connectionEpoch: number
-  commandSeq: number
-  shareGeneration: number
-  controlRevision: number
-  authRevision: number
-  admissionID: string
-  attemptID: string
-  actor: {
-    subjectID: string
-    displayName: string
-    clientKind: "web" | "desktop" | "cli" | "api"
-    requestID: string
-    kind: "account"
-    orgID: string
-    tokenID?: string
-  }
-  operation: "create" | "input" | "pause" | "continue" | "cancel" | "decision"
-  authorizedAt: number
-  deadline: number
-  provisionalGrantID?: string
-}
-
-export type OrgCommandInputAccepted = {
-  schemaVersion: 1
-  permit: OrgCommandPermit
-  acceptedAt: number
-  intakeSeq: number
-  effect: {
-    kind: "inbox"
-    itemID: string
-    messageID: string
-    mode: "task" | "steer" | "context"
-  }
-}
-
-export type OrgCommandControlAccepted = {
-  schemaVersion: 1
-  permit: OrgCommandPermit
-  acceptedAt: number
-  intakeSeq: number
-  effect:
-    | {
-        kind: "control"
-        controlVersion: number
-        pausedSince: number
-        operation: "pause"
-        changed: boolean
-      }
-    | {
-        kind: "control"
-        controlVersion: number
-        pausedSince: number
-        operation: "continue"
-        itemID: string
-        messageID: string
-        rootID?: string
-      }
-    | {
-        kind: "control"
-        operation: "cancel"
-        controlVersion: number
-        runID: string
-        runStatusAtReception: "running" | "completed" | "failed" | "cancelled" | "interrupted"
-        cancelRequestedAt?: number
-      }
-}
 
 export type OrgExecutionBindingProof = {
   schemaVersion: 1
@@ -2498,120 +2717,6 @@ export type OrgCloudExecutionRetirementResult =
       digest: string
       execution: Schema2 | null
     }
-
-export type OrgExecutionInspectionProof = {
-  schemaVersion: 1
-  orgID: string
-  deploymentIncarnation: string
-  runtimeID: string
-  connectionEpoch: number
-  receipt: {
-    attempt:
-      | {
-          schemaVersion: 1
-          permit: OrgCommandPermit
-          receivedAt: number
-          status: "accepted"
-          acceptedAttemptID: string
-        }
-      | {
-          schemaVersion: 1
-          permit: OrgCommandPermit
-          receivedAt: number
-          status: "rejected"
-          reason:
-            | "EXPIRED_PERMIT"
-            | "STALE_CONNECTION"
-            | "STALE_BINDING"
-            | "SESSION_UNAVAILABLE"
-            | "TRANSFER_BLOCKED"
-            | "SEQUENCE_GAP"
-            | "SEQUENCE_CLOSED"
-            | "REQUEST_CONFLICT"
-            | "PAYLOAD_MISMATCH"
-            | "CONTROL_CONFLICT"
-        }
-      | {
-          schemaVersion: 1
-          permit: OrgCommandPermit
-          receivedAt: number
-          status: "skipped"
-        }
-    accepted?: OrgCommandInputAccepted
-    skip?: {
-      schemaVersion: 1
-      permit: {
-        schemaVersion: 1
-        purpose: "session-command-skip"
-        command: OrgCommandPermit
-        connectionEpoch: number
-        authorizedAt: number
-        deadline: number
-      }
-      receivedAt: number
-    }
-  }
-  continuation?: {
-    handoffID: string
-    receipt: {
-      attempt:
-        | {
-            schemaVersion: 1
-            permit: OrgCommandPermit
-            receivedAt: number
-            status: "accepted"
-            acceptedAttemptID: string
-          }
-        | {
-            schemaVersion: 1
-            permit: OrgCommandPermit
-            receivedAt: number
-            status: "rejected"
-            reason:
-              | "EXPIRED_PERMIT"
-              | "STALE_CONNECTION"
-              | "STALE_BINDING"
-              | "SESSION_UNAVAILABLE"
-              | "TRANSFER_BLOCKED"
-              | "SEQUENCE_GAP"
-              | "SEQUENCE_CLOSED"
-              | "REQUEST_CONFLICT"
-              | "PAYLOAD_MISMATCH"
-              | "CONTROL_CONFLICT"
-          }
-        | {
-            schemaVersion: 1
-            permit: OrgCommandPermit
-            receivedAt: number
-            status: "skipped"
-          }
-      accepted?: OrgCommandControlAccepted
-      skip?: {
-        schemaVersion: 1
-        permit: {
-          schemaVersion: 1
-          purpose: "session-command-skip"
-          command: OrgCommandPermit
-          connectionEpoch: number
-          authorizedAt: number
-          deadline: number
-        }
-        receivedAt: number
-      }
-    }
-  }
-  issuedAt: number
-  expiresAt: number
-  purpose: "execution-retention-inspection"
-  rootID: string
-  grantID?: string
-  generation?: number
-}
-
-export type OrgExecutionInspectionRequest = {
-  proof: OrgExecutionInspectionProof
-  signature: string
-}
 
 export type OrgCloudExecutionRetirementProof =
   | {
@@ -3005,7 +3110,7 @@ export type OrgHandoffOptions = {
       resourceID: string
       workspaceID: string
       generation: number
-      path: string
+      path: string | ""
     }
   } | null
   native: {
@@ -3084,7 +3189,7 @@ export type OrgHandoffView = {
           resourceID: string
           workspaceID: string
           generation: number
-          path: string
+          path: string | ""
         }
       }
     | {
@@ -3098,7 +3203,7 @@ export type OrgHandoffView = {
           resourceID: string
           workspaceID: string
           generation: number
-          path: string
+          path: string | ""
         }
         target:
           | {
@@ -3167,7 +3272,7 @@ export type OrgHandoffPrepare =
               resourceID: string
               workspaceID: string
               generation: number
-              path: string
+              path: string | ""
             }
           }
         | {
@@ -3181,7 +3286,7 @@ export type OrgHandoffPrepare =
               resourceID: string
               workspaceID: string
               generation: number
-              path: string
+              path: string | ""
             }
             target:
               | {
@@ -3660,7 +3765,7 @@ export type OrgHandoffRecoveryPermit = {
             resourceID: string
             workspaceID: string
             generation: number
-            path: string
+            path: string | ""
           }
         }
       | {
@@ -3674,7 +3779,7 @@ export type OrgHandoffRecoveryPermit = {
             resourceID: string
             workspaceID: string
             generation: number
-            path: string
+            path: string | ""
           }
           target:
             | {
@@ -9926,6 +10031,97 @@ export type OrgCloudEnvironmentsGetResponses = {
 }
 
 export type OrgCloudEnvironmentsGetResponse = OrgCloudEnvironmentsGetResponses[keyof OrgCloudEnvironmentsGetResponses]
+
+export type OrgCloudCleanupDiscoverData = {
+  body: OrgCloudCleanupDiscoveryRequest
+  path?: never
+  query?: never
+  url: "/runtime/v1/environments/cleanups"
+}
+
+export type OrgCloudCleanupDiscoverErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgCloudCleanupDiscoverError = OrgCloudCleanupDiscoverErrors[keyof OrgCloudCleanupDiscoverErrors]
+
+export type OrgCloudCleanupDiscoverResponses = {
+  /**
+   * Success
+   */
+  200: OrgCloudCleanupPage
+}
+
+export type OrgCloudCleanupDiscoverResponse = OrgCloudCleanupDiscoverResponses[keyof OrgCloudCleanupDiscoverResponses]
+
+export type OrgCloudCleanupReconcileData = {
+  body: OrgCloudCleanupReconciliationRequest
+  path?: never
+  query?: never
+  url: "/runtime/v1/environments/cleanups/reconciliation"
+}
+
+export type OrgCloudCleanupReconcileErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgCloudCleanupReconcileError = OrgCloudCleanupReconcileErrors[keyof OrgCloudCleanupReconcileErrors]
+
+export type OrgCloudCleanupReconcileResponses = {
+  /**
+   * Success
+   */
+  200: OrgCloudCleanupResult
+}
+
+export type OrgCloudCleanupReconcileResponse =
+  OrgCloudCleanupReconcileResponses[keyof OrgCloudCleanupReconcileResponses]
 
 export type OrgCloudExecutionRequestData = {
   body: OrgCloudExecutionRequest
