@@ -2,76 +2,19 @@ import { expect, test } from "bun:test"
 import { createHash } from "node:crypto"
 import path from "node:path"
 import { z } from "zod"
-import { Session } from "@ericsanchezok/synergy-harness/session"
 import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/ledger"
 import { RolloutArtifact } from "@ericsanchezok/synergy-harness/session/rollout/artifact"
-import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
-import {
-  OrganizationKnowledgeProtocol as Knowledge,
-  OrganizationRuntimeProtocol as Protocol,
-} from "@ericsanchezok/synergy-organization-protocol"
+import { OrganizationRuntimeProtocol as Protocol } from "@ericsanchezok/synergy-organization-protocol"
 import { prepareMemberHome } from "../src/home"
 import { enrollMemberRuntime } from "../src/enrollment"
 import { openMemberRuntime } from "../src/runtime"
-import { OrganizationExecutionLeases } from "../src/execution-leases"
-import { OrganizationCommandRecords } from "../src/command-records"
-import { OrganizationIntakePath } from "../src/storage/path"
 import { fixture } from "./support/organization"
 import { applySelection, publish } from "./support/knowledge"
+import { ModelRequest, SkillEvidence, runtimeContext, modelResponse, waitKnowledgeTask } from "./support/knowledge-task"
 
 const hash = (value: string) => createHash("sha256").update(value).digest("hex")
-const ModelRequest = z.object({ messages: z.array(z.object({ role: z.string(), content: z.unknown() })) })
-const SkillEvidence = z.object({ content: z.string(), sha256: z.string(), provenance: Knowledge.Reference })
-
-function runtimeContext(request: z.infer<typeof ModelRequest>) {
-  for (const message of request.messages.toReversed()) {
-    if (message.role !== "user") continue
-    let content: string | undefined
-    if (typeof message.content === "string") content = message.content
-    else {
-      const parts = z.array(z.object({ type: z.literal("text"), text: z.string() })).safeParse(message.content)
-      if (parts.success) content = parts.data.map((part) => part.text).join("\n")
-    }
-    if (content?.startsWith("<runtime-context>\n") && content.endsWith("\n</runtime-context>")) return content
-  }
-}
-
-function modelResponse(call: number, tool?: { name: string; input: unknown }) {
-  const delta = tool
-    ? {
-        tool_calls: [
-          {
-            index: 0,
-            id: `knowledge-tool-${call}`,
-            type: "function",
-            function: { name: tool.name, arguments: JSON.stringify(tool.input) },
-          },
-        ],
-      }
-    : { content: "The explicitly updated knowledge is loaded." }
-  const chunk = {
-    id: `knowledge-model-${call}`,
-    created: 1,
-    model: "knowledge-model",
-    choices: [{ index: 0, delta: { role: "assistant", ...delta }, finish_reason: null }],
-  }
-  return new Response(
-    [
-      `data: ${JSON.stringify(chunk)}`,
-      `data: ${JSON.stringify({
-        ...chunk,
-        choices: [{ index: 0, delta: {}, finish_reason: tool ? "tool_calls" : "stop" }],
-        usage: { prompt_tokens: 20, completion_tokens: 5, total_tokens: 25 },
-      })}`,
-      "data: [DONE]",
-      "",
-    ].join("\n\n"),
-    { headers: { "content-type": "text/event-stream" } },
-  )
-}
-
 async function bounded<T>(work: Promise<T>) {
   const timeout = Promise.withResolvers<never>()
   const timer = setTimeout(() => timeout.reject(new Error("The actual knowledge update boundary did not settle")), 4000)
@@ -107,17 +50,19 @@ test("an actual Member task applies knowledge at the next model boundary without
         request.signal.removeEventListener("abort", aborted)
         return Response.json({ operation: "original-business-work", complete: true })
       }
-      calls.push(ModelRequest.parse(await request.json()))
-      const call = calls.length
-      if (call === 1 || call === 3) return modelResponse(call, { name: "skill", input: { name: "team-work" } })
-      if (call === 2) {
+      const input = ModelRequest.parse(await request.json())
+      calls.push(input)
+      if (!runtimeContext(input)) return modelResponse(calls.length)
+      const step = calls.filter((call) => runtimeContext(call) !== undefined).length
+      if (step === 1 || step === 3) return modelResponse(calls.length, { name: "skill", input: { name: "team-work" } })
+      if (step === 2) {
         if (!connectionResourceID) throw new Error("The actual connection has not been configured")
-        return modelResponse(call, {
+        return modelResponse(calls.length, {
           name: "organization_connection",
           input: { resourceID: connectionResourceID, body: { operation: "original-business-work" } },
         })
       }
-      return modelResponse(call)
+      return modelResponse(calls.length)
     },
   })
   try {
@@ -275,7 +220,7 @@ test("an actual Member task applies knowledge at the next model boundary without
         )
       ).data
       await bounded(connectionStarted.promise)
-      expect(calls).toHaveLength(2)
+      expect(calls.filter((call) => runtimeContext(call) !== undefined)).toHaveLength(2)
       expect(connectionCalls).toEqual([
         { authorization: "Bearer service-connection-key", body: { operation: "original-business-work" } },
       ])
@@ -286,7 +231,7 @@ test("an actual Member task applies knowledge at the next model boundary without
         expectedRevision: 1,
         releases: [second.reference],
       })
-      expect(calls).toHaveLength(2)
+      expect(calls.filter((call) => runtimeContext(call) !== undefined)).toHaveLength(2)
       expect(connectionCancelled).toBe(false)
       expect((await service.client.orgKnowledge.status({ sessionID }, options)).data).toMatchObject({
         state: "pending",
@@ -294,90 +239,7 @@ test("an actual Member task applies knowledge at the next model boundary without
         activated: { manifestHash: hash(JSON.stringify([first.reference])) },
       })
       connectionReleased.resolve()
-      const info = await runtime.run(() => Session.get(sessionID))
-      const owner = { kind: "session" as const, scopeID: info.scope.id, sessionID }
-      const rootID = accepted.effect.messageID
-      const completed = async () => {
-        const boundaryStarted = Date.now()
-        const deadline = boundaryStarted + 4000
-        const observed: { run: string; calls: string[]; release: string; pending?: number } = {
-          run: "unobserved",
-          calls: [],
-          release: "unobserved",
-        }
-        for (;;) {
-          const run = await runtime.run(() => RolloutLedger.getRun(owner, rootID))
-          observed.run = run?.status ?? "missing"
-          if (run?.status === "completed") {
-            const recorded = await runtime.run(() => RolloutLedger.calls(owner, rootID))
-            observed.calls = recorded.map((call) => `${call.purpose}:${call.status}`)
-            const release = await runtime.run(async () => {
-              const [raw] = await Storage.readMany([
-                OrganizationIntakePath.release(
-                  accepted.permit.orgID,
-                  accepted.permit.actor.subjectID,
-                  accepted.permit.requestID,
-                ),
-              ])
-              return raw === undefined ? undefined : OrganizationCommandRecords.Release.parse(raw)
-            })
-            observed.release = release?.state ?? "missing"
-            let pending = 0
-            let afterEntry: string | undefined
-            do {
-              const page = await runtime.run(() =>
-                OrganizationExecutionLeases.page(registration.runtimeID, {
-                  after: afterEntry,
-                  target: { sessionID, rootID },
-                }),
-              )
-              pending += page.items.length
-              afterEntry = page.cursor
-            } while (afterEntry)
-            observed.pending = pending
-            if (
-              recorded.length === calls.length &&
-              recorded.every((call) => call.status === "completed") &&
-              release?.state === "released" &&
-              pending === 0 &&
-              Date.now() <= deadline
-            )
-              return release
-          } else if (run && run.status !== "running")
-            throw new Error(`The native knowledge task ended as ${run.status}`)
-          if (Date.now() >= deadline)
-            throw new Error(
-              `The original knowledge task did not release: ${JSON.stringify({ elapsedMs: Date.now() - boundaryStarted, ...observed })}`,
-            )
-          await new Promise<void>((resolve) => setTimeout(resolve, 5))
-        }
-      }
-      const release = await completed()
-      expect(release).toMatchObject({
-        orgID: accepted.permit.orgID,
-        subjectID: accepted.permit.actor.subjectID,
-        requestID: accepted.permit.requestID,
-        sessionID,
-        rootID,
-        projectID: project.projectID,
-        runtimeID: registration.runtimeID,
-        bindingEpoch: accepted.permit.bindingEpoch,
-        admissionID: accepted.permit.admissionID,
-        attemptID: accepted.permit.attemptID,
-        actor: accepted.permit.actor,
-        grantID: accepted.permit.provisionalGrantID,
-        state: "released",
-        receipt: {
-          orgID: accepted.permit.orgID,
-          deploymentIncarnation: accepted.permit.deploymentIncarnation,
-          runtimeID: registration.runtimeID,
-          sessionID,
-          rootID,
-          bindingEpoch: accepted.permit.bindingEpoch,
-          grantID: accepted.permit.provisionalGrantID,
-          outcome: "completed",
-        },
-      })
+      const { owner, rootID } = await waitKnowledgeTask(runtime, accepted, () => calls.length)
       expect(connectionCalls).toHaveLength(1)
       expect(connectionCancelled).toBe(false)
       const conversationRequests = calls.filter((call) => runtimeContext(call) !== undefined)

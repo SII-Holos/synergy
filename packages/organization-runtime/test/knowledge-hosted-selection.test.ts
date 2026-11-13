@@ -1,6 +1,11 @@
 import { expect, test } from "bun:test"
+import { createHash } from "node:crypto"
 import path from "node:path"
+import { z } from "zod"
 import { Session } from "@ericsanchezok/synergy-harness/session"
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
+import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/ledger"
+import { RolloutArtifact } from "@ericsanchezok/synergy-harness/session/rollout/artifact"
 import {
   OrganizationKnowledgeProtocol as Knowledge,
   OrganizationRuntimeProtocol as Protocol,
@@ -10,6 +15,8 @@ import { enrollHostedRuntime } from "../src/enrollment"
 import { openHostedRuntime } from "../src/runtime"
 import { fixture } from "./support/organization"
 import { applySelection, publish } from "./support/knowledge"
+import { ModelRequest, SkillEvidence, runtimeContext, modelResponse, waitKnowledgeTask } from "./support/knowledge-task"
+import { activeKnowledge } from "../src/knowledge"
 
 test("actual Hosted Sessions inherit their creators' collections once and isolate collaborator updates with stale CAS", async () => {
   await using service = await fixture()
@@ -166,6 +173,166 @@ test("actual Hosted Sessions inherit their creators' collections once and isolat
     expectedRevision: collaboratorApplied.revision,
     releases: [first.reference],
   })
+  expect(await page(firstSessionID, service.headers)).toEqual(initialFirst)
+  expect(await page(secondSessionID, collaboratorHeaders)).toEqual(initialSecond)
+  const requests: Array<z.infer<typeof ModelRequest>> = []
+  let conversationStarted: (() => void) | undefined
+  const upstream = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    async fetch(request) {
+      const input = ModelRequest.parse(await request.json())
+      requests.push(input)
+      if (!runtimeContext(input)) return modelResponse(requests.length)
+      conversationStarted?.()
+      const loaded = input.messages.some((message) => message.role === "tool")
+      return modelResponse(requests.length, loaded ? undefined : { name: "skill", input: { name: "team-work" } })
+    },
+  })
+  try {
+    const model = (
+      await service.client.orgResources.create(
+        {
+          orgResourceCreate: {
+            name: "Hosted knowledge model",
+            scope: { kind: "organization" },
+            configuration: {
+              protocol: "openai-compatible",
+              endpoint: new URL("/v1", upstream.url).href,
+              model: { id: "knowledge-model", name: "Knowledge", limit: { context: 128000, output: 4096 } },
+            },
+            credential: { kind: "bearer", value: "hosted-knowledge-model-key" },
+          },
+        },
+        ownerOptions,
+      )
+    ).data
+    for (const subjectID of [service.identity.accountID, collaborator.accountID])
+      await service.client.orgResourceGrants.set(
+        {
+          resourceID: model.resourceID,
+          kind: "account",
+          subjectID,
+          orgResourceGrantChange: { expectedRevision: 0, enabled: true },
+        },
+        ownerOptions,
+      )
+    for (const selected of [
+      {
+        sessionID: firstSessionID,
+        headers: service.headers,
+        expected: first.reference,
+        text: "Creator one selected version",
+      },
+      {
+        sessionID: secondSessionID,
+        headers: collaboratorHeaders,
+        expected: second.reference,
+        text: "Creator two selected version",
+      },
+    ]) {
+      const options = { headers: selected.headers, throwOnError: true as const }
+      const manifestHash = createHash("sha256")
+        .update(JSON.stringify([selected.expected]))
+        .digest("hex")
+      await service.client.orgSessionResources.set(
+        {
+          sessionID: selected.sessionID,
+          orgSessionResourceChange: {
+            expectedRevision: 0,
+            selection: {
+              modelResourceID: model.resourceID,
+              connectionResourceIDs: [],
+              infrastructure: { workspace: null, environment: null },
+            },
+          },
+        },
+        options,
+      )
+      const firstRequest = Promise.withResolvers<void>()
+      conversationStarted = () => firstRequest.resolve()
+      const beforeRequests = requests.length
+      const accepted = (
+        await service.client.orgCommands.input(
+          {
+            sessionID: selected.sessionID,
+            orgCommandInputRequest: {
+              schemaVersion: 1,
+              orgID: service.identity.orgID,
+              projectID: project.projectID,
+              runtimeID: registration.runtimeID,
+              sessionID: selected.sessionID,
+              requestID: `load-hosted-knowledge-${selected.expected.version}`,
+              input: {
+                operation: "input",
+                mode: "task",
+                parts: [{ type: "text", text: "Load the selected team-work Skill and finish." }],
+              },
+            },
+          },
+          options,
+        )
+      ).data
+      const firstRequestTimer = setTimeout(
+        () => firstRequest.reject(new Error("The actual Hosted model did not start")),
+        4000,
+      )
+      try {
+        await firstRequest.promise
+      } finally {
+        clearTimeout(firstRequestTimer)
+        conversationStarted = undefined
+      }
+      const { owner, rootID } = await waitKnowledgeTask(runtime, accepted, () => requests.length - beforeRequests)
+      const observed = requests.slice(beforeRequests)
+      const conversation = observed.filter((request) => runtimeContext(request) !== undefined)
+      expect(conversation).toHaveLength(2)
+      for (const request of conversation)
+        expect(runtimeContext(request)).toContain(
+          `itemID=team version=${selected.expected.version} manifestHash=${selected.expected.manifestHash}`,
+        )
+      await runtime.run(async () => {
+        const calls = await RolloutLedger.calls(owner, rootID)
+        expect(calls).toHaveLength(observed.length)
+        expect(calls.every((call) => call.status === "completed" && call.transportCaptured)).toBe(true)
+        const main = calls.filter((call) => call.usageRole === "conversation")
+        expect(main).toHaveLength(2)
+        expect(
+          main.every(
+            (call) =>
+              call.purpose === PrimaryAgentIdentity.names.general &&
+              call.status === "completed" &&
+              call.transportCaptured,
+          ),
+        ).toBe(true)
+        expect(calls.filter((call) => call.usageRole !== "conversation")).toMatchObject([
+          { purpose: "title", usageRole: "auxiliary", status: "completed" },
+        ])
+        const tools = await RolloutLedger.tools(owner, rootID)
+        expect(tools).toHaveLength(1)
+        const tool = tools[0]
+        if (!tool?.rawResult) throw new Error("The actual Hosted Skill did not retain its original provenance")
+        expect(tool).toMatchObject({ tool: "skill", status: "completed" })
+        const chunks: Uint8Array[] = []
+        for await (const chunk of RolloutArtifact.read(owner, tool.rawResult.id)) chunks.push(chunk)
+        const evidence = SkillEvidence.parse(JSON.parse(Buffer.concat(chunks).toString()))
+        expect(evidence.provenance).toEqual(selected.expected)
+        expect(evidence.content.trim()).toBe(selected.text)
+        expect(evidence.sha256).toBe(createHash("sha256").update(evidence.content).digest("hex"))
+        expect((await activeKnowledge(selected.sessionID))?.selection.manifestHash).toBe(manifestHash)
+      })
+      expect((await service.client.orgKnowledge.status({ sessionID: selected.sessionID }, options)).data).toMatchObject(
+        {
+          state: "active",
+          desired: { manifestHash },
+          activated: { manifestHash },
+        },
+      )
+    }
+  } finally {
+    conversationStarted = undefined
+    await upstream.stop(true)
+  }
   expect(await page(firstSessionID, service.headers)).toEqual(initialFirst)
   expect(await page(secondSessionID, collaboratorHeaders)).toEqual(initialSecond)
   await service.client.orgSessions.share(
