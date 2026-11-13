@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0194](0194-organization-controls-overrode-shared-keyboard-focus.md)
+
 - [0193](0193-complete-cloud-handoff-crossed-owner-lifetimes.md)
 
 - [0192](0192-background-bash-released-native-preparation-too-early.md)

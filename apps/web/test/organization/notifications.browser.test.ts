@@ -125,6 +125,7 @@ test("the actual App receives A while B is selected and notification clicks ente
       await page.getByRole("button", { name: "Current space" }).click()
       await page.getByRole("menuitem", { name: /b.example.*Member B/ }).click()
       await page.getByRole("button", { name: /Project B/ }).waitFor()
+      await page.getByRole("heading", { name: "Team B", exact: true }).waitFor()
       const original = page.url()
       const appearance = await page.evaluate(() => [
         document.documentElement.lang,
@@ -168,7 +169,7 @@ test("the actual App receives A while B is selected and notification clicks ente
         ),
       ).toBe(true)
       await page.getByRole("button", { name: "Current space" }).click()
-      await page.getByRole("menuitem", { name: /b.example.*Member B/ }).click()
+      await page.getByRole("menuitem", { name: /Team B.*Member B/ }).click()
       await page.getByRole("button", { name: /Project B/ }).waitFor()
       await page.evaluate(() =>
         Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" }),

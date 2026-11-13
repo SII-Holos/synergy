@@ -121,14 +121,10 @@
   width: fit-content;
   cursor: pointer;
   padding-block: 4px;
+  border-radius: var(--radius-sm);
 }
 .organization-connect-advanced[open] summary {
   margin-bottom: 12px;
-}
-.organization-connect-advanced summary:focus-visible {
-  outline: 2px solid var(--border-focus);
-  outline-offset: 4px;
-  border-radius: var(--radius-sm);
 }
 .organization-space-form fieldset {
   display: grid;

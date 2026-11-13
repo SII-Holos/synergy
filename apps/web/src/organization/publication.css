@@ -16,18 +16,24 @@
 .organization-file-list > li + li {
   border-top: 1px solid var(--border-weaker-base);
 }
-.organization-publication-entry {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 20px 12px;
-  text-align: start;
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  background: transparent;
-  color: var(--text-weak);
+@layer components {
+  .organization-publication-entry {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 20px 12px;
+    text-align: start;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    background: transparent;
+    color: var(--text-weak);
+  }
+  .organization-publication-entry:hover,
+  .organization-publication-entry[data-selected="true"] {
+    background: var(--surface-inset-base-hover);
+  }
 }
 .organization-publication-entry > span:first-child {
   display: grid;
@@ -40,13 +46,11 @@
   font-weight: 500;
   overflow-wrap: anywhere;
 }
-.organization-publication-entry:hover,
-.organization-publication-entry[data-selected="true"] {
-  background: var(--surface-inset-base-hover);
-}
-.organization-publication-entry:focus-visible {
-  outline: 2px solid var(--border-focus);
-  outline-offset: 2px;
+@media (forced-colors: active) {
+  .organization-publication-entry:focus-visible span,
+  .organization-publication-entry:focus-visible strong {
+    color: inherit;
+  }
 }
 .organization-publication-detail {
   padding: 20px 12px 28px;

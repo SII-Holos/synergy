@@ -6,7 +6,7 @@ import { createBrowserFixture, type BrowserFixture } from "../support/browser-fi
 import { organizationCommandFixtureSource } from "../support/organization-command-fixture"
 import {
   OrganizationCommandProtocol as Command,
-  type OrganizationDesktop as Desktop,
+  OrganizationDesktop as Desktop,
 } from "@ericsanchezok/synergy-organization-protocol"
 
 declare global {
@@ -63,7 +63,7 @@ beforeAll(async () => {
     import {SpaceProvider,useSpace} from ${JSON.stringify(`/@fs/${source}/context/space.tsx`)}
     import {OrganizationSessionInteractions} from ${JSON.stringify(`/@fs/${source}/organization/interactions.tsx`)}
     ${organizationCommandFixtureSource}
-    const platform={platform:"web",openLink(){},fetch:async()=>Response.json({healthy:false}),organization:{list:()=>window.hostList(),request:value=>window.hostRequest(value),commandStream,cancel:value=>{commandTransfers.delete(value.requestID);return Promise.resolve({ok:true})}}}
+    const platform={platform:"web",openLink(){},fetch:async()=>Response.json({healthy:false}),organization:{protocolVersion:${Desktop.BridgeVersion},list:()=>window.hostList(),request:value=>window.hostRequest(value),commandStream,cancel:value=>{commandTransfers.delete(value.requestID);return Promise.resolve({ok:true})}}}
     function Fixture(){const space=useSpace();return <Show when={space.current()?.identity.kind === "organization"}><main style={{padding:"16px"}}><OrganizationSessionInteractions sessionID="session-a" binding={${JSON.stringify(binding)}} online={true}/></main></Show>}
     render(()=><PlatformProvider value={platform}><AppBaseProviders><SpaceProvider><Fixture/></SpaceProvider></AppBaseProviders></PlatformProvider>,document.getElementById("root"))
   `,

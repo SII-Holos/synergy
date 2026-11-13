@@ -1565,6 +1565,14 @@
         {
           "glob": "src/organization/handoff-messages.ts",
           "reason": "Static semantic descriptors are checked by official Lingui extraction, strict compilation and localization contracts, and actual English/Chinese catalogs render in test/organization/handoff.browser.test.ts. This module contains no authorization or transition decisions."
+        },
+        {
+          "glob": "src/organization/handoff-environment.tsx",
+          "reason": "test/organization/handoff.browser.test.ts renders actual paged Environment selection, complete consent DTOs, cloud-return defaults and explicit native download choices in Chromium, including narrow English and Chinese light/dark layouts. Chromium execution does not contribute Bun LCOV; handoff-environment-state.ts remains directly measured."
+        },
+        {
+          "glob": "src/organization/handoff-environment-messages.ts",
+          "reason": "Static Environment choice descriptors are checked by official Lingui extraction, strict catalog compilation and actual English/Chinese rendering in test/organization/handoff.browser.test.ts. This module contains no authorization or transition decisions."
         }
       ]
     },
