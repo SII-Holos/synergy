@@ -23,6 +23,8 @@ export namespace EnvironmentResources {
     resources: Resolved
     operationID: string
     sequence: number
+    open: boolean
+    issued: Set<string>
   }>()
   export function current() {
     const value = context.getStore()
@@ -40,14 +42,39 @@ export namespace EnvironmentResources {
     )
   }
   export function provide<T>(resources: Resolved, operationID: string, fn: () => T): T {
-    return context.run({ runtime: RuntimeContext.current(), resources, operationID, sequence: 0 }, fn)
+    const frame = {
+      runtime: RuntimeContext.current(),
+      resources,
+      operationID,
+      sequence: 0,
+      open: true,
+      issued: new Set<string>(),
+    }
+    const close = () => {
+      frame.open = false
+      frame.issued.clear()
+    }
+    return context.run(frame, () => {
+      try {
+        const result = fn()
+        if (result instanceof Promise) void result.then(close, close)
+        else close()
+        return result
+      } catch (error) {
+        close()
+        throw error
+      }
+    })
   }
   export function nextOperationID() {
     const value = context.getStore()
     current()
-    return `file_${createHash("sha256")
+    if (value && !value.open) throw new Error("Environment resource operation frame has ended")
+    const id = `file_${createHash("sha256")
       .update(JSON.stringify([value?.operationID ?? randomUUID(), value ? value.sequence++ : 0]))
       .digest("hex")}`
+    value?.issued.add(id)
+    return id
   }
   export interface Needs {
     workspace?: boolean
@@ -199,7 +226,14 @@ export namespace EnvironmentResources {
     if (!resources.origin || !resources.runtime || !resources.selection)
       throw new Error("Preparation requires its actual admitted native resources")
     const origin = resources.origin.value
-    const id = origin.kind === "session" ? EnvironmentExecution.operationID(origin) : operationID
+    const frame = context.getStore()
+    const issued =
+      operationID !== undefined &&
+      frame?.open === true &&
+      frame.resources === resources &&
+      frame.runtime === RuntimeContext.current() &&
+      frame.issued.has(operationID)
+    const id = origin.kind === "session" && !issued ? EnvironmentExecution.operationID(origin) : operationID
     if (!id) throw new Error("Host preparation requires its durable original operation identity")
     if (operationID !== undefined && operationID !== id)
       throw new Error("Preparation changed its original tool operation")
@@ -215,7 +249,11 @@ export namespace EnvironmentResources {
       })
       preparations.set(resources, preparation)
     }
-    return preparation
+    const selected = await preparation
+    if (selected.id !== id) throw new Error("Preparation changed its original resource operation")
+    if (issued && (!frame?.open || !frame.issued.has(id)))
+      throw new Error("Preparation requires its original live resource operation frame")
+    return selected
   }
 
   export async function select(

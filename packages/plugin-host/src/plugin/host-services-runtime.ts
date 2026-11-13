@@ -736,7 +736,9 @@ async function runPluginShell(input: PluginHostServiceInvocationInput, value: Re
 
   const sandbox = gate.getSandbox()
   const sandboxPolicy = gate.getSandboxPolicy()
+  const operationID = EnvironmentResources.nextOperationID()
   const wrapper = await EnvironmentResources.prepareSandbox(resources, {
+    operationID,
     command: command[0],
     args: command.slice(1),
     workspace: directory,
@@ -783,7 +785,7 @@ async function runPluginShell(input: PluginHostServiceInvocationInput, value: Re
       execution: {
         resources,
         scopeID: input.invocation.scopeId,
-        id: EnvironmentResources.nextOperationID(),
+        id: operationID,
         sandboxID: "id" in wrapper ? wrapper.id : undefined,
         intentDigest: "intentDigest" in wrapper ? wrapper.intentDigest : undefined,
       },
