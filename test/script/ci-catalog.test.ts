@@ -40,6 +40,29 @@ test("independent Web distribution verification prepares its required native san
   }
 })
 
+test("organization Runtime suites prepare the native sandbox used by their actual tool execution", async () => {
+  const entries = await catalog()
+  const suites = entries.filter((entry) => entry.kind === "suite" && entry.package === "packages/organization-runtime")
+  expect(suites.length).toBeGreaterThan(0)
+  for (const suite of suites) {
+    expect(suite.prerequisites).toContain("sandbox")
+    const plan = createPlan({
+      base: "base",
+      head: "head",
+      sha: "tested",
+      run: "fixture",
+      mode: "diagnostic",
+      changed: [],
+      baseWorkspaces: [],
+      headWorkspaces: [],
+      tasks: entries,
+      only: [suite.id],
+    })
+    expect(requiresSandbox(plan)).toBe(true)
+    expect(plan.units.find((unit) => unit.tasks.includes(suite.id))?.sandbox).toBe(true)
+  }
+})
+
 test("every PostgreSQL matrix executes the retained usage rebuild and clear control", async () => {
   const entries = await catalog()
   const controls = entries.filter((entry) => entry.kind === "postgres")

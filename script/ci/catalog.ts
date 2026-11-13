@@ -474,7 +474,10 @@ export async function catalog(root = ROOT, timingInput?: Timings): Promise<Task[
             partition,
             files: group,
             assets: ["watcher", "plugin"],
-            prerequisites: browser ? ["browser"] : [],
+            prerequisites: [
+              ...(browser ? ["browser" as const] : []),
+              ...(directory === "packages/organization-runtime" ? ["sandbox" as const] : []),
+            ],
           },
         ),
       )
