@@ -7,7 +7,6 @@ import {
   OrganizationSyncProtocol as Sync,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { OrganizationSharing as Sharing } from "../sharing"
-import { fail } from "../error"
 import { browserCredentials, operation, validation } from "./shared"
 
 const target = z.strictObject({ sessionID: Identity.ID })
@@ -41,29 +40,26 @@ export function sharingRoutes(publicOrigin?: string) {
       validator("json", Sync.ShareChange, validation),
       async (c) => c.json(await Sharing.unshare(credentials(c), c.req.valid("param").sessionID, c.req.valid("json"))),
     )
-    .post(
-      "/sessions/:sessionID/sync/batches",
-      operation("orgSessionSync.applyBatch", "Commit a contiguous safe Session projection batch", Sync.Ack, true),
-      validator("param", target, validation),
-      validator("json", Sync.Batch, validation),
-      async (c) => {
-        const batch = c.req.valid("json")
-        if (batch.sessionID !== c.req.valid("param").sessionID)
-          fail("INVALID_REQUEST", "Sync batch Session does not match its route")
-        return c.json(await Sharing.applyBatch(credentials(c), batch))
-      },
-    )
     .get(
       "/sessions/:sessionID/sync/snapshot",
-      operation("orgSessionSync.snapshot", "Read a current authorized transcript page with its replay watermark", Sync.SnapshotPage),
+      operation(
+        "orgSessionSync.snapshot",
+        "Read a current authorized transcript page with its replay watermark",
+        Sync.SnapshotPage,
+      ),
       validator("param", target, validation),
       validator("query", Sync.SnapshotQuery, validation),
       async (c) => c.json(await Sharing.snapshot(credentials(c), c.req.valid("param").sessionID, c.req.valid("query"))),
     )
     .get(
       "/sessions/:sessionID/sync/messages",
-      operation("orgSessionSync.messages", "Read a chronological shared message window with a replay watermark", Sync.MessagePage),
-      validator("param", target, validation), validator("query", Sync.MessageQuery, validation),
+      operation(
+        "orgSessionSync.messages",
+        "Read a chronological shared message window with a replay watermark",
+        Sync.MessagePage,
+      ),
+      validator("param", target, validation),
+      validator("query", Sync.MessageQuery, validation),
       async (c) => c.json(await Sharing.messages(credentials(c), c.req.valid("param").sessionID, c.req.valid("query"))),
     )
     .get(
@@ -71,14 +67,23 @@ export function sharingRoutes(publicOrigin?: string) {
       operation("orgSessionSync.parts", "Read a bounded canonical part page for a shared message", Sync.PartPage),
       validator("param", target.extend({ messageID: Identity.ID }), validation),
       validator("query", Sync.PartQuery.omit({ messageID: true }), validation),
-      async (c) => c.json(await Sharing.parts(credentials(c), c.req.valid("param").sessionID, { ...c.req.valid("query"), messageID: c.req.valid("param").messageID })),
+      async (c) =>
+        c.json(
+          await Sharing.parts(credentials(c), c.req.valid("param").sessionID, {
+            ...c.req.valid("query"),
+            messageID: c.req.valid("param").messageID,
+          }),
+        ),
     )
     .get(
       "/sessions/:sessionID/sync/tasks",
       operation("orgSessionTranscript.tasks", "Read a bounded visible task page at a shared checkpoint", Sync.TaskPage),
       validator("param", target, validation),
       validator("query", Sync.TaskQuery, validation),
-      async (c) => c.json(await Sharing.tasks(credentials(c, "sessions.read"), c.req.valid("param").sessionID, c.req.valid("query"))),
+      async (c) =>
+        c.json(
+          await Sharing.tasks(credentials(c, "sessions.read"), c.req.valid("param").sessionID, c.req.valid("query")),
+        ),
     )
     .get(
       "/sessions/:sessionID/sync/events",

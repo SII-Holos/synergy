@@ -3,11 +3,11 @@ import { OrganizationSyncProtocol as Sync } from "@ericsanchezok/synergy-organiz
 import { OrganizationSessionDirectory as Directory } from "../src/session-directory"
 import { OrganizationSharing as Sharing } from "../src/sharing"
 import { digest } from "../src/auth/secret"
-import { directoryFixture } from "./support/session-directory"
+import { sharedProducerFixture } from "./support/shared-producer"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 
 test("shared message windows page by chronology and parts finish independently within the replay watermark", async () => {
-  await using f = await directoryFixture()
+  await using f = await sharedProducerFixture()
   const sessionID = "shared-window"
   await f.run(() =>
     Directory.reservePrivate(f.credentials.alice, { sessionID, projectID: "project", runtimeID: "runtime-alice" }),
@@ -53,7 +53,7 @@ test("shared message windows page by chronology and parts finish independently w
       }),
     )
   await f.run(() =>
-    Sharing.applyBatch(f.credentials.alice, {
+    f.sync({
       schemaVersion: 1,
       sessionID,
       projectID: "project",
@@ -106,7 +106,7 @@ test("shared message windows page by chronology and parts finish independently w
     }),
   ]
   await f.run(() =>
-    Sharing.applyBatch(f.credentials.alice, {
+    f.sync({
       schemaVersion: 1,
       sessionID,
       projectID: "project",

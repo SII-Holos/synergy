@@ -6,6 +6,8 @@ import {
 import { digest } from "../src/auth/secret"
 import { OrganizationSessionDirectory as Directory } from "../src/session-directory"
 import { OrganizationSharing as Sharing } from "../src/sharing"
+import { organizationOpenApi } from "../src/http"
+import { sharedProducerFixture } from "./support/shared-producer"
 import { directoryFixture } from "./support/session-directory"
 
 function sessionData(event: Sync.Event) {
@@ -36,7 +38,7 @@ function batch(input: {
 }
 
 test("sharing uses generation CAS and exposes only committed safe projections", async () => {
-  await using f = await directoryFixture()
+  await using f = await sharedProducerFixture()
   await f.run(() =>
     Directory.reservePrivate(f.credentials.alice, {
       sessionID: "session-share",
@@ -84,9 +86,9 @@ test("sharing uses generation CAS and exposes only committed safe projections", 
     shareGeneration: 1,
     events: [event],
   })
-  const ack = await f.run(() => Sharing.applyBatch(f.credentials.alice, first))
+  const ack = await f.run(() => f.sync(first))
   expect(ack).toMatchObject({ nextSeq: 2, syncState: "synced", shareGeneration: 1 })
-  expect(await f.run(() => Sharing.applyBatch(f.credentials.alice, first))).toMatchObject({
+  expect(await f.run(() => f.sync(first))).toMatchObject({
     ...ack,
     nextSeq: 2,
   })
@@ -100,8 +102,7 @@ test("sharing uses generation CAS and exposes only committed safe projections", 
     integrity: digest("message-share"),
   })
   await f.run(() =>
-    Sharing.applyBatch(
-      f.credentials.alice,
+    f.sync(
       batch({
         sessionID: "session-share",
         projectID: "project",
@@ -128,8 +129,7 @@ test("sharing uses generation CAS and exposes only committed safe projections", 
   const gap = Sync.Event.parse({ ...event, sequence: 4 })
   await expect(
     f.run(() =>
-      Sharing.applyBatch(
-        f.credentials.alice,
+      f.sync(
         batch({
           sessionID: "session-share",
           projectID: "project",
@@ -156,13 +156,13 @@ test("sharing uses generation CAS and exposes only committed safe projections", 
     Sharing.share(f.credentials.alice, "session-share", { expectedShareGeneration: 2 }),
   )
   expect(reshared.shareGeneration).toBe(3)
-  await expect(
-    f.run(() => Sharing.applyBatch(f.credentials.alice, { ...first, shareGeneration: 1 })),
-  ).rejects.toMatchObject({ data: { code: "SHARE_REVOKED" } })
+  await expect(f.run(() => f.sync({ ...first, shareGeneration: 1 }))).rejects.toMatchObject({
+    data: { code: "SHARE_REVOKED" },
+  })
 })
 
 test("sharing rejects forged payload hashes and non-session projection metadata", async () => {
-  await using f = await directoryFixture()
+  await using f = await sharedProducerFixture()
   await f.run(() =>
     Directory.reservePrivate(f.credentials.alice, {
       sessionID: "session-integrity",
@@ -192,15 +192,12 @@ test("sharing rejects forged payload hashes and non-session projection metadata"
     shareGeneration: 1,
     events: [event],
   })
-  await expect(
-    f.run(() => Sharing.applyBatch(f.credentials.alice, { ...forged, payloadHash: "0".repeat(64) })),
-  ).rejects.toMatchObject({
+  await expect(f.run(() => f.sync({ ...forged, payloadHash: "0".repeat(64) }))).rejects.toMatchObject({
     data: { code: "INVALID_REQUEST" },
   })
   await expect(
     f.run(() =>
-      Sharing.applyBatch(
-        f.credentials.alice,
+      f.sync(
         batch({
           sessionID: "session-integrity",
           projectID: "project",
@@ -219,7 +216,7 @@ test("sharing rejects forged payload hashes and non-session projection metadata"
 })
 
 test("shared roots include only their Cortex descendants and completion notifications", async () => {
-  await using f = await directoryFixture()
+  await using f = await sharedProducerFixture()
   await f.run(() =>
     Directory.reservePrivate(f.credentials.alice, {
       sessionID: "session-cortex",
@@ -292,8 +289,7 @@ test("shared roots include only their Cortex descendants and completion notifica
     integrity: digest("notification"),
   })
   await f.run(() =>
-    Sharing.applyBatch(
-      f.credentials.alice,
+    f.sync(
       batch({
         sessionID: "session-cortex",
         projectID: "project",
@@ -313,8 +309,7 @@ test("shared roots include only their Cortex descendants and completion notifica
   })
   await expect(
     f.run(() =>
-      Sharing.applyBatch(
-        f.credentials.alice,
+      f.sync(
         batch({
           sessionID: "session-cortex",
           projectID: "project",
@@ -349,7 +344,7 @@ test("shared event pages validate cursors and bounded limits", async () => {
 })
 
 test("shared search only returns current-generation safe summaries", async () => {
-  await using f = await directoryFixture()
+  await using f = await sharedProducerFixture()
   await f.run(() =>
     Directory.reservePrivate(f.credentials.alice, {
       sessionID: "session-search",
@@ -383,8 +378,7 @@ test("shared search only returns current-generation safe summaries", async () =>
     integrity: digest("message-search"),
   })
   await f.run(() =>
-    Sharing.applyBatch(
-      f.credentials.alice,
+    f.sync(
       batch({
         sessionID: "session-search",
         projectID: "project",
@@ -409,6 +403,8 @@ test("shared search only returns current-generation safe summaries", async () =>
 
 test("sharing routes preserve browser CSRF checks and generated projection responses", async () => {
   await using f = await directoryFixture()
+  const specs = await organizationOpenApi()
+  expect(specs.paths?.["/org/v1/sessions/{sessionID}/sync/batches"]?.post).toBeUndefined()
   await f.run(() =>
     Directory.reservePrivate(f.credentials.alice, {
       sessionID: "session-http",
@@ -474,7 +470,9 @@ test("shared blobs require the active generation and verify chunked bytes before
     }),
   )
   expect(complete).toMatchObject({ complete: true, bytes: content.byteLength, receivedBytes: content.byteLength })
-  const downloaded = await f.run(() => Sharing.downloadBlob(f.credentials.bob, "session-blob", { shareGeneration: 1, hash }))
+  const downloaded = await f.run(() =>
+    Sharing.downloadBlob(f.credentials.bob, "session-blob", { shareGeneration: 1, hash }),
+  )
   expect(Buffer.from(await downloaded.arrayBuffer())).toEqual(Buffer.from(content))
   await f.run(() => Sharing.unshare(f.credentials.alice, "session-blob", { expectedShareGeneration: 1 }))
   await expect(

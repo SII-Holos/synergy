@@ -342,8 +342,6 @@ import type {
   OrgSessionsShareStateResponses,
   OrgSessionsUnshareErrors,
   OrgSessionsUnshareResponses,
-  OrgSessionSyncApplyBatchErrors,
-  OrgSessionSyncApplyBatchResponses,
   OrgSessionSyncBlobStatusErrors,
   OrgSessionSyncBlobStatusResponses,
   OrgSessionSyncDownloadBlobErrors,
@@ -364,7 +362,6 @@ import type {
   OrgSetupBootstrapErrors,
   OrgSetupBootstrapResponses,
   OrgShareChange,
-  OrgSyncBatch,
   OrgTokenRefreshInput,
   OrgTransferOwner,
 } from "./types.gen.js"
@@ -1620,43 +1617,6 @@ export class OrgSessions extends HeyApiClient {
 }
 
 export class OrgSessionSync extends HeyApiClient {
-  /**
-   * Commit a contiguous safe Session projection batch
-   */
-  public applyBatch<ThrowOnError extends boolean = false>(
-    parameters: {
-      sessionID: string
-      orgSyncBatch: OrgSyncBatch
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "sessionID" },
-            { key: "orgSyncBatch", map: "body" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<
-      OrgSessionSyncApplyBatchResponses,
-      OrgSessionSyncApplyBatchErrors,
-      ThrowOnError
-    >({
-      url: "/org/v1/sessions/{sessionID}/sync/batches",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-
   /**
    * Read a current authorized transcript page with its replay watermark
    */

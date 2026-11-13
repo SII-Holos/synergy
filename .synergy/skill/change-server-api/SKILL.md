@@ -18,6 +18,8 @@ description: Add or modify a Synergy HTTP route, request/response schema, OpenAP
 
 For scoped external credentials, select capability purposes in trusted route code, resolve the target's canonical owner and intersect current authority. Do not accept a purpose from request bodies or reuse a broader browser token. Store only token digests; uncertain issuance must resolve metadata without redisclosing the original secret. Test revoked credentials during a real stream and signed actor attribution through admission.
 
+For authoritative machine observations, trace every writer into the ledger, including browser routes and domain exports. Human visibility control or immutable-byte upload authority does not authenticate the observation producer. Reuse the current machine connection and native writer; test rejected human writes without state changes and accepted genuine machine frames. Preserve separately authorized immutable content uploads.
+
 3. Decide whether the behavior is request/response state, a sequenced state event, or a streaming transport. Do not force WebSocket, SSE, WebRTC, file/blob, or external URL behavior into an ordinary SDK call.
 
 4. Check the `operationId` for a generated-method collision before implementing. The generator keys a method by the id's first two segments with a leading `global.` stripped, so `global.session.status` and `session.status` both resolve to `Session.status` — the generated method silently retargets one route and the other disappears from the SDK entirely, with no build error. Give the newer route a non-colliding id (`global.session.statuses`, not `global.session.status`) and confirm after regeneration that both methods exist and target their own paths.

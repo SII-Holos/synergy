@@ -2,11 +2,11 @@ import { expect, test } from "bun:test"
 import { OrganizationSessionDirectory as Directory } from "../src/session-directory"
 import { OrganizationSharing as Sharing } from "../src/sharing"
 import { digest } from "../src/auth/secret"
-import { directoryFixture } from "./support/session-directory"
+import { sharedProducerFixture } from "./support/shared-producer"
 import { OrganizationSyncProtocol as Sync } from "@ericsanchezok/synergy-organization-protocol"
 
 test("directory presentation uses shared native observations and removes their content when private", async () => {
-  await using f = await directoryFixture()
+  await using f = await sharedProducerFixture()
   const sessionID = "presentation"
   await f.run(() =>
     Directory.reservePrivate(f.credentials.alice, { sessionID, projectID: "project", runtimeID: "runtime-alice" }),
@@ -34,7 +34,7 @@ test("directory presentation uses shared native observations and removes their c
     }),
   ]
   await f.run(() =>
-    Sharing.applyBatch(f.credentials.alice, {
+    f.sync({
       schemaVersion: 1,
       sessionID,
       projectID: "project",

@@ -1767,54 +1767,6 @@
         ]
       }
     },
-    "/org/v1/sessions/{sessionID}/sync/batches": {
-      "post": {
-        "operationId": "orgSessionSync.applyBatch",
-        "summary": "Commit a contiguous safe Session projection batch",
-        "requestBody": {
-          "required": true,
-          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgSyncBatch" } } }
-        },
-        "responses": {
-          "200": {
-            "description": "Success",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgSyncAck" } } }
-          },
-          "400": {
-            "description": "Organization error",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
-          },
-          "401": {
-            "description": "Organization error",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
-          },
-          "403": {
-            "description": "Organization error",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
-          },
-          "404": {
-            "description": "Organization error",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
-          },
-          "409": {
-            "description": "Organization error",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
-          },
-          "503": {
-            "description": "Organization error",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
-          }
-        },
-        "parameters": [
-          {
-            "in": "path",
-            "name": "sessionID",
-            "schema": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
-            "required": true
-          }
-        ]
-      }
-    },
     "/org/v1/sessions/{sessionID}/sync/snapshot": {
       "get": {
         "operationId": "orgSessionSync.snapshot",
@@ -8144,18 +8096,6 @@
         "required": ["expectedShareGeneration"],
         "additionalProperties": false
       },
-      "OrgSyncAck": {
-        "type": "object",
-        "properties": {
-          "sessionID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
-          "bindingEpoch": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
-          "shareGeneration": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
-          "nextSeq": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
-          "syncState": { "type": "string", "enum": ["pending", "syncing", "synced", "blocked", "failed"] }
-        },
-        "required": ["sessionID", "bindingEpoch", "shareGeneration", "nextSeq", "syncState"],
-        "additionalProperties": false
-      },
       "ActorStamp": {
         "oneOf": [
           {
@@ -8757,37 +8697,6 @@
             "additionalProperties": false
           }
         ]
-      },
-      "OrgSyncBatch": {
-        "type": "object",
-        "properties": {
-          "schemaVersion": { "type": "number", "const": 1 },
-          "sessionID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
-          "projectID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
-          "bindingEpoch": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
-          "shareGeneration": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
-          "firstSeq": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
-          "lastSeq": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
-          "payloadHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
-          "events": {
-            "minItems": 1,
-            "maxItems": 256,
-            "type": "array",
-            "items": { "$ref": "#/components/schemas/OrgSyncEvent" }
-          }
-        },
-        "required": [
-          "schemaVersion",
-          "sessionID",
-          "projectID",
-          "bindingEpoch",
-          "shareGeneration",
-          "firstSeq",
-          "lastSeq",
-          "payloadHash",
-          "events"
-        ],
-        "additionalProperties": false
       },
       "OrgTranscriptSnapshotPage": {
         "type": "object",

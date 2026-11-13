@@ -19,6 +19,7 @@
 
 ## Index
 
+- [0177](0177-shared-projection-accepted-human-writer-authority.md)
 - [0176](0176-current-archive-used-a-logical-namespace-as-physical-identity.md)
 - [0175](0175-returned-session-retained-an-old-message-order.md)
 - [0174](0174-target-cleanup-misreported-a-lost-acknowledgement.md)

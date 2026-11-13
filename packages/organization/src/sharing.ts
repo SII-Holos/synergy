@@ -154,7 +154,12 @@ async function transcriptSnapshot<T>(
   source: string | undefined,
   watermark: number | undefined,
   read: (context: { session: Record.SessionDirectory; sourceSessionID: string; watermark: number }) => Promise<T>,
-  prepare?: (input: { sessionID: string; generation: number; watermark: number; authorize(): Promise<unknown> }) => Promise<void>,
+  prepare?: (input: {
+    sessionID: string
+    generation: number
+    watermark: number
+    authorize(): Promise<unknown>
+  }) => Promise<void>,
 ) {
   const initial = await Storage.snapshot(() => authorize(credentials, "session.read", { sessionID }))
   const generation = initial.session.shareGeneration
@@ -165,13 +170,15 @@ async function transcriptSnapshot<T>(
     return current.session
   }
   await check()
-  const fixed = prepare ? await Storage.snapshot(async () => {
-    const session = await check()
-    const state = await currentState(session)
-    const selected = watermark ?? state.nextSeq - 1
-    if (selected >= state.nextSeq) fail("REVISION_CONFLICT", "Snapshot watermark is ahead of its checkpoint")
-    return selected
-  }) : undefined
+  const fixed = prepare
+    ? await Storage.snapshot(async () => {
+        const session = await check()
+        const state = await currentState(session)
+        const selected = watermark ?? state.nextSeq - 1
+        if (selected >= state.nextSeq) fail("REVISION_CONFLICT", "Snapshot watermark is ahead of its checkpoint")
+        return selected
+      })
+    : undefined
   if (prepare && fixed !== undefined) await prepare({ sessionID, generation, watermark: fixed, authorize: check })
   else await Projection.prepare(sessionID, generation, check)
   return Storage.snapshot(async () => {
@@ -507,13 +514,39 @@ export namespace OrganizationSharing {
     const query = Sync.TaskQuery.parse(value)
     const cursor = decodeWindowCursor(query.cursor, WindowPosition)
     const after = cursor && z.tuple([Identity.ID]).parse(cursor.position)[0]
-    return transcriptSnapshot(credentials, sessionID, query.sourceSessionID ?? cursor?.sourceSessionID,
-      query.watermark ?? cursor?.watermark, async ({ session, sourceSessionID, watermark }) => {
-        const binding: WindowBinding = { sessionID, sourceSessionID, shareGeneration: session.shareGeneration, watermark, kind: "tasks" }
+    return transcriptSnapshot(
+      credentials,
+      sessionID,
+      query.sourceSessionID ?? cursor?.sourceSessionID,
+      query.watermark ?? cursor?.watermark,
+      async ({ session, sourceSessionID, watermark }) => {
+        const binding: WindowBinding = {
+          sessionID,
+          sourceSessionID,
+          shareGeneration: session.shareGeneration,
+          watermark,
+          kind: "tasks",
+        }
         checkWindowCursor(cursor, binding)
-        const page = await Tasks.page({ sessionID, generation: session.shareGeneration, parentSessionID: sourceSessionID, watermark, after, limit: query.limit })
-        return Sync.TaskPage.parse({ sessionID, sourceSessionID, shareGeneration: session.shareGeneration, watermark, items: page.items, cursor: page.cursor ? encodeWindowCursor([page.cursor], [], binding) : undefined })
-      }, Tasks.prepare)
+        const page = await Tasks.page({
+          sessionID,
+          generation: session.shareGeneration,
+          parentSessionID: sourceSessionID,
+          watermark,
+          after,
+          limit: query.limit,
+        })
+        return Sync.TaskPage.parse({
+          sessionID,
+          sourceSessionID,
+          shareGeneration: session.shareGeneration,
+          watermark,
+          items: page.items,
+          cursor: page.cursor ? encodeWindowCursor([page.cursor], [], binding) : undefined,
+        })
+      },
+      Tasks.prepare,
+    )
   }
   export async function messages(credentials: Credentials, sessionID: string, value: Sync.MessageQuery) {
     const query = Sync.MessageQuery.parse(value)
@@ -705,15 +738,6 @@ export namespace OrganizationSharing {
       await writeVisibility(updated, "private")
       await Storage.write(Keys.sharedState(sessionID), stateRecord(updated, "blocked"))
       return view(updated)
-    })
-  }
-
-  export async function applyBatch(credentials: Credentials, input: Sync.Batch) {
-    const batch = Sync.Batch.parse(input)
-    return Storage.transaction(async () => {
-      const { account, session } = await authorize(credentials, "session.read", { sessionID: batch.sessionID })
-      requireCreator(account.accountID, session)
-      return commitBatch(session, batch)
     })
   }
 

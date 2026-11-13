@@ -487,14 +487,6 @@ export type OrgShareChange = {
   expectedShareGeneration: number
 }
 
-export type OrgSyncAck = {
-  sessionID: string
-  bindingEpoch: number
-  shareGeneration: number
-  nextSeq: number
-  syncState: "pending" | "syncing" | "synced" | "blocked" | "failed"
-}
-
 export type ActorStamp =
   | {
       subjectID: string
@@ -803,18 +795,6 @@ export type OrgSyncEvent =
       hash: string
       state: "uploading" | "available" | "missing" | "failed"
     }
-
-export type OrgSyncBatch = {
-  schemaVersion: 1
-  sessionID: string
-  projectID: string
-  bindingEpoch: number
-  shareGeneration: number
-  firstSeq: number
-  lastSeq: number
-  payloadHash: string
-  events: Array<OrgSyncEvent>
-}
 
 export type OrgTranscriptSnapshotPage = {
   sessionID: string
@@ -6762,54 +6742,6 @@ export type OrgSessionsShareResponses = {
 }
 
 export type OrgSessionsShareResponse = OrgSessionsShareResponses[keyof OrgSessionsShareResponses]
-
-export type OrgSessionSyncApplyBatchData = {
-  body: OrgSyncBatch
-  path: {
-    sessionID: string
-  }
-  query?: never
-  url: "/org/v1/sessions/{sessionID}/sync/batches"
-}
-
-export type OrgSessionSyncApplyBatchErrors = {
-  /**
-   * Organization error
-   */
-  400: OrgError
-  /**
-   * Organization error
-   */
-  401: OrgError
-  /**
-   * Organization error
-   */
-  403: OrgError
-  /**
-   * Organization error
-   */
-  404: OrgError
-  /**
-   * Organization error
-   */
-  409: OrgError
-  /**
-   * Organization error
-   */
-  503: OrgError
-}
-
-export type OrgSessionSyncApplyBatchError = OrgSessionSyncApplyBatchErrors[keyof OrgSessionSyncApplyBatchErrors]
-
-export type OrgSessionSyncApplyBatchResponses = {
-  /**
-   * Success
-   */
-  200: OrgSyncAck
-}
-
-export type OrgSessionSyncApplyBatchResponse =
-  OrgSessionSyncApplyBatchResponses[keyof OrgSessionSyncApplyBatchResponses]
 
 export type OrgSessionSyncSnapshotData = {
   body?: never

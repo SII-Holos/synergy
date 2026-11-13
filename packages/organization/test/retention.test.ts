@@ -10,7 +10,7 @@ import { OrganizationServiceMaintenance as Admission } from "../src/service-main
 import { OrganizationStoragePath as Keys } from "../src/storage/path"
 import { OrganizationRecord as Record } from "../src/storage/records"
 import { fixture } from "./support/organization"
-import { directoryFixture } from "./support/session-directory"
+import { sharedProducerFixture } from "./support/shared-producer"
 import { OrganizationRetention as Retention } from "../src/retention"
 import { OrganizationSessionDirectory as Directory } from "../src/session-directory"
 import { OrganizationSharing as Sharing } from "../src/sharing"
@@ -124,7 +124,7 @@ test("the Host retention operator delays and retires only a superseded sharing c
 })
 
 test("retirement preserves an independent publication and an open native artifact checkpoint", async () => {
-  await using f = await directoryFixture()
+  await using f = await sharedProducerFixture(true)
   await f.run(() => {
     RuntimeMaintenance.registerProtection()
     Admission.register()
@@ -175,8 +175,7 @@ test("retirement preserves an independent publication and an open native artifac
     }),
   ]
   await run(() =>
-    Sharing.applyBatch(
-      f.credentials.alice,
+    f.sync(
       Sync.Batch.parse({
         schemaVersion: 1,
         sessionID: target.sessionID,
