@@ -33,6 +33,25 @@ export namespace RuntimeMaintenanceSchema {
       artifactDirectory: z.string().min(1),
     })
     .refine(sameOwner, "Home upgrade must retain its original native owner")
+  export const SourcePreparationSelection = z
+    .strictObject({
+      version: z.literal(1),
+      source: HomeOwnershipFile.FencedInfo,
+      namespace: NativeNamespaceIdentity.Descriptor,
+      signingHash: Hash,
+      selectionHash: Hash,
+    })
+    .refine(
+      (value) => value.source.owner === value.namespace.owner,
+      "Source preparation requires its original namespace owner",
+    )
+  export const SourcePreparationNative = SourcePreparationSelection.safeExtend({
+    ownerID: ID,
+    ownerVersion: Count.positive(),
+    physicalHash: Hash,
+    primaryConfigHash: Hash,
+    artifactDirectory: z.string().min(1),
+  })
   const fields = {
     maintenanceID: ID,
     requestID: ID,
@@ -55,5 +74,12 @@ export namespace RuntimeMaintenanceSchema {
     phase: z.enum(["draining", "frozen", "releasing", "released"]),
     native: HomeUpgradeNative,
   })
-  export const Info = z.discriminatedUnion("version", [legacy, HomeUpgradeInfo])
+  export const SourcePreparationInfo = z.strictObject({
+    version: z.literal(3),
+    ...fields,
+    purpose: z.literal("organization-backup"),
+    phase: z.enum(["draining", "frozen", "releasing", "released"]),
+    native: SourcePreparationNative,
+  })
+  export const Info = z.discriminatedUnion("version", [legacy, HomeUpgradeInfo, SourcePreparationInfo])
 }
