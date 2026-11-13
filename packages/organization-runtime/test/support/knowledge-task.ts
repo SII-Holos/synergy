@@ -81,7 +81,12 @@ export async function waitKnowledgeTask(
       release: "unobserved",
     }
     for (;;) {
-      const run = await runtime.run(() => RolloutLedger.getRun(owner, rootID))
+      const run = await runtime.run(() =>
+        RolloutLedger.getRun(owner, rootID).catch((error) => {
+          if (error instanceof Storage.NotFoundError) return undefined
+          throw error
+        }),
+      )
       observed.run = run?.status ?? "missing"
       if (run?.status === "completed") {
         const recorded = await runtime.run(() => RolloutLedger.calls(owner, rootID))
