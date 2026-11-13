@@ -344,6 +344,7 @@ export namespace SessionTransferSource {
     store: BlobStore
     signal: AbortSignal
     verify(): Promise<void>
+    beforeOwnerFreeze?(context: Readonly<Owners.SourceContext>): Promise<void>
     beforeFreeze?(): Promise<void>
   }) {
     const binding = Epochs.Binding.parse(input.binding)
@@ -514,6 +515,9 @@ export namespace SessionTransferSource {
             const epoch = await Epochs.inspect(member)
             if (epoch.phase === "draining") {
               const source = context(binding, await Session.get(row.id), input.signal)
+              await input.beforeOwnerFreeze?.(source)
+              input.signal.throwIfAborted()
+              await input.verify()
               await Owners.freeze(
                 source,
                 z

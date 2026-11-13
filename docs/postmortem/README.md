@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0193](0193-complete-cloud-handoff-crossed-owner-lifetimes.md)
+
 - [0192](0192-background-bash-released-native-preparation-too-early.md)
 
 - [0191](0191-native-handoff-required-an-unowned-resource-contract.md)

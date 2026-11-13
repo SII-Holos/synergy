@@ -83,6 +83,7 @@ export async function serveSupervisedRuntime(kind: "member" | "hosted") {
         entry: options.host?.launch?.entry,
         ca: input.ca,
         listen: { port: input.port, token: input.token },
+        handoff: true as const,
         startupReporter: options.startupReporter,
         storageReporter: options.storageReporter,
         maintenanceReporter: options.maintenanceReporter,

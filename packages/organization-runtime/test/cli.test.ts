@@ -12,8 +12,8 @@ import { commands } from "../src/cli-adapter"
 
 const entry = fileURLToPath(new URL("../../presets/src/index.ts", import.meta.url))
 
-function spawn(env: Record<string, string | undefined>, args: string[], input: string) {
-  const child = Bun.spawn([process.execPath, "--no-env-file", "--no-bunfig", entry, "member-runtime", ...args], {
+function spawn(env: Record<string, string | undefined>, args: string[], input: string, command = ["member-runtime"]) {
+  const child = Bun.spawn([process.execPath, "--no-env-file", "--no-bunfig", entry, ...command, ...args], {
     env,
     cwd: env.SYNERGY_TEST_HOME,
     stdin: new TextEncoder().encode(input),
@@ -92,8 +92,10 @@ test("a supervised member command enrolls from private input, serves its own Hom
   try {
     for (const restart of [false, true]) {
       const heartbeat = Promise.withResolvers<number>()
+      const handshake = Promise.withResolvers<Protocol.ConnectionProof["handshake"]>()
       service.interceptFrames((_socket, raw) => {
         const frame = Protocol.ClientFrame.parse(JSON.parse(String(raw)))
+        if (frame.type === "handshake") handshake.resolve(frame.proof.handshake)
         if (frame.type === "heartbeat") heartbeat.resolve(frame.connectionEpoch)
         return false
       })
@@ -105,6 +107,7 @@ test("a supervised member command enrolls from private input, serves its own Hom
           ticket: restart ? undefined : ticket,
           desktop: restart ? { browserToken } : undefined,
         }),
+        restart ? ["org-runtime", "serve", "--kind", "member"] : undefined,
       )
       try {
         const client = createSynergyClient({
@@ -126,6 +129,9 @@ test("a supervised member command enrolls from private input, serves its own Hom
         } finally {
           clearTimeout(bridgeDeadline)
         }
+        const accepted = await handshake.promise
+        expect(accepted.capabilities).toContain("handoffs")
+        expect(accepted.schemas.handoffs).toBe(8)
         const capabilities = (await client.global.capabilities({ throwOnError: true })).data
         expect(capabilities.features.includes("browser")).toBe(restart)
         const current = capabilities.runtimeID
@@ -155,6 +161,15 @@ test("a supervised member command enrolls from private input, serves its own Hom
       baseUrl: `http://127.0.0.1:${port}`,
       headers: { authorization: `Bearer ${token}` },
     })
+    const reconnected = Promise.withResolvers<Protocol.ConnectionProof["handshake"]>()
+    let direct: Protocol.ConnectionProof["handshake"] | undefined
+    service.interceptFrames((_socket, raw) => {
+      const frame = Protocol.ClientFrame.parse(JSON.parse(String(raw)))
+      if (frame.type === "handshake") direct = frame.proof.handshake
+      if (frame.type === "heartbeat" && direct && frame.connectionEpoch === direct.connectionEpoch)
+        reconnected.resolve(direct)
+      return false
+    })
     await using reopened = await openMemberRuntime({
       home: member.home,
       identity: member.identity,
@@ -162,6 +177,14 @@ test("a supervised member command enrolls from private input, serves its own Hom
       ca: service.ca,
     })
     expect((await client.global.capabilities({ throwOnError: true })).data.runtimeID).toBe(runtimeID)
+    const bridgeDeadline = setTimeout(() => reconnected.reject(new Error("Direct member bridge did not connect")), 3000)
+    try {
+      const accepted = await reconnected.promise
+      expect(accepted.capabilities).not.toContain("handoffs")
+      expect(accepted.schemas.handoffs).toBeUndefined()
+    } finally {
+      clearTimeout(bridgeDeadline)
+    }
   } finally {
     if (supervisor.exitCode === null) supervisor.kill("SIGKILL")
     await supervisor.exited

@@ -8,7 +8,7 @@ The signed organization handoff controllers rejected every current Working locat
 
 ## Decision
 
-The native organization composition selects `session-workspaces`. The source captures the complete member file closure inside its exact `NativeSessionTransferPhysical.withCapture()` callback. Its frozen fact includes a required nullable `fileClosureHash`, distinct from `workspaceMoveReceiptHash`. The former binds the native file closure; the latter represents an independently published directory/resource CAS receipt and remains null for fresh private native destinations.
+The native organization composition selects `session-workspaces`. Each member's actual draining epoch precedes the Source callback that drains accepted work and saves/detaches its exact native mount before portability owner freezing. Original target, physical directory, occupancy and COMMIT guards remain mandatory; final portable capture still rejects an active mount. The source captures the complete member file closure inside its exact `NativeSessionTransferPhysical.withCapture()` callback. Its frozen fact includes a required nullable `fileClosureHash`, distinct from `workspaceMoveReceiptHash`. The former binds the native file closure; the latter represents an independently published directory/resource CAS receipt and remains null for fresh private native destinations.
 
 The target verifies that the selected file owner and frozen file hash agree, reconstructs the complete closure from staging and invokes the canonical native target preparer. Each member receives the resulting logical Workspace identities and preparation receipt. Conflicting caller identities or receipts are rejected before a prepared fact can publish. The complete mapping participates in the retained conversion hash.
 
@@ -26,7 +26,7 @@ Portability contributions declare `publicationAfter` separately from staged depe
 
 ## Consequences
 
-Fresh native directory preparation supports the signed controller primitives without advertising Main's overall handoff capability. Environment mapping, additional writable locations and existing-directory difference acceptance retain separate blocking owners. [Cross-Realm receipt consumption](2026-11-12-consume-cross-realm-workspace-move-receipts-before-paused-handoff.md) connects the independent object WorkspaceMove owner without replacing native destination preparation. Cancellation preserves the original directory and paused Session; it does not authorize execution or undo an independent directory publication.
+Fresh native directory preparation supplies the signed controller primitives; [integrated Environment and Workspace handoff](2026-11-14-bind-logical-environment-mapping-to-native-handoff.md) composes Environment choices, resource lifetimes and the public controller. [Cross-Realm receipt consumption](2026-11-12-consume-cross-realm-workspace-move-receipts-before-paused-handoff.md) connects the independent object WorkspaceMove owner without replacing native destination preparation. Cancellation preserves the original directory and paused Session; it does not authorize execution or undo an independent directory publication.
 
 ## Verification
 

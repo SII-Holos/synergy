@@ -513,7 +513,10 @@ export namespace WorkspaceMounts {
     workspaceID: string
     scopeID: string
     expectedRevision?: number
+    beforeEffect?(): Promise<void>
+    assertCurrent?(): void
   }): Promise<WorkspaceCatalog.Info> {
+    input = { ...input }
     const key = JSON.stringify([input.scopeID, input.workspaceID])
     const pending = detaching().get(key)
     if (pending) {
@@ -529,8 +532,16 @@ export namespace WorkspaceMounts {
     }
   }
 
-  async function detachView(input: { workspaceID: string; scopeID: string; expectedRevision?: number }) {
+  async function detachView(input: {
+    workspaceID: string
+    scopeID: string
+    expectedRevision?: number
+    beforeEffect?(): Promise<void>
+    assertCurrent?(): void
+  }) {
+    input.assertCurrent?.()
     let info = await WorkspaceCatalog.get(input.workspaceID, input.scopeID)
+    input.assertCurrent?.()
     const assertRevision = (info: WorkspaceCatalog.Info) => {
       if (input.expectedRevision !== undefined && info.revision !== input.expectedRevision)
         throw new WorkspaceCatalog.BindingChanged({
@@ -542,63 +553,79 @@ export namespace WorkspaceMounts {
     const mount = info.activeMount
     if (!mount) return info
     await RuntimeMaintenance.assertAdmission()
+    await input.beforeEffect?.()
+    input.assertCurrent?.()
     const useID = `detach:${mount.id}`
     const use = await Environment.acquire(mount.target.environmentID, {
       scopeID: input.scopeID,
+      expectedTarget: mount.target,
       useID,
       kind: "admission",
       capabilities: ["files"],
       ownership: uses().admission(useInput(info, "detach")),
     })
     try {
-      info = await Storage.transaction(async () => {
-        await RuntimeMaintenance.assertAdmission()
-        const latest = await WorkspaceCatalog.get(info.id, input.scopeID)
-        assertRevision(latest)
-        assertMount(latest, info)
-        if ((await Environment.uses(mount.target.environmentID)).some((held) => held.id !== useID))
-          throw new Environment.Busy({
-            environmentID: mount.target.environmentID,
-            message: "Environment is busy; release active resource users before detaching",
+      info = await Storage.transaction(
+        async () => {
+          input.assertCurrent?.()
+          await RuntimeMaintenance.assertAdmission()
+          const latest = await WorkspaceCatalog.get(info.id, input.scopeID)
+          assertRevision(latest)
+          assertMount(latest, info)
+          if ((await Environment.uses(mount.target.environmentID)).some((held) => held.id !== useID))
+            throw new Environment.Busy({
+              environmentID: mount.target.environmentID,
+              message: "Environment is busy; release active resource users before detaching",
+            })
+          await Environment.assertTarget(mount.target, input.scopeID)
+          const next = WorkspaceCatalog.Info.parse({
+            ...latest,
+            revision: latest.revision + 1,
+            activeMount: { ...latest.activeMount!, state: "saving" },
+            updatedAt: Date.now(),
           })
-        await Environment.assertTarget(mount.target, input.scopeID)
-        const next = WorkspaceCatalog.Info.parse({
-          ...latest,
-          revision: latest.revision + 1,
-          activeMount: { ...latest.activeMount!, state: "saving" },
-          updatedAt: Date.now(),
-        })
-        await Storage.write(StoragePath.workspace(info.id), next)
-        await Environment.retainUse(use.target, input.scopeID, useID, uses().retention(useInput(next, "detach")))
-        await WorkspaceCatalog.publishUpdated(next)
-        return next
-      })
+          await Storage.write(StoragePath.workspace(info.id), next)
+          await Environment.retainUse(use.target, input.scopeID, useID, uses().retention(useInput(next, "detach")))
+          await WorkspaceCatalog.publishUpdated(next)
+          return next
+        },
+        { commitGuard: () => input.assertCurrent?.() },
+      )
     } catch (error) {
       await use.release()
       throw error
     }
     const files = await connect(info)
+    input.assertCurrent?.()
     if (info.backend?.provider === "objects") {
+      await input.beforeEffect?.()
+      input.assertCurrent?.()
       const checkpoint = await files.checkpoint({ id: checkpointID("detach", mount.id), mount: reference(info) })
-      info = await save(info, files, checkpoint)
+      info = await save(info, files, checkpoint, undefined, undefined, input)
     }
+    await input.beforeEffect?.()
+    input.assertCurrent?.()
     await files.detach(reference(info))
-    return Storage.transaction(async () => {
-      const latest = await WorkspaceCatalog.get(info.id, input.scopeID)
-      assertMount(latest, info)
-      await Environment.assertTarget(mount.target, input.scopeID)
-      const next = WorkspaceCatalog.Info.parse({
-        ...latest,
-        revision: latest.revision + 1,
-        activeMount: undefined,
-        updatedAt: Date.now(),
-      })
-      await Environment.releaseUse(mount.target, input.scopeID, useID, uses().retirement(useInput(latest, "detach")))
-      await Storage.write(StoragePath.workspace(info.id), next)
-      await WorkspaceCatalog.publishUpdated(next)
-      await Storage.remove(StoragePath.workspaceEnvironment(mount.target.environmentID, info.id))
-      return next
-    })
+    return Storage.transaction(
+      async () => {
+        input.assertCurrent?.()
+        const latest = await WorkspaceCatalog.get(info.id, input.scopeID)
+        assertMount(latest, info)
+        await Environment.assertTarget(mount.target, input.scopeID)
+        const next = WorkspaceCatalog.Info.parse({
+          ...latest,
+          revision: latest.revision + 1,
+          activeMount: undefined,
+          updatedAt: Date.now(),
+        })
+        await Environment.releaseUse(mount.target, input.scopeID, useID, uses().retirement(useInput(latest, "detach")))
+        await Storage.write(StoragePath.workspace(info.id), next)
+        await WorkspaceCatalog.publishUpdated(next)
+        await Storage.remove(StoragePath.workspaceEnvironment(mount.target.environmentID, info.id))
+        return next
+      },
+      { commitGuard: () => input.assertCurrent?.() },
+    )
   }
 
   export async function connect(info: WorkspaceCatalog.Info, releasing?: Environment.Info): Promise<WorkspaceFileHost> {
@@ -691,15 +718,29 @@ export namespace WorkspaceMounts {
     checkpoint: WorkspaceProtocol.Checkpoint,
     beforeRelease?: (workspace: WorkspaceCatalog.Info) => Promise<void>,
     attempt?: WorkspaceCheckpoints.Attempt,
+    authority?: { beforeEffect?(): Promise<void>; assertCurrent?(): void },
   ) {
     info = WorkspaceCatalog.Info.parse(info)
     checkpoint = WorkspaceProtocol.Checkpoint.parse(checkpoint)
-    const assert = WorkspaceContent.captureOwner()
-    const acknowledge = files.acknowledge.bind(files)
+    const owner = WorkspaceContent.captureOwner()
+    const assert = () => {
+      owner()
+      authority?.assertCurrent?.()
+    }
+    const beforeEffect = async () => {
+      assert()
+      await authority?.beforeEffect?.()
+      assert()
+    }
+    const acknowledge = async (id: string) => {
+      await beforeEffect()
+      await files.acknowledge(id)
+      assert()
+    }
     const get = files.getBlob.bind(files)
     const source = {
       async get(hash: string, maximum: number) {
-        assert()
+        await beforeEffect()
         const bytes = await get(hash, maximum)
         assert()
         return bytes
@@ -717,7 +758,7 @@ export namespace WorkspaceMounts {
       return info
     }
     if (!checkpoint.manifest) throw new Error("Object-backed Workspace checkpoint has no manifest")
-    if (checkpoint.beforeManifest) await preserveManifest(info, source, checkpoint.beforeManifest)
+    if (checkpoint.beforeManifest) await preserveManifest(info, source, checkpoint.beforeManifest, beforeEffect)
     const { store } = await WorkspaceContent.resolve({ workspaceID: info.id, scopeID: info.scopeID }, true)
     assert()
     const put = store.put.bind(store)
@@ -725,7 +766,7 @@ export namespace WorkspaceMounts {
       { manifest: checkpoint.manifest, source },
       {
         async put(hash, bytes) {
-          assert()
+          await beforeEffect()
           await put(hash, bytes)
           assert()
         },
@@ -733,6 +774,7 @@ export namespace WorkspaceMounts {
     )
     let result: WorkspaceCatalog.Info
     try {
+      await beforeEffect()
       result = await Storage.transaction(
         async () => {
           const latest = await WorkspaceCatalog.get(info.id, info.scopeID)
@@ -754,7 +796,12 @@ export namespace WorkspaceMounts {
     return result
   }
 
-  async function preserveManifest(info: WorkspaceCatalog.Info, source: Pick<BlobStore, "get">, manifest: string) {
+  async function preserveManifest(
+    info: WorkspaceCatalog.Info,
+    source: Pick<BlobStore, "get">,
+    manifest: string,
+    beforeEffect?: () => Promise<void>,
+  ) {
     const assert = WorkspaceContent.captureOwner()
     const { store } = await WorkspaceContent.resolve({ workspaceID: info.id, scopeID: info.scopeID }, true)
     assert()
@@ -763,6 +810,7 @@ export namespace WorkspaceMounts {
       { manifest, source },
       {
         async put(hash, bytes) {
+          await beforeEffect?.()
           assert()
           await put(hash, bytes)
           assert()

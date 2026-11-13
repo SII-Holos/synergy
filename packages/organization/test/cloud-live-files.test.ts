@@ -90,6 +90,8 @@ test("active Workspace list and CAS mutations retain original native checkpoints
       before,
     )
     expect(written.result.action).toBe("write")
+    const mount = { id: before.workspaceID, workspaceID: before.workspaceID, generation: before.generation }
+    expect(written.result).toMatchObject({ checkpoint: { id: "original-write", mount } })
     expect(written.reference.revision).toBeGreaterThan(before.revision)
     expect(
       await request(
@@ -138,6 +140,7 @@ test("active Workspace list and CAS mutations retain original native checkpoints
       written.reference,
     )
     expect(changed.result.action).toBe("mutate")
+    expect(changed.result).toMatchObject({ checkpoint: { id: "original-mkdir", mount } })
     loseAcknowledgement = true
     const operation = {
       action: "write" as const,
@@ -150,6 +153,7 @@ test("active Workspace list and CAS mutations retain original native checkpoints
     const receipt = await request({ action: "receipt", id: operation.id }, changed.reference)
     if (receipt.result.action !== "receipt") throw new Error("Expected original publication receipt")
     expect(receipt.result.status?.state).toBe("saved")
+    expect(receipt.result.status).toMatchObject({ id: operation.id, mount, checkpoint: { id: operation.id, mount } })
     await request(operation, changed.reference)
     expect(calls).toBe(1)
     expect(

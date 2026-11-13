@@ -859,8 +859,10 @@ export function createHandoffs(options: {
         mapping.resource.workspaceID,
         OrganizationCloud.scopeID(record.orgID, current.projectID),
       )
-      if (catalog.activeMount || catalog.binding.generation !== mapping.resource.generation)
-        fail("RESOURCE_UNAVAILABLE", "Live handoff requires its current dormant Workspace generation")
+      if (catalog.binding.generation !== mapping.resource.generation)
+        fail("RESOURCE_UNAVAILABLE", "Live handoff requires its current Workspace generation")
+      if (catalog.activeMount && record.workspaceSource)
+        fail("RESOURCE_UNAVAILABLE", "Live handoff must retain its captured dormant Workspace generation")
       if (
         mapping.kind === "organization-native" &&
         record.workspaceSource &&
@@ -1481,8 +1483,8 @@ export function createHandoffs(options: {
               source.resource.workspaceID,
               OrganizationCloud.scopeID(current.session.orgID, current.session.projectID),
             )
-            if (catalog.activeMount || catalog.binding.generation !== source.resource.generation)
-              fail("RESOURCE_UNAVAILABLE", "Handoff source requires its current dormant Workspace generation")
+            if (catalog.binding.generation !== source.resource.generation)
+              fail("RESOURCE_UNAVAILABLE", "Handoff source requires its current Workspace generation")
             const completeRoot =
               source.resource.path !== "" ||
               admitted.participants.every((participant) => participant.connection.handshake.schemas.handoffs >= 7)
@@ -1551,9 +1553,11 @@ export function createHandoffs(options: {
       let retained: WorkspaceMove.Request | undefined
       let source: WorkspaceFrame["source"]
       let scopeID: string | undefined
+      let participantGuard: (() => void) | undefined
       const assert = () => {
         window()
         connection.assertCurrent()
+        participantGuard?.()
         if (!open) fail("PERMISSION_DENIED", "Workspace handoff callback has ended")
       }
       const recheck = async () => {
@@ -1574,10 +1578,17 @@ export function createHandoffs(options: {
               : !["preparing", "prepared", "surrendered", "committed", "activation_permitted"].includes(record.phase))
           )
             fail("HANDOFF_BLOCKED", "Workspace handoff is unavailable in this phase")
+          if (
+            proof.operation.action === "source" &&
+            !record.workspaceSource &&
+            (record.phase !== "preparing" || record.frozen)
+          )
+            fail("HANDOFF_BLOCKED", "Workspace source save must precede its final freeze")
           const participant = proof.runtimeID === record.sourceRuntimeID ? record.source : record.target
           if (participant.publicKey !== authority.runtime.publicKey)
             fail("PERMISSION_DENIED", "Workspace handoff machine changed")
           const access = await eligible(record)
+          participantGuard = access.guard
           scopeID = OrganizationCloud.scopeID(record.orgID, access.current.projectID)
           const mapping = record.request.workspaceMapping
           if (mapping.kind === "organization-live" || mapping.kind === "organization-native") {

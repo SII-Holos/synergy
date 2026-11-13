@@ -40,7 +40,7 @@ The connected observer reads bounded pending pages and exact Session/root partit
 
 Legacy grant upgrades preserve original bytes on read and do not fabricate handoff history. Previous strict grant readers reject the new version. The retained index is derived and migration-owned; grants and directory counts remain authoritative. Nonterminal closure does not reset native budgets, create a root, unpause work, allocate target resources or dispatch a model.
 
-This unit implements explicit continuation, nonterminal handoff closure and automatic per-generation native reconciliation. Cleanup inspection remains available only to an authenticated current machine connection; it is not a revoked-machine recovery credential. Main keeps complete handoff capability disabled while Environment, knowledge and broader WorkspaceMove closure remain unfinished.
+This unit implements explicit continuation, nonterminal handoff closure and automatic per-generation native reconciliation. Cleanup inspection remains available only to an authenticated current machine connection; it is not a revoked-machine recovery credential. The [integrated Environment and Workspace handoff](2026-11-14-bind-logical-environment-mapping-to-native-handoff.md) composes the public controller with the separate Environment, knowledge and WorkspaceMove owners; these closure receipts do not substitute for their native proofs.
 
 ## Verification
 

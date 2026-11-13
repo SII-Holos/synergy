@@ -24,4 +24,4 @@ Choices describe only implemented file mappings. Existing resource discovery sup
 
 ## Consequences
 
-The frontend can construct current requests without guessing IDs or native paths. Options are advisory snapshots, never publication or execution authority. Real TLS tests cover native and keep-cloud selections, rejection of a different shared recipient, and a held machine reply invalidated by a concurrent sharing change. Protocol tests verify signature separation and exact participant matching. Main's complete handoff capability remains disabled.
+The frontend can construct current requests without guessing IDs or native paths. Options are advisory snapshots, never publication or execution authority. Real TLS tests cover native and keep-cloud selections, rejection of a different shared recipient, and a held machine reply invalidated by a concurrent sharing change. Protocol tests verify signature separation and exact participant matching. The [integrated Environment and Workspace handoff](2026-11-14-bind-logical-environment-mapping-to-native-handoff.md) supplies the public controller without turning inspection into preparation authority.

@@ -133,7 +133,10 @@ export namespace OrganizationHandoffEnvironments {
           fail("Environment publication has another original signed mapping")
         sourceMatches(source.sessionID, source.rootSessionID, environment.mapping.source, source.selected)
         targetMatches(environment.mapping.target, selected)
-        if (!same(context.mapping.environmentSelection, selected ? nativeReference(selected) : null))
+        const preparedSelection = Handoff.NativeEnvironmentSelection.nullable().safeParse(
+          context.mapping.environmentSelection,
+        )
+        if (!preparedSelection.success || !same(preparedSelection.data, selected ? nativeReference(selected) : null))
           fail("The prepared Environment mapping changed its actual native selection")
         return frame.assert
       },

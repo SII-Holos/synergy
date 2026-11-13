@@ -30,7 +30,7 @@ Optional aggregate owners seal only after every exact source epoch is frozen, us
 
 ## Consequences
 
-The opt-in listening Runtime composition supports native-to-organization-object transfer into a new subtree, complete receipt consumption, cancellation without deletion, and permanent destination retirement. [Default keep-cloud return](2026-11-12-retain-live-workspaces-through-return-handoff.md) captures the current service files separately. Existing-directory difference adoption, additional current Working locations, cloud compute and automatic Continue remain separate owners. Generic Host/HTTP origins without actual Session execution provenance cannot open the organization file source. The explicit Session file API remains independently available. Main's overall handoff capability stays disabled until complete bidirectional product acceptance.
+The listening Runtime composition supports native-to-organization-object transfer into a new subtree, complete receipt consumption, cancellation without deletion, and permanent destination retirement. [Default keep-cloud return](2026-11-12-retain-live-workspaces-through-return-handoff.md) captures the current service files separately. Existing-directory adoption, native download and cloud compute retain their separate owning receipts and consent. Continue remains an independent authorized action. Generic Host/HTTP origins without actual Session execution provenance cannot open the organization file source. The explicit Session file API remains independently available. The [integrated Environment and Workspace handoff](2026-11-14-bind-logical-environment-mapping-to-native-handoff.md) supplies public controllers and complete bidirectional acceptance without changing this receipt owner.
 
 ## Verification
 

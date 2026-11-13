@@ -2,6 +2,7 @@ import { createHash } from "node:crypto"
 import { z } from "zod"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { StorageMutationGuard } from "@ericsanchezok/synergy-harness/storage/mutation-guard"
 import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
 import { WorkspaceTree } from "@ericsanchezok/synergy-harness/workspace/tree"
 import { WorkspaceErrors } from "@ericsanchezok/synergy-harness/workspace/errors"
@@ -65,6 +66,8 @@ export namespace OrganizationCloud {
   ) => Promise<T>
   const moveSource =
     RuntimeContext.createAsyncContext<ReturnType<typeof OrganizationHandoffExecution.workspaceAuthority>>()
+  const sourceCapture =
+    RuntimeContext.createAsyncContext<ReturnType<typeof OrganizationHandoffExecution.workspaceAuthority>>()
   const configuration = RuntimeContext.state(() => ({ profiles: undefined as OrganizationCloudOptions | undefined }))
   const { Locator, Receipt, EnvironmentReceipt, FileReceipt, key, receiptKey, creationKey, projectKey } = CloudRecord
   const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex")
@@ -72,6 +75,12 @@ export namespace OrganizationCloud {
   export function register(options: OrganizationCloudOptions = {}) {
     RuntimeContext.assertCompositionOpen("Organization cloud resources")
     if (configuration().profiles) throw new Error("Organization cloud resources are already registered")
+    StorageMutationGuard.register("organization-handoff-source", async () => {
+      const frame = sourceCapture.getStore()
+      if (!frame) return
+      await frame.recheck()
+      await Storage.transaction(async () => frame.assert(), { commitGuard: frame.assert })
+    })
     WorkspaceMove.registerCapturedSourceHost("organization-handoff", {
       async capture(request, _store, consume) {
         const frame = moveSource.getStore()
@@ -406,6 +415,37 @@ export namespace OrganizationCloud {
         rootPath: ref?.rootPath,
       })
     }
+    function logicalResult(value: Cloud.FileResult): Cloud.FileResult {
+      const mount = {
+        id: value.reference.workspaceID,
+        workspaceID: value.reference.workspaceID,
+        generation: value.reference.generation,
+      }
+      const checkpoint = (value: z.infer<typeof Cloud.FileCheckpoint>) => {
+        if (value.mount.workspaceID !== mount.workspaceID)
+          fail("PROTOCOL_MISMATCH", "File checkpoint belongs to another original Workspace")
+        return { ...value, mount }
+      }
+      const result = value.result
+      if (result.action === "write" || result.action === "mutate")
+        return { ...value, result: { ...result, checkpoint: checkpoint(result.checkpoint) } }
+      if (result.action === "receipt" && result.status) {
+        if (result.status.mount.workspaceID !== mount.workspaceID)
+          fail("PROTOCOL_MISMATCH", "File receipt belongs to another original Workspace")
+        return {
+          ...value,
+          result: {
+            ...result,
+            status: {
+              ...result.status,
+              mount,
+              ...(result.status.checkpoint && { checkpoint: checkpoint(result.status.checkpoint) }),
+            },
+          },
+        }
+      }
+      return value
+    }
     function item(info: WorkspaceCatalog.Info, header: WorkspaceTree.Header, path: string) {
       return Cloud.FileItem.parse({
         path,
@@ -426,7 +466,7 @@ export namespace OrganizationCloud {
     const finish = async (result: Cloud.FileResult["result"]) => {
       await current()
       authority.assert()
-      return Cloud.FileResult.parse({ reference: receiptOnly ? ref : reference(info), result })
+      return logicalResult(Cloud.FileResult.parse({ reference: receiptOnly ? ref : reference(info), result }))
     }
     const id =
       "id" in operation
@@ -478,19 +518,21 @@ export namespace OrganizationCloud {
       checkpoint: WorkspaceProtocol.Checkpoint,
       action: "write" | "mutate",
     ) {
-      return Cloud.FileResult.parse({
-        reference: reference(saved),
-        result: {
-          action,
-          checkpoint: {
-            id: "id" in operation ? operation.id : undefined,
-            mount: checkpoint.mount,
-            manifest: checkpoint.manifest,
-            ...(checkpoint.beforeManifest && { beforeManifest: checkpoint.beforeManifest }),
-            ...(checkpoint.isolated !== undefined && { isolated: checkpoint.isolated }),
+      return logicalResult(
+        Cloud.FileResult.parse({
+          reference: reference(saved),
+          result: {
+            action,
+            checkpoint: {
+              id: "id" in operation ? operation.id : undefined,
+              mount: checkpoint.mount,
+              manifest: checkpoint.manifest,
+              ...(checkpoint.beforeManifest && { beforeManifest: checkpoint.beforeManifest }),
+              ...(checkpoint.isolated !== undefined && { isolated: checkpoint.isolated }),
+            },
           },
-        },
-      })
+        }),
+      )
     }
     if (!receiptOnly && info.activeMount) {
       if (!live) fail("RESOURCE_UNAVAILABLE", "Live Workspace files require their original mounted owner")
@@ -532,7 +574,7 @@ export namespace OrganizationCloud {
             if (previous.digest !== requestHash)
               fail("REVISION_CONFLICT", "File operation identity already has different input")
             if (previous.result.result.action === "write" || previous.result.result.action === "mutate")
-              return previous.result
+              return logicalResult(previous.result)
           } else {
             revision(ref.revision, info.revision)
             await Storage.transaction(
@@ -557,7 +599,7 @@ export namespace OrganizationCloud {
                         action: "receipt",
                         status: {
                           id: operation.id,
-                          mount: { id: mounted.mount.id, workspaceID: info.id, generation: ref.generation },
+                          mount: { id: info.id, workspaceID: info.id, generation: ref.generation },
                           state: "pending",
                         },
                       },
@@ -698,7 +740,7 @@ export namespace OrganizationCloud {
         if (previous.digest !== requestHash)
           fail("REVISION_CONFLICT", "File operation identity already has different input")
         await current()
-        return previous.result
+        return logicalResult(previous.result)
       }
       revision(ref.revision, info.revision)
       const selection = { workspaceID: info.id, scopeID: scope, generation: ref.generation, signal }
@@ -753,7 +795,7 @@ export namespace OrganizationCloud {
             const previous = FileReceipt.parse(existing)
             if (previous.digest !== requestHash)
               fail("REVISION_CONFLICT", "File operation identity already has different input")
-            return previous.result
+            return logicalResult(previous.result)
           }
           revision(ref.revision, latest.revision)
           const published = await prepared.publish()
@@ -862,6 +904,23 @@ export namespace OrganizationCloud {
       const selected = frame.source
       if (!selected) fail("PROTOCOL_MISMATCH", "Workspace handoff has no live source selection")
       let snapshot = await frame.snapshot()
+      if (!snapshot && operation.action === "source") {
+        const current = await WorkspaceCatalog.get(selected.workspaceID, frame.scopeID)
+        if (current.binding.generation !== selected.generation)
+          fail("REVISION_CONFLICT", "Workspace source changed before its final save")
+        if (current.activeMount) {
+          await sourceCapture.run(frame, () =>
+            WorkspaceMounts.detach({
+              workspaceID: current.id,
+              scopeID: current.scopeID,
+              expectedRevision: current.revision,
+              beforeEffect: frame.recheck,
+              assertCurrent: frame.assert,
+            }),
+          )
+          await frame.recheck()
+        }
+      }
       const { info, store } = await WorkspaceContent.resolve({
         workspaceID: selected.workspaceID,
         scopeID: frame.scopeID,

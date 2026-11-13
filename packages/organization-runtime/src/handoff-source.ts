@@ -31,6 +31,7 @@ import { WorkspaceMove } from "@ericsanchezok/synergy-harness/workspace/move"
 import { WorkspaceArchive } from "@ericsanchezok/synergy-harness/workspace/archive"
 import { OrganizationSessionTransfer as Transfer } from "./session-transfer"
 import { OrganizationHandoffWorkspaceSource as WorkspaceSource } from "./handoff-workspace-source"
+import { OrganizationHandoffWorkspaceDrain as WorkspaceDrain } from "./handoff-workspace-drain"
 import { OrganizationHandoffSourceReceipts as SourceReceipts } from "./handoff-source-receipts"
 
 export namespace OrganizationHandoffSource {
@@ -466,6 +467,16 @@ export namespace OrganizationHandoffSource {
               store: source.store,
               signal,
               verify,
+              async beforeOwnerFreeze(context) {
+                const assert = () => {
+                  assertOwner()
+                  signal.throwIfAborted()
+                  if (plan.environmentPlan) OrganizationHandoffEnvironments.assertPlan(plan, "source")
+                  if (plan.issuedAt > Date.now() || plan.expiresAt <= Date.now())
+                    fail("Native Workspace drainage requires its current finite handoff plan")
+                }
+                await WorkspaceDrain.prepare(plan, context, assert, verify)
+              },
               async beforeFreeze() {
                 lease = await capture(plan, signal, input.resources)
               },

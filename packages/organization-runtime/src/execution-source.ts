@@ -151,9 +151,7 @@ export async function withMemberHandoffPlan<T>(
       plan.deploymentIncarnation !== selected.deploymentIncarnation ||
       plan.runtimeID !== selected.runtimeID ||
       plan.connectionEpoch !== selected.connectionEpoch ||
-      plan.keyID !== signer.keyID ||
-      plan.issuedAt > Date.now() ||
-      plan.expiresAt <= Date.now()
+      plan.keyID !== signer.keyID
     )
       throw new OrganizationRuntimeError({
         code: "HANDOFF_BLOCKED",
@@ -162,10 +160,21 @@ export async function withMemberHandoffPlan<T>(
         retryable: false,
       })
   }
-  assert()
+  const admit = () => {
+    assert()
+    const now = Date.now()
+    if (plan.issuedAt > now || plan.expiresAt <= now)
+      throw new OrganizationRuntimeError({
+        code: "HANDOFF_BLOCKED",
+        message: "Environment mapping requires its original live enrolled machine authorization",
+        outcome: "not_dispatched",
+        retryable: false,
+      })
+  }
+  admit()
   if (!(await Handoff.verifyMachinePlan(plan, authorization.signature, signer.publicKey)))
     throw denied("Environment mapping has no original service signature")
-  assert()
+  admit()
   const result = await body(plan, assert)
   try {
     assert()

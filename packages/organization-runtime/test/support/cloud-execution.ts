@@ -6,6 +6,7 @@ import { z } from "zod"
 import { createSynergyClient } from "@ericsanchezok/synergy-sdk"
 import {
   OrganizationCloudProtocol as Cloud,
+  OrganizationCommandProtocol as Command,
   OrganizationResourceProtocol as Resource,
   OrganizationRuntimeProtocol as Runtime,
 } from "@ericsanchezok/synergy-organization-protocol"
@@ -21,6 +22,7 @@ import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { SessionExecutionSource } from "@ericsanchezok/synergy-harness/session/execution-source"
 import { SessionExecutionContributions } from "@ericsanchezok/synergy-harness/session/execution-contributions"
 import { SessionExecutionOwners } from "@ericsanchezok/synergy-harness/session/execution-owners"
+import { SessionTransferEpochs } from "@ericsanchezok/synergy-harness/session/transfer"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/ledger"
 import { RolloutLifecycle } from "@ericsanchezok/synergy-harness/session/rollout/lifecycle"
@@ -40,9 +42,9 @@ import { registerLocalRuntime } from "@ericsanchezok/synergy-local-runtime/regis
 import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
 import { WorkspaceCoordinator } from "@ericsanchezok/synergy-local-runtime/workspace/coordinator"
 import type { ProcessTool } from "@ericsanchezok/synergy-local-runtime/tools/process"
-import { prepareMemberHome } from "../../src/home"
-import { enrollMemberRuntime } from "../../src/enrollment"
-import { openMemberRuntime } from "../../src/runtime"
+import { prepareHostedHome, prepareMemberHome } from "../../src/home"
+import { enrollHostedRuntime, enrollMemberRuntime } from "../../src/enrollment"
+import { openHostedRuntime, openMemberRuntime } from "../../src/runtime"
 import { fixture } from "./organization"
 
 type FailureMetadata = {
@@ -453,18 +455,69 @@ export async function cloudExecutionFixture() {
       )
     ).data
     const nativeOperations = new Map<string, () => Promise<EnvironmentExecution.Info>>()
-    async function member(deviceID: string) {
-      const home = await prepareMemberHome({
-        baseDirectory: path.join(directory, "members"),
-        identity: { ...service.identity, deviceID },
-        origin: service.origin,
-      })
-      const registration = await enrollMemberRuntime({
-        home: home.home,
-        identity: home.identity,
-        ca: service.ca,
-        ticket: await service.ticket(deviceID, home.publicKey),
-      })
+    async function machine(
+      deviceID: string,
+      configuration?: { handoff?: true; nativeDirectory?: string; hosted?: true },
+    ) {
+      const installed = await (async () => {
+        if (configuration?.hosted) {
+          const home = await prepareHostedHome({
+            baseDirectory: path.join(directory, "hosted"),
+            identity: { orgID: service.identity.orgID, hostID: deviceID },
+            origin: service.origin,
+          })
+          const ticket = (
+            await service.client.orgRuntime.registerHosted(
+              { orgHostedRuntimeRegistration: { name: deviceID, publicKey: home.publicKey } },
+              options,
+            )
+          ).data
+          const registration = await enrollHostedRuntime({
+            home: home.home,
+            identity: home.identity,
+            ca: service.ca,
+            ticket,
+          })
+          return {
+            home,
+            registration,
+            open: (listen: { port: number; token: string }) =>
+              openHostedRuntime({
+                home: home.home,
+                identity: home.identity,
+                ca: service.ca,
+                workspaceCoordinator: coordinator,
+                listen,
+                ...(configuration.handoff ? { handoff: true as const } : {}),
+              }),
+          }
+        }
+        const home = await prepareMemberHome({
+          baseDirectory: path.join(directory, "members"),
+          identity: { ...service.identity, deviceID },
+          origin: service.origin,
+        })
+        const registration = await enrollMemberRuntime({
+          home: home.home,
+          identity: home.identity,
+          ca: service.ca,
+          ticket: await service.ticket(deviceID, home.publicKey),
+        })
+        return {
+          home,
+          registration,
+          open: (listen: { port: number; token: string }) =>
+            openMemberRuntime({
+              home: home.home,
+              identity: home.identity,
+              ca: service.ca,
+              workspaceCoordinator: coordinator,
+              listen,
+              ...(configuration?.handoff ? { handoff: true as const } : {}),
+            }),
+        }
+      })()
+      const { home, registration } = installed
       const port = await availablePort(),
         token = crypto.randomUUID().replaceAll("-", "").repeat(2)
       async function open() {
@@ -480,13 +533,7 @@ export async function cloudExecutionFixture() {
         let opened: Awaited<ReturnType<typeof openMemberRuntime>> | undefined
         let timer: ReturnType<typeof setTimeout> | undefined
         try {
-          opened = await openMemberRuntime({
-            home: home.home,
-            identity: home.identity,
-            ca: service.ca,
-            workspaceCoordinator: coordinator,
-            listen: { port, token },
-          })
+          opened = await installed.open({ port, token })
           timer = setTimeout(() => online.reject(new Error("Original member did not connect")), 5000)
           await online.promise
           return opened
@@ -504,71 +551,108 @@ export async function cloudExecutionFixture() {
       }
       let runtime = await open()
       resources.defer("original member Runtime", () => runtime.close())
+      const client = createSynergyClient({
+        baseUrl: `http://127.0.0.1:${port}`,
+        headers: { authorization: `Bearer ${token}` },
+      })
+      if (configuration?.nativeDirectory) {
+        const current = (await client.orgLocalProject.get({ projectID: project.projectID }, { throwOnError: true }))
+          .data
+        await client.orgLocalProject.bind(
+          {
+            projectID: project.projectID,
+            orgLocalProjectBind: {
+              requestID: "native-" + deviceID,
+              expectedRevision: current.revision,
+              directory: configuration.nativeDirectory,
+            },
+          },
+          { throwOnError: true },
+        )
+      }
       let sequence = 0
-      async function newSession(input?: { inputHeaders?: Record<string, string>; environment?: null }) {
+      async function newSession(input?: {
+        inputHeaders?: Record<string, string>
+        environment?: null
+        workspace?: null
+        existing?: { sessionID: string; accepted: Command.InputAccepted }
+      }) {
         const sessionKey = ++sequence === 1 ? deviceID : `${deviceID}-${sequence}`
-        const sessionID = (
-          await service.client.orgSessions.create(
+        const sessionID =
+          input?.existing?.sessionID ??
+          (
+            await service.client.orgSessions.create(
+              {
+                orgCommandCreateRequest: {
+                  schemaVersion: 1,
+                  orgID: service.identity.orgID,
+                  projectID: project.projectID,
+                  runtimeID: registration.runtimeID,
+                  requestID: "create-" + sessionKey,
+                  creation: { operation: "create" },
+                },
+              },
+              options,
+            )
+          ).data.effect.sessionID
+        if (!input?.existing)
+          await service.client.orgSessionResources.set(
             {
-              orgCommandCreateRequest: {
-                schemaVersion: 1,
-                orgID: service.identity.orgID,
-                projectID: project.projectID,
-                runtimeID: registration.runtimeID,
-                requestID: "create-" + sessionKey,
-                creation: { operation: "create" },
+              sessionID,
+              orgSessionResourceChange: {
+                expectedRevision: 0,
+                selection: {
+                  modelResourceID: model.resourceID,
+                  connectionResourceIDs: [],
+                  infrastructure: {
+                    workspace:
+                      input?.workspace === null
+                        ? null
+                        : { resourceID: storage.resourceID, workspaceID: workspace.workspaceID },
+                    environment:
+                      input?.environment === null
+                        ? null
+                        : { resourceID: compute.resourceID, environmentID: environment.environmentID },
+                  },
+                },
               },
             },
             options,
           )
-        ).data.effect.sessionID
-        await service.client.orgSessionResources.set(
-          {
-            sessionID,
-            orgSessionResourceChange: {
-              expectedRevision: 0,
-              selection: {
-                modelResourceID: model.resourceID,
-                connectionResourceIDs: [],
-                infrastructure: {
-                  workspace: { resourceID: storage.resourceID, workspaceID: workspace.workspaceID },
-                  environment:
-                    input?.environment === null
-                      ? null
-                      : { resourceID: compute.resourceID, environmentID: environment.environmentID },
-                },
-              },
-            },
-          },
-          options,
-        )
-        if (input?.inputHeaders)
+        if (input?.inputHeaders && !input.existing)
           await service.client.orgSessions.share({ sessionID, orgShareChange: { expectedShareGeneration: 0 } }, options)
-        let accepted = (
-          await service.client.orgCommands.input(
-            {
-              sessionID,
-              orgCommandInputRequest: {
-                schemaVersion: 1,
-                orgID: service.identity.orgID,
+        let accepted =
+          input?.existing?.accepted ??
+          (
+            await service.client.orgCommands.input(
+              {
                 sessionID,
-                projectID: project.projectID,
-                runtimeID: registration.runtimeID,
-                requestID: "input-" + sessionKey,
-                input: {
-                  operation: "input",
-                  mode: "task",
-                  parts: [{ type: "text", text: "Read and update the explicitly selected shared files" }],
+                orgCommandInputRequest: {
+                  schemaVersion: 1,
+                  orgID: service.identity.orgID,
+                  sessionID,
+                  projectID: project.projectID,
+                  runtimeID: registration.runtimeID,
+                  requestID: "input-" + sessionKey,
+                  input: {
+                    operation: "input",
+                    mode: "task",
+                    parts: [{ type: "text", text: "Read and update the explicitly selected shared files" }],
+                  },
                 },
               },
-            },
-            { headers: input?.inputHeaders ?? service.headers, throwOnError: true },
-          )
-        ).data
-        let rootID: string | undefined
+              { headers: input?.inputHeaders ?? service.headers, throwOnError: true },
+            )
+          ).data
+        let rootID: string | undefined = input?.existing?.accepted.effect.messageID
         resources.defer("native accepted Run", () =>
           runtime.run(async () => {
             if (!rootID) return
+            if (await SessionTransferEpochs.isFrozen(sessionID)) return
+            if (configuration?.handoff) {
+              const current = (await service.client.orgSessions.get({ sessionID }, options)).data
+              if (current.driverRuntimeID !== registration.runtimeID) return
+            }
             const session = await Session.get(sessionID)
             const owner = RolloutLifecycle.owner(session)
             const run = await RolloutLedger.getRun(owner, rootID)
@@ -586,7 +670,7 @@ export async function cloudExecutionFixture() {
             const session = await Session.get(sessionID)
             return ScopeContext.provide({
               scope: session.scope,
-              workspace: null,
+              workspace: session.workspace,
               fn: async () => {
                 await SessionExecutionSource.authorize({ sessionID, scopeID: session.scope.id })
                 if (!rootID) {
@@ -696,10 +780,6 @@ export async function cloudExecutionFixture() {
             }
           })
         }
-        const client = createSynergyClient({
-          baseUrl: `http://127.0.0.1:${port}`,
-          headers: { authorization: `Bearer ${token}` },
-        })
         const filesResponse = (input: Cloud.LocalFileRequest) =>
           client.orgLocalWorkspaceFiles.request({ sessionID, orgCloudLocalFileRequest: input })
         return {
@@ -708,6 +788,7 @@ export async function cloudExecutionFixture() {
           },
           home,
           registration,
+          client,
           sessionID,
           get accepted() {
             return accepted
@@ -770,7 +851,27 @@ export async function cloudExecutionFixture() {
           },
         }
       }
-      return Object.assign(await newSession(), { sibling: newSession })
+      return Object.assign(
+        await newSession(configuration?.nativeDirectory ? { workspace: null, environment: null } : undefined),
+        {
+          sibling: newSession,
+          attach: (sessionID: string, accepted: Command.InputAccepted) =>
+            newSession({ existing: { sessionID, accepted } }),
+        },
+      )
+    }
+    async function member(deviceID: string, configuration?: { handoff?: true; nativeDirectory?: string }) {
+      const current = await machine(deviceID, configuration)
+      if (!("accountID" in current.home.identity)) throw new Error("The real Member has another installed identity")
+      const identity = current.home.identity
+      return { ...current, home: { ...current.home, identity } }
+    }
+    async function hosted(hostID: string) {
+      const current = await machine(hostID, { hosted: true, handoff: true })
+      if (!("hostID" in current.home.identity))
+        throw new Error("The real Hosted Runtime has another installed identity")
+      const identity = current.home.identity
+      return { ...current, home: { ...current.home, identity } }
     }
     return {
       service,
@@ -778,7 +879,12 @@ export async function cloudExecutionFixture() {
       workspace: seeded,
       environment,
       resourceIDs: [model.resourceID, storage.resourceID, compute.resourceID],
+      model,
+      storage,
+      compute,
+      directory,
       member,
+      hosted,
       coordinator,
       allocations: controlled.allocations,
       nativeStarts: controlled.nativeStarts,

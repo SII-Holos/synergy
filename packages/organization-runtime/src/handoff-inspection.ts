@@ -13,6 +13,7 @@ import { OrganizationLocalProjects } from "./local-project"
 import { RuntimeIdentity } from "./home"
 import { assertHandoffHome } from "./handoff-home"
 import { OrganizationRuntimeError } from "./error"
+import { OrganizationHandoffWorkspaceDrain as WorkspaceDrain } from "./handoff-workspace-drain"
 import type { MemberConnectionOptions } from "./connection"
 
 export function createHandoffInspection(input: {
@@ -100,10 +101,14 @@ export function createHandoffInspection(input: {
         assert()
         let kind: Handoff.SourceWorkspace["kind"] = "unsupported"
         let resource: Handoff.SourceWorkspace["resource"]
-        if (catalog.lifecycle === "active" && catalog.binding.state === "bound" && !catalog.activeMount) {
-          if (catalog.backend?.provider === "directory" && catalog.binding.path && catalog.binding.physicalID)
-            kind = "native"
-          if (catalog.backend?.provider === "organization" && catalog.binding.path === null && !catalog.content) {
+        if (catalog.lifecycle === "active" && catalog.binding.state === "bound") {
+          if (await WorkspaceDrain.inspectNative(source, catalog, assert)) kind = "native"
+          if (
+            catalog.backend?.provider === "organization" &&
+            !catalog.activeMount &&
+            catalog.binding.path === null &&
+            !catalog.content
+          ) {
             const locator = Cloud.FileLocator.parse(catalog.backend.spec)
             if (
               locator.orgID !== plan.orgID ||

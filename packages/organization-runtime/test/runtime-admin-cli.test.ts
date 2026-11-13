@@ -3,6 +3,7 @@ import fs from "node:fs/promises"
 import path from "node:path"
 import { createHash } from "node:crypto"
 import { createSynergyClient } from "@ericsanchezok/synergy-sdk"
+import { OrganizationRuntimeProtocol as Protocol } from "@ericsanchezok/synergy-organization-protocol"
 import { memberEnvironment } from "../src/environment"
 import { readRuntimeHome } from "../src/home"
 import { readRuntimeRegistration } from "../src/registration"
@@ -167,6 +168,16 @@ test("public serve reuses the enrolled supervised lifecycle and graceful shutdow
   const port = probe.port!
   await probe.stop(true)
   const token = "c".repeat(64)
+  const connected = Promise.withResolvers<Protocol.ConnectionProof["handshake"]>()
+  let handshake: Protocol.ConnectionProof["handshake"] | undefined
+  f.interceptFrames((_socket, raw) => {
+    const frame = Protocol.ClientFrame.parse(JSON.parse(String(raw)))
+    if (frame.type === "handshake" && frame.proof.handshake.runtimeID === ticket.runtime.runtimeID)
+      handshake = frame.proof.handshake
+    if (frame.type === "heartbeat" && handshake && frame.connectionEpoch === handshake.connectionEpoch)
+      connected.resolve(handshake)
+    return false
+  })
   const child = Bun.spawn([process.execPath, "--no-env-file", "--no-bunfig", entry, "serve", "--kind", "hosted"], {
     cwd: installed ?? home.home,
     env: { ...memberEnvironment(home, process.env), NODE_PATH: undefined, NODE_OPTIONS: undefined },
@@ -199,6 +210,17 @@ test("public serve reuses the enrolled supervised lifecycle and graceful shutdow
     }
     if (child.exitCode !== null) throw new Error((await output).join("\n"))
     expect(running).toBe(true)
+    const bridgeDeadline = setTimeout(
+      () => connected.reject(new Error("Public hosted CLI bridge did not connect")),
+      3000,
+    )
+    try {
+      const accepted = await connected.promise
+      expect(accepted.capabilities).toContain("handoffs")
+      expect(accepted.schemas.handoffs).toBe(8)
+    } finally {
+      clearTimeout(bridgeDeadline)
+    }
     child.kill("SIGTERM")
     expect(await child.exited).toBe(0)
     const printed = (await output).join("\n")

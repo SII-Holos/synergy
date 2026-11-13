@@ -61,6 +61,8 @@ Run everything on one computer for a personal workbench, or host the Agent Runti
 
 For work across personal computers, connect to their Synergy services and use approved device pairing for remote access and manual transfer of paused tasks. Each destination retains its own Runtime and execution authority. This is separate from a single Runtime using remote execution resources; pairing does not continuously replicate Workspaces or provide automatic failover. See [Host connections](docs/architecture/host-connections.md) and [paused-task transfer](docs/architecture/session-transfer.md).
 
+Enrolled organization Runtimes can explicitly hand off a paused conversation with separate Workspace and Environment choices. A return can keep shared cloud files and execution or download a new private native copy with an explicit execution choice. Activation stays paused; continuing work requires a separate authorized action. See [organization handoff](docs/architecture/organization.md#handoff-coordination-facts).
+
 The separation also provides an integration point for additional Environment providers. A cloud Runtime driving arbitrary native laptops through one built-in coordinator is not a packaged deployment mode. Native Browser and Computer Use remain Desktop-local.
 
 ## Work that continues

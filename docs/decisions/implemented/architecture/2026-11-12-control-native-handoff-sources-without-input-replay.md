@@ -16,7 +16,7 @@ Cancellation stops any current preparation wait, then invokes complete native co
 
 Inspection reads native outcomes and retained causes. A frozen result requires the current captured physical lease; a cold or incomplete source reports the missing proof and requires explicit preparation. Inspecting an unknown result does not reacquire ownership or repeat input. Permanent cancellation and surrender remain independently reconcilable. Closing aborts controller waits, drains active preparation and releases native claims without changing epoch holds.
 
-This primitive does not enable the Main Runtime capability. Working locations, Environment uses, knowledge selection and execution-grant closure require their complete owners. Those integrations cannot be replaced by a null move receipt or a fabricated cancelled Run. See [native destinations](2026-11-12-prepare-and-adopt-native-handoff-destinations.md).
+This primitive supplies source control only. The [integrated Environment and Workspace handoff](2026-11-14-bind-logical-environment-mapping-to-native-handoff.md) composes the public controller with the complete Working, Environment, knowledge and execution-grant owners. Those integrations cannot be replaced by a null move receipt or a fabricated cancelled Run. See [native destinations](2026-11-12-prepare-and-adopt-native-handoff-destinations.md).
 
 ## Alternatives considered
 

@@ -38,6 +38,16 @@ test("hosted-runtime privately enrolls a machine and reuses managed CLI shutdown
   const entry = installed
     ? path.join(installed, "node_modules/.bin/synergy-org-runtime")
     : path.resolve(import.meta.dir, "../src/entry.ts")
+  const connected = Promise.withResolvers<Protocol.ConnectionProof["handshake"]>()
+  let handshake: Protocol.ConnectionProof["handshake"] | undefined
+  service.interceptFrames((_socket, raw) => {
+    const frame = Protocol.ClientFrame.parse(JSON.parse(String(raw)))
+    if (frame.type === "handshake" && frame.proof.handshake.runtimeID === ticket.runtime.runtimeID)
+      handshake = frame.proof.handshake
+    if (frame.type === "heartbeat" && handshake && frame.connectionEpoch === handshake.connectionEpoch)
+      connected.resolve(handshake)
+    return false
+  })
   const child = Bun.spawn([process.execPath, "--no-env-file", "--no-bunfig", entry, "hosted-runtime"], {
     env: memberEnvironment(hosted, process.env),
     cwd: hosted.home,
@@ -62,6 +72,14 @@ test("hosted-runtime privately enrolls a machine and reuses managed CLI shutdown
     }
     if (child.exitCode !== null) throw new Error((await output).join("\n"))
     expect(ready).toBe(true)
+    const bridgeDeadline = setTimeout(() => connected.reject(new Error("Hosted CLI bridge did not connect")), 3000)
+    try {
+      const accepted = await connected.promise
+      expect(accepted.capabilities).toContain("handoffs")
+      expect(accepted.schemas.handoffs).toBe(8)
+    } finally {
+      clearTimeout(bridgeDeadline)
+    }
     child.kill("SIGTERM")
     expect(await child.exited).toBe(0)
     const printed = (await output).join("\n")
