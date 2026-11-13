@@ -8,6 +8,7 @@ import {
   OrganizationCloudProtocol as Cloud,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { Server } from "@ericsanchezok/synergy-server/server/server"
+import { RuntimeShuttingDownError } from "@ericsanchezok/synergy-server/server/error"
 import { z } from "zod"
 import { OrganizationLocalProjects } from "./local-project"
 import { OrganizationRuntimeError } from "./error"
@@ -44,7 +45,9 @@ export const localProjectRoutes = () =>
           },
           503: {
             description: "Binding unavailable",
-            content: { "application/json": { schema: resolver(OrganizationProtocol.Error) } },
+            content: {
+              "application/json": { schema: resolver(z.union([OrganizationProtocol.Error, RuntimeShuttingDownError])) },
+            },
           },
         },
       }),
@@ -71,7 +74,9 @@ export const localProjectRoutes = () =>
           },
           503: {
             description: "Directory unavailable",
-            content: { "application/json": { schema: resolver(OrganizationProtocol.Error) } },
+            content: {
+              "application/json": { schema: resolver(z.union([OrganizationProtocol.Error, RuntimeShuttingDownError])) },
+            },
           },
         },
       }),
@@ -151,7 +156,11 @@ export function registerHttp() {
                 },
                 503: {
                   description: "Native content unavailable",
-                  content: { "application/json": { schema: resolver(OrganizationProtocol.Error) } },
+                  content: {
+                    "application/json": {
+                      schema: resolver(z.union([OrganizationProtocol.Error, RuntimeShuttingDownError])),
+                    },
+                  },
                 },
               },
             }),

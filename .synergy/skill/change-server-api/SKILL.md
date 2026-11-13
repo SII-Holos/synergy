@@ -30,6 +30,9 @@ For authoritative machine observations, trace every writer into the ledger, incl
 
 1. Validate path, query, form, and body input with precise Zod schemas.
 2. Add `describeRoute` metadata, stable `operationId`, response schemas, and structured error responses. Add `.meta({ ref: "TypeName" })` for reusable API-visible schemas.
+
+   For routes mounted in Server, a custom HTTP 503 schema must union its domain errors with the public Server `RuntimeShuttingDownError`; the assembler only adds shutdown metadata when 503 is absent. Verify the mounted operation retains both variants, including when an optional owner supplies its route.
+
    For credential-bearing routes, replace validator response hooks that echo submitted data with the owning structured error. Exercise malformed bodies containing secret-like values and confirm neither responses nor logs reproduce them. Declare required request bodies in mounted OpenAPI metadata and test the generated caller; runtime validation alone does not make the SDK argument required.
 3. Keep business logic in the owning domain rather than the route handler. For binary media, document the supported MIME types, preserve structured error reasons and propagate the request abort signal. Test the generated SDK blob path as well as the mounted route; request previews must use saved owner configuration without creating task sessions.
 

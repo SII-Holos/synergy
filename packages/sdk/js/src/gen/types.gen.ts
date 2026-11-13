@@ -18210,7 +18210,7 @@ export type OrgLocalProjectGetErrors = {
   /**
    * Binding unavailable
    */
-  503: OrgError
+  503: OrgError | RuntimeShuttingDownError
 }
 
 export type OrgLocalProjectGetError = OrgLocalProjectGetErrors[keyof OrgLocalProjectGetErrors]
@@ -18245,7 +18245,7 @@ export type OrgLocalProjectBindErrors = {
   /**
    * Directory unavailable
    */
-  503: OrgError
+  503: OrgError | RuntimeShuttingDownError
 }
 
 export type OrgLocalProjectBindError = OrgLocalProjectBindErrors[keyof OrgLocalProjectBindErrors]
@@ -18311,7 +18311,7 @@ export type OrgLocalSessionReadErrors = {
   /**
    * Native content unavailable
    */
-  503: OrgError
+  503: OrgError | RuntimeShuttingDownError
 }
 
 export type OrgLocalSessionReadError = OrgLocalSessionReadErrors[keyof OrgLocalSessionReadErrors]

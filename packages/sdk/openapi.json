@@ -3491,7 +3491,14 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OrgError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/OrgError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                    }
+                  ]
                 }
               }
             }
@@ -3556,7 +3563,14 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OrgError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/OrgError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                    }
+                  ]
                 }
               }
             }
@@ -3709,7 +3723,14 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OrgError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/OrgError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                    }
+                  ]
                 }
               }
             }

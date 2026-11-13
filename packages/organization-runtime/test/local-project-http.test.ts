@@ -34,6 +34,15 @@ test("mounted local project routes retain OpenAPI operations and loopback authen
   const spec = await runtime.run(() => Server.openapi())
   expect(spec.paths["/organization-local-project/{projectID}"]?.get?.operationId).toBe("orgLocalProject.get")
   expect(spec.paths["/organization-local-project/{projectID}"]?.post?.operationId).toBe("orgLocalProject.bind")
+  for (const [pathname, method] of [
+    ["/organization-local-project/{projectID}", "get"],
+    ["/organization-local-project/{projectID}", "post"],
+    ["/organization/session/read", "post"],
+  ] as const) {
+    const unavailable = JSON.stringify(spec.paths[pathname]?.[method]?.responses?.["503"])
+    expect(unavailable, `${method.toUpperCase()} ${pathname}`).toContain("OrgError")
+    expect(unavailable, `${method.toUpperCase()} ${pathname}`).toContain("RuntimeShuttingDownError")
+  }
   expect((await fetch(`http://127.0.0.1:${port}/organization-local-project/project-native`)).status).toBe(401)
   const client = createSynergyClient({
     baseUrl: `http://127.0.0.1:${port}`,
