@@ -592,6 +592,7 @@ export namespace OrganizationHandoffTarget {
         const { plan, manifestHash, frozen } = await authorize(input, "preview-target")
         if (
           plan.workspacePlan?.mapping.kind !== "organization-native" ||
+          plan.workspacePlan.mapping.target.kind !== "existing" ||
           closing.has(plan.handoffID) ||
           (await receipt(plan, "retired")) ||
           (await receipt(plan, "preview-released")) ||
@@ -680,7 +681,12 @@ export namespace OrganizationHandoffTarget {
                 binding: binding(plan),
                 expectedReceiptHash: frozen.fileClosureHash!,
                 signal: input.signal,
-                nativeMode: plan.workspacePlan?.mapping.kind === "organization-native" ? "existing" : undefined,
+                nativeMode:
+                  plan.workspacePlan?.mapping.kind === "organization-native"
+                    ? plan.workspacePlan.mapping.target.kind === "existing"
+                      ? "existing"
+                      : "download"
+                    : undefined,
               }),
             )
           const prepared = await contexts(input, plan, manifestHash, false)
@@ -688,7 +694,11 @@ export namespace OrganizationHandoffTarget {
             plan.workspacePlan?.mapping.kind === "organization-native"
               ? await WorkspaceTarget.status(plan, input.resources, input.signal)
               : undefined
-          if (move && (!("nativeReceipt" in move) || !move.nativeReceipt))
+          if (
+            move &&
+            !("nativeReceipt" in move && move.nativeReceipt) &&
+            !("downloadReceipt" in move && move.downloadReceipt)
+          )
             fail("Native target preparation has no complete original Move receipt")
           const fact = Handoff.Proof.parse({
             ...factBinding(plan),
@@ -701,12 +711,14 @@ export namespace OrganizationHandoffTarget {
             workspaceMoveReceiptHash: frozen.workspaceMoveReceiptHash,
             ...(frozen.workspaceSourceHash === undefined ? {} : { workspaceSourceHash: frozen.workspaceSourceHash }),
             paused: true,
-            ...(move && "nativeReceipt" in move && move.nativeReceipt
-              ? {
-                  workspaceNativeReceiptHash: WorkspaceMove.nativeReceiptHash(move.nativeReceipt),
-                  workspaceDifferenceHash: move.nativeReceipt.acceptedDiffHash,
-                }
-              : {}),
+            ...(move && "downloadReceipt" in move && move.downloadReceipt
+              ? { workspaceNativeReceiptHash: WorkspaceMove.downloadReceiptHash(move.downloadReceipt) }
+              : move && "nativeReceipt" in move && move.nativeReceipt
+                ? {
+                    workspaceNativeReceiptHash: WorkspaceMove.nativeReceiptHash(move.nativeReceipt),
+                    workspaceDifferenceHash: move.nativeReceipt.acceptedDiffHash,
+                  }
+                : {}),
           })
           assertOwner(input.signal)
           return Storage.transaction(

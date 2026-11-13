@@ -51,6 +51,8 @@ Windows shell regressions must explicitly select `cmd` when testing its quoting 
 
 Await native-I/O rejection before applying a synchronous error matcher in Windows tests. Capture the rejection through `await promise.then(() => undefined, (error: unknown) => error)`, then assert its type and content; an unexpected resolution must still fail. Bun's asynchronous `toThrow` matcher can block database progress on Windows; see [Bun issue 19130](https://github.com/oven-sh/bun/issues/19130). Preserve the real operation and its deadlines when changing the assertion.
 
+Keep receipt objects unchanged when subsequent assertions compute their canonical hash or reuse them as protocol input. Bun 1.4.3's `toMatchObject` can replace matched properties with asymmetric matcher objects. Assert primitive fields directly or match a detached projection, and verify the original identity still hashes. Treat demonstrated matcher mutation as a fixture failure; retain the full production hash-chain checks.
+
 When a handler test exercises a nonzero `process.exitCode`, snapshot it as `process.exitCode ?? 0` and restore that numeric value in `finally`. Bun 1.3.14 ignores assignment of `undefined`, so verify the test process exit status even when all assertions pass.
 
 For admission wrapped in execution-capacity waits, inject cancellation and a thrown resume error after the Host returns a lease. Verify cleanup for independently retained file pins as well as task-owned claims; a successful acquire does not imply the surrounding wait returns successfully.

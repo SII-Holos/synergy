@@ -212,13 +212,16 @@ export namespace OrganizationHandoffProtocol {
         generation: OrganizationProtocol.Epoch,
         path: WorkspacePath,
       }),
-      target: z.strictObject({
-        kind: z.literal("existing"),
-        workspaceID: Identity.ID,
-        generation: OrganizationProtocol.Epoch,
-        expectedRevision: z.number().int().positive().safe(),
-        projectRevision: Hash,
-      }),
+      target: z.discriminatedUnion("kind", [
+        z.strictObject({
+          kind: z.literal("existing"),
+          workspaceID: Identity.ID,
+          generation: OrganizationProtocol.Epoch,
+          expectedRevision: z.number().int().positive().safe(),
+          projectRevision: Hash,
+        }),
+        z.strictObject({ kind: z.literal("private-copy") }),
+      ]),
     }),
     z.strictObject({
       kind: z.literal("organization-object"),
@@ -426,10 +429,22 @@ export namespace OrganizationHandoffProtocol {
       source: SourceWorkspace.nullable(),
       native: NativeTarget.nullable(),
       choices: z.array(
-        z.strictObject({
-          kind: z.enum(["native", "organization-object", "organization-live", "organization-native"]),
-          requiresDifference: z.boolean(),
-        }),
+        z.union([
+          z.strictObject({
+            kind: z.enum(["native", "organization-object", "organization-live"]),
+            requiresDifference: z.literal(false),
+          }),
+          z.strictObject({
+            kind: z.literal("organization-native"),
+            targetKind: z.literal("existing"),
+            requiresDifference: z.literal(true),
+          }),
+          z.strictObject({
+            kind: z.literal("organization-native"),
+            targetKind: z.literal("private-copy"),
+            requiresDifference: z.literal(false),
+          }),
+        ]),
       ),
     })
     .meta({ ref: "OrgHandoffOptions" })
@@ -532,6 +547,13 @@ export namespace OrganizationHandoffProtocol {
         (value) =>
           value.mapping.kind === "native" || (value.selectionActor?.kind === "account" && !!value.targetScopeID),
         "Object mapping requires its actual selection actor and target namespace",
+      )
+      .refine(
+        (value) =>
+          value.mapping.kind !== "organization-native" ||
+          value.mapping.target.kind !== "private-copy" ||
+          (!value.difference && !value.differenceConsent),
+        "A private download cannot borrow existing-directory difference consent",
       )
       .optional(),
   })
@@ -764,6 +786,7 @@ export namespace OrganizationHandoffProtocol {
       if (
         proof.purpose === "target-difference" &&
         (plan.workspacePlan?.mapping.kind !== "organization-native" ||
+          plan.workspacePlan.mapping.target.kind !== "existing" ||
           proof.difference.mappingPlanRevision !== plan.mappingPlanRevision ||
           plan.frozen?.proof.purpose !== "source-frozen" ||
           proof.difference.sourceSnapshotHash !== plan.frozen.proof.workspaceSourceHash)
@@ -780,8 +803,10 @@ export namespace OrganizationHandoffProtocol {
         if (plan.workspacePlan?.mapping.kind === "organization-native") {
           if (
             !proof.workspaceNativeReceiptHash ||
-            !plan.workspacePlan.differenceConsent ||
-            proof.workspaceDifferenceHash !== plan.workspacePlan.differenceConsent.diffHash
+            (plan.workspacePlan.mapping.target.kind === "existing"
+              ? !plan.workspacePlan.differenceConsent ||
+                proof.workspaceDifferenceHash !== plan.workspacePlan.differenceConsent.diffHash
+              : proof.workspaceDifferenceHash !== undefined)
           )
             return false
         } else if (proof.workspaceNativeReceiptHash || proof.workspaceDifferenceHash) return false

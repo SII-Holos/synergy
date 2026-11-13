@@ -13845,6 +13845,10 @@ msgid "organization.handoff.native.acceptDirectory"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "organization.handoff.native.acceptDownload"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "organization.handoff.native.accepted"
 msgstr ""
 
@@ -13898,6 +13902,14 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "organization.handoff.native.directoryKind"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.download"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.downloadHint"
 msgstr ""
 
 #. js-lingui-explicit-id

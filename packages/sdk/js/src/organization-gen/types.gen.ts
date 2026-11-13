@@ -2721,10 +2721,22 @@ export type OrgHandoffOptions = {
     projectRevision: string
     label: string
   } | null
-  choices: Array<{
-    kind: "native" | "organization-object" | "organization-live" | "organization-native"
-    requiresDifference: boolean
-  }>
+  choices: Array<
+    | {
+        kind: "native" | "organization-object" | "organization-live"
+        requiresDifference: false
+      }
+    | {
+        kind: "organization-native"
+        targetKind: "existing"
+        requiresDifference: true
+      }
+    | {
+        kind: "organization-native"
+        targetKind: "private-copy"
+        requiresDifference: false
+      }
+  >
 }
 
 export type OrgHandoffView = {
@@ -2792,13 +2804,17 @@ export type OrgHandoffView = {
           generation: number
           path: string
         }
-        target: {
-          kind: "existing"
-          workspaceID: string
-          generation: number
-          expectedRevision: number
-          projectRevision: string
-        }
+        target:
+          | {
+              kind: "existing"
+              workspaceID: string
+              generation: number
+              expectedRevision: number
+              projectRevision: string
+            }
+          | {
+              kind: "private-copy"
+            }
       }
     | {
         kind: "organization-object"
@@ -2871,13 +2887,17 @@ export type OrgHandoffPrepare =
               generation: number
               path: string
             }
-            target: {
-              kind: "existing"
-              workspaceID: string
-              generation: number
-              expectedRevision: number
-              projectRevision: string
-            }
+            target:
+              | {
+                  kind: "existing"
+                  workspaceID: string
+                  generation: number
+                  expectedRevision: number
+                  projectRevision: string
+                }
+              | {
+                  kind: "private-copy"
+                }
           }
         | {
             kind: "organization-object"
@@ -3360,13 +3380,17 @@ export type OrgHandoffRecoveryPermit = {
             generation: number
             path: string
           }
-          target: {
-            kind: "existing"
-            workspaceID: string
-            generation: number
-            expectedRevision: number
-            projectRevision: string
-          }
+          target:
+            | {
+                kind: "existing"
+                workspaceID: string
+                generation: number
+                expectedRevision: number
+                projectRevision: string
+              }
+            | {
+                kind: "private-copy"
+              }
         }
       | {
           kind: "organization-object"

@@ -23,7 +23,7 @@ const options = Handoff.Options.parse({
     projectRevision: "a".repeat(64),
     label: "/chosen/project",
   },
-  choices: [{ kind: "organization-native", requiresDifference: true }],
+  choices: [{ kind: "organization-native", targetKind: "existing", requiresDifference: true }],
 })
 const summary = Handoff.Difference.parse({
   sourceSnapshotHash: "b".repeat(64),
@@ -59,6 +59,40 @@ test("existing-native selection copies actual inspected identities and never inv
   )
   expect(organizationNativeHandoffMapping({ ...options, native: null }, "move")).toBeUndefined()
   expect(organizationNativeHandoffMapping({ ...options, choices: [] }, "move")).toBeUndefined()
+})
+
+test("a private native download uses its exact cloud source without inventing an existing directory", () => {
+  const download = Handoff.Options.parse({
+    ...options,
+    native: null,
+    choices: [{ kind: "organization-native", targetKind: "private-copy", requiresDifference: false }],
+  })
+  const resource = download.source?.resource
+  if (!resource) throw new Error("The download fixture requires its real cloud resource")
+  expect(organizationNativeHandoffMapping(download, "download", "private-copy")).toEqual({
+    kind: "organization-native",
+    moveID: "download",
+    source: { workspaceID: "cloud", generation: 4 },
+    resource,
+    target: { kind: "private-copy" },
+  })
+  expect(organizationNativeHandoffMapping(download, "download", "existing")).toBeUndefined()
+  expect(organizationNativeHandoffMapping(options, "download", "private-copy")).toBeUndefined()
+  expect(organizationNativeHandoffMapping({ ...download, choices: [] }, "download", "private-copy")).toBeUndefined()
+  expect(organizationNativeHandoffMapping({ ...download, source: null }, "download", "private-copy")).toBeUndefined()
+  expect(
+    organizationNativeHandoffMapping(
+      { ...download, choices: [...download.choices, ...options.choices] },
+      "download",
+      "private-copy",
+    ),
+  ).toEqual({
+    kind: "organization-native",
+    moveID: "download",
+    source: { workspaceID: "cloud", generation: 4 },
+    resource,
+    target: { kind: "private-copy" },
+  })
 })
 
 test("native consent retains the complete canonical version with an actual first page and rejects changed identities", () => {

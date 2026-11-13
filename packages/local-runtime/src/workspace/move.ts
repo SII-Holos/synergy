@@ -8,6 +8,9 @@ import { WorkspaceContent } from "@ericsanchezok/synergy-harness/workspace/conte
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { NativeWorkspacePortableTree } from "./portable-tree"
+import { NativeWorkspacePortableTarget } from "./portable-target"
+import { JsonValue } from "@ericsanchezok/synergy-util/json-value"
+import { WorkspaceTree } from "@ericsanchezok/synergy-harness/workspace/tree"
 import type { WorkspaceCoordinator } from "./coordinator"
 
 const Reference = z.strictObject({
@@ -53,6 +56,45 @@ function nativeOwner(signal?: AbortSignal) {
 
 export function registerNativeWorkspaceMove(coordinator: WorkspaceCoordinator) {
   WorkspaceMove.registerSourceHost({
+    async prepareDownload(request, files, store, consume, signal) {
+      if (!signal) throw new Error("Native download requires its original cancellation signal")
+      const selection = await NativeWorkspacePortableTarget.selection(
+        {
+          handoffID: request.handoffID,
+          scopeID: request.source.scopeID,
+          sourceWorkspaceID: request.source.workspaceID,
+        },
+        signal,
+      )
+      if (
+        selection.workspaceID !== request.target.workspaceID ||
+        selection.scopeID !== request.target.scopeID ||
+        selection.generation !== request.target.generation
+      )
+        throw new Error("Native download has another original private destination")
+      const receipt = await NativeWorkspacePortableTarget.prepare({
+        handoffID: request.handoffID,
+        scopeID: request.source.scopeID,
+        workspaceID: request.source.workspaceID,
+        files,
+        store,
+        signal,
+      })
+      return NativeWorkspacePortableTarget.withPublication([receipt], signal, () =>
+        consume(downloadPreparation(request, receipt), () => {
+          NativeWorkspacePortableTarget.assertPublication(receipt)
+        }),
+      )
+    },
+    async withDownloadPublication(request, reference, consume, signal) {
+      if (!signal) throw new Error("Native download requires its original cancellation signal")
+      const receipt = NativeWorkspacePortableTarget.Receipt.parse(reference)
+      return NativeWorkspacePortableTarget.withPublication([receipt], signal, () =>
+        consume(downloadPreparation(request, receipt), () => {
+          NativeWorkspacePortableTarget.assertPublication(receipt)
+        }),
+      )
+    },
     async preview(source, store, consume, signal) {
       source = { ...source }
       store = { get: store.get.bind(store), put: store.put.bind(store) }
@@ -216,6 +258,29 @@ export function registerNativeWorkspaceMove(coordinator: WorkspaceCoordinator) {
     },
     release: nativeWorkspaceRelease(coordinator),
   })
+}
+
+function downloadPreparation(request: WorkspaceMove.DownloadRequest, receipt: NativeWorkspacePortableTarget.Receipt) {
+  if (
+    receipt.handoffID !== request.handoffID ||
+    receipt.scopeID !== request.source.scopeID ||
+    receipt.sourceWorkspaceID !== request.source.workspaceID ||
+    receipt.workspaceID !== request.target.workspaceID ||
+    receipt.scopeID !== request.target.scopeID ||
+    request.target.generation !== 1
+  )
+    throw new Error("Native download receipt has another original request")
+  return {
+    target: {
+      workspaceID: receipt.workspaceID,
+      scopeID: receipt.scopeID,
+      generation: 1,
+      hostID: receipt.hostID,
+      physicalID: receipt.physicalID,
+      manifest: WorkspaceTree.hash(new TextEncoder().encode(JSON.stringify(receipt.files))),
+    },
+    reference: JsonValue.parse(receipt),
+  }
 }
 
 function nativeWorkspaceRelease(coordinator: WorkspaceCoordinator): WorkspaceMove.SourceHost["release"] {

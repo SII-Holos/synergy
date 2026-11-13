@@ -131,6 +131,7 @@ async function open(
     cancelSourceResponses?: Array<"blocked" | "unknown">
     holdOptions?: Promise<void>
     native?: boolean
+    download?: boolean
     noNativeDirectory?: boolean
     dropPreview?: boolean
     holdDifferencePage?: Promise<void>
@@ -328,7 +329,10 @@ async function open(
             kind: input.cloud || input.native ? "organization-live" : input.object ? "organization-object" : "native",
             requiresDifference: false,
           },
-          { kind: "organization-native", requiresDifference: true },
+          ...(input.download
+            ? [{ kind: "organization-native", targetKind: "private-copy", requiresDifference: false }]
+            : []),
+          { kind: "organization-native", targetKind: "existing", requiresDifference: true },
         ],
       })
     }
@@ -653,7 +657,11 @@ async function open(
         }
       }
       if (operation.operation === "prepare-target") {
-        if (input.native && !view.workspaceDifferenceAccepted)
+        if (
+          view.workspaceMapping.kind === "organization-native" &&
+          view.workspaceMapping.target.kind === "existing" &&
+          !view.workspaceDifferenceAccepted
+        )
           throw new Error("Native preparation ran before exact second consent")
         stage = "target-prepared"
         view = { ...view, phase: "prepared", missingRequirements: [] }
@@ -796,6 +804,7 @@ async function open(
         | "begin"
         | "commit"
         | "activate"
+        | "completed"
         | "destination"
         | "workspace",
     ) {
@@ -1901,6 +1910,79 @@ test("directory verification never confirms an unknown original native operation
     await f.close()
   }
 }, 30_000)
+
+test("private downloads keep their own directory choice and prepare without adopting existing versions", async () => {
+  for (const colorScheme of ["light", "dark"] as const) {
+    const noNativeDirectory = colorScheme === "dark"
+    const f = await open({
+      native: true,
+      download: true,
+      noNativeDirectory,
+      colorScheme,
+      locale: colorScheme === "dark" ? "zh-CN" : "en-US",
+      viewport: { width: 375, height: 740 },
+    })
+    try {
+      await chooseNativeDestination(f)
+      await f.dialog.locator(".organization-handoff-field").nth(1).getByRole("button").click()
+      const listbox = f.page.getByRole("listbox", { name: await f.copy("workspace"), exact: true })
+      await listbox.waitFor()
+      const download = listbox.getByRole("option", { name: await f.nativeCopy("download"), exact: true })
+      await download.waitFor()
+      expect(await listbox.getByRole("option", { name: await f.nativeCopy("existing"), exact: true }).count()).toBe(
+        noNativeDirectory ? 0 : 1,
+      )
+      await f.page.waitForFunction(() =>
+        [...document.querySelectorAll('[role="listbox"]')].some((element) => element.contains(document.activeElement)),
+      )
+      await download.focus()
+      expect(await download.evaluate((element) => element === document.activeElement)).toBe(true)
+      await download.press("Enter")
+      await listbox.waitFor({ state: "hidden" })
+      await f.dialog.getByText(await f.nativeCopy("downloadHint"), { exact: true }).waitFor()
+      expect(await f.dialog.getByText(await f.nativeCopy("unavailable"), { exact: true }).count()).toBe(0)
+      expect(f.requests.filter((request) => request.method === "POST")).toHaveLength(0)
+      await capture(f.page, `handoff-private-download-${colorScheme}.png`)
+      await f.dialog.getByRole("button", { name: await f.copy("begin"), exact: true }).click()
+      const request = f.requests.find((request) => request.path.endsWith("/handoffs") && request.method === "POST")
+      expect(request).toBeDefined()
+      const mapping = Handoff.CurrentPrepare.parse(request!.body).workspaceMapping
+      expect(mapping).toMatchObject({
+        kind: "organization-native",
+        source: { workspaceID: "source-workspace", generation: 3 },
+        target: { kind: "private-copy" },
+      })
+      expect(Object.keys(mapping.kind === "organization-native" ? mapping.target : {})).toEqual(["kind"])
+      await f.dialog.getByRole("button", { name: await f.nativeCopy("acceptDownload"), exact: true }).click()
+      await f.dialog.getByRole("button", { name: await f.copy("prepareSource"), exact: true }).click()
+      await f.dialog.getByRole("button", { name: await f.copy("prepareTarget"), exact: true }).click()
+      const release = await f.copy("surrender")
+      await f.dialog.getByRole("button", { name: release, exact: true }).click()
+      await f.page
+        .getByRole("dialog", { name: release, exact: true })
+        .getByRole("button", { name: release, exact: true })
+        .click()
+      await f.dialog.getByRole("button", { name: await f.copy("commit"), exact: true }).click()
+      await f.dialog.getByRole("button", { name: await f.copy("activate"), exact: true }).click()
+      await f.dialog.getByRole("heading", { name: await f.copy("completed"), exact: true }).waitFor()
+      expect(await f.dialog.getByText("Existing destination project folder", { exact: true }).count()).toBe(0)
+      expect(await f.dialog.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true)
+      expect(
+        f.requests.filter((request) => request.path.includes("native-target") || request.path.endsWith("/difference")),
+      ).toHaveLength(0)
+      expect(
+        f.requests
+          .filter((request) => request.path.endsWith("/drive"))
+          .map((request) => Handoff.Drive.parse(request.body).operation),
+      ).not.toContain("preview-target")
+      expect(f.requests.some((request) => /commands|controls/.test(request.path))).toBe(false)
+      expect(f.changed).toBe(1)
+      expect(f.errors).toEqual([])
+    } finally {
+      await f.close()
+    }
+  }
+}, 45_000)
 
 test("existing native directory adoption reviews real paged hashes and requires a distinct destination-version consent", async () => {
   const f = await open({ native: true })

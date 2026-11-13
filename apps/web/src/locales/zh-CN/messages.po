@@ -13845,6 +13845,10 @@ msgid "organization.handoff.native.acceptDirectory"
 msgstr "接受此目录选择"
 
 #. js-lingui-explicit-id
+msgid "organization.handoff.native.acceptDownload"
+msgstr "接受此次下载"
+
+#. js-lingui-explicit-id
 msgid "organization.handoff.native.accepted"
 msgstr "已接受这些目标文件版本。"
 
@@ -13899,6 +13903,14 @@ msgstr "目标端的现有目录"
 #. js-lingui-explicit-id
 msgid "organization.handoff.native.directoryKind"
 msgstr "目录"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.download"
+msgstr "下载到新的本地目录"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.downloadHint"
+msgstr "将冻结的云端文件下载到目标电脑上的新私有目录。云端文件和已有本地目录都会保留。"
 
 #. js-lingui-explicit-id
 msgid "organization.handoff.native.empty"

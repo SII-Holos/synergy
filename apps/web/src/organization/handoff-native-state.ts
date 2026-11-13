@@ -1,14 +1,23 @@
 import { z } from "zod"
 import { OrganizationHandoffProtocol as Handoff } from "@ericsanchezok/synergy-organization-protocol"
 
-export function organizationNativeHandoffMapping(options: Handoff.Options, moveID: string) {
+export function organizationNativeHandoffMapping(
+  options: Handoff.Options,
+  moveID: string,
+  targetKind: "existing" | "private-copy" = "existing",
+) {
   const source = options.source
   const target = options.native
   if (
     !source?.resource ||
     source.kind !== "organization" ||
-    !target ||
-    !options.choices.some((choice) => choice.kind === "organization-native" && choice.requiresDifference)
+    (targetKind === "existing" && !target) ||
+    !options.choices.some(
+      (choice) =>
+        choice.kind === "organization-native" &&
+        choice.targetKind === targetKind &&
+        choice.requiresDifference === (targetKind === "existing"),
+    )
   )
     return
   return Handoff.WorkspaceMapping.parse({
@@ -16,13 +25,16 @@ export function organizationNativeHandoffMapping(options: Handoff.Options, moveI
     moveID,
     source: { workspaceID: source.reference.workspaceID, generation: source.reference.generation },
     resource: source.resource,
-    target: {
-      kind: "existing",
-      workspaceID: target.reference.workspaceID,
-      generation: target.reference.generation,
-      expectedRevision: target.reference.revision,
-      projectRevision: target.projectRevision,
-    },
+    target:
+      targetKind === "existing" && target
+        ? {
+            kind: "existing",
+            workspaceID: target.reference.workspaceID,
+            generation: target.reference.generation,
+            expectedRevision: target.reference.revision,
+            projectRevision: target.projectRevision,
+          }
+        : { kind: "private-copy" },
   })
 }
 

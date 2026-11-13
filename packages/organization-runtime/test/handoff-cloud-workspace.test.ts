@@ -13,9 +13,12 @@ import {
   OrganizationHandoffProtocol as Handoff,
   OrganizationHandoffRecovery as Recovery,
   OrganizationRuntimeProtocol as Runtime,
+  OrganizationCommandProtocol as Command,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
+import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
+import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { TransactionalStore } from "@ericsanchezok/synergy-harness/storage/transactional-store"
 import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
@@ -53,6 +56,7 @@ for (const scenario of [
   "grant-revoked",
   "recipient",
   "return-cloud",
+  "return-download",
   "return-adopt",
   "return-adopt-late-preview",
   "return-adopt-late-prepare",
@@ -66,6 +70,7 @@ for (const scenario of [
 ] as const)
   test(`consented native files complete one cross-Realm receipt (${scenario})`, async () => {
     const adopting = scenario.startsWith("return-adopt")
+    const downloading = scenario === "return-download"
     const cliCleanup = scenario === "return-adopt-runtime-revoked-cli-cleanup"
     const revokedRecovery =
       scenario === "return-adopt-runtime-revoked-cleanup" ||
@@ -436,6 +441,58 @@ for (const scenario of [
     )
     const original = await source.runtime.run(() => Session.get(sessionID))
     expect(original.workspaceID).toBe(native.workspaceID)
+    const history: Awaited<ReturnType<typeof Session.messages>> = []
+    async function appendHistory(member: typeof source, requestID: string, text: string) {
+      const accepted = Command.InputAccepted.parse(
+        (
+          await f.client.orgCommands.input(
+            {
+              sessionID,
+              orgCommandInputRequest: {
+                schemaVersion: 1,
+                orgID: f.identity.orgID,
+                projectID: project.projectID,
+                sessionID,
+                runtimeID: member.registration.runtimeID,
+                requestID,
+                input: { operation: "input", mode: "context", parts: [{ type: "text", text }] },
+              },
+            },
+            { headers: member.headers, throwOnError: true },
+          )
+        ).data,
+      )
+      await member.runtime.run(async () => {
+        const session = await Session.get(sessionID)
+        await ScopeContext.provide({
+          scope: session.scope,
+          workspace: session.workspace,
+          fn: async () => {
+            await Session.update(sessionID, (draft) => {
+              draft.modelOverride = { providerID: "test", modelID: "test" }
+            })
+            const message = await SessionInbox.materializeItem(
+              await SessionInbox.getStored(sessionID, accepted.effect.itemID),
+            )
+            expect(message?.info).toMatchObject({ id: accepted.effect.messageID, actor: accepted.permit.actor })
+            history.push(message!)
+          },
+        })
+      })
+    }
+    function expectHistory(messages: Awaited<ReturnType<typeof Session.messages>>) {
+      expect(messages.map(({ info }) => ({ id: info.id, sessionID: info.sessionID, role: info.role }))).toEqual(
+        history.map(({ info }) => ({ id: info.id, sessionID: info.sessionID, role: info.role })),
+      )
+      expect(messages.map(({ info }) => (info.role === "user" ? info.actor : undefined))).toEqual(
+        history.map(({ info }) => (info.role === "user" ? info.actor : undefined)),
+      )
+      expect(messages.map(({ parts }) => parts)).toEqual(history.map(({ parts }) => parts))
+    }
+    if (downloading) {
+      await appendHistory(source, "context-before-upload", "Original context before the first cloud move")
+      expectHistory(await source.runtime.run(() => Session.messages({ sessionID })))
+    }
     if (scenario === "complete") {
       const query = { sessionID, requestID: "generated-inspection", targetRuntimeID: target.registration.runtimeID }
       const generated = await f.client.orgHandoff.options(query, { headers: f.headers })
@@ -828,6 +885,11 @@ for (const scenario of [
     expect((await f.client.orgHandoff.get({ handoffID }, options)).data.phase).toBe("completed")
     expect(await Bun.file(path.join(directory, "private.bin")).bytes()).toEqual(bytes)
     expect(allocations).toBe(0)
+    if (downloading) {
+      expectHistory(await target.runtime.run(() => Session.messages({ sessionID })))
+      await appendHistory(target, "context-before-download", "Current cloud context before downloading a private copy")
+      expectHistory(await target.runtime.run(() => Session.messages({ sessionID })))
+    }
     if (scenario === "recipient") {
       const response = await f.client.orgHandoff.options(
         { sessionID, requestID: "shared-driver-inspection", targetRuntimeID: source.registration.runtimeID },
@@ -853,7 +915,7 @@ for (const scenario of [
         ).response.status,
       ).toBe(403)
     }
-    if (scenario === "return-cloud" || adopting) {
+    if (scenario === "return-cloud" || adopting || downloading) {
       const changedBytes = new Uint8Array([255, 0, 99, 100, 10, 128])
       const head = (await f.client.orgCloudWorkspaces.get({ workspaceID: cloud.workspaceID }, options)).data
       const version = "sha256:" + new Bun.CryptoHasher("sha256").update(bytes).digest("hex")
@@ -897,6 +959,22 @@ for (const scenario of [
           )
         ).data
       }
+      if (downloading)
+        changed = (
+          await f.client.orgCloudWorkspaces.write(
+            {
+              workspaceID: cloud.workspaceID,
+              orgCloudWorkspaceWrite: {
+                operationID: "cloud-current-download-addition",
+                expectedRevision: changed.revision,
+                path: "received/cloud-added.txt",
+                data: Buffer.from("current cloud file copied to a new private directory").toString("base64"),
+                expectedVersion: null,
+              },
+            },
+            options,
+          )
+        ).data
       let receiver = source,
         receiverNative = native,
         receiverAccountID = f.identity.accountID
@@ -970,6 +1048,12 @@ for (const scenario of [
       )
       expect(response.response.status, JSON.stringify(response.error)).toBe(200)
       const inspected = Handoff.Options.parse(response.data)
+      if (downloading)
+        expect(inspected.choices).toContainEqual({
+          kind: "organization-native",
+          targetKind: "private-copy",
+          requiresDifference: false,
+        })
       const nativeCatalog = await receiver.runtime.run(() =>
         WorkspaceCatalog.get(receiverNative.workspaceID, project.projectID),
       )
@@ -996,10 +1080,11 @@ for (const scenario of [
             await receiver.client.orgLocalProject.get({ projectID: project.projectID }, { throwOnError: true })
           ).data.revision,
         },
-        choices: [
+        choices: expect.arrayContaining([
           { kind: "organization-live", requiresDifference: false },
-          { kind: "organization-native", requiresDifference: true },
-        ],
+          { kind: "organization-native", targetKind: "existing", requiresDifference: true },
+          { kind: "organization-native", targetKind: "private-copy", requiresDifference: false },
+        ]),
       })
       expect(JSON.stringify(inspected)).not.toContain(directory)
       const nativeRequest = {
@@ -1010,7 +1095,7 @@ for (const scenario of [
         mappingPlanRevision: 1,
         workspaceMapping: {
           kind: "organization-native",
-          moveID: "return-existing-native",
+          moveID: downloading ? "return-private-native" : "return-existing-native",
           source: remoteSource,
           resource: {
             resourceID: resource.resourceID,
@@ -1018,13 +1103,15 @@ for (const scenario of [
             generation: cloud.generation,
             path: "received",
           },
-          target: {
-            kind: "existing",
-            workspaceID: receiverNative.workspaceID,
-            generation: receiverNative.generation,
-            expectedRevision: nativeCatalog.revision,
-            projectRevision: inspected.native?.projectRevision,
-          },
+          target: downloading
+            ? { kind: "private-copy" }
+            : {
+                kind: "existing",
+                workspaceID: receiverNative.workspaceID,
+                generation: receiverNative.generation,
+                expectedRevision: nativeCatalog.revision,
+                projectRevision: inspected.native?.projectRevision,
+              },
         },
       }
       const nativeAction = async (operation: "accept" | "drive", body: unknown, status = 200) => {
@@ -1042,34 +1129,36 @@ for (const scenario of [
         expect(response.response.status, JSON.stringify(result)).toBe(status)
         return result
       }
-      const returning = adopting
-        ? await f.client.orgHandoff.prepare(
-            { sessionID, orgHandoffPrepare: Handoff.Prepare.parse(nativeRequest) },
-            sourceOptions,
-          )
-        : await f.client.orgHandoff.prepare(
-            {
-              sessionID,
-              orgHandoffPrepare: {
-                handoffID: returningID,
-                targetRuntimeID: receiver.registration.runtimeID,
-                expectedBindingEpoch: 2,
-                expectedControlRevision: 3,
-                mappingPlanRevision: 1,
-                workspaceMapping: {
-                  kind: "organization-live",
-                  source: remoteSource,
-                  resource: {
-                    resourceID: resource.resourceID,
-                    workspaceID: cloud.workspaceID,
-                    generation: cloud.generation,
-                    path: "received",
+      if (downloading) expect(JSON.stringify(nativeRequest)).not.toContain(directory)
+      const returning =
+        adopting || downloading
+          ? await f.client.orgHandoff.prepare(
+              { sessionID, orgHandoffPrepare: Handoff.Prepare.parse(nativeRequest) },
+              sourceOptions,
+            )
+          : await f.client.orgHandoff.prepare(
+              {
+                sessionID,
+                orgHandoffPrepare: {
+                  handoffID: returningID,
+                  targetRuntimeID: receiver.registration.runtimeID,
+                  expectedBindingEpoch: 2,
+                  expectedControlRevision: 3,
+                  mappingPlanRevision: 1,
+                  workspaceMapping: {
+                    kind: "organization-live",
+                    source: remoteSource,
+                    resource: {
+                      resourceID: resource.resourceID,
+                      workspaceID: cloud.workspaceID,
+                      generation: cloud.generation,
+                      path: "received",
+                    },
                   },
                 },
               },
-            },
-            options,
-          )
+              options,
+            )
       await f.client.orgHandoff.accept(
         {
           handoffID: returningID,
@@ -1131,6 +1220,7 @@ for (const scenario of [
         )
       })
       expect(captured).toEqual(Buffer.from(changedBytes))
+      let downloadPreparedHash: string | undefined
       if (adopting) {
         expect(claims.mock.calls.length).toBeGreaterThan(0)
         const held: NativeBarrier = {
@@ -2086,6 +2176,20 @@ for (const scenario of [
           }
           return
         }
+      } else if (downloading) {
+        const prepared = (await back("prepare-target")).facts.find(
+          (fact) => fact.proof.purpose === "target-prepared",
+        )?.proof
+        expect(prepared).toMatchObject({
+          purpose: "target-prepared",
+          workspaceMoveReceiptHash:
+            returnedFrozen?.purpose === "source-frozen" ? returnedFrozen.workspaceMoveReceiptHash : undefined,
+        })
+        expect(prepared?.purpose === "target-prepared" ? prepared.workspaceNativeReceiptHash : undefined).toMatch(
+          /^[a-f0-9]{64}$/,
+        )
+        expect(prepared?.purpose === "target-prepared" ? prepared.workspaceDifferenceHash : undefined).toBeUndefined()
+        downloadPreparedHash = await Handoff.proofHash(prepared!)
       } else {
         let validations = 0
         f.interceptHTTP(async (request) => {
@@ -2117,7 +2221,9 @@ for (const scenario of [
         { handoffID: returningID, orgHandoffPermitRequest: { purpose: "handoff-activation" } },
         options,
       )
-      expect((await back("activate-target")).facts[0]?.proof.purpose).toBe("target-activated")
+      const activation = (await back("activate-target")).facts[0]?.proof
+      expect(activation?.purpose).toBe("target-activated")
+      if (downloading) expect(activation).toMatchObject({ preparedHash: downloadPreparedHash })
       await receiver.runtime.run(async () => {
         const restored = await Session.get(sessionID)
         expect(restored.organization).toMatchObject({
@@ -2126,6 +2232,47 @@ for (const scenario of [
         })
         expect(restored.paused).toBeDefined()
         const locator = await WorkspaceCatalog.get(restored.workspaceID!, project.projectID)
+        if (downloading) {
+          expectHistory(await Session.messages({ sessionID }))
+          const page = await Session.messagePage({ sessionID, limit: 100 })
+          expect(page.items.map((item) => item.info.id)).toEqual(history.map((message) => message.info.id))
+          expect(page.total).toBe(history.length)
+          expect(restored.workspaceID).not.toBe(receiverNative.workspaceID)
+          expect(locator.backend?.provider).toBe("directory")
+          expect(locator.binding.state).toBe("bound")
+          expect(locator.binding.path).not.toBe(physicalDirectory)
+          expect(locator.binding.path).toBeString()
+          expect(await Bun.file(path.join(locator.binding.path!, "private.bin")).bytes()).toEqual(changedBytes)
+          expect(await Bun.file(path.join(locator.binding.path!, "cloud-added.txt")).text()).toBe(
+            "current cloud file copied to a new private directory",
+          )
+          const retained = z
+            .object({ request: WorkspaceMove.DownloadRequest })
+            .parse(await Storage.read(["workspace_move", project.projectID, "return-private-native"]))
+          const move = await WorkspaceMove.inspect(retained.request)
+          if (move?.version !== 2) throw new Error("Missing original native download status")
+          expect(move).toMatchObject({
+            state: "activated",
+            nativeRequested: false,
+            downloadReceipt: { outcome: "downloaded-source-version", acceptedDiffHash: null },
+          })
+          const receipt = WorkspaceMove.DownloadReceipt.parse(move.downloadReceipt)
+          expect(move.nativePublication).toBe(WorkspaceMove.downloadReceiptHash(receipt))
+          const key = [
+            "organization_handoff_target",
+            receiver.registration.orgID,
+            receiver.registration.deploymentIncarnation,
+            returningID,
+            "prepared",
+          ]
+          const saved = readHandoffTargetRecord(key, await Storage.read(key))
+          expect(saved.fact.purpose === "target-prepared" ? saved.fact.workspaceNativeReceiptHash : undefined).toBe(
+            WorkspaceMove.downloadReceiptHash(receipt),
+          )
+          if (!downloadPreparedHash) throw new Error("Missing original native download preparation hash")
+          expect(await Handoff.proofHash(saved.fact)).toBe(downloadPreparedHash)
+          return
+        }
         if (adopting) {
           expect(restored.workspaceID).toBe(receiverNative.workspaceID)
           expect(locator).toEqual(nativeCatalog)

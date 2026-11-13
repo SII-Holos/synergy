@@ -41,4 +41,4 @@ Trusted transfers use `workspace-file/service`: imports accept stable operation 
 
 Explicit `environment: "native"` selects the native provider/default without personal profiles. Hosted compositions supply providers. Descriptor portability requires explicit composition; verify `test/session-transfer-environment*.test.ts`.
 
-Transfers: `session-transfer-workspaces`, `session-transfer-workspace-target`, `workspace/{native-adoption,cleanup,portable-target}`; trees: `workspace/{file-host,portable-tree,portable-git,portable-target}`; claims: `session-transfer-physical`. Paged checkpoints/imports preserve identity/policy. Verify source/target/physical/session-workspaces-transfer, file-host-paged, mount-paged, tree/Git.
+Transfers: `session-transfer-workspaces`, `session-transfer-workspace-target`, `workspace/{native-adoption,native-download,cleanup,portable-target}`; trees: `workspace/{file-host,portable-tree,portable-git,portable-target}`; claims: `session-transfer-physical`. Paged checkpoints/imports preserve identity/policy. Verify source/target/physical/session-workspaces-transfer/native-download, file-host-paged, mount-paged, tree/Git.

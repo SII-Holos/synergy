@@ -4,7 +4,7 @@ Own versioned service/Runtime/client DTOs; exclude execution, storage, HTTP and 
 
 Run `bun run typecheck` and `bun run test`; verify mounted OpenAPI and regenerate SDKs when a schema becomes API-visible.
 
-Handoff proofs/plans bind purpose, ownership, operations, watermarks and connections. Separate `SourceReceiptPermit` signatures. Distinguish file hashes from directory CAS receipts. Refresh authority; reject system-driven human controls. Verify handoff-inspection/tampering/completion. Ranges never authorize arbitrary content.
+Handoff proofs/plans bind purpose/ownership/operations/watermarks/connections and existing/private-copy targets; only existing requires differences. Separate `SourceReceiptPermit` signatures. Distinguish file hashes/directory CAS receipts. Refresh authority; reject system-driven human controls. Verify handoff-inspection/tampering/completion. Ranges never authorize arbitrary content.
 
 API token schemas separate one-time secrets from metadata and bind explicit project/operation/expiry scope. Trusted routes select purposes; token scope never replaces current authorization. Reuse the portable account actor schema from Util, including optional signed token attribution. Command permits bind the logical request, actor, deployment, target, epochs, sequences and finite signing window; signature validity alone does not establish current execution admission. Preserve existing proof bytes when sharing signing primitives, and verify compiled Node imports across package boundaries.
 

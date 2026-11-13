@@ -12813,16 +12813,37 @@
           "choices": {
             "type": "array",
             "items": {
-              "type": "object",
-              "properties": {
-                "kind": {
-                  "type": "string",
-                  "enum": ["native", "organization-object", "organization-live", "organization-native"]
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": { "type": "string", "enum": ["native", "organization-object", "organization-live"] },
+                    "requiresDifference": { "type": "boolean", "const": false }
+                  },
+                  "required": ["kind", "requiresDifference"],
+                  "additionalProperties": false
                 },
-                "requiresDifference": { "type": "boolean" }
-              },
-              "required": ["kind", "requiresDifference"],
-              "additionalProperties": false
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": { "type": "string", "const": "organization-native" },
+                    "targetKind": { "type": "string", "const": "existing" },
+                    "requiresDifference": { "type": "boolean", "const": true }
+                  },
+                  "required": ["kind", "targetKind", "requiresDifference"],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": { "type": "string", "const": "organization-native" },
+                    "targetKind": { "type": "string", "const": "private-copy" },
+                    "requiresDifference": { "type": "boolean", "const": false }
+                  },
+                  "required": ["kind", "targetKind", "requiresDifference"],
+                  "additionalProperties": false
+                }
+              ]
             }
           }
         },
@@ -12985,21 +13006,31 @@
                     "additionalProperties": false
                   },
                   "target": {
-                    "type": "object",
-                    "properties": {
-                      "kind": { "type": "string", "const": "existing" },
-                      "workspaceID": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 128,
-                        "pattern": "^[a-zA-Z0-9_-]+$"
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": { "type": "string", "const": "existing" },
+                          "workspaceID": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 128,
+                            "pattern": "^[a-zA-Z0-9_-]+$"
+                          },
+                          "generation": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+                          "expectedRevision": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+                          "projectRevision": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+                        },
+                        "required": ["kind", "workspaceID", "generation", "expectedRevision", "projectRevision"],
+                        "additionalProperties": false
                       },
-                      "generation": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
-                      "expectedRevision": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
-                      "projectRevision": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
-                    },
-                    "required": ["kind", "workspaceID", "generation", "expectedRevision", "projectRevision"],
-                    "additionalProperties": false
+                      {
+                        "type": "object",
+                        "properties": { "kind": { "type": "string", "const": "private-copy" } },
+                        "required": ["kind"],
+                        "additionalProperties": false
+                      }
+                    ]
                   }
                 },
                 "required": ["kind", "moveID", "source", "resource", "target"],
@@ -13219,21 +13250,35 @@
                         "additionalProperties": false
                       },
                       "target": {
-                        "type": "object",
-                        "properties": {
-                          "kind": { "type": "string", "const": "existing" },
-                          "workspaceID": {
-                            "type": "string",
-                            "minLength": 1,
-                            "maxLength": 128,
-                            "pattern": "^[a-zA-Z0-9_-]+$"
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": { "type": "string", "const": "existing" },
+                              "workspaceID": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 128,
+                                "pattern": "^[a-zA-Z0-9_-]+$"
+                              },
+                              "generation": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+                              "expectedRevision": {
+                                "type": "integer",
+                                "exclusiveMinimum": 0,
+                                "maximum": 9007199254740991
+                              },
+                              "projectRevision": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+                            },
+                            "required": ["kind", "workspaceID", "generation", "expectedRevision", "projectRevision"],
+                            "additionalProperties": false
                           },
-                          "generation": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
-                          "expectedRevision": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
-                          "projectRevision": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
-                        },
-                        "required": ["kind", "workspaceID", "generation", "expectedRevision", "projectRevision"],
-                        "additionalProperties": false
+                          {
+                            "type": "object",
+                            "properties": { "kind": { "type": "string", "const": "private-copy" } },
+                            "required": ["kind"],
+                            "additionalProperties": false
+                          }
+                        ]
                       }
                     },
                     "required": ["kind", "moveID", "source", "resource", "target"],
@@ -14344,21 +14389,35 @@
                         "additionalProperties": false
                       },
                       "target": {
-                        "type": "object",
-                        "properties": {
-                          "kind": { "type": "string", "const": "existing" },
-                          "workspaceID": {
-                            "type": "string",
-                            "minLength": 1,
-                            "maxLength": 128,
-                            "pattern": "^[a-zA-Z0-9_-]+$"
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": { "type": "string", "const": "existing" },
+                              "workspaceID": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 128,
+                                "pattern": "^[a-zA-Z0-9_-]+$"
+                              },
+                              "generation": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+                              "expectedRevision": {
+                                "type": "integer",
+                                "exclusiveMinimum": 0,
+                                "maximum": 9007199254740991
+                              },
+                              "projectRevision": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+                            },
+                            "required": ["kind", "workspaceID", "generation", "expectedRevision", "projectRevision"],
+                            "additionalProperties": false
                           },
-                          "generation": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
-                          "expectedRevision": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
-                          "projectRevision": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
-                        },
-                        "required": ["kind", "workspaceID", "generation", "expectedRevision", "projectRevision"],
-                        "additionalProperties": false
+                          {
+                            "type": "object",
+                            "properties": { "kind": { "type": "string", "const": "private-copy" } },
+                            "required": ["kind"],
+                            "additionalProperties": false
+                          }
+                        ]
                       }
                     },
                     "required": ["kind", "moveID", "source", "resource", "target"],

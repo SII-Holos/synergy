@@ -18,7 +18,11 @@ export const HandoffTargetRecord = z
   .superRefine((value, context) => {
     const invalid = (message: string) => context.addIssue({ code: "custom", message })
     const { plan, fact } = value,
-      native = plan.workspacePlan?.mapping.kind === "organization-native"
+      native = plan.workspacePlan?.mapping.kind === "organization-native",
+      adopting =
+        native &&
+        plan.workspacePlan?.mapping.kind === "organization-native" &&
+        plan.workspacePlan.mapping.target.kind === "existing"
     if (
       plan.purpose === "handoff-target-cleanup" &&
       (!["target-never-activate", "target-preview-released"].includes(fact.purpose) ||
@@ -54,7 +58,7 @@ export const HandoffTargetRecord = z
       invalid("Destination receipt has another native operation")
     if (
       fact.purpose === "target-difference" &&
-      (!native ||
+      (!adopting ||
         plan.frozen?.proof.purpose !== "source-frozen" ||
         fact.difference.sourceSnapshotHash !== plan.frozen.proof.workspaceSourceHash ||
         fact.difference.mappingPlanRevision !== plan.mappingPlanRevision)
@@ -69,8 +73,11 @@ export const HandoffTargetRecord = z
       if (
         native
           ? !fact.workspaceNativeReceiptHash ||
-            !plan.workspacePlan?.differenceConsent ||
-            fact.workspaceDifferenceHash !== plan.workspacePlan.differenceConsent.diffHash
+            (plan.workspacePlan?.mapping.kind === "organization-native" &&
+            plan.workspacePlan.mapping.target.kind === "existing"
+              ? !plan.workspacePlan?.differenceConsent ||
+                fact.workspaceDifferenceHash !== plan.workspacePlan.differenceConsent.diffHash
+              : fact.workspaceDifferenceHash !== undefined)
           : !!fact.workspaceNativeReceiptHash || !!fact.workspaceDifferenceHash
       )
         invalid("Prepared target has another complete native receipt or consent")

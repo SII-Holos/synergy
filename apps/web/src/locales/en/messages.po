@@ -13845,6 +13845,10 @@ msgid "organization.handoff.native.acceptDirectory"
 msgstr "Accept this directory choice"
 
 #. js-lingui-explicit-id
+msgid "organization.handoff.native.acceptDownload"
+msgstr "Accept this download"
+
+#. js-lingui-explicit-id
 msgid "organization.handoff.native.accepted"
 msgstr "These destination versions have been accepted."
 
@@ -13899,6 +13903,14 @@ msgstr "Existing destination directory"
 #. js-lingui-explicit-id
 msgid "organization.handoff.native.directoryKind"
 msgstr "Directory"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.download"
+msgstr "Download to a new local directory"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.native.downloadHint"
+msgstr "Download the frozen cloud files into a new private directory on the destination computer. Cloud files and existing local directories are kept."
 
 #. js-lingui-explicit-id
 msgid "organization.handoff.native.empty"

@@ -17,6 +17,7 @@ import { OrganizationSessionTransfer as Transfer } from "./session-transfer"
 import { OrganizationRuntimeError } from "./error"
 import type { MemberResourceClient } from "./resource-client"
 import { NativeWorkspaceAdoption } from "@ericsanchezok/synergy-local-runtime/workspace/native-adoption"
+import { NativeWorkspaceDownload } from "@ericsanchezok/synergy-local-runtime/workspace/native-download"
 import { OrganizationLocalProjects } from "./local-project"
 import { OrganizationHandoffObjects } from "./handoff-objects"
 
@@ -170,13 +171,17 @@ export namespace OrganizationHandoffWorkspaceTarget {
       assertPublication: locator,
     })
   }
-  type NativeMetadata = Pick<Handoff.MachinePlan, "workspacePlan" | "frozen" | "sourceBinding" | "mappingPlanRevision">
+  type NativeMetadata = Pick<
+    Handoff.MachinePlan,
+    "handoffID" | "workspacePlan" | "frozen" | "sourceBinding" | "mappingPlanRevision"
+  >
   function nativeRequest(plan: NativeMetadata) {
     const mapping = plan.workspacePlan?.mapping,
       actor = plan.workspacePlan?.targetActor,
       frozen = plan.frozen?.proof
     if (
       mapping?.kind !== "organization-native" ||
+      mapping.target.kind !== "existing" ||
       !actor ||
       frozen?.purpose !== "source-frozen" ||
       !frozen.workspaceSourceHash
@@ -197,6 +202,30 @@ export namespace OrganizationHandoffWorkspaceTarget {
       sourceSnapshotHash: frozen.workspaceSourceHash,
       actor,
     })
+  }
+  async function nativeMoveRequest(plan: NativeMetadata, signal: AbortSignal) {
+    const mapping = plan.workspacePlan?.mapping,
+      actor = plan.workspacePlan?.targetActor,
+      frozen = plan.frozen?.proof
+    if (
+      mapping?.kind !== "organization-native" ||
+      !actor ||
+      frozen?.purpose !== "source-frozen" ||
+      !frozen.workspaceSourceHash
+    )
+      fail("Native download requires its original frozen snapshot and target consent")
+    if (mapping.target.kind === "existing") return nativeRequest(plan)
+    return NativeWorkspaceDownload.request(
+      {
+        id: mapping.moveID,
+        handoffID: plan.handoffID,
+        source: { ...mapping.source, scopeID: plan.sourceBinding.projectID },
+        sourceSnapshotHash: frozen.workspaceSourceHash,
+        mappingRevision: plan.mappingPlanRevision,
+        actor,
+      },
+      signal,
+    )
   }
   async function native(
     value: Handoff.MachinePlan,
@@ -240,9 +269,10 @@ export namespace OrganizationHandoffWorkspaceTarget {
     )
       fail("Native adoption has no complete final service source")
     const original = snapshot
-    const request = nativeRequest(plan)
+    const request = await nativeMoveRequest(plan, signal)
     const local = async () => {
       owner()
+      if (mapping.target.kind === "private-copy") return
       const selected = await OrganizationLocalProjects.get(plan.sourceBinding.projectID)
       const catalog = await WorkspaceCatalog.get(mapping.target.workspaceID, plan.sourceBinding.projectID)
       owner()
@@ -283,14 +313,16 @@ export namespace OrganizationHandoffWorkspaceTarget {
     signal: AbortSignal,
   ) {
     const context = await native(plan, resources, signal)
+    const request = context.request
+    if (request.kind !== "native-adoption") fail("A private download has no existing-directory difference")
     const frozen = plan.frozen!.proof
     const fileClosureHash = frozen.purpose === "source-frozen" ? frozen.fileClosureHash : null
     if (!fileClosureHash) fail("Native preview requires the full final file closure")
     return owned(() =>
       Files.withTargetCaptured(
-        { binding: binding(plan), expectedReceiptHash: fileClosureHash, ...context.request.source, signal },
+        { binding: binding(plan), expectedReceiptHash: fileClosureHash, ...request.source, signal },
         (capture) =>
-          WorkspaceMove.previewNative(context.request, {
+          WorkspaceMove.previewNative(request, {
             source: {
               snapshot: context.snapshot,
               store: capture.store,
@@ -329,7 +361,7 @@ export namespace OrganizationHandoffWorkspaceTarget {
     resources: Partial<Pick<MemberResourceClient, "handoffWorkspace">> | undefined,
     signal: AbortSignal,
   ) {
-    const request = nativeRequest(plan),
+    const request = await nativeMoveRequest(plan, signal),
       assert = WorkspaceContent.captureOwner(signal)
     const status = await WorkspaceMove.inspect(request)
     assert()
@@ -341,7 +373,7 @@ export namespace OrganizationHandoffWorkspaceTarget {
     signal: AbortSignal,
     outcome: "activated" | "cancelled" | "retired",
   ) {
-    const request = nativeRequest(plan),
+    const request = await nativeMoveRequest(plan, signal),
       assert = WorkspaceContent.captureOwner(signal)
     if (await WorkspaceMove.inspect(request)) await WorkspaceMove.release(request, outcome)
     assert()
@@ -356,9 +388,33 @@ export namespace OrganizationHandoffWorkspaceTarget {
     if (!plan.workspacePlan || plan.workspacePlan.mapping.kind === "native") return body()
     if (plan.workspacePlan.mapping.kind === "organization-native") {
       const context = await native(plan, resources, signal)
+      const request = context.request
+      if (request.kind === "native-download") {
+        const frozen = plan.frozen?.proof
+        if (frozen?.purpose !== "source-frozen" || !frozen.fileClosureHash)
+          fail("Native download requires its complete final file closure")
+        return owned(() =>
+          Files.withTargetCaptured(
+            { binding: binding(plan), expectedReceiptHash: frozen.fileClosureHash!, ...request.source, signal },
+            (capture) =>
+              NativeWorkspaceDownload.run(
+                {
+                  ...context,
+                  request,
+                  sourceStore: capture.store,
+                  assert() {
+                    context.assert()
+                    capture.assert()
+                  },
+                },
+                body,
+              ),
+          ),
+        )
+      }
       if (!plan.workspacePlan.differenceConsent) fail("Native preparation requires the second exact difference consent")
       return owned(() =>
-        NativeWorkspaceAdoption.run({ ...context, consent: plan.workspacePlan!.differenceConsent! }, body),
+        NativeWorkspaceAdoption.run({ ...context, request, consent: plan.workspacePlan!.differenceConsent! }, body),
       )
     }
     if (!resources?.handoffWorkspace) fail("Remote Workspace target requires its original machine resource client")

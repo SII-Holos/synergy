@@ -143,6 +143,34 @@ function holdNativeInspection(f: Awaited<ReturnType<typeof nativeInspectionFixtu
   return held.promise
 }
 
+test("reader five rejects a private native download before source freeze or handoff admission", async () => {
+  await using f = await fixture("bob", 5)
+  await f.run(async () => {
+    await OrganizationSharing.share(f.credentials.alice, f.sessionID, { expectedShareGeneration: 0 })
+    const previous = (await Record.read(Record.SessionDirectory, Keys.session(f.sessionID)))!
+    await expect(
+      f.handoffs.prepare(f.credentials.alice, f.sessionID, {
+        handoffID: "unsupported-private-download",
+        targetRuntimeID: "runtime-bob",
+        expectedBindingEpoch: previous.bindingEpoch,
+        expectedControlRevision: previous.controlRevision,
+        mappingPlanRevision: 1,
+        workspaceMapping: {
+          kind: "organization-native",
+          moveID: "unsupported-private-download-move",
+          source: { workspaceID: "original-cloud", generation: 1 },
+          resource: { resourceID: "original-storage", workspaceID: "original-cloud", generation: 1, path: "shared" },
+          target: { kind: "private-copy" },
+        },
+      }),
+    ).rejects.toMatchObject({ data: { code: "HANDOFF_BLOCKED" } })
+    expect(await Record.read(Record.SessionDirectory, Keys.session(f.sessionID))).toEqual(previous)
+    await expect(f.handoffs.get(f.credentials.alice, "unsupported-private-download")).rejects.toMatchObject({
+      data: { code: "NOT_FOUND" },
+    })
+  })
+})
+
 test("native directory inspection retains the accepted caller credentials after the caller object changes", async () => {
   await using f = await nativeInspectionFixture("native-caller-snapshot")
   const received = holdNativeInspection(f)

@@ -401,7 +401,7 @@ test("native adoption's owning migration preserves version-one object move ident
         await Storage.write(["workspace_move_active", target.scopeID, target.id, request.id], request)
       })
       expect(upgradeAccessRecord(key, old)).toMatchObject({
-        version: 3,
+        version: 4,
         digest: old.digest,
         request,
         nativeNamespace: { version: 1 },
@@ -416,7 +416,7 @@ test("native adoption's owning migration preserves version-one object move ident
         }),
       ])
       expect(await Storage.read(key)).toMatchObject({
-        version: 3,
+        version: 4,
         digest: old.digest,
         native: reference,
         nativeNamespace: { version: 1, selection: await StorageBootstrap.currentIdentity() },
@@ -708,7 +708,7 @@ test("fresh datasets and foreign handles cannot adopt or release the original da
       await expect(WorkspaceMove.run(original.request)).rejects.toThrow("Workspace is busy")
       const key = ["workspace_move", original.target.scopeID, original.request.id]
       expect(await Storage.read(key)).toMatchObject({
-        version: 3,
+        version: 4,
         nativeNamespace: { version: 2, selection: identity },
       })
       await WorkspaceMove.release(original.request, "cancelled")

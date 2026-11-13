@@ -45,7 +45,7 @@ const options = Handoff.Options.parse({
     reference: { workspaceID: "native", generation: 2, revision: 3 },
     projectRevision: mapping.target.projectRevision,
   },
-  choices: [{ kind: "organization-native", requiresDifference: true }],
+  choices: [{ kind: "organization-native", targetKind: "existing", requiresDifference: true }],
 })
 const view = Handoff.View.parse({
   schemaVersion: 1,

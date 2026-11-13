@@ -11,6 +11,7 @@ import { ServerProcessLock } from "@ericsanchezok/synergy-harness/util/server-pr
 import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
 import { WorkspaceCatalog, WorkspaceLocation } from "@ericsanchezok/synergy-harness/workspace"
 import { SessionTransferWorkspaces } from "@ericsanchezok/synergy-harness/session/transfer"
+import { WorkspaceMove } from "@ericsanchezok/synergy-harness/workspace/move"
 import { WorkspacePortableTree } from "@ericsanchezok/synergy-harness/workspace/portable-tree"
 import type { BlobStore } from "@ericsanchezok/synergy-harness/storage/blobs"
 import { NativeWorkspacePortableTree as Tree } from "./portable-tree"
@@ -92,6 +93,22 @@ export namespace NativeWorkspacePortableTarget {
     const root = await fs.realpath(Global.Path.root)
     const base = path.join(root, "data", "received-workspaces")
     return path.join(base, identity(value))
+  }
+  export async function selection(value: Parameters<typeof identity>[0], signal: AbortSignal) {
+    const selected = {
+      handoffID: ID.parse(value.handoffID),
+      scopeID: ID.parse(value.scopeID),
+      sourceWorkspaceID: ID.parse(value.sourceWorkspaceID),
+    }
+    const assert = await owner(signal)
+    const root = await directory(selected)
+    assert()
+    return {
+      workspaceID: "wsp_" + identity(selected),
+      scopeID: selected.scopeID,
+      generation: 1 as const,
+      directory: root,
+    }
   }
   async function saved(value: Parameters<typeof identity>[0]) {
     const [raw] = await Storage.readMany([key(value)])
@@ -246,11 +263,16 @@ export namespace NativeWorkspacePortableTarget {
         catalog.binding.hostID !== receipt.hostID
       )
         fail("source has another original native preparation")
-      await verifyIdentity(receipt, assert)
-      const result = await body()
-      await verifyIdentity(receipt, assert)
-      assert()
-      return result
+      const capture = async () => {
+        await verifyIdentity(receipt, assert)
+        const result = await body()
+        await verifyIdentity(receipt, assert)
+        assert()
+        return result
+      }
+      return native.version === 2
+        ? WorkspaceMove.withPublishedDownload(native.download.request, native.download.receipt, capture, signal)
+        : capture()
     })
   }
   export function withPublication<T>(

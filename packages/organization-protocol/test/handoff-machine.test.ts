@@ -335,4 +335,61 @@ test("native difference replies retain the frozen source, exact consent and comp
       cleanup: { ...cleanup.cleanup, proof: { ...cancelled, fromEpoch: 0 } },
     }).success,
   ).toBe(false)
+  const privateMapping = Handoff.WorkspaceMapping.parse({ ...workspacePlan.mapping, target: { kind: "private-copy" } })
+  const privatePlan = Handoff.MachinePlan.parse({
+    ...machine,
+    operation: "prepare-target",
+    workspacePlan: { ...workspacePlan, mapping: privateMapping, hash: await Handoff.mappingHash(privateMapping) },
+  })
+  const downloaded = Handoff.Proof.parse({
+    ...tuple,
+    purpose: "target-prepared",
+    manifestHash: frozen.manifestHash,
+    compatibilityHash: frozen.purpose === "source-frozen" ? frozen.compatibilityHash : "",
+    convertedHash: "a".repeat(64),
+    closureHash: frozen.purpose === "source-frozen" ? frozen.closureHash : "",
+    fileClosureHash: frozen.purpose === "source-frozen" ? frozen.fileClosureHash : null,
+    workspaceMoveReceiptHash: null,
+    workspaceSourceHash: difference.sourceSnapshotHash,
+    workspaceNativeReceiptHash: "b".repeat(64),
+    paused: true,
+  })
+  const privateReply = Handoff.MachineResult.parse({
+    ...reply,
+    operation: "prepare-target",
+    stage: "target-prepared",
+    workspaceDifference: undefined,
+    facts: [{ proof: downloaded, signature: await Handoff.signProof(downloaded, keys.privateKey) }],
+  })
+  expect(Handoff.matchesMachine(privatePlan, privateReply)).toBe(true)
+  expect(
+    Handoff.matchesMachine(privatePlan, {
+      ...privateReply,
+      facts: [{ ...privateReply.facts[0]!, proof: { ...downloaded, workspaceNativeReceiptHash: undefined } }],
+    }),
+  ).toBe(false)
+  expect(
+    Handoff.matchesMachine(privatePlan, {
+      ...privateReply,
+      facts: [{ ...privateReply.facts[0]!, proof: { ...downloaded, workspaceDifferenceHash: difference.diffHash } }],
+    }),
+  ).toBe(false)
+  expect(Handoff.matchesMachine({ ...machine, workspacePlan: privatePlan.workspacePlan }, reply)).toBe(false)
+  expect(Handoff.matchesMachine({ ...cleanup, workspacePlan: privatePlan.workspacePlan }, observed)).toBe(true)
+  expect(
+    Handoff.MachinePlan.safeParse({
+      ...privatePlan,
+      workspacePlan: {
+        ...privatePlan.workspacePlan,
+        difference,
+        differenceConsent: Handoff.DifferenceConsent.strip().parse(difference),
+      },
+    }).success,
+  ).toBe(false)
+  expect(
+    Handoff.WorkspaceMapping.safeParse({
+      ...privateMapping,
+      target: { kind: "private-copy", path: "/caller/directory" },
+    }).success,
+  ).toBe(false)
 })

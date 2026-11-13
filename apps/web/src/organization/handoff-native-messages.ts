@@ -2,6 +2,13 @@ import type { MessageDescriptor } from "@lingui/core"
 
 export const organizationNativeHandoffMessages = {
   existing: { id: "organization.handoff.native.existing", message: "Use an existing local directory" },
+  download: { id: "organization.handoff.native.download", message: "Download to a new local directory" },
+  downloadHint: {
+    id: "organization.handoff.native.downloadHint",
+    message:
+      "Download the frozen cloud files into a new private directory on the destination computer. Cloud files and existing local directories are kept.",
+  },
+  acceptDownload: { id: "organization.handoff.native.acceptDownload", message: "Accept this download" },
   directory: { id: "organization.handoff.native.directory", message: "Existing destination directory" },
   selected: {
     id: "organization.handoff.native.selected",

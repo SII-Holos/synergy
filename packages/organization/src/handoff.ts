@@ -94,7 +94,11 @@ const Stored = MappedStored.extend({
   )
   .superRefine((record, context) => {
     const invalid = (message: string) => context.addIssue({ code: "custom", message })
-    const native = record.request.workspaceMapping.kind === "organization-native"
+    const mapping = record.request.workspaceMapping
+    const native = mapping.kind === "organization-native"
+    const adopting = mapping.kind === "organization-native" && mapping.target.kind === "existing"
+    if (!adopting && (record.difference || record.differenceConsent || record.differenceActor))
+      invalid("Only an existing native directory can carry a target difference")
     if (
       !native &&
       (record.targetActor ||
@@ -138,10 +142,12 @@ const Stored = MappedStored.extend({
       native &&
       prepared &&
       (prepared.purpose !== "target-prepared" ||
-        !record.differenceConsent ||
-        !record.difference ||
         !prepared.workspaceNativeReceiptHash ||
-        prepared.workspaceDifferenceHash !== record.differenceConsent.diffHash)
+        (adopting
+          ? !record.differenceConsent ||
+            !record.difference ||
+            prepared.workspaceDifferenceHash !== record.differenceConsent.diffHash
+          : prepared.workspaceDifferenceHash !== undefined))
     )
       invalid("Native target preparation has no exact second consent and complete receipt")
     const difference = record.difference?.proof
@@ -558,6 +564,7 @@ export function createHandoffs(options: {
     const mapping = record.request.workspaceMapping
     if (
       mapping.kind !== "organization-native" ||
+      mapping.target.kind !== "existing" ||
       record.target.runtimeKind !== "member" ||
       !["preparing", "prepared"].includes(record.phase) ||
       record.cancelRequested ||
@@ -635,7 +642,8 @@ export function createHandoffs(options: {
       workspaceMapping: record.request.workspaceMapping,
       mappingHash: await Handoff.mappingHash(record.request.workspaceMapping),
       workspaceDifference: record.difference?.proof.difference,
-      ...(record.request.workspaceMapping.kind === "organization-native"
+      ...(record.request.workspaceMapping.kind === "organization-native" &&
+      record.request.workspaceMapping.target.kind === "existing"
         ? { workspaceDifferenceAccepted: !!record.differenceConsent }
         : {}),
       missingRequirements,
@@ -704,6 +712,12 @@ export function createHandoffs(options: {
     const contract = await OrganizationSessionResources.read(current)
     if (contract?.selection) await OrganizationSessionResources.enabled(current, contract.selection)
     const mapping = record.request.workspaceMapping
+    if (
+      mapping.kind === "organization-native" &&
+      mapping.target.kind === "private-copy" &&
+      contract?.selection?.infrastructure.environment
+    )
+      fail("HANDOFF_BLOCKED", "Downloading a native Workspace requires an explicit compatible Environment mapping")
     if (mapping.kind === "organization-object") {
       const resource = await Record.read(Record.Resource, Keys.resource(record.orgID, mapping.target.resourceID))
       if (
@@ -1004,6 +1018,7 @@ export function createHandoffs(options: {
           fail("PROTOCOL_MISMATCH", "Directory inspection returned another original participant")
         const native = reply.result.native
         const expected = admitted.access.mapping.target
+        if (expected.kind !== "existing") fail("HANDOFF_BLOCKED", "This native mapping has no existing directory")
         if (!native) fail("RESOURCE_UNAVAILABLE", "The original native directory is unavailable")
         if (
           native.reference.workspaceID !== expected.workspaceID ||
@@ -1351,7 +1366,13 @@ export function createHandoffs(options: {
               native &&
               admitted.participants.every((participant) => participant.connection.handshake.schemas.handoffs >= 5)
             )
-              choices.push({ kind: "organization-native", requiresDifference: true })
+              choices.push({ kind: "organization-native", targetKind: "existing", requiresDifference: true })
+            if (
+              current.target.runtimeKind === "member" &&
+              !contract?.selection?.infrastructure.environment &&
+              admitted.participants.every((participant) => participant.connection.handshake.schemas.handoffs >= 6)
+            )
+              choices.push({ kind: "organization-native", targetKind: "private-copy", requiresDifference: false })
           }
           for (const participant of admitted.participants) {
             signal.throwIfAborted()
@@ -1704,13 +1725,21 @@ export function createHandoffs(options: {
         }
         const runtime = role === "source" ? record.source : record.target
         const connection = options.connections.captureHandoff(runtime.runtimeID)
-        if (record.request.workspaceMapping.kind === "organization-native" && connection.handshake.schemas.handoffs < 5)
-          fail("HANDOFF_BLOCKED", "Native adoption requires the complete target difference reader")
-        if (request.operation === "preview-target" && record.request.workspaceMapping.kind !== "organization-native")
+        const mapping = record.request.workspaceMapping
+        if (
+          mapping.kind === "organization-native" &&
+          connection.handshake.schemas.handoffs < (mapping.target.kind === "private-copy" ? 6 : 5)
+        )
+          fail("HANDOFF_BLOCKED", "Native Workspace handoff requires its complete target receipt reader")
+        if (
+          request.operation === "preview-target" &&
+          (mapping.kind !== "organization-native" || mapping.target.kind !== "existing")
+        )
           fail("HANDOFF_BLOCKED", "This mapping has no existing native difference")
         if (
           request.operation === "prepare-target" &&
-          record.request.workspaceMapping.kind === "organization-native" &&
+          mapping.kind === "organization-native" &&
+          mapping.target.kind === "existing" &&
           !record.differenceConsent
         )
           fail("HANDOFF_BLOCKED", "Review and accept the exact native target difference before preparation")
@@ -1859,7 +1888,16 @@ export function createHandoffs(options: {
           )
             fail("NOT_FOUND", "Handoff destination is unavailable")
           if (request.workspaceMapping.kind === "organization-native" && target.runtimeKind !== "member")
-            fail("HANDOFF_BLOCKED", "Existing native adoption requires its destination member")
+            fail("HANDOFF_BLOCKED", "A native Workspace requires its destination member")
+          if (
+            request.workspaceMapping.kind === "organization-native" &&
+            request.workspaceMapping.target.kind === "private-copy" &&
+            (await OrganizationSessionResources.read(current))?.selection?.infrastructure.environment
+          )
+            fail(
+              "HANDOFF_BLOCKED",
+              "Downloading a native Workspace requires an explicit compatible Environment mapping",
+            )
           if (access.account.accountID !== (source.runtimeKind === "member" ? source.accountID : current.creatorID))
             fail("PERMISSION_DENIED", "Only the current execution owner can initiate a handoff")
           if (
@@ -1932,9 +1970,10 @@ export function createHandoffs(options: {
               fail("HANDOFF_BLOCKED", "Both participants must support live Workspace source snapshots")
             if (
               request.workspaceMapping.kind === "organization-native" &&
-              (target.runtimeKind !== "member" || files.handshake.schemas.handoffs < 5)
+              (target.runtimeKind !== "member" ||
+                files.handshake.schemas.handoffs < (request.workspaceMapping.target.kind === "private-copy" ? 6 : 5))
             )
-              fail("HANDOFF_BLOCKED", "Existing native adoption requires two compatible readers and its target member")
+              fail("HANDOFF_BLOCKED", "Native Workspace handoff requires two compatible readers and its target member")
             await runtimeAuthority({
               runtimeID: runtime.runtimeID,
               orgID: current.orgID,
@@ -2022,6 +2061,7 @@ export function createHandoffs(options: {
             const difference = record.difference?.proof.difference
             if (
               record.request.workspaceMapping.kind !== "organization-native" ||
+              record.request.workspaceMapping.target.kind !== "existing" ||
               !record.targetAccepted ||
               !difference ||
               !same(input.workspaceDifference, Handoff.DifferenceConsent.strip().parse(difference))
@@ -2160,7 +2200,10 @@ export function createHandoffs(options: {
             } else if (
               record.prepared.proof.purpose !== "target-prepared" ||
               !record.prepared.proof.workspaceNativeReceiptHash ||
-              record.prepared.proof.workspaceDifferenceHash !== record.differenceConsent?.diffHash
+              (mapping.target.kind === "existing"
+                ? !record.differenceConsent ||
+                  record.prepared.proof.workspaceDifferenceHash !== record.differenceConsent.diffHash
+                : record.prepared.proof.workspaceDifferenceHash !== undefined)
             )
               fail("HANDOFF_BLOCKED", "Native mapping has no exact consented target receipt")
             const mapped = await OrganizationSessionResources.rebindHandoff(
@@ -2219,6 +2262,7 @@ export function createHandoffs(options: {
           if (current.difference && same(current.difference, signed)) return acknowledgement
           if (
             current.request.workspaceMapping.kind !== "organization-native" ||
+            current.request.workspaceMapping.target.kind !== "existing" ||
             !current.frozen ||
             !current.targetAccepted ||
             current.cancelRequested ||
@@ -2374,9 +2418,10 @@ export function createHandoffs(options: {
             fail("HANDOFF_BLOCKED", "Destination preparation does not preserve the frozen closure")
           if (current.request.workspaceMapping.kind === "organization-native") {
             if (
-              !current.differenceConsent ||
               !proof.workspaceNativeReceiptHash ||
-              proof.workspaceDifferenceHash !== current.differenceConsent.diffHash
+              (current.request.workspaceMapping.target.kind === "existing"
+                ? !current.differenceConsent || proof.workspaceDifferenceHash !== current.differenceConsent.diffHash
+                : proof.workspaceDifferenceHash !== undefined)
             )
               fail("HANDOFF_BLOCKED", "Native target preparation requires its complete accepted difference and receipt")
           } else if (proof.workspaceNativeReceiptHash || proof.workspaceDifferenceHash)

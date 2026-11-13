@@ -2,11 +2,13 @@ import { SessionTransferWorkspaces as Files } from "@ericsanchezok/synergy-harne
 import { JsonValue } from "@ericsanchezok/synergy-util/json-value"
 import { NativeWorkspacePortableTarget as Native } from "./workspace/portable-target"
 import { NativeWorkspaceAdoption as Adoption } from "./workspace/native-adoption"
+import { NativeWorkspaceDownload as Download } from "./workspace/native-download"
 
 export function registerSessionTransferWorkspaceTarget() {
   Files.registerTargetHost({
     async prepare({ handoffID, captured, store, signal, mode }) {
       if (mode === "existing") return Adoption.prepare({ handoffID, captured, store, signal, mode })
+      if (mode === "download") return Download.prepare({ handoffID, captured, store, signal, mode })
       const receipt = await Native.prepare({
         handoffID,
         workspaceID: captured.workspaceID,
@@ -26,11 +28,17 @@ export function registerSessionTransferWorkspaceTarget() {
       }
     },
     async validate(value, signal) {
+      if (value.version === 2) return Download.validate(value, signal)
       const adoption = Adoption.parse(value.receipt)
       if (adoption) return Adoption.validate(Adoption.selection(value), signal)
       await Native.validate(Native.Receipt.parse(value.receipt), signal)
     },
     withPublication(values, signal, body) {
+      if (values.some((value) => value.version === 2)) {
+        if (values.some((value) => value.version !== 2))
+          throw new Error("Native target cannot mix private download and other preparations")
+        return Download.withPublication(values, signal, body)
+      }
       const first = values[0] && Adoption.parse(values[0].receipt)
       if (first)
         return Adoption.withPublication(
@@ -47,6 +55,10 @@ export function registerSessionTransferWorkspaceTarget() {
       )
     },
     assertPublication(value) {
+      if (value.version === 2) {
+        Download.assertPublication(value)
+        return value
+      }
       const adoption = Adoption.parse(value.receipt)
       if (adoption) {
         Adoption.assertPublication(Adoption.selection(value))
@@ -64,6 +76,7 @@ export function registerSessionTransferWorkspaceTarget() {
       return value
     },
     async publish(value) {
+      if (value.version === 2) return Download.publishFact(value)
       const adoption = Adoption.parse(value.receipt)
       if (adoption) await Adoption.publishFact(Adoption.selection(value))
     },

@@ -8,6 +8,7 @@ import { withStorageQueueOptions } from "../storage/queue"
 import { Lock } from "../util/lock"
 import { JsonValue } from "../util/json-value"
 import { WorkspaceCatalog } from "../workspace/catalog"
+import { WorkspaceMove } from "../workspace/move"
 import type { BlobStore } from "../storage/blobs"
 import { SessionTransferEpochs as Epochs } from "./transfer-epochs"
 import { SessionTransferOwners as Owners } from "./transfer-owners"
@@ -18,7 +19,7 @@ import { WorkspacePortableTargetGraph as Graph } from "./workspace-portable-targ
 export namespace WorkspacePortableTarget {
   const ID = z.string().min(1).max(4096)
   const Hash = z.string().regex(/^[a-f0-9]{64}$/)
-  export const Native = z.strictObject({
+  const PlainNative = z.strictObject({
     version: z.literal(1),
     workspaceID: ID,
     scopeID: ID,
@@ -28,6 +29,13 @@ export namespace WorkspacePortableTarget {
     receipt: JsonValue,
     catalog: WorkspaceCatalog.Info.optional(),
   })
+  export const Native = z.discriminatedUnion("version", [
+    PlainNative,
+    PlainNative.extend({
+      version: z.literal(2),
+      download: z.strictObject({ request: WorkspaceMove.DownloadRequest, receipt: WorkspaceMove.DownloadReceipt }),
+    }),
+  ])
   export type Native = z.infer<typeof Native>
   export interface Host {
     prepare(input: {
@@ -35,7 +43,7 @@ export namespace WorkspacePortableTarget {
       captured: Schema.Captured
       store: BlobStore
       signal: AbortSignal
-      mode?: "existing"
+      mode?: "existing" | "download"
     }): Promise<Native>
     validate(value: Native, signal: AbortSignal): Promise<void>
     withPublication<T>(values: readonly Native[], signal: AbortSignal, body: () => Promise<T>): Promise<T>
@@ -247,12 +255,12 @@ export namespace WorkspacePortableTarget {
     binding: Epochs.Binding
     expectedReceiptHash: string
     signal: AbortSignal
-    nativeMode?: "existing"
+    nativeMode?: "existing" | "download"
   }): Promise<Prepared> {
     const binding = Epochs.Binding.parse(input.binding)
     const expected = Hash.parse(input.expectedReceiptHash)
     const signal = input.signal
-    const nativeMode = z.literal("existing").optional().parse(input.nativeMode)
+    const nativeMode = z.enum(["existing", "download"]).optional().parse(input.nativeMode)
     const assert = ownership(signal)
     return withStorageQueueOptions({ signal }, async () => {
       if (Storage.inTransaction()) fail("Workspace target preparation must run outside activation")

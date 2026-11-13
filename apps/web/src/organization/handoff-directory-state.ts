@@ -3,7 +3,9 @@ import { OrganizationHandoffProtocol as Handoff } from "@ericsanchezok/synergy-o
 import { organizationNativeHandoffMapping } from "./handoff-native-state"
 
 export const OrganizationNativeDirectory = z.strictObject({
-  plan: Handoff.CurrentPrepare.refine((plan) => plan.workspaceMapping.kind === "organization-native"),
+  plan: Handoff.CurrentPrepare.refine(
+    (plan) => plan.workspaceMapping.kind === "organization-native" && plan.workspaceMapping.target.kind === "existing",
+  ),
   label: z.string().min(1).max(255),
 })
 export type OrganizationNativeDirectory = z.infer<typeof OrganizationNativeDirectory>
@@ -17,6 +19,7 @@ export function organizationDirectoryFromOptions(input: {
   const { plan, options } = input
   if (
     plan.workspaceMapping.kind !== "organization-native" ||
+    plan.workspaceMapping.target.kind !== "existing" ||
     !options.native ||
     options.sessionID !== input.sessionID ||
     options.projectID !== input.projectID ||
@@ -32,7 +35,10 @@ export function organizationDirectoryFromOptions(input: {
 
 export function organizationDirectoryFromInspection(view: Handoff.View, requestID: string, value: unknown) {
   const inspection = Handoff.NativeTargetSelection.parse(value)
-  const target = view.workspaceMapping.kind === "organization-native" ? view.workspaceMapping.target : undefined
+  const target =
+    view.workspaceMapping.kind === "organization-native" && view.workspaceMapping.target.kind === "existing"
+      ? view.workspaceMapping.target
+      : undefined
   if (
     !target ||
     inspection.requestID !== requestID ||

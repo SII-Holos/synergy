@@ -5,6 +5,7 @@ import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { JsonValue } from "@ericsanchezok/synergy-util/json-value"
 import { RuntimeContext } from "../lifecycle/context"
 import { Storage } from "../storage/storage"
+import { StoragePath } from "../storage/path"
 import { RuntimeMaintenance } from "../storage/runtime-maintenance"
 import { WorkspaceCatalog } from "./catalog"
 import { WorkspaceContent, type BlobStore } from "./content"
@@ -33,7 +34,14 @@ export namespace WorkspaceMove {
     sourceSnapshotHash: WorkspaceTree.Hash,
   })
   export type NativeRequest = z.infer<typeof NativeRequest>
-  const Input = z.union([Request, NativeRequest])
+  export const DownloadRequest = NativeRequest.extend({
+    kind: z.literal("native-download"),
+    handoffID: ID,
+    target: Selection.extend({ path: z.literal(""), expectedRevision: z.literal(1) }),
+  })
+  export type DownloadRequest = z.infer<typeof DownloadRequest>
+  const PreviousInput = z.union([Request, NativeRequest])
+  const Input = z.union([Request, NativeRequest, DownloadRequest])
   type Input = z.infer<typeof Input>
   export const Rejected = NamedError.create("WorkspaceMoveRejected", z.object({ message: z.string(), moveID: ID }))
   const Content = z.strictObject({
@@ -77,6 +85,28 @@ export namespace WorkspaceMove {
     preparedAt: z.number().int().nonnegative().safe(),
   })
   export type NativeReceipt = z.infer<typeof NativeReceipt>
+  export const DownloadReceipt = z.strictObject({
+    version: z.literal(1),
+    id: ID,
+    requestHash: WorkspaceTree.Hash,
+    mappingRevision: z.number().int().positive().safe(),
+    sourceSnapshotHash: WorkspaceTree.Hash,
+    acceptedDiffHash: z.null(),
+    outcome: z.literal("downloaded-source-version"),
+    nativeReceiptHash: WorkspaceTree.Hash,
+    target: Selection.extend({
+      hostID: ID,
+      physicalID: z.string().min(1),
+      manifest: WorkspaceTree.Hash,
+    }),
+    preparedAt: z.number().int().nonnegative().safe(),
+  })
+  export type DownloadReceipt = z.infer<typeof DownloadReceipt>
+  export const downloadReceiptHash = (value: DownloadReceipt) => hash(DownloadReceipt.parse(value))
+  const DownloadNative = z.strictObject({
+    target: Selection.extend({ hostID: ID, physicalID: z.string().min(1), manifest: WorkspaceTree.Hash }),
+    reference: JsonValue,
+  })
   export const NativeConsent = WorkspaceDifference.Summary.pick({
     sourceSnapshotHash: true,
     targetDigest: true,
@@ -117,7 +147,7 @@ export namespace WorkspaceMove {
   })
   const PreviousRecord = LegacyRecord.extend({
     version: z.literal(2),
-    request: Input,
+    request: PreviousInput,
     preview: WorkspaceDifference.Summary.optional(),
     snapshot: z.lazy(() => WorkspaceArchive.Subtree).optional(),
     nativeReceipt: NativeReceipt.optional(),
@@ -134,7 +164,12 @@ export namespace WorkspaceMove {
     version: z.union([z.literal(1), z.literal(2)]),
     selection: NativeNamespaceSelection.optional(),
   })
-  const Record = PreviousRecord.extend({ version: z.literal(3), nativeNamespace: NativeNamespace }).refine(
+  const NamespaceRecord = PreviousRecord.extend({ version: z.literal(3), nativeNamespace: NativeNamespace })
+  const Record = NamespaceRecord.extend({
+    version: z.literal(4),
+    request: Input,
+    downloadReceipt: DownloadReceipt.optional(),
+  }).refine(
     (record) =>
       record.nativeNamespace.version === 1 ||
       (!record.nativeRequested && record.native === undefined) ||
@@ -167,11 +202,27 @@ export namespace WorkspaceMove {
       PreviousRecord.parse(value)
       value.version = 3
       value.nativeNamespace = { version: 1 }
+      NamespaceRecord.parse(value)
+    },
+  }
+  export const downloadMigration: Migration = {
+    id: "20261113-workspace-native-download",
+    description: "Version native Workspace moves for original private-copy download receipts",
+    scope: "global",
+    execution: "record",
+    dependsOn: ["workspace/20261113-workspace-native-dispatch-namespace"],
+    async up() {},
+    upgradeRecord(key, value) {
+      if (key.length !== 3 || key[0] !== "workspace_move" || value.version !== 3) return
+      NamespaceRecord.parse(value)
+      value.version = 4
       Record.parse(value)
     },
   }
   const LegacyStatus = LegacyRecord.omit({ native: true })
-  const CurrentStatus = PreviousRecord.omit({ native: true })
+  const CurrentStatus = PreviousRecord.extend({ request: Input, downloadReceipt: DownloadReceipt.optional() }).omit({
+    native: true,
+  })
   export const Status = z.union([LegacyStatus, CurrentStatus])
   function status(record: Record) {
     const { native: _, nativeNamespace: _namespace, ...visible } = record
@@ -213,6 +264,19 @@ export namespace WorkspaceMove {
       reference: z.infer<typeof JsonValue> | undefined,
       compatibleIDs?: readonly string[],
     ): Promise<void>
+    prepareDownload?<T>(
+      request: DownloadRequest,
+      files: Portable.Root,
+      store: BlobStore,
+      consume: (native: z.infer<typeof DownloadNative>, assertCurrent: () => void) => Promise<T>,
+      signal?: AbortSignal,
+    ): Promise<T>
+    withDownloadPublication?<T>(
+      request: DownloadRequest,
+      reference: z.infer<typeof JsonValue>,
+      consume: (native: z.infer<typeof DownloadNative>, assertCurrent: () => void) => Promise<T>,
+      signal?: AbortSignal,
+    ): Promise<T>
   }
   export type CleanupHost = Pick<SourceHost, "release">
   const state = RuntimeContext.state(() => ({
@@ -314,6 +378,8 @@ export namespace WorkspaceMove {
       preview: value.preview.bind(value),
       hold: value.hold.bind(value),
       release: value.release.bind(value),
+      prepareDownload: value.prepareDownload?.bind(value),
+      withDownloadPublication: value.withDownloadPublication?.bind(value),
     })
   }
   export function registerCleanupHost(value: CleanupHost) {
@@ -347,7 +413,11 @@ export namespace WorkspaceMove {
             reject(selected.request, "Workspace move has another canonical maintenance key")
           const record = await read(selected.request)
           if (!record) reject(selected.request, "Workspace move disappeared during maintenance inspection")
-          if (held(record) || record.nativeRequested || record.native !== undefined)
+          if (
+            held(record) ||
+            record.nativeRequested ||
+            (!("kind" in record.request && record.request.kind === "native-download") && record.native !== undefined)
+          )
             return [
               {
                 owner: "workspace-moves",
@@ -370,14 +440,49 @@ export namespace WorkspaceMove {
     const record = Record.parse(upgradeAccessRecord(key(request), raw))
     if (record.digest !== hash(request) || JSON.stringify(record.request) !== JSON.stringify(request))
       reject(request, "Workspace move identity already has different input")
-    if (!("kind" in request) && (record.preview || record.snapshot || record.nativeReceipt || record.nativePublication))
+    if (
+      !("kind" in request) &&
+      (record.preview || record.snapshot || record.nativeReceipt || record.downloadReceipt || record.nativePublication)
+    )
       reject(request, "Object Workspace move contains native adoption metadata")
     if (
       record.nativeReceipt &&
       (record.nativeReceipt.requestHash !== record.digest || record.nativeReceipt.id !== request.id)
     )
       reject(request, "Native Workspace receipt belongs to another original request")
-    if ("kind" in request) {
+    if ("kind" in request && request.kind === "native-download") {
+      const receipt = record.downloadReceipt
+      if (record.receipt || record.nativeReceipt || record.preview)
+        reject(request, "Private native download cannot borrow another move receipt")
+      if (
+        record.snapshot &&
+        (WorkspaceArchive.subtreeHash(record.snapshot) !== request.sourceSnapshotHash ||
+          hash(record.snapshot.files) !== record.snapshot.manifest)
+      )
+        reject(request, "Native download source snapshot is corrupt")
+      if (
+        receipt &&
+        (receipt.requestHash !== record.digest ||
+          receipt.id !== request.id ||
+          receipt.mappingRevision !== request.mappingRevision ||
+          receipt.sourceSnapshotHash !== request.sourceSnapshotHash ||
+          JSON.stringify(Selection.strip().parse(receipt.target)) !==
+            JSON.stringify(Selection.strip().parse(request.target)) ||
+          receipt.target.manifest !== record.snapshot?.manifest ||
+          record.native === undefined ||
+          receipt.nativeReceiptHash !== hash(record.native))
+      )
+        reject(request, "Native download receipt changed its original source or private target")
+      if (record.nativePublication && (!receipt || record.nativePublication !== downloadReceiptHash(receipt)))
+        reject(request, "Native download publication has another complete receipt")
+      if (
+        (["published", "activated"].includes(record.state) && !receipt) ||
+        (record.state === "activated" && !record.nativePublication) ||
+        (["cancelled", "retired"].includes(record.state) && record.nativePublication)
+      )
+        reject(request, "Native download publication has another permanent outcome")
+    } else if ("kind" in request) {
+      if (record.downloadReceipt) reject(request, "Native adoption cannot borrow a private download receipt")
       if (
         record.nativePublication &&
         (!record.nativeReceipt || record.nativePublication !== nativeReceiptHash(record.nativeReceipt))
@@ -460,6 +565,21 @@ export namespace WorkspaceMove {
       const existing = await read(request)
       if (existing) return existing
       await RuntimeMaintenance.assertAdmission()
+      if ("kind" in request && request.kind === "native-download") {
+        nativePrimary()
+        const [occupied] = await Storage.readMany([StoragePath.workspace(request.target.workspaceID)])
+        if (occupied !== undefined) reject(request, "Private native download target is already published")
+        const record = Record.parse({
+          version: 4,
+          request,
+          digest: hash(request),
+          state: "preparing",
+          nativeNamespace: { version: 2 },
+        })
+        await Storage.write(key(request), record)
+        await Storage.write(indexKey(request), request)
+        return record
+      }
       const info = await WorkspaceCatalog.get(request.target.workspaceID, request.target.scopeID)
       if (
         info.backend?.provider !== ("kind" in request ? "directory" : "objects") ||
@@ -477,7 +597,7 @@ export namespace WorkspaceMove {
       )
         reject(request, "Native adoption requires its original physical directory")
       const record = Record.parse({
-        version: 3,
+        version: 4,
         request,
         digest: hash(request),
         state: "preparing",
@@ -510,6 +630,22 @@ export namespace WorkspaceMove {
     const record = await read(request)
     assert()
     if (!record || (!record.nativeRequested && record.native === undefined)) return
+    if ("kind" in request && request.kind === "native-download") {
+      const dispatch = await nativeDispatch(request, record)
+      await Storage.transaction(
+        async () => {
+          const current = await read(request)
+          if (!current || JSON.stringify(current.native) !== JSON.stringify(record.native))
+            reject(request, "Native download preparation changed during release")
+          await Storage.write(
+            key(request),
+            Record.parse({ ...current, nativeRequested: false, nativeNamespace: dispatch.namespace }),
+          )
+        },
+        { commitGuard: assert },
+      )
+      return
+    }
     if (!release) throw new Error("Native Workspace move cleanup Host is unavailable")
     const dispatch = await nativeDispatch(request, record)
     await Storage.transaction(
@@ -942,7 +1078,7 @@ export namespace WorkspaceMove {
     )
       reject(request, "Native Workspace target catalogue changed")
   }
-  async function nativeSource(request: NativeRequest, input: NativeInput, assert: () => void) {
+  async function nativeSource(request: NativeRequest | DownloadRequest, input: NativeInput, assert: () => void) {
     assert()
     input.source.assert()
     const snapshot = input.source.snapshot
@@ -1012,6 +1148,217 @@ export namespace WorkspaceMove {
       { commitGuard: assert },
     )
     return lease
+  }
+  function downloadNative(
+    request: DownloadRequest,
+    value: z.infer<typeof DownloadNative>,
+    snapshot: WorkspaceArchive.Subtree,
+  ) {
+    const native = DownloadNative.parse(value)
+    if (
+      JSON.stringify(Selection.strip().parse(native.target)) !==
+        JSON.stringify(Selection.strip().parse(request.target)) ||
+      native.target.manifest !== snapshot.manifest
+    )
+      reject(request, "Native download has another original private preparation")
+    return native
+  }
+  export async function prepareDownload(value: DownloadRequest, options: NativeInput): Promise<DownloadReceipt> {
+    const request = DownloadRequest.parse(value),
+      input = nativeInput(options)
+    if (Storage.inTransaction())
+      reject(request, "Native download preparation must run outside its publication transaction")
+    const prepareNative = host().prepareDownload
+    if (!prepareNative) reject(request, "Native private download Host is unavailable")
+    return runOwned(
+      request,
+      input.signal,
+      "native-download",
+      async (assert) => {
+        const record = await prepare(request)
+        if (!held(record)) reject(request, "Native download was permanently closed")
+        await nativeSource(request, input, assert)
+        const dispatch = await nativeDispatch(request, record)
+        await Storage.transaction(
+          async () => {
+            const current = await read(request)
+            if (!current || !held(current)) reject(request, "Native download ended before private preparation")
+            await Storage.write(
+              key(request),
+              Record.parse({ ...current, nativeRequested: true, nativeNamespace: dispatch.namespace }),
+            )
+          },
+          { commitGuard: assert },
+        )
+        return prepareNative(
+          request,
+          input.source.snapshot.files,
+          input.store,
+          async (value, physical) => {
+            const check = () => {
+              assert()
+              input.source.assert()
+              physical()
+            }
+            check()
+            const native = downloadNative(request, value, input.source.snapshot)
+            await input.source.recheck()
+            check()
+            return Storage.transaction(
+              async () => {
+                const current = await read(request)
+                if (!current || !held(current)) reject(request, "Native download ended during private preparation")
+                const receipt = DownloadReceipt.parse({
+                  version: 1,
+                  id: request.id,
+                  requestHash: hash(request),
+                  mappingRevision: request.mappingRevision,
+                  sourceSnapshotHash: request.sourceSnapshotHash,
+                  acceptedDiffHash: null,
+                  outcome: "downloaded-source-version",
+                  nativeReceiptHash: hash(native.reference),
+                  target: native.target,
+                  preparedAt: Date.now(),
+                })
+                if (
+                  current.downloadReceipt &&
+                  (current.downloadReceipt.nativeReceiptHash !== receipt.nativeReceiptHash ||
+                    JSON.stringify(current.downloadReceipt.target) !== JSON.stringify(receipt.target))
+                )
+                  reject(request, "Native download changed its original private receipt")
+                const selected = current.downloadReceipt ?? receipt
+                await Storage.write(
+                  key(request),
+                  Record.parse({
+                    ...current,
+                    state: "published",
+                    nativeRequested: false,
+                    native: native.reference,
+                    downloadReceipt: selected,
+                  }),
+                )
+                return selected
+              },
+              { commitGuard: check },
+            )
+          },
+          input.signal,
+        )
+      },
+      (value) => DownloadReceipt.parse(value),
+    )
+  }
+  function downloadRecord(request: DownloadRequest, record: Record | undefined, receipt: DownloadReceipt) {
+    if (
+      !record ||
+      JSON.stringify(record.downloadReceipt) !== JSON.stringify(receipt) ||
+      record.native === undefined ||
+      receipt.nativeReceiptHash !== hash(record.native) ||
+      !record.snapshot
+    )
+      reject(request, "Native download requires its original complete private receipt")
+    return record
+  }
+  export async function withDownloadPublication<T>(
+    value: DownloadRequest,
+    proof: DownloadReceipt,
+    body: () => Promise<T>,
+    signal?: AbortSignal,
+  ): Promise<T> {
+    const request = DownloadRequest.parse(value),
+      receipt = DownloadReceipt.parse(proof),
+      assert = WorkspaceContent.captureOwner(signal)
+    if (Storage.inTransaction())
+      reject(request, "Native download verification must run outside its publication transaction")
+    const publish = host().withDownloadPublication
+    if (!publish) reject(request, "Native private download publication Host is unavailable")
+    const jobKey = JSON.stringify(key(request)),
+      assertOwner = WorkspaceContent.captureOwner()
+    if (state().jobs.has(jobKey)) reject(request, "Native download publication already has accepted work")
+    const promise = running.run(assertOwner, async () => {
+      const record = downloadRecord(request, await read(request), receipt)
+      if (!held(record)) reject(request, "Native download publication was permanently closed")
+      await nativeDispatch(request, record)
+      assert()
+      return publish(
+        request,
+        record.native!,
+        async (value, physical) => {
+          const native = downloadNative(request, value, record.snapshot!)
+          if (
+            hash(native.reference) !== receipt.nativeReceiptHash ||
+            JSON.stringify(native.target) !== JSON.stringify(receipt.target)
+          )
+            reject(request, "Native download publication changed its private preparation")
+          let open = true
+          const check = () => {
+            assert()
+            physical()
+            if (!open || state().jobs.get(JSON.stringify(key(request)))?.terminal)
+              reject(request, "Native download publication callback ended")
+          }
+          try {
+            return await nativePublication.run(
+              { digest: hash(request), receipt: downloadReceiptHash(receipt), assert: check },
+              body,
+            )
+          } finally {
+            open = false
+          }
+        },
+        signal,
+      )
+    })
+    state().jobs.set(jobKey, { digest: hash(request), source: "native-download-publication", promise, assertOwner })
+    try {
+      return await promise
+    } finally {
+      state().jobs.delete(jobKey)
+    }
+  }
+  export function assertDownloadPublication(value: DownloadRequest, proof: DownloadReceipt) {
+    const request = DownloadRequest.parse(value),
+      receipt = DownloadReceipt.parse(proof),
+      frame = nativePublication.getStore()
+    if (!frame || frame.digest !== hash(request) || frame.receipt !== downloadReceiptHash(receipt))
+      reject(request, "Native download requires its actual private publication callback")
+    frame.assert()
+  }
+  export async function publishDownload(value: DownloadRequest, proof: DownloadReceipt) {
+    const request = DownloadRequest.parse(value),
+      receipt = DownloadReceipt.parse(proof)
+    if (!Storage.inWriteTransaction()) reject(request, "Native download must join its actual publication transaction")
+    assertDownloadPublication(request, receipt)
+    const record = downloadRecord(request, await read(request), receipt)
+    if (!held(record)) reject(request, "Native download lost its original publication")
+    await Storage.write(key(request), Record.parse({ ...record, nativePublication: downloadReceiptHash(receipt) }))
+    await Storage.remove(indexKey(request))
+    await Storage.transaction(async () => {}, { commitGuard: () => assertDownloadPublication(request, receipt) })
+  }
+  export async function withPublishedDownload<T>(
+    value: DownloadRequest,
+    proof: DownloadReceipt,
+    body: () => Promise<T>,
+    signal?: AbortSignal,
+  ): Promise<T> {
+    const request = DownloadRequest.parse(value),
+      receipt = DownloadReceipt.parse(proof),
+      assert = WorkspaceContent.captureOwner(signal)
+    const verify = async () => {
+      const record = downloadRecord(request, await read(request), receipt)
+      assert()
+      await nativeDispatch(request, record)
+      assert()
+      if (
+        !["published", "activated"].includes(record.state) ||
+        record.nativePublication !== downloadReceiptHash(receipt)
+      )
+        reject(request, "Native download has no actual original publication")
+    }
+    await verify()
+    const result = await body()
+    await verify()
+    return result
   }
   export async function previewNative(
     value: NativeRequest,
@@ -1289,7 +1636,7 @@ export namespace WorkspaceMove {
         if (!record) reject(request, "Workspace move is unknown")
         if (!held(record) && record.state !== outcome)
           reject(request, "Workspace move already has another permanent outcome")
-        if (outcome === "activated" && !record.receipt && !record.nativeReceipt)
+        if (outcome === "activated" && !record.receipt && !record.nativeReceipt && !record.downloadReceipt)
           reject(request, "Unpublished Workspace move cannot be activated")
         if ("kind" in request && (outcome === "activated" ? !record.nativePublication : !!record.nativePublication))
           reject(request, "Native Workspace publication requires its matching permanent outcome")
