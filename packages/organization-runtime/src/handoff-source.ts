@@ -246,7 +246,15 @@ export namespace OrganizationHandoffSource {
           {
             async put(hash, bytes) {
               snapshot.assert()
-              await send(plan, { action: "put", hash, data: Buffer.from(bytes).toString("base64") }, signal)
+              await send(
+                plan,
+                {
+                  action: "put",
+                  hash,
+                  data: Buffer.from(bytes).toString("base64"),
+                },
+                signal,
+              )
               snapshot.assert()
             },
           },
@@ -275,6 +283,7 @@ export namespace OrganizationHandoffSource {
         await supportedCohort(plan, signal)
         if (!Owners.compatibility({ "session-workspaces": 1 }).length)
           await WorkspaceSource.run(plan, resources, signal, () => Files.capture({ binding: binding(plan), signal }))
+        await WorkspaceSource.retainNative(plan, signal)
         await moveWorkspace(plan, resources, signal)
       })
       Physical.assertCurrent(lease)
@@ -501,7 +510,8 @@ export namespace OrganizationHandoffSource {
                 receipt ? WorkspaceMove.receiptHash(receipt) : null,
               ),
               ...(plan.workspacePlan?.mapping.kind === "organization-live" ||
-              plan.workspacePlan?.mapping.kind === "organization-native"
+              plan.workspacePlan?.mapping.kind === "organization-native" ||
+              plan.workspacePlan?.mapping.kind === "native-existing"
                 ? {
                     workspaceSourceHash: await Transfer.workspaceSource(binding(plan)).then((snapshot) =>
                       snapshot ? WorkspaceArchive.subtreeHash(snapshot) : null,

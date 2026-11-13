@@ -22,7 +22,7 @@ export type OrganizationNativeCleanupHandle = z.infer<typeof OrganizationNativeC
 export function organizationNativeCleanupHandle(view: Handoff.View, runtime: Runtime.Registration) {
   if (
     view.phase !== "cancelled" ||
-    view.workspaceMapping.kind !== "organization-native" ||
+    !Handoff.isNativeTargetMapping(view.workspaceMapping) ||
     !view.manifestHash ||
     runtime.runtimeKind !== "member"
   )

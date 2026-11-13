@@ -80,7 +80,7 @@ export namespace OrganizationHandoffEnvironments {
         fail("HANDOFF_BLOCKED", "Cloud compute requires its explicitly mapped cloud Workspace")
       await organization(session, mapping.target)
     } else if (mapping.target.kind === "native") {
-      if (input.targetKind !== "member" || (workspace.kind !== "native" && workspace.kind !== "organization-native"))
+      if (input.targetKind !== "member" || (workspace.kind !== "native" && !Handoff.isNativeTargetMapping(workspace)))
         fail("HANDOFF_BLOCKED", "Native compute requires its destination member and native Working location")
     }
   }

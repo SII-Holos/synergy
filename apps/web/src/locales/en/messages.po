@@ -13906,7 +13906,7 @@ msgstr "These destination versions have been accepted."
 
 #. js-lingui-explicit-id
 msgid "organization.handoff.native.acceptHint"
-msgstr "Use the files already in {directory}. Neither directory is overwritten; cloud files remain unchanged."
+msgstr "Use the files already in {directory}. Neither directory is overwritten; source files remain unchanged."
 
 #. js-lingui-explicit-id
 msgid "organization.handoff.native.checkCleanup"
@@ -13938,7 +13938,7 @@ msgstr "Version details"
 
 #. js-lingui-explicit-id
 msgid "organization.handoff.native.differenceHint"
-msgstr "The destination keeps its own versions. Source-only files will not be copied; cloud files remain unchanged."
+msgstr "The destination keeps its own versions. Source-only files will not be copied; source files remain unchanged."
 
 #. js-lingui-explicit-id
 msgid "organization.handoff.native.differences"

@@ -644,7 +644,13 @@ export function createMemberResourceClient(options: {
       const plan = Handoff.MachinePlan.parse(value)
       const operation = Cloud.HandoffWorkspaceOperation.parse(input)
       const workspace = plan.workspacePlan
-      if (!workspace || workspace.mapping.kind === "native" || !workspace.targetScopeID || !workspace.selectionActor)
+      if (
+        !workspace ||
+        workspace.mapping.kind === "native" ||
+        workspace.mapping.kind === "native-existing" ||
+        !workspace.targetScopeID ||
+        !workspace.selectionActor
+      )
         throw failure("HANDOFF_BLOCKED", "Workspace transfer requires its complete original mapping", "not_dispatched")
       const mapping = workspace.mapping
       const original =

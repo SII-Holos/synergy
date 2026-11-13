@@ -132,6 +132,7 @@ async function open(
     cancelSourceResponses?: Array<"blocked" | "unknown">
     holdOptions?: Promise<void>
     native?: boolean
+    nativeExisting?: boolean
     download?: boolean
     environment?: boolean
     noNativeDirectory?: boolean
@@ -301,7 +302,7 @@ async function open(
         sourceRuntimeID: "source",
         targetRuntimeID: "target",
         source:
-          input.cloud || input.native
+          input.cloud || (input.native && !input.nativeExisting)
             ? {
                 kind: "organization",
                 label: "Team files",
@@ -330,26 +331,27 @@ async function open(
           ? {
               environment: {
                 expectedSelectionRevision: 3,
-                source: input.native
-                  ? {
-                      kind: "organization",
-                      resourceID: "compute-current",
-                      resourceRevision: 2,
-                      environmentID: "current-environment",
-                    }
-                  : {
-                      kind: "native",
-                      environmentID: "source-native",
-                      provider: "native",
-                      generation: 0,
-                      descriptor: {
-                        version: 1,
+                source:
+                  input.native && !input.nativeExisting
+                    ? {
+                        kind: "organization",
+                        resourceID: "compute-current",
+                        resourceRevision: 2,
+                        environmentID: "current-environment",
+                      }
+                    : {
                         kind: "native",
-                        platform: "linux",
-                        architecture: "x64",
-                        capabilities: ["exec", "files"],
+                        environmentID: "source-native",
+                        provider: "native",
+                        generation: 0,
+                        descriptor: {
+                          version: 1,
+                          kind: "native",
+                          platform: "linux",
+                          architecture: "x64",
+                          capabilities: ["exec", "files"],
+                        },
                       },
-                    },
                 native: input.cloud
                   ? null
                   : {
@@ -370,13 +372,20 @@ async function open(
           : {}),
         choices: [
           {
-            kind: input.cloud || input.native ? "organization-live" : input.object ? "organization-object" : "native",
+            kind:
+              input.cloud || (input.native && !input.nativeExisting)
+                ? "organization-live"
+                : input.object
+                  ? "organization-object"
+                  : "native",
             requiresDifference: false,
           },
           ...(input.download
             ? [{ kind: "organization-native", targetKind: "private-copy", requiresDifference: false }]
             : []),
-          { kind: "organization-native", targetKind: "existing", requiresDifference: true },
+          input.nativeExisting
+            ? { kind: "native-existing", requiresDifference: true }
+            : { kind: "organization-native", targetKind: "existing", requiresDifference: true },
         ],
       })
     }
@@ -740,7 +749,7 @@ async function open(
       }
       if (operation.operation === "prepare-target") {
         if (
-          view.workspaceMapping.kind === "organization-native" &&
+          Handoff.isNativeTargetMapping(view.workspaceMapping) &&
           view.workspaceMapping.target.kind === "existing" &&
           !view.workspaceDifferenceAccepted
         )
@@ -888,7 +897,9 @@ async function open(
         | "activate"
         | "completed"
         | "destination"
-        | "workspace",
+        | "workspace"
+        | "move"
+        | "unknown",
     ) {
       return page.evaluate((key) => {
         const translate = Reflect.get(window, "handoffCopy")
@@ -2564,3 +2575,243 @@ test("the real Chinese Environment selector keeps complete context and reachable
     }
   }
 }, 30000)
+
+test("native existing-directory choice binds both original directories and complete destination-version consent", async () => {
+  const f = await open({
+    native: true,
+    nativeExisting: true,
+    environment: true,
+  })
+  try {
+    await chooseNativeDestination(f)
+    await f.dialog.locator(".organization-handoff-field").nth(1).getByRole("button").click()
+    await f.page
+      .getByRole("option", {
+        name: await f.nativeCopy("existing"),
+        exact: true,
+      })
+      .click()
+    await f.page.getByRole("listbox").waitFor({ state: "hidden" })
+    await f.dialog.getByText("Existing destination project folder", { exact: true }).waitFor()
+    expect(await f.dialog.getByText(await f.nativeCopy("hint"), { exact: true }).isVisible()).toBe(true)
+    const environmentCopy = (key: string) =>
+      f.page.evaluate((key) => {
+        const translate = Reflect.get(window, "handoffEnvironmentCopy")
+        if (typeof translate !== "function") throw new Error("The actual Environment locale owner is unavailable")
+        return String(translate(key))
+      }, key)
+    const environment = f.dialog.getByText(await environmentCopy("environment"), { exact: true }).locator("..")
+    await environment.getByRole("button").first().click()
+    await f.page.getByRole("option", { name: await environmentCopy("none"), exact: true }).click()
+    await f.page.getByRole("listbox").waitFor({ state: "hidden" })
+    expect(await f.dialog.getByText("Existing destination project folder", { exact: true }).isVisible()).toBe(true)
+    const begin = f.dialog.getByRole("button", {
+      name: await f.copy("begin"),
+      exact: true,
+    })
+    expect(await begin.isEnabled()).toBe(true)
+    expect(f.requests.filter((request) => request.method === "POST")).toHaveLength(0)
+    await capture(f.page, "handoff-native-existing-light-1100-choice.png")
+    const intro = f.dialog.locator(".organization-handoff > p").first()
+    await intro.scrollIntoViewIfNeeded()
+    const top = await f.dialog.getByRole("heading", { name: await f.copy("move"), exact: true }).boundingBox()
+    const description = await intro.boundingBox()
+    if (!top || !description) throw new Error("The original dialog context is unavailable")
+    expect(await intro.isVisible()).toBe(true)
+    expect(description.y).toBeGreaterThanOrEqual(top.y + top.height)
+    await capture(f.page, "handoff-native-existing-light-1100-top.png")
+    await begin.click()
+    const plan = Handoff.CurrentPrepare.parse(
+      f.requests.find((request) => request.method === "POST" && request.path.endsWith("/handoffs"))?.body,
+    )
+    expect(plan.workspaceMapping).toMatchObject({
+      kind: "native-existing",
+      source: { workspaceID: "source-workspace", generation: 3 },
+      target: {
+        kind: "existing",
+        workspaceID: "default-target",
+        generation: 1,
+        expectedRevision: 1,
+        projectRevision: "a".repeat(64),
+      },
+    })
+    expect(Object.keys(plan.workspaceMapping).sort()).toEqual(["kind", "moveID", "source", "target"])
+    if (plan.workspaceMapping.kind !== "native-existing")
+      throw new Error("The explicit native selection changed mapping domain")
+    expect(plan.workspaceMapping.moveID.length).toBeGreaterThan(0)
+    expect(plan.environmentMapping?.source.kind).toBe("native")
+    expect(plan.environmentMapping?.target).toEqual({ kind: "none" })
+    await f.dialog
+      .getByRole("button", {
+        name: await f.nativeCopy("acceptDirectory"),
+        exact: true,
+      })
+      .click()
+    await f.dialog.getByRole("button", { name: await f.copy("prepareSource"), exact: true }).click()
+    await f.dialog.getByRole("button", { name: await f.nativeCopy("preview"), exact: true }).click()
+    const reader = f.dialog.getByRole("region", {
+      name: await f.nativeCopy("differences"),
+      exact: true,
+    })
+    await reader.getByText(".git/index", { exact: true }).waitFor()
+    const differenceHint = await f.nativeCopy("differenceHint")
+    expect(differenceHint).toContain("source files remain unchanged")
+    await reader.getByText(differenceHint, { exact: true }).waitFor()
+    expect(
+      await reader
+        .getByRole("button", {
+          name: await f.nativeCopy("accept"),
+          exact: true,
+        })
+        .isDisabled(),
+    ).toBe(true)
+    await reader.getByRole("button", { name: await f.nativeCopy("next"), exact: true }).click()
+    await reader.getByText("目录/file-64.txt", { exact: true }).waitFor()
+    const review = reader.getByRole("checkbox", { name: await f.nativeCopy("reviewed"), exact: true })
+    await reader.getByText(await f.nativeCopy("reviewed"), { exact: true }).click()
+    expect(await review.isChecked()).toBe(true)
+    await capture(f.page, "handoff-native-existing-light-1100-differences.png")
+    await reader.getByRole("button", { name: await f.nativeCopy("accept"), exact: true }).click()
+    const confirmation = f.page.getByRole("dialog", {
+      name: await f.nativeCopy("accept"),
+      exact: true,
+    })
+    await confirmation.getByText(/Use the files already in Existing destination project folder/).waitFor()
+    expect(f.requests.filter((request) => request.path.endsWith("/accept"))).toHaveLength(1)
+    await confirmation.getByRole("button", { name: await f.nativeCopy("accept"), exact: true }).click()
+    const consents = f.requests
+      .filter((request) => request.path.endsWith("/accept"))
+      .map((request) => Handoff.Accept.parse(request.body))
+    expect(consents).toHaveLength(2)
+    const consent = consents[1]
+    if (!consent || !("workspaceDifference" in consent))
+      throw new Error("The exact second destination-version consent is missing")
+    expect(consent.mappingHash).toBe(await Handoff.planHash(plan.workspaceMapping, plan.environmentMapping))
+    expect(consent.mappingPlanRevision).toBe(plan.mappingPlanRevision)
+    expect(consent.workspaceDifference).toEqual(Handoff.DifferenceConsent.strip().parse(f.comparison))
+    const pages = f.requests
+      .filter((request) => request.path.endsWith("/drive"))
+      .map((request) => Handoff.Drive.parse(request.body))
+      .filter((request) => request.operation === "inspect-target")
+    expect(pages.every((request) => request.expectedRevision === f.comparison.diffHash)).toBe(true)
+    expect(pages.some((request) => request.cursor === "0000000000000064")).toBe(true)
+    await f.dialog.getByRole("button", { name: await f.copy("prepareTarget"), exact: true }).click()
+    await surrender(f)
+    await f.dialog.getByRole("button", { name: await f.copy("commit"), exact: true }).click()
+    await f.dialog.getByRole("button", { name: await f.copy("activate"), exact: true }).click()
+    await f.dialog.getByRole("heading", { name: await f.copy("completed"), exact: true }).waitFor()
+    expect(
+      f.requests.some((request) =>
+        /\/cloud\/|\/resources(?:\/|\?|$)|project-resources|workspace-storage|commands|controls/.test(request.path),
+      ),
+    ).toBe(false)
+    expect(await f.dialog.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true)
+    expect(f.changed).toBe(1)
+    expect(f.errors).toEqual([])
+  } finally {
+    await f.close()
+  }
+}, 45_000)
+
+test("native existing-directory cold recovery preserves unknown preview and exact cancellation cleanup", async () => {
+  const f = await open({
+    native: true,
+    nativeExisting: true,
+    dropPreview: true,
+    locale: "zh-CN",
+    colorScheme: "dark",
+    viewport: { width: 375, height: 740 },
+  })
+  try {
+    await chooseExisting(f)
+    await f.dialog.getByRole("button", { name: await f.nativeCopy("preview"), exact: true }).click()
+    await f.dialog.getByText(await f.copy("unknown"), { exact: true }).waitFor()
+    const pending = await f.page.evaluate(() => {
+      const entry = Object.entries(localStorage).find(([key]) => key.includes("organization-handoff"))
+      return entry ? JSON.parse(entry[1]).pending : undefined
+    })
+    expect(pending).toMatchObject({
+      kind: "drive",
+      body: { operation: "preview-target" },
+    })
+    const optionsBefore = f.requests.filter((request) => request.path.includes("handoff-options")).length
+    await f.page.reload()
+    await f.page.getByRole("button", { name: await f.copy("move"), exact: true }).click()
+    await f.dialog.getByText("Existing destination project folder", { exact: true }).waitFor()
+    await f.page.waitForFunction(() => Number(Reflect.get(window, "nativeDirectoryResponses") ?? 0) > 0)
+    expect(
+      await f.page.evaluate(() => {
+        const entry = Object.entries(localStorage).find(([key]) => key.includes("organization-handoff"))
+        return entry ? JSON.parse(entry[1]).pending : undefined
+      }),
+    ).toEqual(pending)
+    expect(f.requests.filter((request) => request.path.includes("handoff-options"))).toHaveLength(optionsBefore)
+    expect(await f.dialog.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true)
+    const differenceHint = await f.nativeCopy("differenceHint")
+    expect(differenceHint).toContain("源端文件保持不变")
+    await f.dialog.getByText(differenceHint, { exact: true }).waitFor()
+    await capture(f.page, "handoff-native-existing-zh-dark-375-restored.png")
+    const cancel = await f.copy("cancel")
+    await f.dialog.getByRole("button", { name: cancel, exact: true }).click()
+    await f.page
+      .getByRole("dialog", { name: cancel, exact: true })
+      .getByRole("button", { name: cancel, exact: true })
+      .click()
+    const confirmSource = await f.copy("finishCancel")
+    await f.dialog.getByRole("button", { name: confirmSource, exact: true }).click()
+    await f.page
+      .getByRole("dialog", { name: confirmSource, exact: true })
+      .getByRole("button", { name: confirmSource, exact: true })
+      .click()
+    await f.dialog
+      .getByRole("button", {
+        name: await f.nativeCopy("checkCleanup"),
+        exact: true,
+      })
+      .waitFor()
+    const saved = JSON.parse(
+      (await f.page.evaluate(
+        () => Object.entries(localStorage).find(([key]) => key.includes("organization-handoff"))?.[1],
+      ))!,
+    )
+    expect(saved.pending).toEqual(pending)
+    expect(saved.nativeCleanup.binding.handoffID).toBe(saved.handoffID)
+    f.denySession()
+    await f.page.reload()
+    const reads = () => f.requests.filter((request) => request.method === "GET" && /handoffs/.test(request.path)).length
+    const readsBefore = reads()
+    await f.page.getByRole("button", { name: await f.copy("move"), exact: true }).click()
+    const cleanup = f.page.getByRole("dialog", {
+      name: await f.nativeCopy("cleanup"),
+      exact: true,
+    })
+    const check = cleanup.getByRole("button", {
+      name: await f.nativeCopy("checkCleanup"),
+      exact: true,
+    })
+    await check.waitFor()
+    await f.page.evaluate("window.revoke()")
+    await check.click()
+    await cleanup.getByText(await f.nativeCopy("cleanupUnknown"), { exact: true }).waitFor()
+    expect(reads()).toBe(readsBefore)
+    await capture(f.page, "handoff-native-existing-zh-dark-375-cleanup.png")
+    f.finishNativeCleanup()
+    await check.click()
+    await cleanup.getByText(await f.nativeCopy("cleanupComplete"), { exact: true }).waitFor()
+    expect(reads()).toBe(readsBefore)
+    expect(
+      f.requests.filter(
+        (request) =>
+          request.path.endsWith("/drive") && Handoff.Drive.parse(request.body).operation === "preview-target",
+      ),
+    ).toHaveLength(1)
+    expect(
+      f.requests.some((request) =>
+        /\/cloud\/|\/resources(?:\/|\?|$)|project-resources|commands|controls/.test(request.path),
+      ),
+    ).toBe(false)
+    expect(f.errors).toEqual([])
+  } finally {
+    await f.close()
+  }
+}, 45_000)

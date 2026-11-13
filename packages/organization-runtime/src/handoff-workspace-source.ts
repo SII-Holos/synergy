@@ -9,6 +9,8 @@ import {
 } from "@ericsanchezok/synergy-harness/session/transfer"
 import { WorkspaceArchive } from "@ericsanchezok/synergy-harness/workspace/archive"
 import { WorkspaceContent } from "@ericsanchezok/synergy-harness/workspace/content"
+import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
+import { Session } from "@ericsanchezok/synergy-harness/session"
 import { OrganizationSessionTransfer as Transfer } from "./session-transfer"
 import { OrganizationRuntimeError } from "./error"
 import type { MemberResourceClient } from "./resource-client"
@@ -92,6 +94,55 @@ export namespace OrganizationHandoffWorkspaceSource {
         }
       },
     })
+  }
+  export async function retainNative(plan: Handoff.MachinePlan, signal: AbortSignal) {
+    const mapping = plan.workspacePlan?.mapping
+    if (mapping?.kind !== "native-existing") return
+    const owner = WorkspaceContent.captureOwner(signal)
+    const binding = Epochs.Binding.parse({
+      sessionID: plan.sessionID,
+      scopeID: plan.sourceBinding.projectID,
+      handoffID: plan.handoffID,
+      sourceID: plan.sourceRuntimeID,
+      targetID: plan.targetRuntimeID,
+      fromEpoch: plan.fromEpoch,
+      toEpoch: plan.toEpoch,
+    })
+    await Files.withCaptured({ binding, ...mapping.source, signal }, async (capture) => {
+      const assert = () => {
+        owner()
+        capture.assert()
+      }
+      const session = await Session.get(plan.sessionID)
+      const catalog = await WorkspaceCatalog.get(mapping.source.workspaceID, binding.scopeID)
+      assert()
+      if (
+        session.workspaceID !== catalog.id ||
+        catalog.scopeID !== session.scope.id ||
+        catalog.binding.generation !== mapping.source.generation ||
+        catalog.binding.state !== "bound" ||
+        catalog.lifecycle !== "active" ||
+        catalog.backend?.provider !== "directory" ||
+        !catalog.binding.path ||
+        !catalog.binding.physicalID ||
+        catalog.activeMount
+      )
+        fail("Native adoption requires its exact drained source Working location")
+      const snapshot = WorkspaceArchive.Subtree.parse({
+        version: 1,
+        workspaceID: catalog.id,
+        scopeID: catalog.scopeID,
+        generation: catalog.binding.generation,
+        revision: catalog.revision,
+        path: "",
+        head: catalog.content?.manifest ?? null,
+        manifest: capture.manifest,
+        files: capture.captured.files,
+      })
+      await Transfer.retainWorkspaceSource(binding, snapshot, signal)
+      assert()
+    })
+    owner()
   }
   export async function run<T>(
     plan: Handoff.MachinePlan,

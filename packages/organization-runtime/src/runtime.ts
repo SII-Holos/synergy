@@ -218,7 +218,7 @@ async function openOrganizationRuntime(input: MemberRuntimeOptions) {
               ? {
                   handoff: context.bind(handoff.dispatch),
                   handoffInspection: context.bind(handoff.inspection),
-                  handoffVersion: 8 as const,
+                  handoffVersion: 9 as const,
                 }
               : {}),
             notifications: true,

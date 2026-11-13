@@ -16,7 +16,7 @@ Register config/CLI/history/Home/reader fences. Upgrade through original native 
 
 Machine sockets enforce registration/account commit fences; permits bind Directory ownership. Relays recheck fresh destination signatures/consent/participants, retaining no content. Proofs acknowledge original facts, excluding current Views. Native recovery grants no Session read. Hosted/member fences differ; heartbeats indicate availability. Notifications recheck bindings/recipient ACLs. Verify connection/hosted/notifications/`handoff{,-dispatch,-openapi}`/object suites.
 
-Handoff bridge eight binds explicit Environment choices to complete confirmed plans/original machine facts. Preserve canonical resource revisions/one selection CAS for both roles; pure native/none preserves absent contracts. Own paged Environment catalogs/central index migration. Verify handoff-environment contracts/native migration/catalog/resource recovery suites.
+Environment mapping requires bridge eight or newer and complete confirmed plans/original machine facts; native-existing requires nine before Source freeze. Preserve canonical resource revisions/one selection CAS for both roles; pure native/none preserves absent contracts. Own paged Environment catalogs/central index migration. Verify handoff-environment contracts/native migration/catalog/resource recovery suites.
 
 Commands derive actors from validated credentials; capture live connections during admission. Preserve metadata attempts/unresolved receipts/skip proofs across reconnect without replay. Bounded exchanges distinguish dropped/enqueued/unknown sends; observe cancellation independently, recheck binding/access after replies. Verify command-admission/command-forwarding suites and Presets integration.
 

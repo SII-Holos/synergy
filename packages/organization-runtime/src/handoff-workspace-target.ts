@@ -73,6 +73,7 @@ export namespace OrganizationHandoffWorkspaceTarget {
     if (
       !mapping ||
       mapping.kind === "native" ||
+      mapping.kind === "native-existing" ||
       catalog.backend?.provider !== provider ||
       spec.orgID !== frame.plan.orgID ||
       spec.deploymentIncarnation !== frame.plan.deploymentIncarnation ||
@@ -107,6 +108,7 @@ export namespace OrganizationHandoffWorkspaceTarget {
         if (
           !mapping ||
           mapping.kind === "native" ||
+          mapping.kind === "native-existing" ||
           handoffID !== plan.handoffID ||
           captured.workspaceID !== mapping.source.workspaceID ||
           captured.generation !== mapping.source.generation ||
@@ -181,7 +183,7 @@ export namespace OrganizationHandoffWorkspaceTarget {
       actor = plan.workspacePlan?.targetActor,
       frozen = plan.frozen?.proof
     if (
-      mapping?.kind !== "organization-native" ||
+      !Handoff.isNativeTargetMapping(mapping) ||
       mapping.target.kind !== "existing" ||
       !actor ||
       frozen?.purpose !== "source-frozen" ||
@@ -209,7 +211,7 @@ export namespace OrganizationHandoffWorkspaceTarget {
       actor = plan.workspacePlan?.targetActor,
       frozen = plan.frozen?.proof
     if (
-      mapping?.kind !== "organization-native" ||
+      !Handoff.isNativeTargetMapping(mapping) ||
       !actor ||
       frozen?.purpose !== "source-frozen" ||
       !frozen.workspaceSourceHash
@@ -237,10 +239,14 @@ export namespace OrganizationHandoffWorkspaceTarget {
     const plan = Handoff.MachinePlan.parse(value),
       mapping = plan.workspacePlan?.mapping,
       actor = plan.workspacePlan?.targetActor
-    if (mapping?.kind !== "organization-native" || !actor || !resources?.handoffWorkspace)
+    if (
+      !Handoff.isNativeTargetMapping(mapping) ||
+      !actor ||
+      (mapping.kind === "organization-native" && !resources?.handoffWorkspace)
+    )
       fail("Existing native adoption requires its original complete target consent")
     const owner = WorkspaceContent.captureOwner(signal),
-      send = resources.handoffWorkspace.bind(resources)
+      send = resources?.handoffWorkspace?.bind(resources)
     let snapshot: WorkspaceArchive.Subtree | undefined
     for await (const member of Staging.members({
       handoffID: plan.handoffID,
@@ -268,7 +274,15 @@ export namespace OrganizationHandoffWorkspaceTarget {
       frozen?.purpose !== "source-frozen" ||
       frozen.workspaceSourceHash !== WorkspaceArchive.subtreeHash(snapshot)
     )
-      fail("Native adoption has no complete final service source")
+      fail("Native adoption has no complete final source snapshot")
+    if (
+      mapping.kind === "native-existing" &&
+      (snapshot.workspaceID !== mapping.source.workspaceID ||
+        snapshot.scopeID !== plan.sourceBinding.projectID ||
+        snapshot.generation !== mapping.source.generation ||
+        snapshot.path !== "")
+    )
+      fail("Native adoption has another original captured source Working location")
     const original = snapshot
     const request = await nativeMoveRequest(plan, signal)
     const local = async () => {
@@ -292,6 +306,12 @@ export namespace OrganizationHandoffWorkspaceTarget {
     }
     const recheck = async () => {
       await local()
+      if (mapping.kind === "native-existing") {
+        await Staging.verify(plan.handoffID, signal)
+        owner()
+        return
+      }
+      if (!send) fail("Cloud source validation requires its original resource client")
       const result = await send(plan, { action: "source-validate" }, signal)
       owner()
       if (
@@ -387,7 +407,7 @@ export namespace OrganizationHandoffWorkspaceTarget {
   ) {
     const plan = Handoff.MachinePlan.parse(value)
     if (!plan.workspacePlan || plan.workspacePlan.mapping.kind === "native") return body()
-    if (plan.workspacePlan.mapping.kind === "organization-native") {
+    if (Handoff.isNativeTargetMapping(plan.workspacePlan.mapping)) {
       const context = await native(plan, resources, signal)
       const request = context.request
       if (request.kind === "native-download") {
@@ -415,7 +435,14 @@ export namespace OrganizationHandoffWorkspaceTarget {
       }
       if (!plan.workspacePlan.differenceConsent) fail("Native preparation requires the second exact difference consent")
       return owned(() =>
-        NativeWorkspaceAdoption.run({ ...context, request, consent: plan.workspacePlan!.differenceConsent! }, body),
+        NativeWorkspaceAdoption.run(
+          {
+            ...context,
+            request,
+            consent: plan.workspacePlan!.differenceConsent!,
+          },
+          body,
+        ),
       )
     }
     if (!resources?.handoffWorkspace) fail("Remote Workspace target requires its original machine resource client")

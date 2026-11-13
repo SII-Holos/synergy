@@ -9,7 +9,7 @@ const Previous = z
   .strictObject({ version: z.literal(1), ...fields })
   .refine(
     (value) =>
-      value.plan.workspacePlan?.mapping.kind !== "organization-native" &&
+      !Handoff.isNativeTargetMapping(value.plan.workspacePlan?.mapping) &&
       !["target-difference", "target-preview-released"].includes(value.fact.purpose),
     "Version-one target receipts require their original reader",
   )
@@ -17,12 +17,10 @@ export const HandoffTargetRecord = z
   .strictObject({ version: z.literal(3), plan: z.union([Handoff.MachinePlan, Recovery.Permit]), fact: Handoff.Proof })
   .superRefine((value, context) => {
     const invalid = (message: string) => context.addIssue({ code: "custom", message })
-    const { plan, fact } = value,
-      native = plan.workspacePlan?.mapping.kind === "organization-native",
-      adopting =
-        native &&
-        plan.workspacePlan?.mapping.kind === "organization-native" &&
-        plan.workspacePlan.mapping.target.kind === "existing"
+    const { plan, fact } = value
+    const mapping = plan.workspacePlan?.mapping
+    const native = Handoff.isNativeTargetMapping(mapping)
+    const adopting = native && mapping.target.kind === "existing"
     if (
       plan.purpose === "handoff-target-cleanup" &&
       (!["target-never-activate", "target-preview-released"].includes(fact.purpose) ||
@@ -73,7 +71,8 @@ export const HandoffTargetRecord = z
       if (
         native
           ? !fact.workspaceNativeReceiptHash ||
-            (plan.workspacePlan?.mapping.kind === "organization-native" &&
+            (plan.workspacePlan &&
+            Handoff.isNativeTargetMapping(plan.workspacePlan.mapping) &&
             plan.workspacePlan.mapping.target.kind === "existing"
               ? !plan.workspacePlan?.differenceConsent ||
                 fact.workspaceDifferenceHash !== plan.workspacePlan.differenceConsent.diffHash

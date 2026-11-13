@@ -59,7 +59,7 @@ type WorkspaceChoice = Handoff.Options["choices"][number]
 const choiceKey = (choice: WorkspaceChoice) =>
   choice.kind === "organization-native" ? `${choice.kind}:${choice.targetKind}` : choice.kind
 const existingDirectory = (mapping: Handoff.WorkspaceMapping) =>
-  mapping.kind === "organization-native" && mapping.target.kind === "existing"
+  Handoff.isNativeTargetMapping(mapping) && mapping.target.kind === "existing"
 function environmentMessage(kind: Handoff.EnvironmentTargetSelection["kind"]) {
   return kind === "organization"
     ? environmentMessages.cloud
@@ -68,6 +68,7 @@ function environmentMessage(kind: Handoff.EnvironmentTargetSelection["kind"]) {
       : environmentMessages.none
 }
 function workspaceMessage(value: WorkspaceChoice | Handoff.WorkspaceMapping) {
+  if (value.kind === "native-existing") return nativeMessages.existing
   if (value.kind === "organization-native")
     return ("target" in value ? value.target.kind : value.targetKind) === "private-copy"
       ? nativeMessages.download
@@ -374,7 +375,7 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
     void runtime(view.targetRuntimeID).catch((error) => failure(error, false))
     if (terminal(view)) {
       try {
-        if (view.phase === "cancelled" && view.workspaceMapping.kind === "organization-native" && view.manifestHash) {
+        if (view.phase === "cancelled" && Handoff.isNativeTargetMapping(view.workspaceMapping) && view.manifestHash) {
           const original = state.runtimes.find((runtime) => runtime.runtimeID === view.targetRuntimeID)
           if (!original || (original.runtimeKind === "member" && original.accountID === accountID)) {
             if (!saved()) retain(view.handoffID)
@@ -760,11 +761,13 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
     const choice = supportedChoices().find((choice) => choiceKey(choice) === value)
     if (!choice) return
     if (choice.kind === "organization-native") setNativeTarget(choice.targetKind)
+    if (choice.kind === "native-existing") setNativeTarget("existing")
     chooseKind(choice.kind)
   }
   function mapping(): Handoff.WorkspaceMapping | undefined {
     const preview = state.preview
     if (!preview) return
+    if (kind() === "native-existing") return organizationNativeHandoffMapping(preview, "validation", "existing")
     if (kind() === "organization-native") return organizationNativeHandoffMapping(preview, "validation", nativeTarget())
     if (!preview.choices.some((choice) => choice.kind === kind() && !choice.requiresDifference)) return
     if (kind() === "native") return { kind: "native" }
@@ -1094,7 +1097,7 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
       !allowed() ||
       pending() ||
       captured.cancelRequested ||
-      captured.workspaceMapping.kind !== "organization-native" ||
+      !existingDirectory(captured.workspaceMapping) ||
       !captured.targetAccepted ||
       !captured.workspaceDifference ||
       !targetOwner() ||
@@ -1214,7 +1217,7 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
         return
       const handoffID = generateSecureUUID()
       const workspaceMapping =
-        selected.kind === "organization-object" || selected.kind === "organization-native"
+        selected.kind === "organization-object" || Handoff.isNativeTargetMapping(selected)
           ? { ...selected, moveID: generateSecureUUID() }
           : selected
       await perform(
@@ -1417,6 +1420,10 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
         (choice) =>
           (["native", "organization-live", "organization-object"].includes(choice.kind) &&
             !choice.requiresDifference) ||
+          (choice.kind === "native-existing" &&
+            choice.requiresDifference &&
+            !!preview.native &&
+            preview.source?.kind === "native") ||
           (choice.kind === "organization-native" &&
             ((choice.targetKind === "existing" && choice.requiresDifference && !!preview.native) ||
               (choice.targetKind === "private-copy" && !choice.requiresDifference)) &&
@@ -1541,17 +1548,23 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
                       </div>
                       <p>
                         {_(
-                          kind() === "organization-native"
-                            ? nativeTarget() === "private-copy"
-                              ? nativeMessages.downloadHint
-                              : nativeMessages.hint
-                            : kind() === "organization-live"
-                              ? messages.liveHint
-                              : messages.nativeHint,
+                          kind() === "native-existing"
+                            ? nativeMessages.hint
+                            : kind() === "organization-native"
+                              ? nativeTarget() === "private-copy"
+                                ? nativeMessages.downloadHint
+                                : nativeMessages.hint
+                              : kind() === "organization-live"
+                                ? messages.liveHint
+                                : messages.nativeHint,
                         )}
                       </p>
                       <Show
-                        when={kind() === "organization-native" && nativeTarget() === "existing" && preview().native}
+                        when={
+                          (kind() === "native-existing" ||
+                            (kind() === "organization-native" && nativeTarget() === "existing")) &&
+                          preview().native
+                        }
                       >
                         {(native) => (
                           <dl class="organization-handoff-summary">
@@ -1824,7 +1837,7 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
                         }
                       >
                         {_(
-                          view().workspaceMapping.kind === "organization-native"
+                          Handoff.isNativeTargetMapping(view().workspaceMapping)
                             ? existingDirectory(view().workspaceMapping)
                               ? nativeMessages.acceptDirectory
                               : nativeMessages.acceptDownload

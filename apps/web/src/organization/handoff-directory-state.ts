@@ -4,7 +4,7 @@ import { organizationNativeHandoffMapping } from "./handoff-native-state"
 
 export const OrganizationNativeDirectory = z.strictObject({
   plan: Handoff.CurrentPrepare.refine(
-    (plan) => plan.workspaceMapping.kind === "organization-native" && plan.workspaceMapping.target.kind === "existing",
+    (plan) => Handoff.isNativeTargetMapping(plan.workspaceMapping) && plan.workspaceMapping.target.kind === "existing",
   ),
   label: z.string().min(1).max(255),
 })
@@ -18,7 +18,7 @@ export function organizationDirectoryFromOptions(input: {
 }) {
   const { plan, options } = input
   if (
-    plan.workspaceMapping.kind !== "organization-native" ||
+    !Handoff.isNativeTargetMapping(plan.workspaceMapping) ||
     plan.workspaceMapping.target.kind !== "existing" ||
     !options.native ||
     options.sessionID !== input.sessionID ||
@@ -36,7 +36,7 @@ export function organizationDirectoryFromOptions(input: {
 export function organizationDirectoryFromInspection(view: Handoff.View, requestID: string, value: unknown) {
   const inspection = Handoff.NativeTargetSelection.parse(value)
   const target =
-    view.workspaceMapping.kind === "organization-native" && view.workspaceMapping.target.kind === "existing"
+    Handoff.isNativeTargetMapping(view.workspaceMapping) && view.workspaceMapping.target.kind === "existing"
       ? view.workspaceMapping.target
       : undefined
   if (
@@ -73,7 +73,7 @@ export function organizationDirectoryLabel(
     value.plan.targetRuntimeID !== view.targetRuntimeID ||
     value.plan.expectedBindingEpoch !== view.fromEpoch ||
     value.plan.mappingPlanRevision !== view.mappingPlanRevision ||
-    view.workspaceMapping.kind !== "organization-native" ||
+    !Handoff.isNativeTargetMapping(view.workspaceMapping) ||
     JSON.stringify(value.plan.workspaceMapping) !== JSON.stringify(view.workspaceMapping)
   )
     return

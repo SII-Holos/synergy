@@ -3180,6 +3180,10 @@ export type OrgHandoffOptions = {
         requiresDifference: true
       }
     | {
+        kind: "native-existing"
+        requiresDifference: true
+      }
+    | {
         kind: "organization-native"
         targetKind: "private-copy"
         requiresDifference: false
@@ -3280,6 +3284,21 @@ export type OrgHandoffView = {
         kind: "native"
       }
     | {
+        kind: "native-existing"
+        moveID: string
+        source: {
+          workspaceID: string
+          generation: number
+        }
+        target: {
+          kind: "existing"
+          workspaceID: string
+          generation: number
+          expectedRevision: number
+          projectRevision: string
+        }
+      }
+    | {
         kind: "organization-live"
         source: {
           workspaceID: string
@@ -3362,6 +3381,21 @@ export type OrgHandoffPrepare =
       workspaceMapping:
         | {
             kind: "native"
+          }
+        | {
+            kind: "native-existing"
+            moveID: string
+            source: {
+              workspaceID: string
+              generation: number
+            }
+            target: {
+              kind: "existing"
+              workspaceID: string
+              generation: number
+              expectedRevision: number
+              projectRevision: string
+            }
           }
         | {
             kind: "organization-live"
@@ -3858,6 +3892,21 @@ export type OrgHandoffRecoveryPermit = {
     mapping:
       | {
           kind: "native"
+        }
+      | {
+          kind: "native-existing"
+          moveID: string
+          source: {
+            workspaceID: string
+            generation: number
+          }
+          target: {
+            kind: "existing"
+            workspaceID: string
+            generation: number
+            expectedRevision: number
+            projectRevision: string
+          }
         }
       | {
           kind: "organization-live"

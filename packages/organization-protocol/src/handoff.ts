@@ -246,6 +246,21 @@ export namespace OrganizationHandoffProtocol {
   export const WorkspaceMapping = z.discriminatedUnion("kind", [
     z.strictObject({ kind: z.literal("native") }),
     z.strictObject({
+      kind: z.literal("native-existing"),
+      moveID: Identity.ID,
+      source: z.strictObject({
+        workspaceID: Identity.ID,
+        generation: OrganizationProtocol.Epoch,
+      }),
+      target: z.strictObject({
+        kind: z.literal("existing"),
+        workspaceID: Identity.ID,
+        generation: OrganizationProtocol.Epoch,
+        expectedRevision: Identity.Revision.positive(),
+        projectRevision: Hash,
+      }),
+    }),
+    z.strictObject({
       kind: z.literal("organization-live"),
       source: z.strictObject({ workspaceID: Identity.ID, generation: OrganizationProtocol.Epoch }),
       resource: z.strictObject({
@@ -291,6 +306,10 @@ export namespace OrganizationHandoffProtocol {
     }),
   ])
   export type WorkspaceMapping = z.infer<typeof WorkspaceMapping>
+  export type NativeTargetMapping = Extract<WorkspaceMapping, { kind: "organization-native" | "native-existing" }>
+  export function isNativeTargetMapping(mapping: WorkspaceMapping | undefined): mapping is NativeTargetMapping {
+    return mapping?.kind === "organization-native" || mapping?.kind === "native-existing"
+  }
   export const mappingHash = (mapping: WorkspaceMapping) =>
     digestProtocol(WorkspaceMapping, "synergy.organization.handoff.workspace-mapping.v1\n", mapping)
   export const LegacyPrepare = z.strictObject({
@@ -514,6 +533,10 @@ export namespace OrganizationHandoffProtocol {
             requiresDifference: z.literal(true),
           }),
           z.strictObject({
+            kind: z.literal("native-existing"),
+            requiresDifference: z.literal(true),
+          }),
+          z.strictObject({
             kind: z.literal("organization-native"),
             targetKind: z.literal("private-copy"),
             requiresDifference: z.literal(false),
@@ -684,7 +707,7 @@ export namespace OrganizationHandoffProtocol {
       const cancelled = value.cleanup?.proof
       return (
         !cancelled ||
-        (value.workspacePlan?.mapping.kind === "organization-native" &&
+        (isNativeTargetMapping(value.workspacePlan?.mapping) &&
           ["retire-target", "inspect-target"].includes(value.operation) &&
           cancelled.purpose === "source-cancelled" &&
           sameBinding(value, cancelled) &&
@@ -854,7 +877,8 @@ export namespace OrganizationHandoffProtocol {
         (fact) =>
           fact.proof.purpose === completion ||
           (plan.operation === "retire-target" &&
-            plan.workspacePlan?.mapping.kind === "organization-native" &&
+            plan.workspacePlan &&
+            isNativeTargetMapping(plan.workspacePlan.mapping) &&
             fact.proof.purpose === "target-preview-released"),
       )
     )
@@ -868,7 +892,8 @@ export namespace OrganizationHandoffProtocol {
         return false
       if (
         proof.purpose === "target-difference" &&
-        (plan.workspacePlan?.mapping.kind !== "organization-native" ||
+        (!plan.workspacePlan ||
+          !isNativeTargetMapping(plan.workspacePlan.mapping) ||
           plan.workspacePlan.mapping.target.kind !== "existing" ||
           proof.difference.mappingPlanRevision !== plan.mappingPlanRevision ||
           plan.frozen?.proof.purpose !== "source-frozen" ||
@@ -878,12 +903,13 @@ export namespace OrganizationHandoffProtocol {
       if (
         proof.purpose === "target-preview-released" &&
         ((plan.operation !== "retire-target" && !(plan.operation === "inspect-target" && plan.cleanup)) ||
-          plan.workspacePlan?.mapping.kind !== "organization-native" ||
+          !plan.workspacePlan ||
+          !isNativeTargetMapping(plan.workspacePlan.mapping) ||
           proof.diffHash !== (plan.workspacePlan.difference?.diffHash ?? null))
       )
         return false
       if (proof.purpose === "target-prepared") {
-        if (plan.workspacePlan?.mapping.kind === "organization-native") {
+        if (plan.workspacePlan && isNativeTargetMapping(plan.workspacePlan.mapping)) {
           if (
             !proof.workspaceNativeReceiptHash ||
             (plan.workspacePlan.mapping.target.kind === "existing"

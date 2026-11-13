@@ -13906,7 +13906,7 @@ msgstr "已接受这些目标文件版本。"
 
 #. js-lingui-explicit-id
 msgid "organization.handoff.native.acceptHint"
-msgstr "使用 {directory} 中现有的文件。两个目录均不会被覆盖，云端文件保持不变。"
+msgstr "使用 {directory} 中现有的文件。两个目录均不会被覆盖，源端文件保持不变。"
 
 #. js-lingui-explicit-id
 msgid "organization.handoff.native.checkCleanup"
@@ -13938,7 +13938,7 @@ msgstr "版本详情"
 
 #. js-lingui-explicit-id
 msgid "organization.handoff.native.differenceHint"
-msgstr "目标端保留自身的文件版本。仅在源端存在的文件不会被复制，云端文件保持不变。"
+msgstr "目标端保留自身的文件版本。仅在源端存在的文件不会被复制，源端文件保持不变。"
 
 #. js-lingui-explicit-id
 msgid "organization.handoff.native.differences"

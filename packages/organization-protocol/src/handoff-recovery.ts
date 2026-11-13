@@ -84,7 +84,7 @@ export namespace OrganizationHandoffRecovery {
         value.runtimeID === value.targetRuntimeID &&
         value.sourceRuntimeID !== value.targetRuntimeID &&
         value.toEpoch > value.fromEpoch &&
-        value.workspacePlan.mapping.kind === "organization-native" &&
+        Handoff.isNativeTargetMapping(value.workspacePlan.mapping) &&
         value.sourceBinding.orgID === value.orgID &&
         value.sourceBinding.driverRuntimeID === value.sourceRuntimeID &&
         value.sourceBinding.bindingEpoch === value.fromEpoch &&

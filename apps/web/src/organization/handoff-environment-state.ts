@@ -17,7 +17,7 @@ export function organizationHandoffEnvironmentMapping(
   if (!environment || !selected || !environment.choices.includes(selected.kind)) return
   if (
     selected.kind === "native" &&
-    ((workspace.kind !== "native" && workspace.kind !== "organization-native") ||
+    ((workspace.kind !== "native" && !Handoff.isNativeTargetMapping(workspace)) ||
       JSON.stringify(selected) !== JSON.stringify(environment.native))
   )
     return

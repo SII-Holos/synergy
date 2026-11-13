@@ -70,6 +70,13 @@ const MappedStored = LegacyStored.omit({ version: true }).extend({
   workspaceContract: Record.SessionResources.optional(),
   workspaceSource: WorkspaceArchive.Subtree.optional(),
 })
+function sourceSnapshotHash(record: z.infer<typeof MappedStored>) {
+  if (record.request.workspaceMapping.kind === "native-existing") {
+    const frozen = record.frozen?.proof
+    return frozen?.purpose === "source-frozen" && frozen.fileClosureHash ? (frozen.workspaceSourceHash ?? null) : null
+  }
+  return record.workspaceSource ? WorkspaceArchive.subtreeHash(record.workspaceSource) : null
+}
 const selection = (record: z.infer<typeof MappedStored>) =>
   record.request.workspaceMapping.kind === "native" ||
   (record.selectionActor?.kind === "account" &&
@@ -77,7 +84,7 @@ const selection = (record: z.infer<typeof MappedStored>) =>
     record.selectionActor.orgID === record.orgID &&
     record.selectionActor.requestID === record.handoffID)
 const PreviousStored = MappedStored.extend({ version: z.literal(2) }).refine(
-  (record) => record.request.workspaceMapping.kind !== "organization-native" && selection(record),
+  (record) => !Handoff.isNativeTargetMapping(record.request.workspaceMapping) && selection(record),
   "Version-two handoffs require their original mapping reader",
 )
 const FileStored = MappedStored.extend({
@@ -102,8 +109,8 @@ const FileStored = MappedStored.extend({
   .superRefine((record, context) => {
     const invalid = (message: string) => context.addIssue({ code: "custom", message })
     const mapping = record.request.workspaceMapping
-    const native = mapping.kind === "organization-native"
-    const adopting = mapping.kind === "organization-native" && mapping.target.kind === "existing"
+    const native = Handoff.isNativeTargetMapping(mapping)
+    const adopting = Handoff.isNativeTargetMapping(mapping) && mapping.target.kind === "existing"
     if (!adopting && (record.difference || record.differenceConsent || record.differenceActor))
       invalid("Only an existing native directory can carry a target difference")
     if (
@@ -136,14 +143,16 @@ const FileStored = MappedStored.extend({
     if (record.targetActor && !actor(record.targetActor)) invalid("Native mapping consent has another target member")
     if (native && record.targetAccepted && !actor(record.targetActor))
       invalid("Native mapping requires its original target consent actor")
+    if (mapping.kind === "native-existing" && record.workspaceSource)
+      invalid("Native source capture cannot substitute a service Workspace snapshot")
     const frozen = record.frozen?.proof,
       prepared = record.prepared?.proof
     if (
       native &&
       frozen &&
       (frozen.purpose !== "source-frozen" ||
-        !record.workspaceSource ||
-        frozen.workspaceSourceHash !== WorkspaceArchive.subtreeHash(record.workspaceSource))
+        !sourceSnapshotHash(record) ||
+        frozen.workspaceSourceHash !== sourceSnapshotHash(record))
     )
       invalid("Native handoff has no complete frozen source snapshot")
     if (
@@ -164,8 +173,8 @@ const FileStored = MappedStored.extend({
       (bindingFields.some((field) => record[field] !== difference[field]) ||
         difference.manifestHash !== record.manifestHash ||
         difference.difference.mappingPlanRevision !== record.mappingPlanRevision ||
-        !record.workspaceSource ||
-        difference.difference.sourceSnapshotHash !== WorkspaceArchive.subtreeHash(record.workspaceSource))
+        !sourceSnapshotHash(record) ||
+        difference.difference.sourceSnapshotHash !== sourceSnapshotHash(record))
     )
       invalid("Native difference changed its complete frozen source binding")
     if (
@@ -608,7 +617,7 @@ export function createHandoffs(options: {
     const current = access.session
     const mapping = record.request.workspaceMapping
     if (
-      mapping.kind !== "organization-native" ||
+      !Handoff.isNativeTargetMapping(mapping) ||
       mapping.target.kind !== "existing" ||
       record.target.runtimeKind !== "member" ||
       !["preparing", "prepared"].includes(record.phase) ||
@@ -688,7 +697,7 @@ export function createHandoffs(options: {
       mappingHash: await Handoff.planHash(record.request.workspaceMapping, record.request.environmentMapping),
       environmentMapping: record.request.environmentMapping,
       workspaceDifference: record.difference?.proof.difference,
-      ...(record.request.workspaceMapping.kind === "organization-native" &&
+      ...(Handoff.isNativeTargetMapping(record.request.workspaceMapping) &&
       record.request.workspaceMapping.target.kind === "existing"
         ? { workspaceDifferenceAccepted: !!record.differenceConsent }
         : {}),
@@ -722,7 +731,7 @@ export function createHandoffs(options: {
     const mapping = record.request.workspaceMapping
     return mapping.kind === "organization-object"
       ? mapping.target
-      : mapping.kind === "organization-native"
+      : Handoff.isNativeTargetMapping(mapping)
         ? null
         : (contract.selection?.infrastructure.workspace ?? null)
   }
@@ -810,7 +819,7 @@ export function createHandoffs(options: {
       await environmentSelector(record, current)
     }
     if (
-      mapping.kind === "organization-native" &&
+      Handoff.isNativeTargetMapping(mapping) &&
       mapping.target.kind === "private-copy" &&
       contract?.selection?.infrastructure.environment &&
       !record.request.environmentMapping
@@ -846,10 +855,13 @@ export function createHandoffs(options: {
         workspace: { resourceID: mapping.target.resourceID, workspaceID: mapping.target.workspaceID },
         environment: null,
       })
+    } else if (mapping.kind === "native-existing") {
+      if (contract?.selection?.infrastructure.workspace)
+        fail("PROTOCOL_MISMATCH", "Native adoption requires the Session's original native Working location")
     } else if (mapping.kind === "organization-live" || mapping.kind === "organization-native") {
       const selected = contract?.selection?.infrastructure.workspace
       if (
-        (!committed || mapping.kind !== "organization-native") &&
+        (!committed || !Handoff.isNativeTargetMapping(mapping)) &&
         (!selected ||
           selected.resourceID !== mapping.resource.resourceID ||
           selected.workspaceID !== mapping.resource.workspaceID)
@@ -864,7 +876,7 @@ export function createHandoffs(options: {
       if (catalog.activeMount && record.workspaceSource)
         fail("RESOURCE_UNAVAILABLE", "Live handoff must retain its captured dormant Workspace generation")
       if (
-        mapping.kind === "organization-native" &&
+        Handoff.isNativeTargetMapping(mapping) &&
         record.workspaceSource &&
         (catalog.revision !== record.workspaceSource.revision ||
           (catalog.content?.manifest ?? null) !== record.workspaceSource.head)
@@ -892,7 +904,7 @@ export function createHandoffs(options: {
     const proof = record.cancelled?.proof
     if (
       record.phase !== "cancelled" ||
-      record.request.workspaceMapping.kind !== "organization-native" ||
+      !Handoff.isNativeTargetMapping(record.request.workspaceMapping) ||
       !record.sourceBinding ||
       record.sourceControlRevision === undefined ||
       !record.frozen ||
@@ -941,7 +953,7 @@ export function createHandoffs(options: {
         fail("SERVICE_UNAVAILABLE", "Handoff participant index conflicts with its original owner")
       if (
         record.phase !== "cancelled" ||
-        record.request.workspaceMapping.kind !== "organization-native" ||
+        !Handoff.isNativeTargetMapping(record.request.workspaceMapping) ||
         !record.frozen ||
         !record.manifestHash
       )
@@ -965,7 +977,7 @@ export function createHandoffs(options: {
     if (
       (operation === "retire-target" || operation === "inspect-target") &&
       record.phase === "cancelled" &&
-      record.request.workspaceMapping.kind === "organization-native"
+      Handoff.isNativeTargetMapping(record.request.workspaceMapping)
     ) {
       const access = await authorize(credentials, "runtime.read", { runtimeID: record.targetRuntimeID })
       if (
@@ -1449,6 +1461,16 @@ export function createHandoffs(options: {
           const choices: Handoff.Options["choices"] = []
           if (!source || source.kind === "native") {
             if (current.target.runtimeKind === "member") choices.push({ kind: "native", requiresDifference: false })
+            if (
+              source?.kind === "native" &&
+              native &&
+              current.target.runtimeKind === "member" &&
+              admitted.participants.every((participant) => participant.connection.handshake.schemas.handoffs >= 9)
+            )
+              choices.push({
+                kind: "native-existing",
+                requiresDifference: true,
+              })
             let cursor: string | undefined
             do {
               const page = await OrganizationResources.available(credentials, current.session.projectID, {
@@ -1567,6 +1589,7 @@ export function createHandoffs(options: {
           if (
             bindingFields.some((field) => record[field] !== proof[field]) ||
             record.request.workspaceMapping.kind === "native" ||
+            record.request.workspaceMapping.kind === "native-existing" ||
             proof.mappingHash !== (await Handoff.mappingHash(record.request.workspaceMapping))
           )
             fail("PROTOCOL_MISMATCH", "Workspace handoff belongs to another original mapping")
@@ -1717,7 +1740,7 @@ export function createHandoffs(options: {
       const workspaceContinuation =
         !cancelled &&
         (mapping.kind === "organization-object" ||
-          mapping.kind === "organization-native" ||
+          Handoff.isNativeTargetMapping(mapping) ||
           record.request.environmentMapping) &&
         record.workspaceContract
           ? {
@@ -1872,23 +1895,25 @@ export function createHandoffs(options: {
         const runtime = role === "source" ? record.source : record.target
         const connection = options.connections.captureHandoff(runtime.runtimeID)
         const mapping = record.request.workspaceMapping
+        if (mapping.kind === "native-existing" && connection.handshake.schemas.handoffs < 9)
+          fail("HANDOFF_BLOCKED", "Native existing-directory handoff requires its current reader")
         if (record.request.environmentMapping && connection.handshake.schemas.handoffs < 8)
           fail("HANDOFF_BLOCKED", "Explicit Environment handoff requires its complete mapping reader")
         if (wholeWorkspace(mapping) && connection.handshake.schemas.handoffs < 7)
           fail("HANDOFF_BLOCKED", "Whole Workspace handoff requires both participants' root reader")
         if (
-          mapping.kind === "organization-native" &&
+          Handoff.isNativeTargetMapping(mapping) &&
           connection.handshake.schemas.handoffs < (mapping.target.kind === "private-copy" ? 6 : 5)
         )
           fail("HANDOFF_BLOCKED", "Native Workspace handoff requires its complete target receipt reader")
         if (
           request.operation === "preview-target" &&
-          (mapping.kind !== "organization-native" || mapping.target.kind !== "existing")
+          (!Handoff.isNativeTargetMapping(mapping) || mapping.target.kind !== "existing")
         )
           fail("HANDOFF_BLOCKED", "This mapping has no existing native difference")
         if (
           request.operation === "prepare-target" &&
-          mapping.kind === "organization-native" &&
+          Handoff.isNativeTargetMapping(mapping) &&
           mapping.target.kind === "existing" &&
           !record.differenceConsent
         )
@@ -2006,15 +2031,17 @@ export function createHandoffs(options: {
     ): Promise<Handoff.View> {
       const request = Handoff.Prepare.parse(value)
       let inspection: Handoff.Options | undefined
-      if (request.environmentMapping) {
+      if (request.environmentMapping || request.workspaceMapping.kind === "native-existing") {
         const retained = await Storage.snapshot(async () => {
           await authorize(credentials, "session.read", { sessionID })
           const [existing] = await Storage.readMany([key(request.handoffID)])
           if (existing !== undefined) return true
           const access = await inspectionAccess(credentials, sessionID, request.targetRuntimeID)
-          for (const runtime of [access.source, access.target])
-            if (options.connections.captureHandoff(runtime.runtimeID).handshake.schemas.handoffs < 8)
-              fail("HANDOFF_BLOCKED", "Explicit Environment handoff requires both participants' mapping reader")
+          for (const runtime of [access.source, access.target]) {
+            const required = request.workspaceMapping.kind === "native-existing" ? 9 : 8
+            if (options.connections.captureHandoff(runtime.runtimeID).handshake.schemas.handoffs < required)
+              fail("HANDOFF_BLOCKED", "The complete mapping requires both participants' current reader")
+          }
           return false
         })
         if (!retained)
@@ -2047,6 +2074,25 @@ export function createHandoffs(options: {
           if (current.handoffID) fail("HANDOFF_BLOCKED", "Another handoff owns this Session")
           revision(request.expectedBindingEpoch, current.bindingEpoch)
           revision(request.expectedControlRevision, current.controlRevision)
+          if (request.workspaceMapping.kind === "native-existing") {
+            const mapping = request.workspaceMapping
+            const source = inspection?.source
+            const native = inspection?.native
+            if (
+              !inspection ||
+              inspection.bindingEpoch !== current.bindingEpoch ||
+              inspection.controlRevision !== current.controlRevision ||
+              source?.kind !== "native" ||
+              !native ||
+              source.reference.workspaceID !== mapping.source.workspaceID ||
+              source.reference.generation !== mapping.source.generation ||
+              native.reference.workspaceID !== mapping.target.workspaceID ||
+              native.reference.generation !== mapping.target.generation ||
+              native.reference.revision !== mapping.target.expectedRevision ||
+              native.projectRevision !== mapping.target.projectRevision
+            )
+              fail("REVISION_CONFLICT", "Native adoption must match its actual source and destination inspection")
+          }
           if (request.workspaceMapping.kind === "organization-object") {
             const mapping = request.workspaceMapping
             const selected = await authorize(credentials, "resource.use", {
@@ -2108,10 +2154,10 @@ export function createHandoffs(options: {
                 projectID: current.projectID,
               })
           }
-          if (request.workspaceMapping.kind === "organization-native" && target.runtimeKind !== "member")
+          if (Handoff.isNativeTargetMapping(request.workspaceMapping) && target.runtimeKind !== "member")
             fail("HANDOFF_BLOCKED", "A native Workspace requires its destination member")
           if (
-            request.workspaceMapping.kind === "organization-native" &&
+            Handoff.isNativeTargetMapping(request.workspaceMapping) &&
             request.workspaceMapping.target.kind === "private-copy" &&
             (await OrganizationSessionResources.read(current))?.selection?.infrastructure.environment &&
             !request.environmentMapping
@@ -2160,11 +2206,11 @@ export function createHandoffs(options: {
             request,
             workspaceContract:
               request.workspaceMapping.kind === "organization-object" ||
-              request.workspaceMapping.kind === "organization-native" ||
+              Handoff.isNativeTargetMapping(request.workspaceMapping) ||
               !!request.environmentMapping
                 ? await OrganizationSessionResources.read(current)
                 : undefined,
-            ...(request.workspaceMapping.kind === "organization-native"
+            ...(Handoff.isNativeTargetMapping(request.workspaceMapping)
               ? {
                   sourceBinding: {
                     schemaVersion: 1,
@@ -2187,6 +2233,8 @@ export function createHandoffs(options: {
           ] as const) {
             const files = options.connections.captureHandoff(runtime.runtimeID)
             files.assertCurrent()
+            if (request.workspaceMapping.kind === "native-existing" && files.handshake.schemas.handoffs < 9)
+              fail("HANDOFF_BLOCKED", "Native existing-directory handoff requires both participants' current reader")
             if (request.environmentMapping && files.handshake.schemas.handoffs < 8)
               fail("HANDOFF_BLOCKED", "Explicit Environment handoff requires both participants' mapping reader")
             if (wholeWorkspace(request.workspaceMapping) && files.handshake.schemas.handoffs < 7)
@@ -2196,7 +2244,7 @@ export function createHandoffs(options: {
             if (request.workspaceMapping.kind === "organization-live" && files.handshake.schemas.handoffs < 3)
               fail("HANDOFF_BLOCKED", "Both participants must support live Workspace source snapshots")
             if (
-              request.workspaceMapping.kind === "organization-native" &&
+              Handoff.isNativeTargetMapping(request.workspaceMapping) &&
               (target.runtimeKind !== "member" ||
                 files.handshake.schemas.handoffs < (request.workspaceMapping.target.kind === "private-copy" ? 6 : 5))
             )
@@ -2289,7 +2337,7 @@ export function createHandoffs(options: {
           if ("workspaceDifference" in input) {
             const difference = record.difference?.proof.difference
             if (
-              record.request.workspaceMapping.kind !== "organization-native" ||
+              !Handoff.isNativeTargetMapping(record.request.workspaceMapping) ||
               record.request.workspaceMapping.target.kind !== "existing" ||
               !record.targetAccepted ||
               !difference ||
@@ -2311,7 +2359,7 @@ export function createHandoffs(options: {
               ...("tokenID" in access ? { tokenID: access.tokenID } : {}),
             }
           } else if (
-            (record.request.workspaceMapping.kind === "organization-native" || record.request.environmentMapping) &&
+            (Handoff.isNativeTargetMapping(record.request.workspaceMapping) || record.request.environmentMapping) &&
             !record.targetAccepted
           )
             record.targetActor = {
@@ -2420,8 +2468,19 @@ export function createHandoffs(options: {
           const mapping = record.request.workspaceMapping
           let resourceIDs = allowed.current.resourceIDs
           if (
+            Handoff.isNativeTargetMapping(mapping) &&
+            (record.prepared.proof.purpose !== "target-prepared" ||
+              !record.prepared.proof.workspaceNativeReceiptHash ||
+              (mapping.target.kind === "existing"
+                ? !record.differenceConsent ||
+                  record.prepared.proof.workspaceDifferenceHash !== record.differenceConsent.diffHash
+                : record.prepared.proof.workspaceDifferenceHash !== undefined))
+          )
+            fail("HANDOFF_BLOCKED", "Native mapping has no exact consented target receipt")
+          if (
             mapping.kind === "organization-object" ||
             mapping.kind === "organization-native" ||
+            (mapping.kind === "native-existing" && record.workspaceContract) ||
             (record.request.environmentMapping &&
               (record.workspaceContract || record.request.environmentMapping.target.kind === "organization"))
           ) {
@@ -2434,16 +2493,7 @@ export function createHandoffs(options: {
                 record.prepared.proof.workspaceMoveReceiptHash !== WorkspaceMove.receiptHash(receipt)
               )
                 fail("HANDOFF_BLOCKED", "Workspace mapping has no matching prepared CAS receipt")
-            } else if (
-              mapping.kind === "organization-native" &&
-              (record.prepared.proof.purpose !== "target-prepared" ||
-                !record.prepared.proof.workspaceNativeReceiptHash ||
-                (mapping.target.kind === "existing"
-                  ? !record.differenceConsent ||
-                    record.prepared.proof.workspaceDifferenceHash !== record.differenceConsent.diffHash
-                  : record.prepared.proof.workspaceDifferenceHash !== undefined))
-            )
-              fail("HANDOFF_BLOCKED", "Native mapping has no exact consented target receipt")
+            }
             const mapped = await OrganizationSessionResources.rebindHandoff(
               allowed.current,
               record.workspaceContract,
@@ -2506,15 +2556,15 @@ export function createHandoffs(options: {
         if (proof.purpose === "target-difference") {
           if (current.difference && same(current.difference, signed)) return acknowledgement
           if (
-            current.request.workspaceMapping.kind !== "organization-native" ||
+            !Handoff.isNativeTargetMapping(current.request.workspaceMapping) ||
             current.request.workspaceMapping.target.kind !== "existing" ||
             !current.frozen ||
             !current.targetAccepted ||
             current.cancelRequested ||
             current.phase !== "preparing" ||
             current.prepared ||
-            !current.workspaceSource ||
-            proof.difference.sourceSnapshotHash !== WorkspaceArchive.subtreeHash(current.workspaceSource) ||
+            !sourceSnapshotHash(current) ||
+            proof.difference.sourceSnapshotHash !== sourceSnapshotHash(current) ||
             proof.difference.mappingPlanRevision !== current.mappingPlanRevision
           )
             fail("HANDOFF_BLOCKED", "Native difference requires its exact frozen source and inactive destination")
@@ -2538,7 +2588,7 @@ export function createHandoffs(options: {
         }
         if (proof.purpose === "target-preview-released") {
           if (
-            current.request.workspaceMapping.kind !== "organization-native" ||
+            !Handoff.isNativeTargetMapping(current.request.workspaceMapping) ||
             !current.frozen ||
             current.prepared ||
             current.surrendered ||
@@ -2580,7 +2630,7 @@ export function createHandoffs(options: {
         }
         if (
           proof.purpose === "target-never-activate" &&
-          current.request.workspaceMapping.kind === "organization-native" &&
+          Handoff.isNativeTargetMapping(current.request.workspaceMapping) &&
           current.phase === "cancelled"
         ) {
           if (
@@ -2605,7 +2655,7 @@ export function createHandoffs(options: {
         const directory = await session(current)
         const cancelledNativeRetirement =
           proof.purpose === "target-never-activate" &&
-          current.request.workspaceMapping.kind === "organization-native" &&
+          Handoff.isNativeTargetMapping(current.request.workspaceMapping) &&
           current.phase === "cancelled"
         if (
           !cancelledNativeRetirement &&
@@ -2644,6 +2694,9 @@ export function createHandoffs(options: {
               proof.workspaceSourceHash !== WorkspaceArchive.subtreeHash(current.workspaceSource)
             )
               fail("HANDOFF_BLOCKED", "Source fact omits its complete current Workspace snapshot")
+          } else if (current.request.workspaceMapping.kind === "native-existing") {
+            if (!proof.workspaceSourceHash || !proof.fileClosureHash)
+              fail("HANDOFF_BLOCKED", "Native adoption requires its complete frozen source and file closure")
           } else if (proof.workspaceSourceHash != null)
             fail("PROTOCOL_MISMATCH", "Workspace mapping cannot claim an unrelated source snapshot")
           current.manifestHash = proof.manifestHash
@@ -2661,7 +2714,7 @@ export function createHandoffs(options: {
             (proof.workspaceSourceHash ?? null) !== (frozen.workspaceSourceHash ?? null)
           )
             fail("HANDOFF_BLOCKED", "Destination preparation does not preserve the frozen closure")
-          if (current.request.workspaceMapping.kind === "organization-native") {
+          if (Handoff.isNativeTargetMapping(current.request.workspaceMapping)) {
             if (
               !proof.workspaceNativeReceiptHash ||
               (current.request.workspaceMapping.target.kind === "existing"
@@ -2720,7 +2773,7 @@ export function createHandoffs(options: {
             current.activated ||
             (!current.surrendered &&
               !(
-                current.request.workspaceMapping.kind === "organization-native" &&
+                Handoff.isNativeTargetMapping(current.request.workspaceMapping) &&
                 (current.cancelRequested || current.phase === "cancelled")
               )) ||
             !current.prepared ||

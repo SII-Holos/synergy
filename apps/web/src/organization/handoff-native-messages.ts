@@ -38,7 +38,7 @@ export const organizationNativeHandoffMessages = {
   differenceHint: {
     id: "organization.handoff.native.differenceHint",
     message:
-      "The destination keeps its own versions. Source-only files will not be copied; cloud files remain unchanged.",
+      "The destination keeps its own versions. Source-only files will not be copied; source files remain unchanged.",
   },
   showing: { id: "organization.handoff.native.showing", message: "Showing {first}–{last} of {total}" },
   source: { id: "organization.handoff.native.source", message: "Frozen source" },
@@ -68,7 +68,7 @@ export const organizationNativeHandoffMessages = {
   accept: { id: "organization.handoff.native.accept", message: "Use the destination versions" },
   acceptHint: {
     id: "organization.handoff.native.acceptHint",
-    message: "Use the files already in {directory}. Neither directory is overwritten; cloud files remain unchanged.",
+    message: "Use the files already in {directory}. Neither directory is overwritten; source files remain unchanged.",
   },
   accepted: { id: "organization.handoff.native.accepted", message: "These destination versions have been accepted." },
   cleanup: { id: "organization.handoff.native.cleanup", message: "Destination preparation" },

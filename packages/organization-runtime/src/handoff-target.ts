@@ -175,7 +175,8 @@ export namespace OrganizationHandoffTarget {
         fail("Destination controller requires the current finite service authorization")
       assertOwner(input.signal)
       if (
-        plan.workspacePlan?.mapping.kind === "organization-native" &&
+        plan.workspacePlan &&
+        Handoff.isNativeTargetMapping(plan.workspacePlan.mapping) &&
         (!("accountID" in identity) ||
           plan.workspacePlan.targetActor?.kind !== "account" ||
           plan.workspacePlan.targetActor.subjectID !== identity.accountID ||
@@ -429,7 +430,7 @@ export namespace OrganizationHandoffTarget {
     }
     async function retireNative(plan: HandoffTargetPlan, signal: AbortSignal, verify?: () => void) {
       const workspace = plan.workspacePlan
-      if (!workspace || workspace.mapping.kind !== "organization-native")
+      if (!workspace || !Handoff.isNativeTargetMapping(workspace.mapping))
         fail("Native retirement requires its original Workspace mapping")
       const assert = () => {
         assertOwner(signal)
@@ -590,12 +591,17 @@ export namespace OrganizationHandoffTarget {
           differencePage: page,
         })
       },
-      async preview(value: Input & { resources: Pick<MemberResourceClient, "handoffObject"> }): Promise<Handoff.Proof> {
+      async preview(
+        value: Input & {
+          resources: Pick<MemberResourceClient, "handoffObject">
+        },
+      ): Promise<Handoff.Proof> {
         const input = snapshot(value),
           read = value.resources.handoffObject.bind(value.resources)
         const { plan, manifestHash, frozen } = await authorize(input, "preview-target")
         if (
-          plan.workspacePlan?.mapping.kind !== "organization-native" ||
+          !plan.workspacePlan ||
+          !Handoff.isNativeTargetMapping(plan.workspacePlan.mapping) ||
           plan.workspacePlan.mapping.target.kind !== "existing" ||
           closing.has(plan.handoffID) ||
           (await receipt(plan, "retired")) ||
@@ -653,7 +659,11 @@ export namespace OrganizationHandoffTarget {
           if (jobs.get(plan.handoffID)?.promise === promise) jobs.delete(plan.handoffID)
         }
       },
-      async prepare(value: Input & { resources: Pick<MemberResourceClient, "handoffObject"> }): Promise<Handoff.Proof> {
+      async prepare(
+        value: Input & {
+          resources: Pick<MemberResourceClient, "handoffObject">
+        },
+      ): Promise<Handoff.Proof> {
         const input = snapshot(value)
         const read = value.resources.handoffObject.bind(value.resources)
         const { plan, manifestHash, frozen } = await authorize(input, "prepare-target")
@@ -686,7 +696,7 @@ export namespace OrganizationHandoffTarget {
                 expectedReceiptHash: frozen.fileClosureHash!,
                 signal: input.signal,
                 nativeMode:
-                  plan.workspacePlan?.mapping.kind === "organization-native"
+                  plan.workspacePlan && Handoff.isNativeTargetMapping(plan.workspacePlan.mapping)
                     ? plan.workspacePlan.mapping.target.kind === "existing"
                       ? "existing"
                       : "download"
@@ -695,7 +705,7 @@ export namespace OrganizationHandoffTarget {
             )
           const prepared = await contexts(input, plan, manifestHash, false)
           const move =
-            plan.workspacePlan?.mapping.kind === "organization-native"
+            plan.workspacePlan && Handoff.isNativeTargetMapping(plan.workspacePlan.mapping)
               ? await WorkspaceTarget.status(plan, input.resources, input.signal)
               : undefined
           if (
@@ -779,7 +789,7 @@ export namespace OrganizationHandoffTarget {
               previous.fact.permitID !== permit.permitID
             )
               fail("Destination activation receipt no longer matches its permanent epoch")
-            if (plan.workspacePlan?.mapping.kind === "organization-native")
+            if (plan.workspacePlan && Handoff.isNativeTargetMapping(plan.workspacePlan.mapping))
               await WorkspaceTarget.release(plan, input.resources, input.signal, "activated")
             return previous.fact
           }
@@ -813,7 +823,7 @@ export namespace OrganizationHandoffTarget {
             )
           else await publish()
           assertOwner(input.signal)
-          if (plan.workspacePlan?.mapping.kind === "organization-native")
+          if (plan.workspacePlan && Handoff.isNativeTargetMapping(plan.workspacePlan.mapping))
             await WorkspaceTarget.release(plan, input.resources, input.signal, "activated")
           return fact
         })
@@ -821,7 +831,8 @@ export namespace OrganizationHandoffTarget {
       async retire(value: Input): Promise<Handoff.Proof> {
         const input = snapshot(value)
         const { plan, manifestHash } = await authorize(input, "retire-target")
-        if (plan.workspacePlan?.mapping.kind === "organization-native") return retireNative(plan, input.signal)
+        if (plan.workspacePlan && Handoff.isNativeTargetMapping(plan.workspacePlan.mapping))
+          return retireNative(plan, input.signal)
         const saved = await receipt(plan, "prepared")
         if (
           !saved ||

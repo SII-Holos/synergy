@@ -178,7 +178,7 @@ export function organizationHandoffOutcomeKnown(action: OrganizationHandoffActio
     )
   if (
     view.phase === "cancelled" &&
-    view.workspaceMapping.kind === "organization-native" &&
+    Handoff.isNativeTargetMapping(view.workspaceMapping) &&
     action.kind === "drive" &&
     action.body.operation.endsWith("-target")
   )

@@ -9,6 +9,24 @@ export function organizationNativeHandoffMapping(
   const source = options.source
   const target = options.native
   if (
+    source?.kind === "native" &&
+    targetKind === "existing" &&
+    target &&
+    options.choices.some((choice) => choice.kind === "native-existing" && choice.requiresDifference)
+  )
+    return Handoff.WorkspaceMapping.parse({
+      kind: "native-existing",
+      moveID,
+      source: { workspaceID: source.reference.workspaceID, generation: source.reference.generation },
+      target: {
+        kind: "existing",
+        workspaceID: target.reference.workspaceID,
+        generation: target.reference.generation,
+        expectedRevision: target.reference.revision,
+        projectRevision: target.projectRevision,
+      },
+    })
+  if (
     !source?.resource ||
     source.kind !== "organization" ||
     (targetKind === "existing" && !target) ||
