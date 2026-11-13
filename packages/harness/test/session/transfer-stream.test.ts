@@ -25,6 +25,47 @@ async function fixture() {
   }
 }
 
+test("a portable reader can be the first SQLite owner before another canonical storage owner", async () => {
+  await using f = await fixture()
+  const source = `
+    import path from "node:path"
+    import { SessionTransferStream as Stream } from ${JSON.stringify(new URL("../../src/session/transfer-stream.ts", import.meta.url).pathname)}
+    import { initializeSqliteEngine } from ${JSON.stringify(new URL("../../src/storage/sqlite-engine.ts", import.meta.url).pathname)}
+    const directory = process.env.SYNERGY_PORTABLE_ENGINE_DIRECTORY
+    if (!directory) throw new Error("Missing isolated stream directory")
+    const store = {
+      async put(hash, bytes) { await Bun.write(path.join(directory, "objects", hash), bytes) },
+      async get(hash, maximum) {
+        const bytes = new Uint8Array(await Bun.file(path.join(directory, "objects", hash)).arrayBuffer())
+        if (bytes.byteLength > maximum) throw new Error("Object exceeds its requested frame")
+        return bytes
+      },
+    }
+    const root = await Stream.write({ store, owners: { harness: 2 }, entries: (async function* () {
+      yield { id: "first-owner", kind: "record", metadata: {}, content: (async function* () { yield new TextEncoder().encode("original bytes") })() }
+    })() })
+    await using reader = await Stream.open({ root, store, directory })
+    const parts = []
+    for await (const entry of reader.entries()) for await (const bytes of entry.content) parts.push(Buffer.from(bytes))
+    if (Buffer.concat(parts).toString() !== "original bytes" || !reader.verified()) throw new Error("Portable content was not completely verified")
+    initializeSqliteEngine()
+    console.log("portable storage owners coexist")
+  `
+  const child = Bun.spawn([process.execPath, "--no-env-file", "--no-bunfig", "-e", source], {
+    env: { ...process.env, SYNERGY_PORTABLE_ENGINE_DIRECTORY: f.directory },
+    stdout: "pipe",
+    stderr: "pipe",
+    timeout: 5000,
+  })
+  const [code, stdout, stderr] = await Promise.all([
+    child.exited,
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+  ])
+  expect(code, stderr).toBe(0)
+  expect(stdout.trim()).toBe("portable storage owners coexist")
+})
+
 test("a portable reader preserves its original cancellation after the caller changes its input", async () => {
   await using f = await fixture()
   const root = await Stream.write({

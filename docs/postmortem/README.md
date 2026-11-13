@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0186](0186-portable-index-loaded-sqlite-before-its-owner.md)
+
 - [0185](0185-recovery-source-disposed-before-returned-work-settled.md)
 
 - [0184](0184-observer-cancellation-reached-accepted-native-retirement.md)

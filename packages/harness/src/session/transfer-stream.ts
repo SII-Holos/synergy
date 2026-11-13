@@ -4,6 +4,7 @@ import { createHash } from "node:crypto"
 import { z } from "zod"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { Database } from "bun:sqlite"
+import { initializeSqliteEngine } from "../storage/sqlite-engine"
 import type { BlobStore } from "../storage/blobs"
 import { JsonValue } from "../util/json-value"
 
@@ -245,6 +246,7 @@ export namespace SessionTransferStream {
     signal?.throwIfAborted()
     const provider = input.store
     const store = Object.freeze({ put: provider.put.bind(provider), get: provider.get.bind(provider) })
+    initializeSqliteEngine()
     const directory = await fs.mkdtemp(path.join(input.directory, "portable-reader-"))
     const database = new Database(path.join(directory, "index.sqlite"))
     database.exec("PRAGMA journal_mode=OFF; PRAGMA synchronous=OFF; PRAGMA temp_store=FILE; PRAGMA cache_size=-2048")
