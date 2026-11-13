@@ -10,6 +10,7 @@ import { ScopeContext } from "../../src/scope/context"
 import { Storage } from "../../src/storage/storage"
 import { Identifier } from "../../src/id/id"
 import { SessionTransferCore as Core } from "../../src/session/transfer-core"
+import { SessionTransferSource as Source } from "../../src/session/transfer-source"
 import { SessionTransferOwners as Owners } from "../../src/session/transfer-owners"
 import { SessionTransferEpochs as Epochs } from "../../src/session/transfer-epochs"
 import { SessionTransferStream as Stream } from "../../src/session/transfer-stream"
@@ -18,6 +19,188 @@ import { SessionHistory } from "../../src/session/history"
 import { RolloutArtifact } from "../../src/session/rollout/artifact"
 import { StoreTransaction } from "../../src/storage/transactional-store"
 import { RolloutLedger } from "../../src/session/rollout/ledger"
+
+test("returning Core publication replaces warm message order after removals, additions and reordered history", async () => {
+  await using directory = await tmpdir()
+  const store = {
+    async put(hash: string, bytes: Uint8Array) {
+      await Bun.write(path.join(directory.path, hash), bytes)
+    },
+    async get(hash: string, maximumBytes: number) {
+      const file = Bun.file(path.join(directory.path, hash))
+      if (file.size > maximumBytes) throw new Error("Oversized object")
+      return new Uint8Array(await file.arrayBuffer())
+    },
+  }
+  const home = path.join(directory.path, "original")
+  await using original = await testRuntime({ home, register: Core.register })
+  await using destination = await testRuntime({ register: Core.register })
+  const ids = [0, 1, 2, 3].map(() => Identifier.ascending("message"))
+  const session = await original.run(() =>
+    ScopeContext.provide({
+      scope: Scope.home(),
+      workspace: null,
+      fn: async () => {
+        const session = await Session.create({ workspaceID: null, environmentID: null })
+        for (const [index, messageID] of ids.slice(0, 3).entries()) {
+          await Session.updateMessage({
+            id: messageID,
+            sessionID: session.id,
+            role: "user",
+            time: { created: index + 1 },
+            isRoot: true,
+            rootID: messageID,
+            agent: "general",
+            model: { providerID: "fixture", modelID: "fixture" },
+          })
+          await Session.updatePart({
+            id: Identifier.ascending("part"),
+            sessionID: session.id,
+            messageID,
+            type: "text",
+            text: "Original message " + index,
+          })
+        }
+        await Session.flushPartWrites(session.id)
+        return Session.get(session.id)
+      },
+    }),
+  )
+  const signal = new AbortController().signal
+  const transfer = async (source: typeof original, target: typeof original, binding: Epochs.Binding) => {
+    const captured = await source.run(() =>
+      ScopeContext.provide({
+        scope: Scope.home(),
+        workspace: null,
+        fn: () =>
+          Source.prepare({
+            binding,
+            store,
+            signal,
+            async verify() {
+              signal.throwIfAborted()
+              await Core.storedInfo({ scopeID: binding.scopeID, sessionID: binding.sessionID })
+            },
+          }),
+      }),
+    )
+    await target.run(() =>
+      ScopeContext.provide({
+        scope: Scope.home(),
+        workspace: null,
+        fn: async () => {
+          const received = await Staging.receive({ handoffID: binding.handoffID, root: captured.root, store, signal })
+          const context = await Staging.context({
+            handoffID: binding.handoffID,
+            ownerID: "session-core",
+            session: await source.run(() => Session.get(session.id)),
+            rootSessionID: session.id,
+            mapping: {},
+            signal,
+          })
+          await Owners.validate("session-core", context)
+          await Epochs.reserve(binding, received.rootHash, await Epochs.destinationPrior(binding))
+          await source.run(() =>
+            Source.surrender({
+              binding,
+              manifestHash: captured.manifestHash,
+              preparedHash: received.rootHash,
+              signal,
+              async verify() {
+                signal.throwIfAborted()
+                expect((await Source.status(binding))?.manifestHash).toBe(captured.manifestHash)
+              },
+            }),
+          )
+          await Epochs.activate(binding, received.rootHash, () =>
+            Staging.publish({ handoffID: binding.handoffID, contexts: [{ ownerID: "session-core", context }] }),
+          )
+        },
+      }),
+    )
+  }
+  await original.run(async () => {
+    expect((await Session.messages({ sessionID: session.id })).map(({ info }) => info.id)).toEqual(ids.slice(0, 3))
+    expect((await SessionHistory.timelinePage({ sessionID: session.id, limit: 100 })).items).toHaveLength(3)
+  })
+  await transfer(original, destination, {
+    sessionID: session.id,
+    scopeID: "home",
+    handoffID: "order-outbound",
+    sourceID: "A",
+    targetID: "B",
+    fromEpoch: 1,
+    toEpoch: 2,
+  })
+  await destination.run(() =>
+    ScopeContext.provide({
+      scope: Scope.home(),
+      workspace: null,
+      fn: async () => {
+        await Session.removeMessage({ sessionID: session.id, messageID: ids[1]! })
+        await Session.updateMessage({
+          id: ids[2]!,
+          sessionID: session.id,
+          role: "user",
+          time: { created: 0 },
+          isRoot: true,
+          rootID: ids[2]!,
+          agent: "general",
+          model: { providerID: "fixture", modelID: "fixture" },
+        })
+        await Session.updateMessage({
+          id: ids[3]!,
+          sessionID: session.id,
+          role: "user",
+          time: { created: 2 },
+          isRoot: true,
+          rootID: ids[3]!,
+          agent: "general",
+          model: { providerID: "fixture", modelID: "fixture" },
+        })
+        await Session.updatePart({
+          id: Identifier.ascending("part"),
+          sessionID: session.id,
+          messageID: ids[3]!,
+          type: "text",
+          text: "Added on destination",
+        })
+        await Session.flushPartWrites(session.id)
+        expect((await Session.messages({ sessionID: session.id })).map(({ info }) => info.id)).toEqual([
+          ids[2],
+          ids[0],
+          ids[3],
+        ])
+      },
+    }),
+  )
+  const expected = await destination.run(() => Session.messages({ sessionID: session.id }))
+  const expectedDetails = await destination.run(() =>
+    SessionHistory.messageDetails({ sessionID: session.id, messageID: ids[3]! }),
+  )
+  await transfer(destination, original, {
+    sessionID: session.id,
+    scopeID: "home",
+    handoffID: "order-return",
+    sourceID: "B",
+    targetID: "A",
+    fromEpoch: 2,
+    toEpoch: 3,
+  })
+  const inspect = async () => {
+    expect(await Session.messages({ sessionID: session.id })).toEqual(expected)
+    expect((await Session.messagePage({ sessionID: session.id, limit: 100 })).items).toEqual(expected)
+    const page = await SessionHistory.timelinePage({ sessionID: session.id, limit: 100 })
+    expect(page.total).toBe(expected.length)
+    expect(page.items.map(({ info }) => info.id)).toEqual(expected.map(({ info }) => info.id))
+    expect(await SessionHistory.messageDetails({ sessionID: session.id, messageID: ids[3]! })).toEqual(expectedDetails)
+    expect((await Session.get(session.id)).paused).toBeDefined()
+  }
+  await original.run(inspect)
+  await original.close()
+  await using cold = await testRuntime({ home, register: Core.register })
+  await cold.run(inspect)
+})
 
 test("the native core owner preserves message, Inbox, binary and unknown retained fields without replay", async () => {
   await using directory = await tmpdir()

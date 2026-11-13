@@ -19,6 +19,7 @@
 
 ## Index
 
+- [0175](0175-returned-session-retained-an-old-message-order.md)
 - [0174](0174-target-cleanup-misreported-a-lost-acknowledgement.md)
 - [0173](0173-received-workspace-copy-could-not-be-transferred-again.md)
 - [0172](0172-handoff-response-crossed-cleanup-authorization-mode.md)

@@ -575,6 +575,7 @@ export namespace SessionTransferCore {
           await Storage.transaction((tx) => SessionAttachmentIndex.captureRecord(tx, record.key, mapped))
       }
     for await (const artifact of context.staged.artifacts()) await artifact.publish(artifact.key, { replace: true })
+    await MessageV2.removeOrderIndex(Identifier.asScopeID(next.scope.id), Identifier.asSessionID(next.id))
     await RolloutToolPartIndex.rebuild({ kind: "session", scopeID: next.scope.id, sessionID: next.id })
     for await (const record of context.staged.records())
       if (record.key.length === 7 && record.key[3] === "messages" && record.key[5] === "parts")

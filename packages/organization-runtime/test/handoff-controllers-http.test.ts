@@ -11,6 +11,7 @@ import { testRuntime } from "@ericsanchezok/synergy-harness/test/support/runtime
 import { HomeOwnership } from "@ericsanchezok/synergy-harness/lifecycle/home-ownership"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { Session } from "@ericsanchezok/synergy-harness/session"
+import { SessionHistory } from "@ericsanchezok/synergy-harness/session/history"
 import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
@@ -47,6 +48,8 @@ import { registerSessionSchema } from "../src/session-schema"
 import { registerOrganizationTransferOwner } from "../src/session-transfer"
 import { OrganizationHandoffSource as Source } from "../src/handoff-source"
 import { OrganizationHandoffTarget as Target } from "../src/handoff-target"
+import { createRuntimeHandoff } from "../src/handoff-runtime"
+import { OrganizationLocalProjects } from "../src/local-project"
 
 async function unavailable(): Promise<never> {
   throw new Error("This fixture does not submit input or Continue")
@@ -85,6 +88,7 @@ test.each([
   "resource-transfer",
   "resource-close-unknown",
   "workspace-transfer",
+  "workspace-roundtrip",
   "workspace-cancel",
   "workspace-unknown",
   "workspace-mapping-conflict",
@@ -95,6 +99,7 @@ test.each([
   async (mode) => {
     const withResources = mode.startsWith("resource-")
     const withWorkspace = mode.startsWith("workspace-")
+    const roundtrip = mode === "workspace-roundtrip"
     const withEnvironment = mode === "environment-transfer"
     const wake = withResources ? spyOn(SessionManager, "scheduleWake").mockImplementation(() => {}) : undefined
     using restoreWake = {
@@ -116,23 +121,36 @@ test.each([
       ticket: await f.ticket(member.identity.deviceID, member.publicKey),
       ca: f.ca,
     })
-    const hosted = await prepareHostedHome({
-      baseDirectory: path.join(f.root, "hosted"),
-      identity: { orgID: f.identity.orgID, hostID: "controller-target" },
-      origin: f.origin,
-    })
-    const ticket = (
-      await f.client.orgRuntime.registerHosted(
-        { orgHostedRuntimeRegistration: { name: "Controller target", publicKey: hosted.publicKey } },
-        { headers: f.headers, throwOnError: true },
-      )
-    ).data
-    const targetRegistration = await enrollHostedRuntime({
-      home: hosted.home,
-      identity: hosted.identity,
-      ticket,
-      ca: f.ca,
-    })
+    const hosted = roundtrip
+      ? await prepareMemberHome({
+          baseDirectory: path.join(f.root, "members"),
+          identity: { ...f.identity, deviceID: "roundtrip-target-device" },
+          origin: f.origin,
+        })
+      : await prepareHostedHome({
+          baseDirectory: path.join(f.root, "hosted"),
+          identity: { orgID: f.identity.orgID, hostID: "controller-target" },
+          origin: f.origin,
+        })
+    const targetRegistration =
+      "accountID" in hosted.identity
+        ? await enrollMemberRuntime({
+            home: hosted.home,
+            identity: hosted.identity,
+            ticket: await f.ticket(hosted.identity.deviceID, hosted.publicKey),
+            ca: f.ca,
+          })
+        : await enrollHostedRuntime({
+            home: hosted.home,
+            identity: hosted.identity,
+            ticket: (
+              await f.client.orgRuntime.registerHosted(
+                { orgHostedRuntimeRegistration: { name: "Controller target", publicKey: hosted.publicKey } },
+                { headers: f.headers, throwOnError: true },
+              )
+            ).data,
+            ca: f.ca,
+          })
     const coordinator = new WorkspaceCoordinator({ directory: path.join(f.root, "claims") })
     const register = (identity: RuntimeIdentity) => {
       HomeOwnership.select({
@@ -140,15 +158,16 @@ test.each([
         identity: runtimeIdentityDigest(identity),
         readerContract: NativeHomeReaderContract,
       })
-      if (withEnvironment)
+      if (withEnvironment || roundtrip)
         registerLocalRuntime({ workers: false, environment: "native", workspaceCoordinator: coordinator })
       else registerWorkspace(coordinator)
       Core.register()
       if (withWorkspace) Files.register()
-      if (withEnvironment) {
+      if (withEnvironment || roundtrip) {
         Environments.register()
       }
       registerSessionSchema({ orgID: identity.orgID })
+      if (roundtrip) OrganizationLocalProjects.register(identity)
       if (withResources) registerMemberExecution(identity)
       registerOrganizationTransferOwner()
     }
@@ -199,11 +218,28 @@ test.each([
     const targetController = await target.run(() =>
       Target.create({ identity: hosted.identity, runtimeID: targetRegistration.runtimeID }),
     )
+    const sourceHandoff = roundtrip
+      ? await source.run(() =>
+          createRuntimeHandoff({ identity: member.identity, runtimeID: sourceRegistration.runtimeID, ca: f.ca }),
+        )
+      : undefined
+    const targetHandoff = roundtrip
+      ? await target.run(() =>
+          createRuntimeHandoff({ identity: hosted.identity, runtimeID: targetRegistration.runtimeID, ca: f.ca }),
+        )
+      : undefined
     await using sourceConnection = await openMemberConnection({
       home: member.home,
       identity: member.identity,
       ca: f.ca,
       buildVersion: "actual-source-controller",
+      ...(sourceHandoff
+        ? {
+            handoffVersion: 5 as const,
+            handoffInspection: (...input: Parameters<typeof sourceHandoff.inspection>) =>
+              source.run(() => sourceHandoff.inspection(...input)),
+          }
+        : {}),
       commands(connection, signal, resources) {
         const intake = createCommandIntake({
           identity: connection.signingIdentity,
@@ -226,6 +262,7 @@ test.each([
       },
       handoff: (authorization, connection, signal, resources) =>
         source.run(async () => {
+          if (sourceHandoff) return sourceHandoff.dispatch(authorization, connection, signal, resources)
           const input = { authorization, connection, signal, resources }
           sourceSignal = signal
           const plan = authorization.plan
@@ -263,10 +300,18 @@ test.each([
       identity: hosted.identity,
       ca: f.ca,
       buildVersion: "actual-target-controller",
+      ...(targetHandoff
+        ? {
+            handoffVersion: 5 as const,
+            handoffInspection: (...input: Parameters<typeof targetHandoff.inspection>) =>
+              target.run(() => targetHandoff.inspection(...input)),
+          }
+        : {}),
       commands(connection, signal, resources) {
         const intake = createCommandIntake({
           identity: connection.signingIdentity,
           runtimeID: connection.runtimeID,
+          ...("accountID" in hosted.identity ? { accountID: hosted.identity.accountID } : {}),
           connectionEpoch: connection.connectionEpoch,
           signal,
         })
@@ -284,6 +329,7 @@ test.each([
       },
       handoff: (authorization, connection, signal, resources) =>
         target.run(async () => {
+          if (targetHandoff) return targetHandoff.dispatch(authorization, connection, signal, resources)
           const input = {
             authorization,
             connection,
@@ -400,13 +446,78 @@ test.each([
               await Session.updateWorkspace(sessionID, null, {
                 reference: { workspaceID: workspace.id, workspaceGeneration: workspace.binding.generation },
               })
-              expect((await Session.get(sessionID)).environmentID).toBeNull()
+              if (!roundtrip) expect((await Session.get(sessionID)).environmentID).toBeNull()
+              else expect((await Session.get(sessionID)).environmentID).toBeString()
             },
           })
         })
       }
       let original: Command.InputAccepted | undefined
       let originalGrant: Execution.BoundGrant | undefined
+      const history: Awaited<ReturnType<typeof Session.messages>> = []
+      async function appendHistory(current: typeof source, runtimeID: string, requestID: string, text: string) {
+        const accepted = Command.InputAccepted.parse(
+          (
+            await f.client.orgCommands.input(
+              {
+                sessionID,
+                orgCommandInputRequest: {
+                  schemaVersion: 1,
+                  orgID: f.identity.orgID,
+                  projectID: project.projectID,
+                  sessionID,
+                  runtimeID,
+                  requestID,
+                  input: { operation: "input", mode: "context", parts: [{ type: "text", text }] },
+                },
+              },
+              options,
+            )
+          ).data,
+        )
+        await current.run(async () => {
+          const session = await Session.get(sessionID)
+          await ScopeContext.provide({
+            scope: session.scope,
+            workspace: session.workspace,
+            fn: async () => {
+              await Session.update(sessionID, (draft) => {
+                draft.modelOverride = { providerID: "test", modelID: "test" }
+              })
+              const message = await SessionInbox.materializeItem(
+                await SessionInbox.getStored(sessionID, accepted.effect.itemID),
+              )
+              expect(message?.info).toMatchObject({ id: accepted.effect.messageID, actor: accepted.permit.actor })
+              history.push(message!)
+            },
+          })
+        })
+      }
+      async function expectHistory(current: typeof source) {
+        const messages = await current.run(() => Session.messages({ sessionID }))
+        expect(messages.map(({ info }) => ({ id: info.id, sessionID: info.sessionID, role: info.role }))).toEqual(
+          history.map(({ info }) => ({ id: info.id, sessionID: info.sessionID, role: info.role })),
+        )
+        expect(messages.map(({ info }) => (info.role === "user" ? info.actor : undefined))).toEqual(
+          history.map(({ info }) => (info.role === "user" ? info.actor : undefined)),
+        )
+        expect(messages.map(({ parts }) => parts)).toEqual(history.map(({ parts }) => parts))
+        const page = await current.run(() => Session.messagePage({ sessionID, limit: 100 }))
+        expect(page.items.map(({ info }) => info.id)).toEqual(history.map(({ info }) => info.id))
+        expect(page.total).toBe(history.length)
+        const timeline = await current.run(() => SessionHistory.timelinePage({ sessionID, limit: 100 }))
+        expect(timeline.items.map(({ info }) => info.id)).toEqual(history.map(({ info }) => info.id))
+        expect(timeline.total).toBe(history.length)
+        const latest = history.at(-1)!.info
+        expect(
+          (await current.run(() => SessionHistory.messageDetails({ sessionID, messageID: latest.id }))).info,
+        ).toMatchObject({
+          id: latest.id,
+          sessionID,
+          role: latest.role,
+          ...(latest.role === "user" ? { actor: latest.actor } : {}),
+        })
+      }
       if (withResources) {
         const resource = (
           await f.client.orgResources.create(
@@ -624,26 +735,48 @@ test.each([
         })
         await expect(connection.resources.bind(binding)).rejects.toThrow()
       }
+      if (roundtrip) {
+        await appendHistory(
+          source,
+          sourceRegistration.runtimeID,
+          "before-first-native-transfer",
+          "Keep this original Session history through both complete transfers",
+        )
+        await expectHistory(source)
+        expect((await source.run(() => SessionHistory.timelinePage({ sessionID, limit: 100 }))).items).toHaveLength(1)
+      }
       const handoffID = "actual-controller-transfer"
-      await f.client.orgHandoff.prepare(
-        {
-          sessionID,
-          orgHandoffPrepare: {
-            handoffID,
-            targetRuntimeID: targetRegistration.runtimeID,
-            expectedBindingEpoch: 1,
-            expectedControlRevision: 0,
-            mappingPlanRevision: 1,
+      const initial = (
+        await f.client.orgHandoff.prepare(
+          {
+            sessionID,
+            orgHandoffPrepare: {
+              handoffID,
+              targetRuntimeID: targetRegistration.runtimeID,
+              expectedBindingEpoch: 1,
+              expectedControlRevision: 0,
+              mappingPlanRevision: 1,
+            },
           },
-        },
-        options,
-      )
-      const drive = async (operation: Handoff.Drive["operation"]) => {
+          options,
+        )
+      ).data
+      if (roundtrip) {
+        expect(initial.canAccept).toBe(true)
+        await f.client.orgHandoff.accept(
+          {
+            handoffID,
+            orgHandoffAccept: { mappingPlanRevision: initial.mappingPlanRevision, mappingHash: initial.mappingHash },
+          },
+          options,
+        )
+      }
+      const drive = async (operation: Handoff.Drive["operation"], id = handoffID) => {
         try {
           return Handoff.MachineResult.parse(
             (
               await f.client.orgHandoff.drive(
-                { handoffID, orgHandoffDrive: { operation, requestID: crypto.randomUUID() } },
+                { handoffID: id, orgHandoffDrive: { operation, requestID: crypto.randomUUID() } },
                 options,
               )
             ).data,
@@ -702,7 +835,7 @@ test.each([
         expect(nativePreparations).toBe(1)
       } else frozen = await drive("prepare-source")
       expect(frozen.facts[0]?.proof).toMatchObject({ purpose: "source-frozen", drained: true, paused: true })
-      expect(preparations).toBe(1)
+      if (!roundtrip) expect(preparations).toBe(1)
       if (withWorkspace) {
         const proof = frozen.facts[0]?.proof
         if (proof?.purpose !== "source-frozen") throw new Error("Missing frozen native file fact")
@@ -922,7 +1055,7 @@ test.each([
             "ignored work is retained",
           )
           expect(await SessionInbox.list(sessionID)).toEqual([])
-          expect(await Session.messages({ sessionID })).toEqual([])
+          if (!roundtrip) expect(await Session.messages({ sessionID })).toEqual([])
         }
       })
       if (withEnvironment)
@@ -988,11 +1121,159 @@ test.each([
         })
       }
       if (withResources) await resumeResources(target, targetIntake!, targetConnection, 2)
+      if (roundtrip) {
+        await expectHistory(target)
+        const received = await target.run(async () => {
+          const session = await Session.get(sessionID)
+          const workspace = await WorkspaceCatalog.get(session.workspaceID!, project.projectID)
+          if (!workspace.binding.path) throw new Error("First private native destination is unbound")
+          return workspace
+        })
+        const changed = new Uint8Array([255, 0, 128, 47, 21, 10, 33])
+        const untracked = "A new file created on the first private destination"
+        await Bun.write(path.join(received.binding.path!, "private.bin"), changed)
+        await Bun.write(path.join(received.binding.path!, "untracked.txt"), untracked)
+        await appendHistory(
+          target,
+          targetRegistration.runtimeID,
+          "before-return-native-transfer",
+          "History accepted on the destination must return without replaying input",
+        )
+        await expectHistory(target)
+        const destinations = (await f.client.orgHandoff.targets({ sessionID, limit: 100 }, options)).data
+        expect(destinations).toMatchObject({ sourceRuntimeID: targetRegistration.runtimeID, bindingEpoch: 2 })
+        expect(destinations.items).toContainEqual(
+          expect.objectContaining({ runtimeID: sourceRegistration.runtimeID, availability: "ready" }),
+        )
+        const preview = (
+          await f.client.orgHandoff.options(
+            { sessionID, requestID: "inspect-original-native-return", targetRuntimeID: sourceRegistration.runtimeID },
+            options,
+          )
+        ).data
+        expect(preview).toMatchObject({
+          bindingEpoch: destinations.bindingEpoch,
+          controlRevision: destinations.controlRevision,
+          source: {
+            reference: {
+              workspaceID: received.id,
+              generation: received.binding.generation,
+              revision: received.revision,
+            },
+            kind: "native",
+          },
+        })
+        expect(preview.choices).toContainEqual(expect.objectContaining({ kind: "native", requiresDifference: false }))
+        const returningHandoffID = "actual-controller-native-return"
+        const returning = (
+          await f.client.orgHandoff.prepare(
+            {
+              sessionID,
+              orgHandoffPrepare: {
+                handoffID: returningHandoffID,
+                targetRuntimeID: sourceRegistration.runtimeID,
+                expectedBindingEpoch: destinations.bindingEpoch,
+                expectedControlRevision: destinations.controlRevision,
+                mappingPlanRevision: 1,
+                workspaceMapping: { kind: "native" },
+              },
+            },
+            options,
+          )
+        ).data
+        expect(returning.canAccept).toBe(true)
+        await f.client.orgHandoff.accept(
+          {
+            handoffID: returningHandoffID,
+            orgHandoffAccept: {
+              mappingPlanRevision: returning.mappingPlanRevision,
+              mappingHash: returning.mappingHash,
+            },
+          },
+          options,
+        )
+        const frozenReturn = await drive("prepare-source", returningHandoffID)
+        expect(frozenReturn.facts[0]?.proof).toMatchObject({
+          purpose: "source-frozen",
+          fromEpoch: destinations.bindingEpoch,
+          paused: true,
+          drained: true,
+          fileClosureHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+          workspaceMoveReceiptHash: null,
+        })
+        const preparedReturn = await drive("prepare-target", returningHandoffID)
+        expect(preparedReturn.facts[0]?.proof).toMatchObject({
+          purpose: "target-prepared",
+          fileClosureHash:
+            frozenReturn.facts[0]?.proof.purpose === "source-frozen"
+              ? frozenReturn.facts[0].proof.fileClosureHash
+              : undefined,
+        })
+        await source.run(async () => {
+          expect((await Session.get(sessionID)).organization?.bindingEpoch).toBe(1)
+          expect((await Session.get(sessionID)).workspaceID).toBe(sourceWorkspaceID!)
+        })
+        await f.client.orgHandoff.permit(
+          { handoffID: returningHandoffID, orgHandoffPermitRequest: { purpose: "handoff-surrender" } },
+          options,
+        )
+        expect((await drive("surrender-source", returningHandoffID)).facts[0]?.proof.purpose).toBe("source-surrendered")
+        expect(
+          (await f.client.orgHandoff.commit({ handoffID: returningHandoffID, body: {} }, options)).data.phase,
+        ).toBe("committed")
+        await f.client.orgHandoff.permit(
+          { handoffID: returningHandoffID, orgHandoffPermitRequest: { purpose: "handoff-activation" } },
+          options,
+        )
+        expect((await drive("activate-target", returningHandoffID)).facts[0]?.proof.purpose).toBe("target-activated")
+        expect((await drive("inspect-target", returningHandoffID)).facts[0]?.proof.purpose).toBe("target-activated")
+        expect((await f.client.orgHandoff.get({ handoffID: returningHandoffID }, options)).data).toMatchObject({
+          phase: "completed",
+          currentDriver: sourceRegistration.runtimeID,
+          bindingEpoch: 3,
+        })
+        await source.run(async () => {
+          const session = await Session.get(sessionID)
+          expect(session).toMatchObject({
+            id: sessionID,
+            paused: expect.anything(),
+            organization: {
+              creatorID: f.identity.accountID,
+              driverRuntimeID: sourceRegistration.runtimeID,
+              bindingEpoch: 3,
+            },
+          })
+          expect(session.workspaceID).not.toBe(sourceWorkspaceID)
+          expect(session.workspaceID).not.toBe(received.id)
+          const workspace = await WorkspaceCatalog.get(session.workspaceID!, project.projectID)
+          expect(workspace.binding.path).not.toBe(sourceDirectory)
+          expect(workspace.binding.path).not.toBe(received.binding.path)
+          expect(
+            new Uint8Array(await Bun.file(path.join(workspace.binding.path!, "private.bin")).arrayBuffer()),
+          ).toEqual(changed)
+          expect(await Bun.file(path.join(workspace.binding.path!, "untracked.txt")).text()).toBe(untracked)
+          expect(await Bun.file(path.join(workspace.binding.path!, "ignored.bin")).text()).toBe(
+            "ignored work is retained",
+          )
+          expect(await SessionInbox.list(sessionID)).toEqual([])
+        })
+        await expectHistory(source)
+        expect(new Uint8Array(await Bun.file(path.join(sourceDirectory, "private.bin")).arrayBuffer())).toEqual(
+          workspaceBytes,
+        )
+        expect(new Uint8Array(await Bun.file(path.join(received.binding.path!, "private.bin")).arrayBuffer())).toEqual(
+          changed,
+        )
+        expect(await Bun.file(path.join(received.binding.path!, "untracked.txt")).text()).toBe(untracked)
+        expect((await target.run(() => Session.get(sessionID))).paused).toBeDefined()
+      }
     } finally {
       sourceResume.resolve()
       targetResume.resolve()
       blocked?.mockRestore()
       await source.run(() => sourceController.close())
+      if (sourceHandoff) await source.run(() => sourceHandoff.close())
+      if (targetHandoff) await target.run(() => targetHandoff.close())
     }
   },
   15000,

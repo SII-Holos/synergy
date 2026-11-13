@@ -13,6 +13,8 @@ description: Add or modify Synergy durable state, JSON storage keys, SQLite tabl
 
 ## Implement the Current Model
 
+For whole-aggregate replacement, trace derived state stored outside the canonical prefix. Invalidate or rebuild it through its owning API inside the publication transaction. Warm the previous destination before importing changed membership, then verify canonical, ordinary, paged and cold reads plus rollback. Invalidating one unrelated cache does not establish complete read consistency.
+
 When hydrating references from a batch of records, deduplicate referenced identities and use the owning domain's batch reader instead of one concurrent read per record. Keep ownership checks and missing-record positions, and verify more distinct references than storage admission capacity, shared references, malformed records and subsequent rebinding with real storage.
 
 For composed domain reads, use `Storage.snapshot()` and make every paginated projection query join its parent transaction; a direct `TransactionalStore` query inside it can reenter the non-reentrant reader queue or lose writer-local visibility. Release a reader snapshot before a cold derived-index write and recheck after writer admission. Verify with a real held writer, committed external reads, transaction-local writes and a concurrent publication; use physical barriers with bounded rescue and cleanup rather than latency targets.
@@ -356,7 +358,6 @@ Namespace identity must come from the current composition's owning enrollment re
 ### Separate staged reads from native publication order
 
 A portability owner can read another owner's staged identity while needing to publish first. Declare staged dependencies separately from `publicationBefore` and `publicationAfter`; fold both publication directions into one deduplicated graph. Require the public publication-order capability, and advance the owning portable reader when an older reader cannot preserve a new hard prerequisite. Reject missing owners and cycles before preparation and publication. Snapshot identity/context inputs before awaiting. Test canonical Core and parent/child members, including mutation during an owner callback. Preserve parent-first members and the epoch transaction. Incoming priority only orders ready nodes; it cannot replace a dependency on a blocked owner. Test an actual downstream Core reader with incoming Core/organization/Workspace order where Workspace must precede Core and organization must follow it.
-
 
 For a service Home reader fence, keep ordinary startup and explicit native upgrade on the same namespace lifecycle. Give the upgrade a fixed restricted entrypoint without account HTTP, sockets or Agent execution. Require the actual frozen operation and installed primary writer through file locking and receipt publication. Check the owning initialization receipt before pending startup migrations, and distinguish lost established markers from valid interrupted fresh provisioning. Seed released input without future migration markers; execute its strict reader in another process before and after upgrade. Cover unknown ownership, inner file-lock cancellation, forward repair after a durable file fence and failed receipt, normal reopening and a copied deployment in an unrelated Home. A previous-reader refusal does not establish global old-writer or remote-resource drainage.
 
