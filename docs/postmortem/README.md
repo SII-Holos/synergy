@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0190](0190-verified-organization-names-were-missing-from-the-switcher.md)
+
 - [0189](0189-discovery-connectivity-was-reported-as-identity-change.md)
 
 - [0188](0188-active-file-authority-crossed-the-final-inspection.md)

@@ -26,7 +26,10 @@ export function OrganizationWorkspaceShell(
     void api.orgOrganization
       .get({ signal: view.signal })
       .then((result) => {
-        if (!view.signal.aborted && result.data?.orgID === connection().orgID) setOrganizationName(result.data.name)
+        if (!view.signal.aborted && result.data?.orgID === connection().orgID) {
+          setOrganizationName(result.data.name)
+          space.name(view.key, result.data.name)
+        }
       })
       .catch(() => {})
   })

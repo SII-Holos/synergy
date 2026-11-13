@@ -12,6 +12,8 @@ The independent space layer presents one compact connection panel using the prod
 
 Organization routes retain the organization, account and deployment identity for workspace destinations and project conversations. Switching still disposes business providers from the previous space without stopping its backend work. The entry remains independent of personal Runtime readiness.
 
+The authorized organization metadata response also updates the existing connection name for its original live space view. The current-space trigger and menu then use that verified name, retaining the issuer fallback until metadata arrives. An aborted prior view cannot rename its successor. See the [space name postmortem](../../../postmortem/0190-verified-organization-names-were-missing-from-the-switcher.md).
+
 The authorization page uses the same large primary variant for signing in and continuing. Sign-out and closing remain subordinate actions. Shared theme tokens own enabled, busy and focus states in both appearances.
 
 An unavailable discovery transport or HTTP response produces the existing connection recovery message. Only a successful discovery response reaches authority validation; malformed or mismatched identities still fail closed. See the [discovery failure postmortem](../../../postmortem/0189-discovery-connectivity-was-reported-as-identity-change.md).

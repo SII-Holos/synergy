@@ -182,7 +182,10 @@ async function switchSpace(page: Page, id: "personal" | "a" | "b") {
   await page.getByRole("button", { name: "Current space", exact: true }).click()
   await page
     .getByRole("menuitem", {
-      name: id === "personal" ? "Personal space" : new RegExp(`${id}.example.*Member ${id.toUpperCase()}`),
+      name:
+        id === "personal"
+          ? "Personal space"
+          : new RegExp(`(?:${id}\\.example|Team ${id.toUpperCase()}).*Member ${id.toUpperCase()}`),
       exact: id === "personal",
     })
     .click()
