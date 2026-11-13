@@ -1,6 +1,9 @@
 import path from "node:path"
 import { cmd } from "@ericsanchezok/synergy-util/cli-command"
-import { OrganizationHandoffRecovery as Recovery } from "@ericsanchezok/synergy-organization-protocol"
+import {
+  OrganizationHandoffRecovery as Recovery,
+  OrganizationIdentity as Identity,
+} from "@ericsanchezok/synergy-organization-protocol"
 import type { HandoffCleanupOpen, HandoffCleanupRuntime } from "../handoff-cleanup-runtime"
 import { MemberHomeError } from "../record"
 import { readMachineInput } from "./input"
@@ -10,7 +13,10 @@ const open: CleanupRuntimeFactory = async (input) =>
   (await import("../handoff-cleanup-runtime")).openHandoffCleanup(input)
 
 export function createCleanupCommand(factory: CleanupRuntimeFactory = open) {
-  async function execute(operation: "list" | "inspect" | "retire", query: { limit?: number; cursor?: string } = {}) {
+  async function execute(
+    operation: "list" | "inspect" | "retire" | "source-receipt",
+    query: { limit?: number; cursor?: string } = {},
+  ) {
     const home = process.env.SYNERGY_HOME
     if (
       !home ||
@@ -23,10 +29,15 @@ export function createCleanupCommand(factory: CleanupRuntimeFactory = open) {
     const input =
       operation === "list"
         ? await readMachineInput(HandoffCleanupRequest, "original machine cleanup request")
-        : await readMachineInput(
-            HandoffCleanupRequest.extend({ descriptor: Recovery.Descriptor }),
-            "original machine cleanup request",
-          )
+        : operation === "source-receipt"
+          ? await readMachineInput(
+              HandoffCleanupRequest.extend({ handoffID: Identity.ID }),
+              "original Source receipt request",
+            )
+          : await readMachineInput(
+              HandoffCleanupRequest.extend({ descriptor: Recovery.Descriptor }),
+              "original machine cleanup request",
+            )
     const abort = new AbortController()
     const interrupt = () => abort.abort(new Error("Original machine cleanup interrupted"))
     process.on("SIGINT", interrupt)
@@ -45,13 +56,17 @@ export function createCleanupCommand(factory: CleanupRuntimeFactory = open) {
       const result =
         operation === "list"
           ? await runtime.list({ ...query, signal })
-          : operation === "inspect"
-            ? await runtime.inspect(Recovery.Descriptor.parse("descriptor" in input ? input.descriptor : undefined), {
+          : operation === "source-receipt"
+            ? await runtime.sourceReceipt(Identity.ID.parse("handoffID" in input ? input.handoffID : undefined), {
                 signal,
               })
-            : await runtime.retire(Recovery.Descriptor.parse("descriptor" in input ? input.descriptor : undefined), {
-                signal,
-              })
+            : operation === "inspect"
+              ? await runtime.inspect(Recovery.Descriptor.parse("descriptor" in input ? input.descriptor : undefined), {
+                  signal,
+                })
+              : await runtime.retire(Recovery.Descriptor.parse("descriptor" in input ? input.descriptor : undefined), {
+                  signal,
+                })
       console.log(JSON.stringify(result))
     } finally {
       try {
@@ -64,9 +79,16 @@ export function createCleanupCommand(factory: CleanupRuntimeFactory = open) {
   }
   return cmd({
     command: "cleanup",
-    describe: "reconcile cancelled native targets using this original machine's retained enrollment",
+    describe: "reconcile original Source receipts or inactive native targets using retained enrollment",
     builder: (yargs) =>
       yargs
+        .command(
+          cmd({
+            command: "source-receipt",
+            describe: "submit only this original Source's retained cancellation or surrender receipt",
+            handler: () => execute("source-receipt"),
+          }),
+        )
         .command(
           cmd({
             command: "list",
@@ -103,7 +125,7 @@ export function createCleanupCommand(factory: CleanupRuntimeFactory = open) {
         )
         .demandCommand()
         .epilog(
-          "Private stdin requires version:1, identity:{orgID,accountID,deviceID}, deploymentIncarnation and optional ca. Inspect and retire also require the original descriptor from list. Set SYNERGY_HOME to the enrolled Home.",
+          "Private stdin requires version:1, the original member or Hosted identity, deploymentIncarnation and optional ca. Inspect and retire require the original descriptor from list; source-receipt requires handoffID. Set SYNERGY_HOME to the enrolled Home.",
         ),
     handler() {},
   })

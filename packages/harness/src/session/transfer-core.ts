@@ -174,12 +174,41 @@ export namespace SessionTransferCore {
     return { requirements, children: children(context.session) }
   }
 
-  function parseInfo(session: Readonly<Session.Info>, value: unknown) {
+  function decodeInfo(value: unknown) {
     const raw = z.record(z.string(), z.unknown()).parse(value)
     const info = Session.PersistedInfo.parse({ ...raw, workspace: null })
+    return { raw, info }
+  }
+
+  function parseInfo(session: Readonly<Session.Info>, value: unknown) {
+    const { raw, info } = decodeInfo(value)
     if (info.id !== session.id || info.scope.id !== session.scope.id || info.parentID !== session.parentID)
       fail("Portable Session metadata belongs to another owner")
     return { raw, info }
+  }
+
+  export async function storedInfo(input: { scopeID: string; sessionID: string }) {
+    const { scopeID, sessionID } = z
+      .strictObject({ scopeID: z.string().min(1), sessionID: z.string().min(1) })
+      .parse(input)
+    return Storage.snapshot(async () => {
+      const [indexValue, value] = await Storage.readMany([
+        StoragePath.sessionIndex(Identifier.asSessionID(sessionID)),
+        StoragePath.sessionInfo(Identifier.asScopeID(scopeID), Identifier.asSessionID(sessionID)),
+      ])
+      if (indexValue === undefined || value === undefined) fail("Stored Session metadata or index is absent")
+      const { raw, info } = decodeInfo(value)
+      const index = z.record(z.string(), z.unknown()).parse(indexValue)
+      if (
+        info.id !== sessionID ||
+        info.scope.id !== scopeID ||
+        index.sessionID !== info.id ||
+        index.scopeID !== info.scope.id ||
+        index.parentID !== info.parentID
+      )
+        fail("Stored Session metadata and index have another canonical owner")
+      return { raw, info }
+    })
   }
 
   export async function stagedInfo(

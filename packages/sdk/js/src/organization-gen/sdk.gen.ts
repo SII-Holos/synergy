@@ -4106,7 +4106,7 @@ export class OrgHandoff extends HeyApiClient {
   }
 
   /**
-   * Authorize only original target cleanup with the retained machine key
+   * Inspect original Source receipts or authorize inactive target cleanup with the retained machine key
    */
   public recovery<ThrowOnError extends boolean = false>(
     parameters: {

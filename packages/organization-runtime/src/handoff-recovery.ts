@@ -7,10 +7,12 @@ import {
 } from "@ericsanchezok/synergy-organization-protocol"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { WorkspaceContent } from "@ericsanchezok/synergy-harness/workspace/content"
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { RuntimeIdentity, readRuntimeHome } from "./home"
 import { readRuntimeRegistration } from "./registration"
 import { readCredentials } from "./credentials"
 import { OrganizationRuntimeError } from "./error"
+import { OrganizationHandoffSourceReceipts as SourceReceipts } from "./handoff-source-receipts"
 
 interface Owner {
   identity: RuntimeIdentity
@@ -40,14 +42,50 @@ export function readHandoffCleanupAuthorization(value: HandoffCleanupAuthorizati
 interface RegisteredOwner extends Owner {
   abort: AbortController
   calls: Set<Promise<unknown>>
+  assertPrimary(): void
 }
 const state = RuntimeContext.state(() => ({ owner: undefined as RegisteredOwner | undefined }))
 function fail(message: string): never {
   throw new OrganizationRuntimeError({ code: "HANDOFF_BLOCKED", message, outcome: "not_dispatched", retryable: false })
 }
+function sourceAcknowledgementUnknown(cause: unknown): never {
+  throw new OrganizationRuntimeError(
+    {
+      code: "SERVICE_UNAVAILABLE",
+      message: "Source proof was sent but its original acknowledgement could not be verified",
+      outcome: "unknown",
+      retryable: false,
+    },
+    { cause },
+  )
+}
 export function registerHandoffCleanup(input: Owner) {
   const value = state()
   if (value.owner) fail("The original Runtime already owns its Handoff cleanup controller")
+  const runtime = RuntimeContext.current(),
+    primary = runtime.storage,
+    selected = Storage.current()
+  if (
+    !primary ||
+    selected.store !== primary.store ||
+    selected.artifactDirectory !== primary.artifactDirectory ||
+    selected.artifactObjects !== primary.artifactObjects
+  )
+    fail("Handoff receipt recovery requires its actual Runtime primary Store")
+  const store = primary.store,
+    directory = primary.artifactDirectory,
+    objects = primary.artifactObjects
+  const originalOwner = WorkspaceContent.captureOwner()
+  const assertPrimary = () => {
+    originalOwner()
+    if (
+      runtime.storage !== primary ||
+      primary.store !== store ||
+      primary.artifactDirectory !== directory ||
+      primary.artifactObjects !== objects
+    )
+      fail("Handoff receipt recovery lost its actual primary Store or artifact owner")
+  }
   const owner: RegisteredOwner = {
     ...input,
     identity: RuntimeIdentity.parse(input.identity),
@@ -55,6 +93,7 @@ export function registerHandoffCleanup(input: Owner) {
     target: input.target.bind(input),
     abort: new AbortController(),
     calls: new Set(),
+    assertPrimary,
   }
   value.owner = owner
   return async () => {
@@ -75,6 +114,7 @@ function withClient<T>(
 ): Promise<T> {
   const selected = state().owner
   if (!selected) fail("This Runtime has no original Handoff cleanup controller")
+  selected.assertPrimary()
   selected.abort.signal.throwIfAborted()
   const pending = withClientOwned(selected, query, input, body)
   selected.calls.add(pending)
@@ -99,6 +139,7 @@ async function withClientOwned<T>(
       AbortSignal.timeout(30000),
     ])
   const assert = () => {
+    selected.assertPrimary()
     assertStore()
     signal.throwIfAborted()
     if (state().owner !== selected) fail("Cleanup callback outlived its original controller")
@@ -201,6 +242,87 @@ async function withClientOwned<T>(
   }
 }
 export namespace OrganizationHandoffCleanup {
+  export async function sourceReceipt(handoffID: string, input: { signal?: AbortSignal } = {}) {
+    const query = Recovery.Proof.shape.query.parse({ operation: "inspect-source-receipt", handoffID })
+    return withClient(query, { signal: input.signal }, async (response, client, key, signal) => {
+      if (response.result.operation !== "inspect-source-receipt") fail("Source inspection returned another operation")
+      const authorization = response.result.authorization,
+        permit = authorization.permit,
+        owner = state().owner
+      const assertStore = WorkspaceContent.captureOwner(signal)
+      const assert = () => {
+        owner?.assertPrimary()
+        assertStore()
+        signal.throwIfAborted()
+        if (!owner || state().owner !== owner || permit.expiresAt <= Date.now())
+          fail("Source receipt inspection outlived its original HTTP owner")
+      }
+      if (
+        !owner ||
+        permit.requestID !== response.requestID ||
+        permit.requestHash !== response.requestHash ||
+        permit.orgID !== response.signingIdentity.orgID ||
+        permit.deploymentIncarnation !== response.signingIdentity.deploymentIncarnation ||
+        permit.keyID !== response.signingIdentity.keyID ||
+        permit.runtimeID !== owner.runtimeID ||
+        permit.sourceRuntimeID !== owner.runtimeID ||
+        permit.handoffID !== handoffID ||
+        !(await Recovery.verifySourceReceipt(permit, authorization.signature, response.signingIdentity.publicKey))
+      )
+        fail("Source receipt inspection changed its original participant or request")
+      const home = await readRuntimeHome(RuntimeContext.current().host.home, owner.identity)
+      if (home.publicKey !== permit.participantKey) fail("Source receipt belongs to another enrolled Home key")
+      assert()
+      const retained = await SourceReceipts.inspect(permit, { signal })
+      assert()
+      if (!retained?.fact) fail("The original Source has no complete durable cancellation or surrender receipt")
+      const proof = retained.fact
+      if (proof.purpose === "source-cancelled") {
+        if (!permit.cancelRequested && !permit.cancelled)
+          fail("The original service did not request or retain this Source cancellation")
+      } else if (proof.purpose === "source-surrendered") {
+        if (
+          retained.stage !== "source-surrendered" ||
+          !retained.authorization ||
+          !permit.surrenderPermit ||
+          JSON.stringify(retained.authorization) !== JSON.stringify(permit.surrenderPermit)
+        )
+          fail("The Source surrender has another original service permit")
+      } else fail("Source receipt recovery cannot produce a new frozen or execution fact")
+      const known = proof.purpose === "source-cancelled" ? permit.cancelled : permit.surrendered
+      if (
+        (permit.frozen && permit.frozen.proof.manifestHash !== proof.manifestHash) ||
+        (known && (await Handoff.proofHash(known.proof)) !== (await Handoff.proofHash(proof)))
+      )
+        fail("The Source receipt differs from its original service fact")
+      assert()
+      const signed = Handoff.SignedProof.parse({ proof, signature: await Handoff.signProof(proof, key) })
+      assert()
+      const responseAck = await client.orgHandoff
+        .proof({ orgHandoffSignedProof: signed }, { signal })
+        .catch(sourceAcknowledgementUnknown)
+      if (!responseAck.data) {
+        const error = OrganizationProtocol.Error.safeParse(responseAck.error)
+        if (error.success) throw new OrganizationRuntimeError(error.data)
+      }
+      try {
+        assert()
+        const acknowledged = Handoff.FactAcknowledgement.parse(responseAck.data)
+        if (
+          acknowledged.purpose !== proof.purpose ||
+          acknowledged.factHash !== (await Handoff.proofHash(proof)) ||
+          (Object.keys(Handoff.Binding.shape) as (keyof z.infer<typeof Handoff.Binding>)[]).some(
+            (field) => acknowledged[field] !== proof[field],
+          )
+        )
+          throw new Error("Source proof acknowledgement belongs to another original fact")
+        assert()
+        return acknowledged
+      } catch (cause) {
+        sourceAcknowledgementUnknown(cause)
+      }
+    })
+  }
   export async function discover(
     input: { cursor?: string; limit?: number; signal?: AbortSignal } = {},
   ): Promise<Recovery.Page> {
@@ -221,7 +343,8 @@ export namespace OrganizationHandoffCleanup {
       { operation: action, binding, manifestHash: descriptor.manifestHash },
       { signal },
       async (response, client, key, work) => {
-        if (response.result.operation === "discover") fail("Cleanup action returned discovery metadata")
+        if (response.result.operation === "discover" || response.result.operation === "inspect-source-receipt")
+          fail("Cleanup action returned another participant operation")
         const authorization = response.result.authorization,
           plan = authorization.permit,
           owner = state().owner!
@@ -245,6 +368,7 @@ export namespace OrganizationHandoffCleanup {
           authorization,
           signingIdentity: response.signingIdentity,
           assert() {
+            owner.assertPrimary()
             assert()
             work.throwIfAborted()
             if (!open || state().owner !== owner || plan.expiresAt <= Date.now())

@@ -177,6 +177,16 @@ Follow the returned cursor for another page. To inspect one original target, add
 
 List and inspect attach existing storage read-only. Retirement validates its current schema, namespace, manifest and dataset identities before taking the normal writer fence; unfinished migrations or projections require their owning maintenance procedure. The command starts no ordinary member connection or execution services and grants no preparation, activation, new Handoff or Continue authority. See [restricted cleanup](../decisions/implemented/feature/2026-11-13-reconcile-original-machine-targets-through-a-restricted-cli.md).
 
+### Report a retained Source receipt
+
+For an original member Source that already committed cancellation or surrender, add its original `handoffID` to the bounded private version-one identity/deployment/CA request. Run the restricted command on that enrolled Home:
+
+```sh
+SYNERGY_HOME=/absolute/identity-qualified-home ./node_modules/.bin/synergy-org-runtime cleanup source-receipt < /absolute/private/source-receipt.json
+```
+
+The command attaches existing storage read-only and rechecks its actual primary, artifact owner and stable native Session metadata. Only the terminal receipt can produce a report; a frozen snapshot alone is insufficient. After an unknown proof acknowledgement, a later invocation reconciles the identical fact rather than repeating a native operation. Existing Runtime ownership blocks this command, which never stops that Runtime. Member Source has focused HTTPS acceptance; Hosted Source requires separate verification. See [Source receipt recovery](../decisions/implemented/feature/2026-11-13-reconcile-original-source-terminal-receipts.md).
+
 ## Hosted Runtime entry
 
 Supervisors and hosted images use `synergy-org-runtime hosted-runtime` with the same serving lifecycle. For programmatic preparation, `prepareHostedHome({ baseDirectory, identity: { orgID, hostID }, origin })` comes from `./home`; the public CLI follows the [same registration flow](#register-and-serve-a-runtime). Private stdin receives the existing `HostedLaunchRequest` with the prepared identity, deployment incarnation, explicit local port, ephemeral 64-hex bearer, optional CA and optional enrollment ticket. End at EOF; the request is bounded to 64 KiB and never appears in arguments/output. Retained registration permits restart without replaying the ticket. The local listener stays loopback-only.

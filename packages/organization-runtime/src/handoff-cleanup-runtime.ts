@@ -24,7 +24,7 @@ import {
   registerNativeWorkspaceCleanup,
 } from "@ericsanchezok/synergy-local-runtime/workspace/cleanup"
 import { WorkspaceCoordinator } from "@ericsanchezok/synergy-local-runtime/workspace/coordinator"
-import { MemberIdentity, NativeHomeReaderContract, readRuntimeHome, runtimeIdentityDigest } from "./home"
+import { RuntimeIdentity, NativeHomeReaderContract, readRuntimeHome, runtimeIdentityDigest } from "./home"
 import { MemberLaunchRequest } from "./launch"
 import { readRuntimeRegistration } from "./registration"
 import { MemberHomeError } from "./record"
@@ -37,7 +37,7 @@ import { OrganizationHandoffCleanup, registerHandoffCleanup } from "./handoff-re
 
 export const HandoffCleanupRequest = z.strictObject({
   version: z.literal(1),
-  identity: MemberIdentity,
+  identity: RuntimeIdentity,
   deploymentIncarnation: z.string().min(1).max(128),
   ca: MemberLaunchRequest.shape.ca,
 })
@@ -160,6 +160,8 @@ export async function openHandoffCleanup(
           run(() => OrganizationHandoffCleanup.discover(query)),
         inspect: (descriptor: z.infer<typeof Recovery.Descriptor>, query: { signal?: AbortSignal } = {}) =>
           run(() => OrganizationHandoffCleanup.inspect(descriptor, query)),
+        sourceReceipt: (handoffID: string, query: { signal?: AbortSignal } = {}) =>
+          run(() => OrganizationHandoffCleanup.sourceReceipt(handoffID, query)),
         retire(descriptor: z.infer<typeof Recovery.Descriptor>, query: { signal?: AbortSignal } = {}) {
           if (readonly) throw new MemberHomeError("Read-only cleanup cannot retire an original target")
           return run(() => OrganizationHandoffCleanup.retire(descriptor, query))

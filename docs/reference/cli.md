@@ -773,7 +773,7 @@ register, serve or clean up an independent organization Runtime
 
 ## org-runtime cleanup
 
-reconcile cancelled native targets using this original machine's retained enrollment
+reconcile original Source receipts or inactive native targets using retained enrollment
 
 | Option | Description |
 | --- | --- |
@@ -797,6 +797,11 @@ list this original machine's outstanding cancelled native targets
 ## org-runtime cleanup retire
 
 release the named inactive target and submit its original signed cleanup fact
+
+
+## org-runtime cleanup source-receipt
+
+submit only this original Source's retained cancellation or surrender receipt
 
 
 ## org-runtime register

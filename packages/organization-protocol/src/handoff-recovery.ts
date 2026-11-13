@@ -25,6 +25,7 @@ export namespace OrganizationHandoffRecovery {
       ...Window,
       query: z.discriminatedUnion("operation", [
         z.strictObject({ operation: z.literal("discover"), page: Identity.Page }),
+        z.strictObject({ operation: z.literal("inspect-source-receipt"), handoffID: Identity.ID }),
         Target.extend({ operation: z.enum(["inspect-target", "retire-target"]) }),
       ]),
     })
@@ -32,6 +33,7 @@ export namespace OrganizationHandoffRecovery {
     .refine(
       (value) =>
         value.query.operation === "discover" ||
+        value.query.operation === "inspect-source-receipt" ||
         (value.query.binding.orgID === value.orgID &&
           value.query.binding.deploymentIncarnation === value.deploymentIncarnation &&
           value.query.binding.targetRuntimeID === value.runtimeID),
@@ -105,6 +107,63 @@ export namespace OrganizationHandoffRecovery {
   const permits = signedProtocol(Permit, "synergy.organization.handoff.target-cleanup.v1\n")
   export const signPermit = permits.sign
   export const verifyPermit = permits.verify
+  export const SourceReceiptPermit = Handoff.Binding.extend({
+    purpose: z.literal("handoff-source-receipt"),
+    requestID: Identity.ID,
+    requestHash: Handoff.Hash,
+    keyID: Identity.ID,
+    runtimeID: Identity.ID,
+    participantKey: Runtime.PublicKey,
+    operation: z.literal("inspect-source-receipt"),
+    cancelRequested: z.boolean(),
+    frozen: Handoff.SignedProof.optional(),
+    cancelled: Handoff.SignedProof.optional(),
+    surrendered: Handoff.SignedProof.optional(),
+    surrenderPermit: Handoff.SignedPermit.optional(),
+    ...Window,
+  })
+    .refine(finite, "Source receipt inspection requires a finite window")
+    .refine((value) => {
+      const same = (proof: z.infer<typeof Handoff.Binding>) =>
+        (Object.keys(Handoff.Binding.shape) as (keyof z.infer<typeof Handoff.Binding>)[]).every(
+          (field) => proof[field] === value[field],
+        )
+      const frozen = value.frozen?.proof,
+        cancelled = value.cancelled?.proof,
+        surrendered = value.surrendered?.proof,
+        permit = value.surrenderPermit?.permit
+      return (
+        value.runtimeID === value.sourceRuntimeID &&
+        value.sourceRuntimeID !== value.targetRuntimeID &&
+        value.toEpoch > value.fromEpoch &&
+        (!frozen || (frozen.purpose === "source-frozen" && same(frozen))) &&
+        (!cancelled ||
+          (cancelled.purpose === "source-cancelled" &&
+            same(cancelled) &&
+            (!frozen || cancelled.manifestHash === frozen.manifestHash))) &&
+        (!permit ||
+          (permit.purpose === "handoff-surrender" &&
+            same(permit) &&
+            (!frozen || permit.manifestHash === frozen.manifestHash))) &&
+        (!surrendered ||
+          (surrendered.purpose === "source-surrendered" &&
+            same(surrendered) &&
+            !!permit &&
+            surrendered.permitID === permit.permitID &&
+            surrendered.manifestHash === permit.manifestHash &&
+            surrendered.preparedHash === permit.preparedHash)) &&
+        !(cancelled && surrendered)
+      )
+    }, "Source receipt inspection retains only its original participant and facts")
+    .meta({ ref: "OrgHandoffSourceReceiptPermit" })
+  export type SourceReceiptPermit = z.infer<typeof SourceReceiptPermit>
+  export const SignedSourceReceiptPermit = z
+    .strictObject({ permit: SourceReceiptPermit, signature: SigningSignature })
+    .meta({ ref: "OrgHandoffSignedSourceReceiptPermit" })
+  export type SignedSourceReceiptPermit = z.infer<typeof SignedSourceReceiptPermit>
+  const sourceReceipts = signedProtocol(SourceReceiptPermit, "synergy.organization.handoff.source-receipt.v1\n")
+  export const signSourceReceipt = sourceReceipts.sign
+  export const verifySourceReceipt = sourceReceipts.verify
   export const Response = z
     .strictObject({
       requestID: Identity.ID,
@@ -112,6 +171,7 @@ export namespace OrganizationHandoffRecovery {
       signingIdentity: Command.SigningIdentity,
       result: z.discriminatedUnion("operation", [
         Page.extend({ operation: z.literal("discover") }).meta({ ref: "OrgHandoffCleanupDiscovery" }),
+        z.strictObject({ operation: z.literal("inspect-source-receipt"), authorization: SignedSourceReceiptPermit }),
         z.strictObject({ operation: z.enum(["inspect-target", "retire-target"]), authorization: SignedPermit }),
       ]),
     })

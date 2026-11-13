@@ -38,7 +38,7 @@ test("cleanup help and rejected private requests do not provision a Home", async
   }
   const help = await invoke(["--help"])
   expect(help.code, help.stderr).toBe(0)
-  for (const command of ["list", "inspect", "retire"]) expect(help.stdout).toContain(command)
+  for (const command of ["list", "inspect", "retire", "source-receipt"]) expect(help.stdout).toContain(command)
   const canary = "private-cleanup-input-must-not-be-printed"
   for (const [args, request] of [
     [["list", "--limit", "0"], {}],
@@ -49,6 +49,14 @@ test("cleanup help and rejected private requests do not provision a Home", async
         identity: { orgID: "org", accountID: "account", deviceID: "device" },
         deploymentIncarnation: "deployment",
         ticket: canary,
+      },
+    ],
+    [
+      ["source-receipt"],
+      {
+        version: 1,
+        identity: { orgID: "org", accountID: "account", deviceID: "device" },
+        deploymentIncarnation: "deployment",
       },
     ],
     [

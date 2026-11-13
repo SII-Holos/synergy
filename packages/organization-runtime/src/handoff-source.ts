@@ -30,6 +30,7 @@ import { WorkspaceMove } from "@ericsanchezok/synergy-harness/workspace/move"
 import { WorkspaceArchive } from "@ericsanchezok/synergy-harness/workspace/archive"
 import { OrganizationSessionTransfer as Transfer } from "./session-transfer"
 import { OrganizationHandoffWorkspaceSource as WorkspaceSource } from "./handoff-workspace-source"
+import { OrganizationHandoffSourceReceipts as SourceReceipts } from "./handoff-source-receipts"
 
 export namespace OrganizationHandoffSource {
   interface Input {
@@ -95,10 +96,7 @@ export namespace OrganizationHandoffSource {
       { plan: Handoff.MachinePlan; abort: AbortController; promise: Promise<Handoff.Proof> }
     >()
     let closing: Promise<void> | undefined
-    const factKey = (
-      plan: Handoff.MachinePlan,
-      kind: "frozen" | "surrender-permit" | "resource-closure" | "resource-receipts",
-    ) => ["organization_handoff_source", plan.orgID, plan.deploymentIncarnation, plan.handoffID, kind]
+    const factKey = SourceReceipts.key
     function assertOwner() {
       const current = Storage.current()
       if (
@@ -374,41 +372,18 @@ export namespace OrganizationHandoffSource {
       async inspect(value: Input): Promise<Handoff.MachineExecution> {
         const input = snapshot(value)
         const { plan } = await authorize(input, "inspect-source")
-        const cancelled = await NativeSource.cancellation(binding(plan))
-        const surrendered = await NativeSource.surrendered(binding(plan))
-        const prepared = await NativeSource.status(binding(plan))
+        const retained = await SourceReceipts.inspect(plan, {
+          scopeID: plan.sourceBinding.projectID,
+          signal: input.signal,
+        })
+        const prepared = retained ? undefined : await NativeSource.status(binding(plan))
         let fact: Handoff.Proof | undefined
         let stage: Handoff.MachineExecution["stage"] = "preparing"
         const requirements: z.infer<typeof Handoff.Requirement>[] = []
-        if (cancelled) {
-          stage = "source-cancelled"
-          fact = Handoff.Proof.parse({
-            ...factBinding(plan),
-            purpose: stage,
-            manifestHash: cancelled.manifestHash,
-            gateCancelled: true,
-            paused: true,
-          })
-        } else if (surrendered) {
-          stage = "source-surrendered"
-          const [raw] = await Storage.readMany([factKey(plan, "surrender-permit")])
-          if (raw !== undefined) {
-            const { permit } = Handoff.SignedPermit.parse(raw)
-            if (
-              !fields.every((field) => permit[field] === plan[field]) ||
-              permit.manifestHash !== surrendered.manifestHash ||
-              permit.preparedHash !== surrendered.preparedHash
-            )
-              fail("Source surrender receipt has another authority")
-            fact = Handoff.Proof.parse({
-              ...factBinding(plan),
-              purpose: stage,
-              manifestHash: surrendered.manifestHash,
-              preparedHash: surrendered.preparedHash,
-              permitID: permit.permitID,
-              gatePersisted: true,
-            })
-          } else
+        if (retained) {
+          stage = retained.stage
+          fact = retained.fact
+          if (!fact)
             requirements.push({
               code: "surrender_permit_receipt",
               label: "Reconcile the original surrender permit before publishing its fact",

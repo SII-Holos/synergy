@@ -47,12 +47,13 @@ export namespace SessionTransferSource {
     preparedHash: z.string().regex(/^[a-f0-9]{64}$/),
     members: z.number().int().positive().safe(),
   })
-  const prefix = (binding: Epochs.Binding) => ["session_transfer_source", binding.handoffID, binding.sessionID]
+  type ReceiptSelector = Pick<Epochs.Binding, "handoffID" | "sessionID">
+  const prefix = (binding: ReceiptSelector) => ["session_transfer_source", binding.handoffID, binding.sessionID]
   const memberKey = (binding: Epochs.Binding, sessionID: string) => [...prefix(binding), "members", sessionID]
   const stateKey = (binding: Epochs.Binding) => [...prefix(binding), "state"]
   const candidateKey = (binding: Epochs.Binding) => [...prefix(binding), "candidate"]
-  const cancellationKey = (binding: Epochs.Binding) => [...prefix(binding), "cancelled"]
-  const surrenderKey = (binding: Epochs.Binding) => [...prefix(binding), "surrendered"]
+  const cancellationKey = (binding: ReceiptSelector) => [...prefix(binding), "cancelled"]
+  const surrenderKey = (binding: ReceiptSelector) => [...prefix(binding), "surrendered"]
   function fail(message: string): never {
     throw new Owners.Rejected({ message })
   }
@@ -132,6 +133,39 @@ export namespace SessionTransferSource {
       )
         fail("Source surrender is missing its permanently surrendered root")
       return receipt
+    })
+  }
+
+  export async function retainedReceipt(value: ReceiptSelector) {
+    const selector = z
+      .strictObject({
+        handoffID: Epochs.Binding.shape.handoffID,
+        sessionID: Epochs.Binding.shape.sessionID,
+      })
+      .parse(value)
+    return Storage.snapshot(async () => {
+      const [cancelled, surrendered] = await Storage.readMany<unknown>([
+        cancellationKey(selector),
+        surrenderKey(selector),
+      ])
+      if (cancelled !== undefined && surrendered !== undefined) fail("Source has contradictory terminal receipts")
+      if (cancelled === undefined && surrendered === undefined) return
+      const binding =
+        cancelled !== undefined ? Cancelled.parse(cancelled).binding : Surrendered.parse(surrendered).binding
+      if (
+        binding.handoffID !== selector.handoffID ||
+        binding.sessionID !== selector.sessionID ||
+        (binding.rootSessionID && binding.rootSessionID !== selector.sessionID)
+      )
+        fail("Source receipt belongs to another root selector")
+      if (cancelled !== undefined) {
+        const receipt = await cancellation(binding)
+        if (!receipt) fail("Source cancellation receipt changed while reading")
+        return { kind: "cancelled" as const, receipt }
+      }
+      const receipt = await SessionTransferSource.surrendered(binding)
+      if (!receipt) fail("Source surrender receipt changed while reading")
+      return { kind: "surrendered" as const, receipt }
     })
   }
 

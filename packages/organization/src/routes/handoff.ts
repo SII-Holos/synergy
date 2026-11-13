@@ -166,7 +166,7 @@ export function handoffMachineRoutes(handoffs: () => Handoffs) {
       "/handoffs/recovery",
       operation(
         "orgHandoff.recovery",
-        "Authorize only original target cleanup with the retained machine key",
+        "Inspect original Source receipts or authorize inactive target cleanup with the retained machine key",
         Recovery.Response,
         true,
       ),

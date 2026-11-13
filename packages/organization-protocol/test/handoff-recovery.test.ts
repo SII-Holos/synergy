@@ -3,6 +3,61 @@ import { OrganizationHandoffRecovery as Recovery } from "../src/handoff-recovery
 import { OrganizationHandoffProtocol as Handoff } from "../src/handoff"
 import { OrganizationRuntimeProtocol as Runtime } from "../src/runtime"
 
+test("Source receipt inspection binds its original participant and cannot authorize target cleanup or execution", async () => {
+  const keys = await crypto.subtle.generateKey("Ed25519", true, ["sign", "verify"])
+  const publicKey = await Runtime.publicKey(keys.publicKey)
+  const permit = Recovery.SourceReceiptPermit.parse({
+    schemaVersion: 1,
+    orgID: "org",
+    deploymentIncarnation: "deployment",
+    handoffID: "original",
+    sessionID: "session",
+    sourceRuntimeID: "source",
+    targetRuntimeID: "target",
+    fromEpoch: 1,
+    toEpoch: 2,
+    mappingPlanRevision: 1,
+    shareGeneration: 0,
+    purpose: "handoff-source-receipt",
+    operation: "inspect-source-receipt",
+    requestID: "inspect",
+    requestHash: "a".repeat(64),
+    keyID: "key",
+    runtimeID: "source",
+    participantKey: publicKey,
+    cancelRequested: true,
+    issuedAt: 100,
+    expiresAt: 30100,
+  })
+  const signature = await Recovery.signSourceReceipt(permit, keys.privateKey)
+  expect(await Recovery.verifySourceReceipt(permit, signature, publicKey)).toBe(true)
+  expect(await Recovery.verifyPermit(permit, signature, publicKey)).toBe(false)
+  expect(await Handoff.verifyPermit(permit, signature, publicKey)).toBe(false)
+  expect(await Handoff.verifyMachinePlan(permit, signature, publicKey)).toBe(false)
+  for (const changed of [
+    { ...permit, runtimeID: "target" },
+    { ...permit, operation: "surrender-source" },
+    { ...permit, handoffID: "another" },
+    { ...permit, cancelRequested: false },
+    { ...permit, expiresAt: 30101 },
+    { ...permit, content: "not metadata" },
+  ])
+    expect(await Recovery.verifySourceReceipt(changed, signature, publicKey)).toBe(false)
+  expect(
+    Recovery.Proof.safeParse({
+      schemaVersion: 1,
+      purpose: "handoff-cleanup-recovery",
+      orgID: "org",
+      deploymentIncarnation: "deployment",
+      runtimeID: "source",
+      requestID: "source-request",
+      issuedAt: 100,
+      expiresAt: 30100,
+      query: { operation: "inspect-source-receipt", handoffID: "original" },
+    }).success,
+  ).toBe(true)
+})
+
 test("machine cleanup signatures cannot become ordinary connection or execution authority", async () => {
   const keys = await crypto.subtle.generateKey("Ed25519", true, ["sign", "verify"])
   const publicKey = await Runtime.publicKey(keys.publicKey)

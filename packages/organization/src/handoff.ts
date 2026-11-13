@@ -1085,7 +1085,7 @@ export function createHandoffs(options: {
         const runtime = await Record.read(Record.RuntimeRegistration, Keys.runtime(proof.runtimeID))
         if (
           !runtime ||
-          runtime.runtimeKind !== "member" ||
+          (proof.query.operation !== "inspect-source-receipt" && runtime.runtimeKind !== "member") ||
           runtime.state === "pending" ||
           runtime.orgID !== proof.orgID ||
           runtime.deploymentIncarnation !== proof.deploymentIncarnation ||
@@ -1101,6 +1101,50 @@ export function createHandoffs(options: {
           )
         const requestHash = await Recovery.requestHash(proof)
         const query = proof.query
+        if (query.operation === "inspect-source-receipt") {
+          const record = await load(query.handoffID)
+          if (
+            record.orgID !== proof.orgID ||
+            record.deploymentIncarnation !== proof.deploymentIncarnation ||
+            record.sourceRuntimeID !== runtime.runtimeID ||
+            record.source.runtimeKind !== runtime.runtimeKind ||
+            record.source.publicKey !== runtime.publicKey ||
+            (record.source.runtimeKind === "member" &&
+              (runtime.runtimeKind !== "member" ||
+                record.source.accountID !== runtime.accountID ||
+                record.source.deviceID !== runtime.deviceID)) ||
+            (record.source.runtimeKind === "hosted" &&
+              (runtime.runtimeKind !== "hosted" || record.source.createdBy !== runtime.createdBy))
+          )
+            fail("PERMISSION_DENIED", "Source receipt inspection belongs to another original machine")
+          const issuedAt = Date.now()
+          const authorization = await options.signing.signHandoffSourceReceipt(
+            Recovery.SourceReceiptPermit.parse({
+              ...Handoff.Binding.strip().parse(record),
+              purpose: "handoff-source-receipt",
+              requestID: proof.requestID,
+              requestHash,
+              keyID: options.signing.identity.keyID,
+              runtimeID: runtime.runtimeID,
+              participantKey: runtime.publicKey,
+              operation: query.operation,
+              cancelRequested: record.cancelRequested,
+              frozen: record.frozen,
+              cancelled: record.cancelled,
+              surrendered: record.surrendered,
+              surrenderPermit: record.surrenderPermit,
+              issuedAt,
+              expiresAt: Math.min(issuedAt + 30000, proof.expiresAt),
+            }),
+          )
+          owner()
+          return Recovery.Response.parse({
+            requestID: proof.requestID,
+            requestHash,
+            signingIdentity: options.signing.identity,
+            result: { operation: query.operation, authorization },
+          })
+        }
         if (query.operation === "discover") {
           const page = await cleanupPage(runtime, query.page)
           owner()
@@ -1114,6 +1158,7 @@ export function createHandoffs(options: {
         }
         const record = await load(query.binding.handoffID)
         if (
+          runtime.runtimeKind !== "member" ||
           record.targetRuntimeID !== runtime.runtimeID ||
           record.target.runtimeKind !== "member" ||
           record.target.publicKey !== runtime.publicKey ||

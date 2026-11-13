@@ -135,6 +135,18 @@ export async function loadSigningAuthority(deployment: OrganizationProtocol.Depl
         fail("PERMISSION_DENIED", "Handoff cleanup belongs to another or expired signing authority")
       return { permit, signature: await Recovery.signPermit(permit, privateKey) }
     },
+    async signHandoffSourceReceipt(value: Recovery.SourceReceiptPermit): Promise<Recovery.SignedSourceReceiptPermit> {
+      const permit = Recovery.SourceReceiptPermit.parse(value)
+      if (
+        permit.orgID !== identity.orgID ||
+        permit.deploymentIncarnation !== identity.deploymentIncarnation ||
+        permit.keyID !== identity.keyID ||
+        permit.issuedAt > Date.now() ||
+        permit.expiresAt <= Date.now()
+      )
+        fail("PERMISSION_DENIED", "Source receipt inspection belongs to another current signing authority")
+      return { permit, signature: await Recovery.signSourceReceipt(permit, privateKey) }
+    },
     async signHandoffInspection(value: Handoff.InspectionPlan): Promise<Handoff.SignedInspectionPlan> {
       const plan = Handoff.InspectionPlan.parse(value)
       if (

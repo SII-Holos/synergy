@@ -3270,6 +3270,39 @@ export type OrgHandoffCleanupDiscovery = {
   operation: "discover"
 }
 
+export type OrgHandoffSourceReceiptPermit = {
+  schemaVersion: 1
+  orgID: string
+  deploymentIncarnation: string
+  handoffID: string
+  sessionID: string
+  sourceRuntimeID: string
+  targetRuntimeID: string
+  fromEpoch: number
+  toEpoch: number
+  mappingPlanRevision: number
+  shareGeneration: number
+  purpose: "handoff-source-receipt"
+  requestID: string
+  requestHash: string
+  keyID: string
+  runtimeID: string
+  participantKey: OrgRuntimePublicKey
+  operation: "inspect-source-receipt"
+  cancelRequested: boolean
+  frozen?: OrgHandoffSignedProof
+  cancelled?: OrgHandoffSignedProof
+  surrendered?: OrgHandoffSignedProof
+  surrenderPermit?: OrgHandoffSignedPermit
+  issuedAt: number
+  expiresAt: number
+}
+
+export type OrgHandoffSignedSourceReceiptPermit = {
+  permit: OrgHandoffSourceReceiptPermit
+  signature: string
+}
+
 export type OrgHandoffRecoveryPermit = {
   schemaVersion: 1
   orgID: string
@@ -3391,6 +3424,10 @@ export type OrgHandoffRecoveryResponse = {
   result:
     | OrgHandoffCleanupDiscovery
     | {
+        operation: "inspect-source-receipt"
+        authorization: OrgHandoffSignedSourceReceiptPermit
+      }
+    | {
         operation: "inspect-target" | "retire-target"
         authorization: OrgHandoffSignedRecoveryPermit
       }
@@ -3412,6 +3449,10 @@ export type OrgHandoffRecoveryProof = {
           limit?: number
           cursor?: string
         }
+      }
+    | {
+        operation: "inspect-source-receipt"
+        handoffID: string
       }
     | {
         binding: {
