@@ -13,6 +13,8 @@ on:
       - "script/organization-*.ts"
       - "script/pack-workspace.ts"
       - "script/package-install-check.ts"
+      - "test/package/fixture/organization-deployment.ts"
+      - "test/package/fixture/package-boundary.ts"
 
 permissions:
   contents: read
@@ -43,6 +45,8 @@ jobs:
         run: bun script/organization-install-check.ts .artifacts/organization-packages
       - name: Verify installed hosted Runtime enrollment and shutdown
         run: bun script/organization-runtime-install-check.ts .artifacts/organization-packages
+      - name: Verify installed Service and Hosted backup recovery
+        run: bun script/organization-deployment-install-check.ts .artifacts/organization-packages
       - name: Stage the image from the same archives
         run: bun script/organization-image.ts .artifacts/organization-packages .artifacts/organization-image x64
       - name: Build the service image without publishing

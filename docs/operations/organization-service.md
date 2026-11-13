@@ -206,8 +206,12 @@ SYNERGY_HOME=/absolute/prepared-hosted-home ./node_modules/.bin/synergy-org-runt
 Pack the Runtime together with service and CLI, then select `--hosted` when staging its separate image. The override's `hosted` profile mounts the prepared Home and private request, passing the request on stdin. It never provisions or registers identities implicitly. Give the image user access to both mounts; preserve the hosted Home independently of service/backend volumes.
 
 ```sh
+bun -e 'import {packWorkspace} from "./script/pack-workspace"; await packWorkspace(["packages/organization","packages/cli","packages/organization-runtime"], ".artifacts/organization-packages")'
 bun script/organization-runtime-install-check.ts .artifacts/organization-packages
+bun script/organization-deployment-install-check.ts .artifacts/organization-packages
 bun script/organization-image.ts .artifacts/organization-packages .artifacts/organization-hosted-image x64 --hosted
 docker build -t synergy-organization-hosted:local .artifacts/organization-hosted-image
 docker compose -f compose.yml -f compose.infrastructure.yml --profile hosted up -d hosted
 ```
+
+The deployment CI requires the installed Service/Hosted recovery check in addition to startup checks, using the same archives. It exercises the [original cohort and recovery owners](../decisions/implemented/architecture/2026-11-12-drain-organization-service-before-cohort-capture.md#verification) in a temporary installation outside the checkout; neither a namespace seal nor successful container startup replaces its held installation, original writer retirement and guarded publication requirements.
