@@ -13,6 +13,8 @@ description: Add or modify Synergy durable state, JSON storage keys, SQLite tabl
 
 ## Implement the Current Model
 
+For incremental native restoration on an already held Target, bind the actual original import receipt and authenticated archive namespace through `RuntimeMaintenance.withRestorationArtifacts`. Prepare binaries outside SQL/checkpoint gates, then publish through the original restoration transaction. Require exact streamed native-location witnesses, mandatory alias completion and a final guard over the full staging namespace; caught failures must still reject COMMIT. Verify unknown outcomes with garbage collection and cold reuse. Native evidence does not grant domain append policy or recovery readiness.
+
 For whole-aggregate replacement, trace derived state stored outside the canonical prefix. Invalidate or rebuild it through its owning API inside the publication transaction. Warm the previous destination before importing changed membership, then verify canonical, ordinary, paged and cold reads plus rollback. Invalidating one unrelated cache does not establish complete read consistency.
 
 When hydrating references from a batch of records, deduplicate referenced identities and use the owning domain's batch reader instead of one concurrent read per record. Keep ownership checks and missing-record positions, and verify more distinct references than storage admission capacity, shared references, malformed records and subsequent rebinding with real storage.

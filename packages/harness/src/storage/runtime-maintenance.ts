@@ -13,6 +13,7 @@ import { StorageCheckpoint } from "./checkpoint"
 import { RuntimeMaintenanceSchema as Schema } from "./runtime-maintenance-schema"
 import { MaintenanceRetirementRecords as Retirements } from "./maintenance-retirement-records"
 import type { StoreTransaction, TransactionOptions } from "./transactional-store"
+import type { VaultKeyProvider } from "../secrets/encrypted-store"
 
 const ID = z.string().min(1).max(128)
 const Count = z.number().int().nonnegative().safe()
@@ -39,6 +40,7 @@ const restorationWrites = RuntimeContext.createAsyncContext<{
   request: HomeRestoration.Request
   open: boolean
 }>()
+const restorationArtifacts = RuntimeContext.createAsyncContext<StorageCheckpoint.PreparedArtifacts>()
 const frozenWork = RuntimeContext.createAsyncContext<{
   runtime: RuntimeContext.Instance
   store: Storage.Handle["store"]
@@ -518,7 +520,11 @@ export namespace RuntimeMaintenance {
         assertNative()
         const frame = { runtime, store, transaction: tx, permit, request, open: true }
         try {
-          return await restorationWrites.run(frame, () => body(tx))
+          return await restorationWrites.run(frame, async () => {
+            const prepared = restorationArtifacts.getStore()
+            if (prepared) await StorageCheckpoint.guardPreparedArtifacts(prepared, tx)
+            return body(tx)
+          })
         } finally {
           frame.open = false
         }
@@ -531,6 +537,78 @@ export namespace RuntimeMaintenance {
           HomeRestoration.assertInstalledOwner(permit)
         },
       },
+    )
+  }
+  export async function withRestorationArtifacts<T>(
+    input: {
+      permit: HomeRestoration.InstallPermit
+      request: HomeRestoration.Request
+      base: StorageCheckpoint.Manifest
+      namespace: { directory: string; expected: StorageCheckpoint.Manifest }
+      keys: VaultKeyProvider
+      references: AsyncIterable<string[]> | Iterable<string[]>
+      signal?: AbortSignal
+    },
+    body: (prepared: StorageCheckpoint.PreparedArtifacts) => Promise<T>,
+  ): Promise<T> {
+    if (Storage.inTransaction() || restorationArtifacts.getStore())
+      throw new Blocked({ message: "Recovery artifact preparation requires its independent native boundary" })
+    const permit = input.permit
+    const request = HomeRestoration.Request.parse(structuredClone(input.request))
+    const base = StorageCheckpoint.Manifest.parse(structuredClone(input.base))
+    const namespace = {
+      directory: input.namespace.directory,
+      expected: StorageCheckpoint.Manifest.parse(structuredClone(input.namespace.expected)),
+    }
+    const signal = input.signal
+    const target = HomeRestoration.describe(permit)
+    const runtime = RuntimeContext.current()
+    const primary = Storage.current()
+    const store = primary.store
+    const configuration = digest(store.options)
+    const artifacts = primary.artifactDirectory
+    const assert = () => {
+      signal?.throwIfAborted()
+      HomeRestoration.assertCurrent(permit)
+      HomeRestoration.assertRequest(permit, request)
+      HomeRestoration.assertInstalledOwner(permit)
+      if (
+        !state().installed ||
+        RuntimeContext.current() !== runtime ||
+        runtime.storage !== primary ||
+        Storage.current().store !== store ||
+        primary.store !== store ||
+        digest(store.options) !== configuration ||
+        Storage.current().artifactDirectory !== artifacts ||
+        primary.artifactDirectory !== artifacts ||
+        Storage.current().artifactObjects ||
+        primary.artifactObjects
+      )
+        throw new Blocked({ message: "Recovery artifact preparation requires its original protected primary Store" })
+      if (digest(base) !== target.sourceHash || namespace.expected.namespaceID !== base.namespaceID)
+        throw new Blocked({ message: "Recovery artifacts require their original H0 checkpoint namespace" })
+    }
+    assert()
+    await HomeRestoration.verifyInstalledOwner(permit)
+    await Storage.snapshot((tx) => requireRestoration(tx, target))
+    const receipt = await store.operationReceipt(`storage-checkpoint:${request.restoreID}`)
+    assert()
+    if (!receipt || receipt.requestHash !== base.records.sha256)
+      throw new Blocked({ message: "Recovery artifacts require the actual original committed H0 import" })
+    return StorageCheckpoint.withPreparedArtifacts(
+      {
+        ...namespace,
+        keys: input.keys,
+        permit,
+        request,
+        restoreID: request.restoreID,
+        installationID: target.installationID,
+        bindingHash: digest({ target, request, base, namespace: namespace.expected }),
+        references: input.references,
+        signal,
+        transaction: (body) => restorationTransaction({ permit, request }, body, { signal, commitGuard: assert }),
+      },
+      (prepared) => restorationArtifacts.run(prepared, () => body(prepared)),
     )
   }
   export async function adoptRestoration(

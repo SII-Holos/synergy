@@ -421,7 +421,7 @@ export namespace Storage {
     const token: PreparedBinary = {
       [preparedBinaryBrand]: true,
       [Symbol.dispose]() {
-        if (held.released || held.publishing) return
+        if (held.released || held.publishing || (held.outcome === "unknown" && !object)) return
         held.released = true
         if (object) state.objects!.release(object, held.outcome)
         const count = (state.prepared.get(location.pack) ?? 1) - 1

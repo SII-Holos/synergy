@@ -3,6 +3,8 @@ import { bootstrapPhysicalRecordRoots } from "./bootstrap-layout"
 import { createHash, randomUUID } from "node:crypto"
 import fs from "node:fs/promises"
 import path from "node:path"
+import { tmpdir } from "node:os"
+import { Database } from "bun:sqlite"
 import { z } from "zod"
 import { Storage } from "./storage"
 import { StoragePortable, StorageEntry } from "./portable"
@@ -11,6 +13,9 @@ import { fileDigest } from "./file-digest"
 import { SecretEnvelope, type VaultKeyProvider } from "../secrets/encrypted-store"
 import type { StoreTransaction } from "./transactional-store"
 import { RuntimeContext } from "../lifecycle/context"
+import { initializeSqliteEngine } from "./sqlite-engine"
+import { ArtifactLocation } from "./artifact-location"
+import { HomeRestoration } from "../lifecycle/home-restoration"
 
 const ID = z
   .string()
@@ -427,6 +432,336 @@ export namespace StorageCheckpoint {
     for (;;) {
       const next = await entries.next()
       if (next.done) return next.value
+    }
+  }
+
+  export interface PreparedArtifacts {
+    readonly kind: "storage-checkpoint-prepared-artifacts"
+  }
+  type ArtifactPreparation = {
+    database: Database
+    prefix: string[]
+    assert(): void
+    checkStaging(tx: StoreTransaction): Promise<void>
+  }
+  const artifactPreparations = new WeakMap<PreparedArtifacts, ArtifactPreparation>()
+  const artifactPublications = new WeakMap<
+    StoreTransaction,
+    { preparation: ArtifactPreparation; complete: boolean; failed: boolean }
+  >()
+  function preparation(evidence: PreparedArtifacts) {
+    const selected = artifactPreparations.get(evidence)
+    if (!selected) throw new StorageIntegrityError("Artifact staging requires its original checkpoint preparation")
+    selected.assert()
+    return selected
+  }
+  export function acceptsStagedArtifact(evidence: PreparedArtifacts, key: string[], location: ArtifactLocation) {
+    const selected = preparation(evidence)
+    using query = selected.database.query<{ location: string | null }, [string]>(
+      "SELECT location FROM selected WHERE staged=?",
+    )
+    const row = query.get(JSON.stringify(key))
+    return !!row?.location && row.location === JSON.stringify(ArtifactLocation.parse(location))
+  }
+  export async function withPreparedArtifacts<T>(
+    input: {
+      directory: string
+      expected: Manifest
+      keys: VaultKeyProvider
+      restoreID: string
+      installationID: string
+      bindingHash: string
+      permit: HomeRestoration.InstallPermit
+      request: HomeRestoration.Request
+      references: AsyncIterable<string[]> | Iterable<string[]>
+      transaction<R>(body: (tx: StoreTransaction) => Promise<R>): Promise<R>
+      signal?: AbortSignal
+    },
+    body: (prepared: PreparedArtifacts) => Promise<T>,
+  ): Promise<T> {
+    if (Storage.inTransaction())
+      throw new StorageConflictError("Artifact staging requires its native preparation boundary")
+    const expected = Manifest.parse(structuredClone(input.expected))
+    const restoreID = ID.parse(input.restoreID)
+    const installationID = ID.parse(input.installationID)
+    const bindingHash = Hash.parse(input.bindingHash)
+    const permit = input.permit
+    const request = HomeRestoration.Request.parse(structuredClone(input.request))
+    const directory = input.directory
+    const provider = input.keys
+    const keys = Object.freeze({ current: provider.current.bind(provider), resolve: provider.resolve.bind(provider) })
+    const signal = input.signal
+    const runtime = RuntimeContext.current()
+    const handle = Storage.current()
+    const store = handle.store
+    const configuration = JSON.stringify(store.options)
+    const artifacts = handle.artifactDirectory
+    if (handle.artifactObjects)
+      throw new StorageConflictError("Checkpoint delta staging requires its native artifact owner")
+    let open = true
+    const assert = () => {
+      signal?.throwIfAborted()
+      HomeRestoration.assertCurrent(permit)
+      HomeRestoration.assertRequest(permit, request)
+      const installed = HomeRestoration.assertInstalledOwner(permit)
+      if (installed.installationID !== installationID || HomeRestoration.describe(permit).restoreID !== restoreID)
+        throw new StorageConflictError("Checkpoint preparation requires its original native installation")
+      if (
+        !open ||
+        RuntimeContext.current() !== runtime ||
+        RuntimeContext.current().storage !== handle ||
+        Storage.current().store !== store ||
+        handle.store !== store ||
+        JSON.stringify(store.options) !== configuration ||
+        Storage.current().artifactDirectory !== artifacts ||
+        handle.artifactDirectory !== artifacts ||
+        Storage.current().artifactObjects ||
+        handle.artifactObjects
+      )
+        throw new StorageConflictError("Checkpoint artifact preparation belongs to another native target")
+    }
+    assert()
+    initializeSqliteEngine()
+    const temporary = await fs.mkdtemp(path.join(tmpdir(), "synergy-checkpoint-artifacts-"))
+    const database = new Database(path.join(temporary, "artifacts.sqlite"))
+    database.exec(
+      "PRAGMA journal_mode=OFF; PRAGMA temp_store=FILE; PRAGMA cache_size=-2048; CREATE TABLE artifacts(key TEXT PRIMARY KEY,sha256 TEXT NOT NULL,size INTEGER NOT NULL); CREATE TABLE selected(key TEXT PRIMARY KEY,sha256 TEXT NOT NULL,size INTEGER NOT NULL,staged TEXT UNIQUE,location TEXT)",
+    )
+    try {
+      using insert = database.query("INSERT INTO artifacts VALUES(?,?,?)")
+      for await (const entry of entries({ directory, expected, keys, signal })) {
+        assert()
+        if (entry.type === "artifact") insert.run(JSON.stringify(entry.key), entry.location.sha256, entry.location.size)
+      }
+      using artifact = database.query<{ sha256: string; size: number }, [string]>(
+        "SELECT sha256,size FROM artifacts WHERE key=?",
+      )
+      using select = database.query("INSERT INTO selected(key,sha256,size) VALUES(?,?,?)")
+      for await (const key of input.references) {
+        assert()
+        const text = JSON.stringify(z.array(z.string().min(1)).min(1).parse(key))
+        const row = artifact.get(text)
+        if (!row) throw new StorageIntegrityError("Selected artifact is absent from its complete checkpoint")
+        select.run(text, row.sha256, row.size)
+      }
+      const checksum = createHash("sha256")
+      using ordered = database.query<{ key: string; sha256: string; size: number }, []>(
+        "SELECT key,sha256,size FROM selected ORDER BY key",
+      )
+      for (const row of ordered.iterate()) checksum.update(JSON.stringify(row) + "\n")
+      const prefix = [stagingRoot, restoreID, "artifacts", installationID, sha256(bindingHash + checksum.digest("hex"))]
+      using staged = database.query("UPDATE selected SET staged=? WHERE key=?")
+      for (const row of ordered.iterate()) staged.run(JSON.stringify([...prefix, sha256(row.key)]), row.key)
+      const selected: ArtifactPreparation = { database, prefix, assert, checkStaging: (tx) => checkStaging(tx, true) }
+      const evidence: PreparedArtifacts = Object.freeze({ kind: "storage-checkpoint-prepared-artifacts" })
+      artifactPreparations.set(evidence, selected)
+      async function checkStaging(tx: StoreTransaction, requireWitness = false) {
+        assert()
+        store.assertWriteTransaction(tx)
+        if (Storage.current().transaction !== tx || !Storage.inWriteTransaction())
+          throw new StorageConflictError("Artifact staging requires its actual native write transaction")
+        if ((await tx.queryKeys({ prefix: [stagingRoot], limit: 1 })).length)
+          throw new StorageIntegrityError("Unknown checkpoint artifact staging records")
+        let after: string[] | undefined
+        using wanted = database.query<{ sha256: string; size: number; location: string | null }, [string]>(
+          "SELECT sha256,size,location FROM selected WHERE staged=?",
+        )
+        for (;;) {
+          const page = await tx.artifactPage({ prefix: [stagingRoot], after, limit: 128 })
+          for (const entry of page) {
+            const row = wanted.get(JSON.stringify(entry.key))
+            if (
+              !row ||
+              row.sha256 !== entry.location.sha256 ||
+              row.size !== entry.location.size ||
+              ((requireWitness || row.location !== null) &&
+                row.location !== JSON.stringify(ArtifactLocation.parse(entry.location)))
+            )
+              throw new StorageIntegrityError("Unknown checkpoint artifact staging reference")
+          }
+          if (page.length < 128) break
+          after = page.at(-1)?.key
+        }
+      }
+      let inspected = false
+      await input.transaction(async (tx) => {
+        await Storage.transaction(async () => {}, {
+          commitGuard: () => {
+            assert()
+            if (!inspected) throw new StorageConflictError("Artifact staging inspection did not complete")
+          },
+        })
+        await checkStaging(tx)
+        inspected = true
+      })
+      if (!inspected)
+        throw new StorageConflictError("Artifact staging requires its actual native inspection transaction")
+      using page = database.query<{ key: string; staged: string; sha256: string; size: number }, [string]>(
+        "SELECT key,staged,sha256,size FROM selected WHERE key>? ORDER BY key LIMIT 128",
+      )
+      using witness = database.query("UPDATE selected SET location=? WHERE staged=?")
+      let after = ""
+      for (;;) {
+        const rows = page.all(after)
+        if (!rows.length) break
+        for (const row of rows) {
+          assert()
+          const target = z.array(z.string()).parse(JSON.parse(row.staged))
+          const retained = await Storage.snapshot((tx) => tx.artifact(target)).catch((error: unknown) => {
+            if (error instanceof Storage.NotFoundError) return undefined
+            throw error
+          })
+          if (retained && (retained.sha256 !== row.sha256 || retained.size !== row.size))
+            throw new StorageIntegrityError("Retained artifact preparation changed its checkpoint identity")
+          await HomeRestoration.verifyInstalledOwner(permit)
+          assert()
+          using prepared = retained
+            ? undefined
+            : await Storage.prepareBinaryStream(target, streamArtifact({ directory, location: row, signal }), {
+                signal,
+              })
+          let complete = false
+          await input.transaction(async (tx) => {
+            await Storage.transaction(async () => {}, {
+              commitGuard: () => {
+                assert()
+                if (!complete) throw new StorageConflictError("Artifact preparation did not complete")
+              },
+            })
+            await checkStaging(tx)
+            if (prepared) await Storage.publishPreparedBinary(prepared)
+            const current = await tx.artifact(target)
+            if (current.sha256 !== row.sha256 || current.size !== row.size)
+              throw new StorageIntegrityError("Staged artifact changed its checkpoint identity")
+            complete = true
+          })
+          if (!complete) throw new StorageConflictError("Artifact preparation did not retain its native transaction")
+          await Storage.withArtifactCheckpoint(
+            async (checkpoint) => {
+              const before = await Storage.snapshot((tx) => tx.artifact(target))
+              if (before.size !== row.size || before.sha256 !== row.sha256)
+                throw new StorageIntegrityError("Prepared artifact changed before its native stream")
+              const digest = createHash("sha256")
+              let bytes = 0
+              for await (const chunk of checkpoint.stream(before)) {
+                assert()
+                bytes += chunk.length
+                digest.update(chunk)
+              }
+              const after = await Storage.snapshot((tx) => tx.artifact(target))
+              const location = JSON.stringify(ArtifactLocation.parse(before))
+              if (
+                bytes !== row.size ||
+                digest.digest("hex") !== row.sha256 ||
+                location !== JSON.stringify(ArtifactLocation.parse(after))
+              )
+                throw new StorageIntegrityError("Retained prepared bytes differ from their complete checkpoint")
+              witness.run(location, row.staged)
+            },
+            { signal },
+          )
+          after = row.key
+        }
+      }
+      const result = await body(evidence)
+      assert()
+      return result
+    } finally {
+      open = false
+      database.close()
+      await fs.rm(temporary, { recursive: true, force: true })
+    }
+  }
+  async function artifactPublication(evidence: PreparedArtifacts, tx: StoreTransaction) {
+    const selected = preparation(evidence)
+    const store = Storage.current().store
+    store.assertWriteTransaction(tx)
+    if (Storage.current().transaction !== tx || !Storage.inWriteTransaction())
+      throw new StorageConflictError("Artifact aliases require their original native write transaction")
+    const existing = artifactPublications.get(tx)
+    if (existing && (existing.preparation !== selected || existing.failed))
+      throw new StorageConflictError("Artifact publication changed its native preparation")
+    const state = existing ?? { preparation: selected, complete: false, failed: false }
+    artifactPublications.set(tx, state)
+    await Storage.transaction(async () => {}, {
+      commitGuard: () => {
+        selected.assert()
+        if (!state.complete || state.failed)
+          throw new StorageConflictError("Prepared artifact alias publication did not complete")
+      },
+    })
+    return state
+  }
+  export async function guardPreparedArtifacts(evidence: PreparedArtifacts, tx: StoreTransaction): Promise<void> {
+    await artifactPublication(evidence, tx)
+  }
+  export async function publishPreparedArtifacts(evidence: PreparedArtifacts, tx: StoreTransaction) {
+    const state = await artifactPublication(evidence, tx)
+    const selected = state.preparation
+    if (state.complete) return
+    try {
+      await selected.checkStaging(tx)
+      using page = selected.database.query<{ key: string; staged: string; location: string | null }, [string]>(
+        "SELECT key,staged,location FROM selected WHERE key>? ORDER BY key LIMIT 128",
+      )
+      let after = ""
+      for (;;) {
+        const rows = page.all(after)
+        if (!rows.length) break
+        for (const row of rows) {
+          selected.assert()
+          const key = z.array(z.string()).parse(JSON.parse(row.key))
+          const staged = z.array(z.string()).parse(JSON.parse(row.staged))
+          const source = await tx.artifact(staged).catch((error: unknown) => {
+            if (error instanceof Storage.NotFoundError) return undefined
+            throw error
+          })
+          if (!row.location || (source && JSON.stringify(ArtifactLocation.parse(source)) !== row.location))
+            throw new StorageIntegrityError("Prepared artifact alias changed its native identity")
+          const existing = await tx.artifact(key).catch((error: unknown) => {
+            if (error instanceof Storage.NotFoundError) return undefined
+            throw error
+          })
+          if (existing && JSON.stringify(ArtifactLocation.parse(existing)) !== row.location)
+            throw new StorageIntegrityError("Prepared artifact alias conflicts with existing target bytes")
+          if (!existing && !source) throw new StorageIntegrityError("Prepared artifact alias is incomplete")
+          if (!existing) await Storage.publishBinaryReference(staged, key)
+          if (JSON.stringify(ArtifactLocation.parse(await tx.artifact(key))) !== row.location)
+            throw new StorageIntegrityError("Published artifact alias differs from its verified native witness")
+          after = row.key
+        }
+      }
+      await selected.checkStaging(tx)
+      await tx.removeTree(selected.prefix)
+      if (
+        (await tx.artifactPage({ prefix: [stagingRoot], limit: 1 })).length ||
+        (await tx.queryKeys({ prefix: [stagingRoot], limit: 1 })).length
+      )
+        throw new StorageIntegrityError("Unknown checkpoint staging survived alias publication")
+      tx.addMutationGuard(async (keys, tree) => {
+        using original = selected.database.query<{ key: string }, [string, string]>(
+          "SELECT key FROM selected WHERE key=? OR staged=?",
+        )
+        for (const key of keys) {
+          const text = JSON.stringify(key)
+          const prefix = text.slice(0, -1) + ","
+          using children = selected.database.query<{ key: string }, [string, string]>(
+            "SELECT key FROM selected WHERE key>=? AND key<? LIMIT 1",
+          )
+          if (
+            original.get(text, text) ||
+            key[0] === stagingRoot ||
+            (tree && (key.length === 0 || children.get(prefix, prefix + "\uffff")))
+          ) {
+            state.failed = true
+            throw new StorageConflictError("Artifact aliases changed after final native publication")
+          }
+        }
+      })
+      state.complete = true
+    } catch (error) {
+      state.failed = true
+      throw error
     }
   }
 

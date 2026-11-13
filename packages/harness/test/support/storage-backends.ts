@@ -21,6 +21,7 @@ export const POSTGRES_TEST_FILES = [
   "test/storage/object-artifacts.test.ts",
   "test/storage/local-content.test.ts",
   "test/storage/checkpoint-retention.test.ts",
+  "test/storage/restoration-artifacts.test.ts",
   "test/storage/backend-selection.test.ts",
   "test/storage/event-sinks.test.ts",
   "test/storage/compat-defer.test.ts",
