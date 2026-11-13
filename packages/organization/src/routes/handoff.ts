@@ -17,6 +17,38 @@ export function handoffRoutes(handoffs: () => Handoffs, publicOrigin?: string) {
   const target = z.strictObject({ handoffID: Identity.ID })
   return new Hono()
     .get(
+      "/handoffs/:handoffID/native-target",
+      operation(
+        "orgHandoff.nativeTarget",
+        "Inspect only the original destination member's native directory metadata",
+        Handoff.NativeTargetSelection,
+      ),
+      validator("param", target, validation),
+      validator("query", Handoff.NativeTargetQuery, validation),
+      async (c) =>
+        c.json(
+          await handoffs().nativeTarget(credentials(c), c.req.valid("param").handoffID, c.req.valid("query"), {
+            signal: c.req.raw.signal,
+          }),
+        ),
+    )
+    .get(
+      "/sessions/:sessionID/handoff-targets",
+      operation(
+        "orgHandoff.targets",
+        "List Session-scoped destination metadata for its current execution owner",
+        Handoff.TargetPage,
+      ),
+      validator("param", session, validation),
+      validator("query", Handoff.TargetsQuery, validation),
+      async (c) =>
+        c.json(
+          await handoffs().targets(credentials(c), c.req.valid("param").sessionID, c.req.valid("query"), {
+            signal: c.req.raw.signal,
+          }),
+        ),
+    )
+    .get(
       "/runtimes/:runtimeID/handoff-cleanups",
       operation("orgHandoff.cleanups", "Discover only the member Runtime's original cleanup slots", Recovery.Page),
       validator("param", z.strictObject({ runtimeID: Identity.ID }), validation),

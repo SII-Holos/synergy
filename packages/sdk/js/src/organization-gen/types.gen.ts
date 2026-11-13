@@ -2625,6 +2625,50 @@ export type OrgCloudFileInspectionRequest = {
   signature: string
 }
 
+export type OrgHandoffNativeTargetSelection = {
+  requestID: string
+  handoffID: string
+  targetRuntimeID: string
+  mappingPlanRevision: number
+  mappingHash: string
+  native: {
+    reference: {
+      workspaceID: string
+      generation: number
+      revision: number
+    }
+    projectRevision: string
+    label: string
+  }
+}
+
+export type OrgHandoffTargetPage = {
+  sessionID: string
+  sourceRuntimeID: string
+  bindingEpoch: number
+  controlRevision: number
+  shareGeneration: number
+  items: Array<
+    | {
+        runtimeID: string
+        state: "pending" | "active" | "revoked"
+        availability: "ready" | "offline" | "incompatible"
+        runtimeKind: "member"
+        accountID: string
+        deviceID: string
+        displayName: string
+      }
+    | {
+        runtimeID: string
+        state: "pending" | "active" | "revoked"
+        availability: "ready" | "offline" | "incompatible"
+        runtimeKind: "hosted"
+        name: string
+      }
+  >
+  cursor?: string
+}
+
 export type OrgHandoffCleanupDescriptor = {
   schemaVersion: 1
   orgID: string
@@ -9642,6 +9686,105 @@ export type OrgCloudFilesInspectResponses = {
 }
 
 export type OrgCloudFilesInspectResponse = OrgCloudFilesInspectResponses[keyof OrgCloudFilesInspectResponses]
+
+export type OrgHandoffNativeTargetData = {
+  body?: never
+  path: {
+    handoffID: string
+  }
+  query: {
+    requestID: string
+  }
+  url: "/org/v1/handoffs/{handoffID}/native-target"
+}
+
+export type OrgHandoffNativeTargetErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgHandoffNativeTargetError = OrgHandoffNativeTargetErrors[keyof OrgHandoffNativeTargetErrors]
+
+export type OrgHandoffNativeTargetResponses = {
+  /**
+   * Success
+   */
+  200: OrgHandoffNativeTargetSelection
+}
+
+export type OrgHandoffNativeTargetResponse = OrgHandoffNativeTargetResponses[keyof OrgHandoffNativeTargetResponses]
+
+export type OrgHandoffTargetsData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    limit?: number
+    cursor?: string
+  }
+  url: "/org/v1/sessions/{sessionID}/handoff-targets"
+}
+
+export type OrgHandoffTargetsErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgHandoffTargetsError = OrgHandoffTargetsErrors[keyof OrgHandoffTargetsErrors]
+
+export type OrgHandoffTargetsResponses = {
+  /**
+   * Success
+   */
+  200: OrgHandoffTargetPage
+}
+
+export type OrgHandoffTargetsResponse = OrgHandoffTargetsResponses[keyof OrgHandoffTargetsResponses]
 
 export type OrgHandoffCleanupsData = {
   body?: never

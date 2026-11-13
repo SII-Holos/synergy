@@ -30,6 +30,7 @@ import { upgradeAccessRecord } from "@ericsanchezok/synergy-harness/migration/im
 import { OrganizationCloud } from "./cloud"
 import { WorkspaceMove } from "@ericsanchezok/synergy-harness/workspace/move"
 import { WorkspaceContent } from "@ericsanchezok/synergy-harness/workspace/content"
+import { listHandoffTargets } from "./handoff-discovery"
 import { WorkspaceArchive } from "@ericsanchezok/synergy-harness/workspace/archive"
 import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
 import { OrganizationResources } from "./resources"
@@ -506,25 +507,29 @@ export function createHandoffs(options: {
     .parse(options.timeoutMs ?? 5000)
   let inspections = 0
 
-  async function inspectionAccess(credentials: Credentials, sessionID: string, targetRuntimeID: string) {
+  async function sourceAccess(credentials: Credentials, sessionID: string) {
     const access = await authorize(credentials, "session.read", { sessionID })
     await authorize(credentials, "project.execute", { projectID: access.session.projectID })
     const current = access.session
     if (current.handoffID) fail("HANDOFF_BLOCKED", "The current handoff already owns this Session")
-    const [source, target] = await Promise.all([
-      Record.read(Record.RuntimeRegistration, Keys.runtime(current.driverRuntimeID)),
-      Record.read(Record.RuntimeRegistration, Keys.runtime(targetRuntimeID)),
-    ])
+    const source = await Record.read(Record.RuntimeRegistration, Keys.runtime(current.driverRuntimeID))
     if (
       !source ||
-      !target ||
       source.orgID !== current.orgID ||
-      target.orgID !== current.orgID ||
-      source.runtimeID === target.runtimeID
+      source.deploymentIncarnation !== options.signing.identity.deploymentIncarnation ||
+      source.state !== "active"
     )
-      fail("NOT_FOUND", "Handoff destination is unavailable")
+      fail("HANDOFF_BLOCKED", "The current handoff source is unavailable")
     if (access.account.accountID !== (source.runtimeKind === "member" ? source.accountID : current.creatorID))
       fail("PERMISSION_DENIED", "Only the current execution owner can inspect its handoff choices")
+    return { ...access, source }
+  }
+  async function inspectionAccess(credentials: Credentials, sessionID: string, targetRuntimeID: string) {
+    const access = await sourceAccess(credentials, sessionID)
+    const { source, session: current } = access
+    const target = await Record.read(Record.RuntimeRegistration, Keys.runtime(targetRuntimeID))
+    if (!target || target.orgID !== current.orgID || source.runtimeID === target.runtimeID)
+      fail("NOT_FOUND", "Handoff destination is unavailable")
     if (target.runtimeKind === "member" && target.accountID !== current.creatorID && current.shareState !== "shared")
       fail("HANDOFF_BLOCKED", "Share this Session before handing it to another member")
     for (const runtime of [source, target]) {
@@ -544,6 +549,46 @@ export function createHandoffs(options: {
       connection.assertCurrent()
     }
     return { ...access, source, target }
+  }
+  async function nativeTargetAccess(credentials: Credentials, handoffID: string) {
+    const record = await load(handoffID)
+    const access = await authorize(credentials, "session.read", { sessionID: record.sessionID })
+    await authorize(credentials, "project.execute", { projectID: access.session.projectID })
+    const current = access.session
+    const mapping = record.request.workspaceMapping
+    if (
+      mapping.kind !== "organization-native" ||
+      record.target.runtimeKind !== "member" ||
+      !["preparing", "prepared"].includes(record.phase) ||
+      record.cancelRequested ||
+      current.handoffID !== record.handoffID ||
+      current.driverRuntimeID !== record.sourceRuntimeID ||
+      current.bindingEpoch !== record.fromEpoch ||
+      current.shareGeneration !== record.shareGeneration
+    )
+      fail("HANDOFF_BLOCKED", "The original native destination is unavailable in this handoff phase")
+    if (access.account.accountID !== record.target.accountID)
+      fail("PERMISSION_DENIED", "Only the original destination member can inspect its native directory")
+    const connection = options.connections.captureHandoff(record.targetRuntimeID)
+    if (connection.handshake.schemas.handoffs < 4)
+      fail("HANDOFF_BLOCKED", "The destination does not support exact directory inspection")
+    const authority = await runtimeAuthority({
+      runtimeID: record.targetRuntimeID,
+      orgID: record.orgID,
+      deploymentIncarnation: record.deploymentIncarnation,
+      connectionEpoch: connection.handshake.connectionEpoch,
+    })
+    const runtime = authority.runtime
+    if (
+      runtime.runtimeKind !== "member" ||
+      runtime.accountID !== record.target.accountID ||
+      runtime.deviceID !== record.target.deviceID ||
+      runtime.publicKey !== record.target.publicKey
+    )
+      fail("PERMISSION_DENIED", "The original native destination identity changed")
+    assertRuntimeConnection(runtime, connection.handshake)
+    connection.assertCurrent()
+    return { ...access, record, mapping, connection }
   }
   async function load(id: string) {
     const [value] = await Storage.readMany([key(Identity.ID.parse(id))])
@@ -893,6 +938,130 @@ export function createHandoffs(options: {
   }
 
   const api = {
+    async nativeTarget(
+      credentials: Credentials,
+      handoffID: string,
+      value: z.infer<typeof Handoff.NativeTargetQuery>,
+      input: { signal: AbortSignal },
+    ): Promise<Handoff.NativeTargetSelection> {
+      credentials = { ...credentials }
+      const query = Handoff.NativeTargetQuery.parse(value)
+      const signal = AbortSignal.any([input.signal, AbortSignal.timeout(timeoutMs)])
+      if (inspections >= 32) fail("SERVICE_UNAVAILABLE", "Handoff inspection capacity is currently busy")
+      inspections++
+      try {
+        const admitted = await Storage.snapshot(async () => {
+          signal.throwIfAborted()
+          const access = await nativeTargetAccess(credentials, Identity.ID.parse(handoffID))
+          const issuedAt = Date.now()
+          const expiresAt = Math.min(issuedAt + timeoutMs, access.expiresAt)
+          if (expiresAt <= issuedAt) fail("AUTHENTICATION_REQUIRED", "Directory inspection authorization expired")
+          const authorization = await options.signing.signHandoffInspection(
+            Handoff.InspectionPlan.parse({
+              schemaVersion: 1,
+              purpose: "handoff-inspection",
+              requestID: query.requestID,
+              keyID: options.signing.identity.keyID,
+              orgID: access.record.orgID,
+              deploymentIncarnation: access.record.deploymentIncarnation,
+              projectID: access.session.projectID,
+              sessionID: access.record.sessionID,
+              sourceRuntimeID: access.record.sourceRuntimeID,
+              targetRuntimeID: access.record.targetRuntimeID,
+              runtimeID: access.record.targetRuntimeID,
+              connectionEpoch: access.connection.handshake.connectionEpoch,
+              bindingEpoch: access.record.fromEpoch,
+              controlRevision: access.session.controlRevision,
+              role: "target",
+              actor: {
+                kind: "account",
+                orgID: access.account.orgID,
+                subjectID: access.account.accountID,
+                displayName: access.account.displayName,
+                clientKind: access.clientKind,
+                requestID: query.requestID,
+                ...("tokenID" in access ? { tokenID: access.tokenID } : {}),
+              },
+              issuedAt,
+              expiresAt,
+            }),
+          )
+          const mappingHash = await Handoff.mappingHash(access.mapping)
+          access.connection.assertCurrent()
+          return { access, authorization, mappingHash }
+        })
+        const reply = await admitted.access.connection.exchange(
+          { kind: "handoff-inspection", authorization: admitted.authorization },
+          { signal, deadline: admitted.authorization.plan.expiresAt },
+        )
+        signal.throwIfAborted()
+        admitted.access.connection.assertCurrent()
+        if (reply.kind === "error") throw new OrganizationError(reply.error)
+        if (
+          reply.kind !== "handoff-inspection" ||
+          !Handoff.matchesInspection(admitted.authorization.plan, reply.result)
+        )
+          fail("PROTOCOL_MISMATCH", "Directory inspection returned another original participant")
+        const native = reply.result.native
+        const expected = admitted.access.mapping.target
+        if (!native) fail("RESOURCE_UNAVAILABLE", "The original native directory is unavailable")
+        if (
+          native.reference.workspaceID !== expected.workspaceID ||
+          native.reference.generation !== expected.generation ||
+          native.reference.revision !== expected.expectedRevision ||
+          native.projectRevision !== expected.projectRevision
+        )
+          fail("REVISION_CONFLICT", "The original native directory selection changed")
+        return await Storage.snapshot(async () => {
+          signal.throwIfAborted()
+          const current = await nativeTargetAccess(credentials, handoffID)
+          const original = admitted.access
+          if (
+            current.session.controlRevision !== original.session.controlRevision ||
+            current.account.accountID !== original.account.accountID ||
+            current.record.mappingPlanRevision !== original.record.mappingPlanRevision ||
+            !same(current.mapping, original.mapping) ||
+            current.connection.handshake.connectionEpoch !== original.connection.handshake.connectionEpoch
+          )
+            fail("STALE_BINDING", "The original native destination changed during inspection")
+          admitted.access.connection.assertCurrent()
+          return Handoff.NativeTargetSelection.parse({
+            requestID: query.requestID,
+            handoffID: current.record.handoffID,
+            targetRuntimeID: current.record.targetRuntimeID,
+            mappingPlanRevision: current.record.mappingPlanRevision,
+            mappingHash: admitted.mappingHash,
+            native,
+          })
+        })
+      } finally {
+        inspections--
+      }
+    },
+    async targets(
+      credentials: Credentials,
+      sessionID: string,
+      value: Handoff.TargetsQuery,
+      input: { signal: AbortSignal },
+    ) {
+      credentials = { ...credentials }
+      const query = Handoff.TargetsQuery.parse(value)
+      const signal = input.signal
+      return Storage.snapshot(async () => {
+        const assert = WorkspaceContent.captureOwner(signal)
+        assert()
+        const result = await listHandoffTargets(
+          {
+            ...(await sourceAccess(credentials, Identity.ID.parse(sessionID))),
+            connections: options.connections,
+            signal,
+          },
+          query,
+        )
+        assert()
+        return result
+      })
+    },
     async cleanupCandidates(credentials: Credentials, runtimeID: string, value: Identity.Page) {
       const page = Identity.Page.parse(value)
       return Storage.snapshot(async () => {

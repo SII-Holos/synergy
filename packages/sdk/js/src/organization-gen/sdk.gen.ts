@@ -143,6 +143,8 @@ import type {
   OrgHandoffGetResponses,
   OrgHandoffListErrors,
   OrgHandoffListResponses,
+  OrgHandoffNativeTargetErrors,
+  OrgHandoffNativeTargetResponses,
   OrgHandoffObjectReadErrors,
   OrgHandoffObjectReadResponses,
   OrgHandoffObjectRequest,
@@ -160,6 +162,8 @@ import type {
   OrgHandoffRecoveryRequest,
   OrgHandoffRecoveryResponses,
   OrgHandoffSignedProof,
+  OrgHandoffTargetsErrors,
+  OrgHandoffTargetsResponses,
   OrgHandoffWorkspaceRequest,
   OrgHandoffWorkspaceRequestErrors,
   OrgHandoffWorkspaceRequestResponses,
@@ -3754,6 +3758,68 @@ export class OrgCloudFiles extends HeyApiClient {
 }
 
 export class OrgHandoff extends HeyApiClient {
+  /**
+   * Inspect only the original destination member's native directory metadata
+   */
+  public nativeTarget<ThrowOnError extends boolean = false>(
+    parameters: {
+      handoffID: string
+      requestID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "handoffID" },
+            { in: "query", key: "requestID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      OrgHandoffNativeTargetResponses,
+      OrgHandoffNativeTargetErrors,
+      ThrowOnError
+    >({
+      url: "/org/v1/handoffs/{handoffID}/native-target",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * List Session-scoped destination metadata for its current execution owner
+   */
+  public targets<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      limit?: number
+      cursor?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "limit" },
+            { in: "query", key: "cursor" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<OrgHandoffTargetsResponses, OrgHandoffTargetsErrors, ThrowOnError>({
+      url: "/org/v1/sessions/{sessionID}/handoff-targets",
+      ...options,
+      ...params,
+    })
+  }
+
   /**
    * Discover only the member Runtime's original cleanup slots
    */

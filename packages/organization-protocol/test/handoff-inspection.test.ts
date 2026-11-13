@@ -2,6 +2,38 @@ import { expect, test } from "bun:test"
 import { OrganizationHandoffProtocol as Handoff } from "../src/handoff"
 import { OrganizationRuntimeProtocol as Runtime } from "../src/runtime"
 
+test("handoff discovery metadata is bounded and excludes machine authority", () => {
+  const page: Handoff.TargetPage = {
+    sessionID: "session",
+    sourceRuntimeID: "source",
+    bindingEpoch: 1,
+    controlRevision: 2,
+    shareGeneration: 3,
+    items: [
+      {
+        runtimeKind: "member",
+        runtimeID: "target",
+        accountID: "member",
+        deviceID: "device",
+        displayName: "Member",
+        state: "active",
+        availability: "offline",
+      },
+    ],
+    cursor: "original_cursor",
+  }
+  expect(Handoff.TargetPage.parse(page)).toEqual(page)
+  expect(
+    Handoff.TargetPage.safeParse({ ...page, items: [{ ...page.items[0], publicKey: "private-registration" }] }).success,
+  ).toBe(false)
+  expect(
+    Handoff.TargetPage.safeParse({ ...page, items: Array.from({ length: 101 }, () => page.items[0]) }).success,
+  ).toBe(false)
+  expect(Handoff.TargetsQuery.safeParse({ cursor: "x".repeat(4097) }).success).toBe(false)
+  expect(Handoff.TargetsQuery.safeParse({ cursor: "not/a/cursor" }).success).toBe(false)
+  expect(Handoff.NativeTargetQuery.safeParse({ requestID: "inspect", handoffID: "borrowed" }).success).toBe(false)
+})
+
 test("handoff inspection has its own finite signature and exact participant metadata", async () => {
   const plan = Handoff.InspectionPlan.parse({
     schemaVersion: 1,

@@ -295,6 +295,53 @@ export namespace OrganizationHandoffProtocol {
     label: z.string().min(1).max(255),
   })
   export type NativeTarget = z.infer<typeof NativeTarget>
+  export const TargetCursor = z
+    .string()
+    .min(1)
+    .max(4096)
+    .regex(/^[a-zA-Z0-9_-]+$/)
+  export const TargetsQuery = Identity.Page.omit({ cursor: true }).extend({ cursor: TargetCursor.optional() })
+  export type TargetsQuery = z.infer<typeof TargetsQuery>
+  const targetMetadata = {
+    runtimeID: Identity.ID,
+    state: z.enum(["pending", "active", "revoked"]),
+    availability: z.enum(["ready", "offline", "incompatible"]),
+  }
+  export const Target = z.discriminatedUnion("runtimeKind", [
+    z.strictObject({
+      ...targetMetadata,
+      runtimeKind: z.literal("member"),
+      accountID: Identity.ID,
+      deviceID: Identity.ID,
+      displayName: Identity.Name,
+    }),
+    z.strictObject({ ...targetMetadata, runtimeKind: z.literal("hosted"), name: z.string().min(1).max(256) }),
+  ])
+  export type Target = z.infer<typeof Target>
+  export const TargetPage = z
+    .strictObject({
+      sessionID: Identity.ID,
+      sourceRuntimeID: Identity.ID,
+      bindingEpoch: OrganizationProtocol.Epoch,
+      controlRevision: Identity.Revision,
+      shareGeneration: Identity.Revision,
+      items: z.array(Target).max(100),
+      cursor: TargetCursor.optional(),
+    })
+    .meta({ ref: "OrgHandoffTargetPage" })
+  export type TargetPage = z.infer<typeof TargetPage>
+  export const NativeTargetQuery = z.strictObject({ requestID: Identity.ID })
+  export const NativeTargetSelection = z
+    .strictObject({
+      requestID: Identity.ID,
+      handoffID: Identity.ID,
+      targetRuntimeID: Identity.ID,
+      mappingPlanRevision: Identity.Revision.positive(),
+      mappingHash: Hash,
+      native: NativeTarget,
+    })
+    .meta({ ref: "OrgHandoffNativeTargetSelection" })
+  export type NativeTargetSelection = z.infer<typeof NativeTargetSelection>
   export const InspectionPlan = z
     .strictObject({
       schemaVersion: z.literal(1),

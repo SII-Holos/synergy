@@ -1,5 +1,6 @@
 import { expect, spyOn, test } from "bun:test"
 import { createHash } from "node:crypto"
+import { z } from "zod"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { OrganizationRuntimeProtocol as Runtime } from "@ericsanchezok/synergy-organization-protocol"
 import { OrganizationHandoffProtocol as Handoff } from "../../organization-protocol/src/handoff"
@@ -14,10 +15,12 @@ import { OrganizationStoragePath as Keys } from "../src/storage/path"
 import { commandFixture } from "./support/commands"
 import { connection, keys } from "./support/runtime"
 import { handoffMachineRoutes } from "../src/routes/handoff"
+import { organizationApp } from "../src/http"
+import { createRuntimeRegistrations } from "../src/runtime-registration"
 
-async function fixture(targetAccountID = "bob") {
+async function fixture(targetAccountID = "bob", handoffVersion = 1) {
   const f = await commandFixture()
-  await f.connect(1, true, false, false, true)
+  await f.connect(1, true, false, false, true, handoffVersion)
   const targetKeys = await keys()
   const target = await f.run(async () => {
     const value = (await Record.read(Record.RuntimeRegistration, Keys.runtime("runtime-bob")))!
@@ -38,7 +41,7 @@ async function fixture(targetAccountID = "bob") {
   const signed = await connection(target, targetKeys.privateKey, 1)
   signed.proof.handshake.capabilities.push("commands", "handoffs")
   signed.proof.handshake.schemas.commands = 1
-  signed.proof.handshake.schemas.handoffs = 1
+  signed.proof.handshake.schemas.handoffs = handoffVersion
   signed.signature = await Runtime.sign(signed.proof, targetKeys.privateKey)
   const connected = Promise.withResolvers<unknown>()
   socket.onmessage = (event) => connected.resolve(JSON.parse(String(event.data)))
@@ -58,6 +61,7 @@ async function fixture(targetAccountID = "bob") {
   return {
     ...f,
     targetKeys,
+    targetSocket: socket,
     handoffs,
     async [Symbol.asyncDispose]() {
       socket.close()
@@ -65,6 +69,474 @@ async function fixture(targetAccountID = "bob") {
     },
   }
 }
+
+async function nativeInspectionFixture(handoffID: string) {
+  const f = await fixture("bob", 5)
+  try {
+    const native = Handoff.NativeTarget.parse({
+      reference: { workspaceID: "original-native", generation: 2, revision: 3 },
+      projectRevision: "a".repeat(64),
+      label: "Bob original folder",
+    })
+    const prepared = await f.run(async () => {
+      await OrganizationSharing.share(f.credentials.alice, f.sessionID, { expectedShareGeneration: 0 })
+      const current = (await Record.read(Record.SessionDirectory, Keys.session(f.sessionID)))!
+      return f.handoffs.prepare(f.credentials.alice, f.sessionID, {
+        handoffID,
+        targetRuntimeID: "runtime-bob",
+        expectedBindingEpoch: current.bindingEpoch,
+        expectedControlRevision: current.controlRevision,
+        mappingPlanRevision: 1,
+        workspaceMapping: {
+          kind: "organization-native",
+          moveID: `${handoffID}-move`,
+          source: { workspaceID: "original-cloud", generation: 1 },
+          resource: { resourceID: "original-storage", workspaceID: "original-cloud", generation: 1, path: "shared" },
+          target: {
+            kind: "existing",
+            workspaceID: native.reference.workspaceID,
+            generation: native.reference.generation,
+            expectedRevision: native.reference.revision,
+            projectRevision: native.projectRevision,
+          },
+        },
+      })
+    })
+    return { ...f, native, prepared }
+  } catch (error) {
+    await f[Symbol.asyncDispose]()
+    throw error
+  }
+}
+
+function holdNativeInspection(f: Awaited<ReturnType<typeof nativeInspectionFixture>>) {
+  const held = Promise.withResolvers<{
+    authorization: Handoff.SignedInspectionPlan
+    reply(native?: Handoff.NativeTarget): void
+  }>()
+  f.targetSocket.onmessage = async (event) => {
+    try {
+      const frame = Runtime.ServerFrame.parse(JSON.parse(String(event.data)))
+      if (frame.type !== "command" || frame.command.kind !== "handoff-inspection") return
+      const authorization = frame.command.authorization
+      expect(
+        await Handoff.verifyInspection(authorization.plan, authorization.signature, f.signing.identity.publicKey),
+      ).toBe(true)
+      held.resolve({
+        authorization,
+        reply(native = f.native) {
+          const result = Handoff.InspectionResult.strip().parse({ ...authorization.plan, workspace: null, native })
+          f.targetSocket.send(
+            JSON.stringify({
+              type: "receipt",
+              connectionEpoch: frame.connectionEpoch,
+              exchangeID: frame.exchangeID,
+              reply: { kind: "handoff-inspection", authorization, result },
+            }),
+          )
+        },
+      })
+    } catch (error) {
+      held.reject(error)
+    }
+  }
+  return held.promise
+}
+
+test("native directory inspection retains the accepted caller credentials after the caller object changes", async () => {
+  await using f = await nativeInspectionFixture("native-caller-snapshot")
+  const received = holdNativeInspection(f)
+  const credentials = { ...f.credentials.bob }
+  const pending = Promise.resolve(
+    f.run(() =>
+      f.handoffs.nativeTarget(
+        credentials,
+        f.prepared.handoffID,
+        { requestID: "original-bob-inspection" },
+        { signal: new AbortController().signal },
+      ),
+    ),
+  ).then(
+    (value) => ({ ok: true, value }),
+    (error) => ({ ok: false, error }),
+  )
+  const held = await Promise.race([
+    received,
+    pending.then(() => {
+      throw new Error("Inspection settled before the original target reply")
+    }),
+  ])
+  expect(held.authorization.plan.actor.subjectID).toBe("bob")
+  credentials.token = f.credentials.alice.token
+  held.reply()
+  expect(await pending).toMatchObject({ ok: true, value: { requestID: "original-bob-inspection", native: f.native } })
+})
+
+test("native directory labels require the original destination member and complete native reference", async () => {
+  await using f = await nativeInspectionFixture("native-reference-guards")
+  for (const credentials of [f.credentials.alice, f.credentials.admin]) {
+    const unexpected = holdNativeInspection(f)
+    void unexpected.then((held) => held.reply()).catch(() => {})
+    await expect(
+      f.run(() =>
+        f.handoffs.nativeTarget(
+          credentials,
+          f.prepared.handoffID,
+          { requestID: "wrong-native-reader" },
+          { signal: new AbortController().signal },
+        ),
+      ),
+    ).rejects.toMatchObject({ data: { code: "PERMISSION_DENIED" } })
+  }
+  for (const changed of [
+    { ...f.native, reference: { ...f.native.reference, workspaceID: "other-native" } },
+    { ...f.native, reference: { ...f.native.reference, generation: f.native.reference.generation + 1 } },
+    { ...f.native, reference: { ...f.native.reference, revision: f.native.reference.revision + 1 } },
+    { ...f.native, projectRevision: "b".repeat(64) },
+  ]) {
+    const received = holdNativeInspection(f)
+    const pending = Promise.resolve(
+      f.run(() =>
+        f.handoffs.nativeTarget(
+          f.credentials.bob,
+          f.prepared.handoffID,
+          { requestID: "changed-native-reference" },
+          { signal: new AbortController().signal },
+        ),
+      ),
+    ).then(
+      (value) => ({ ok: true, value }),
+      (error) => ({ ok: false, error }),
+    )
+    const held = await Promise.race([
+      received,
+      pending.then(() => {
+        throw new Error("Inspection settled before its native reply")
+      }),
+    ])
+    held.reply(changed)
+    expect(await pending).toMatchObject({ ok: false, error: { data: { code: "REVISION_CONFLICT" } } })
+  }
+  expect(await f.run(() => f.handoffs.get(f.credentials.bob, f.prepared.handoffID))).toMatchObject({
+    phase: "preparing",
+    targetAccepted: false,
+    mappingPlanRevision: f.prepared.mappingPlanRevision,
+  })
+})
+
+for (const change of ["role-loss", "cancel", "reconnect"] as const)
+  test(`a held native directory reply cannot disclose its label after ${change}`, async () => {
+    await using f = await nativeInspectionFixture(`held-native-${change}`)
+    const received = holdNativeInspection(f)
+    const pending = Promise.resolve(
+      f.run(() =>
+        f.handoffs.nativeTarget(
+          f.credentials.bob,
+          f.prepared.handoffID,
+          { requestID: `held-native-${change}` },
+          { signal: new AbortController().signal },
+        ),
+      ),
+    ).then(
+      (value) => ({ ok: true, value }),
+      (error) => ({ ok: false, error }),
+    )
+    const held = await Promise.race([
+      received,
+      pending.then(() => {
+        throw new Error("Inspection settled before its native reply")
+      }),
+    ])
+    let replacement: WebSocket | undefined
+    try {
+      if (change === "role-loss") {
+        await f.run(() =>
+          OrganizationProjects.member(f.credentials.admin, "project", "bob", { expectedRevision: 1, role: null }),
+        )
+      } else if (change === "cancel") {
+        await f.run(() => f.handoffs.cancel(f.credentials.alice, f.prepared.handoffID))
+      } else {
+        const target = await f.run(() => Record.read(Record.RuntimeRegistration, Keys.runtime("runtime-bob")))
+        if (!target) throw new Error("Original target registration is missing")
+        replacement = new WebSocket(f.baseUrl.replace(/^http/, "ws"))
+        const socket = replacement
+        await new Promise<void>((resolve, reject) => {
+          socket.onopen = () => resolve()
+          socket.onerror = reject
+        })
+        const signed = await connection(target, f.targetKeys.privateKey, 2)
+        signed.proof.handshake.capabilities.push("commands", "handoffs")
+        signed.proof.handshake.schemas.commands = 1
+        signed.proof.handshake.schemas.handoffs = 5
+        signed.signature = await Runtime.sign(signed.proof, f.targetKeys.privateKey)
+        const connected = Promise.withResolvers<unknown>()
+        socket.onmessage = (event) => connected.resolve(JSON.parse(String(event.data)))
+        socket.send(JSON.stringify(signed))
+        expect(Runtime.Connected.parse(await connected.promise).connectionEpoch).toBe(2)
+      }
+      held.reply()
+      const result = await pending
+      expect(result).toMatchObject({ ok: false })
+      expect(JSON.stringify(result)).not.toContain(f.native.label)
+    } finally {
+      replacement?.close()
+      await pending
+    }
+  })
+
+test("destination discovery bounds empty pages and rejects cursors from another authorized scope", async () => {
+  await using f = await fixture("bob", 5)
+  await f.run(async () => {
+    await OrganizationSharing.share(f.credentials.alice, f.sessionID, { expectedShareGeneration: 0 })
+    const before = (await Record.read(Record.SessionDirectory, Keys.session(f.sessionID)))!
+    const first = await f.handoffs.targets(
+      f.credentials.alice,
+      f.sessionID,
+      { limit: 1 },
+      { signal: new AbortController().signal },
+    )
+    expect(first.items).toEqual([])
+    expect(first.cursor).toBeString()
+    const cursor = first.cursor!
+    const second = await f.handoffs.targets(
+      f.credentials.alice,
+      f.sessionID,
+      { limit: 1, cursor },
+      { signal: new AbortController().signal },
+    )
+    expect(second.items).toEqual([])
+    expect(second.cursor).toBeUndefined()
+    await OrganizationSessionDirectory.reservePrivate(f.credentials.alice, {
+      sessionID: "ses_other_discovery",
+      projectID: "project",
+      runtimeID: "runtime-alice",
+    })
+    await expect(
+      f.handoffs.targets(
+        f.credentials.alice,
+        "ses_other_discovery",
+        { limit: 1, cursor },
+        { signal: new AbortController().signal },
+      ),
+    ).rejects.toMatchObject({ data: { code: "STALE_BINDING" } })
+    await expect(
+      f.handoffs.targets(
+        f.credentials.bob,
+        f.sessionID,
+        { limit: 1, cursor },
+        { signal: new AbortController().signal },
+      ),
+    ).rejects.toMatchObject({ data: { code: "PERMISSION_DENIED" } })
+    const decoded: unknown = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8"))
+    const original = z.record(z.string(), z.unknown()).parse(decoded)
+    for (const changed of [
+      { ...original, accountID: "bob" },
+      { ...original, bindingEpoch: first.bindingEpoch + 1 },
+    ]) {
+      const stale = Buffer.from(JSON.stringify(changed)).toString("base64url")
+      await expect(
+        f.handoffs.targets(
+          f.credentials.alice,
+          f.sessionID,
+          { limit: 1, cursor: stale },
+          { signal: new AbortController().signal },
+        ),
+      ).rejects.toMatchObject({ data: { code: "STALE_BINDING" } })
+    }
+    await expect(
+      f.handoffs.targets(
+        f.credentials.alice,
+        f.sessionID,
+        { limit: 1, cursor: "not-json" },
+        { signal: new AbortController().signal },
+      ),
+    ).rejects.toMatchObject({ data: { code: "INVALID_REQUEST" } })
+    expect(await Record.read(Record.SessionDirectory, Keys.session(f.sessionID))).toEqual(before)
+    expect(await Storage.list(["organization", "handoffs"])).toEqual([])
+    await OrganizationSharing.unshare(f.credentials.alice, f.sessionID, { expectedShareGeneration: 1 })
+    await expect(
+      f.handoffs.targets(
+        f.credentials.alice,
+        f.sessionID,
+        { limit: 1, cursor },
+        { signal: new AbortController().signal },
+      ),
+    ).rejects.toMatchObject({ data: { code: "STALE_BINDING" } })
+  })
+})
+
+test("destination discovery keeps its original cancellation signal before the first read", async () => {
+  await using f = await fixture()
+  const original = new AbortController(),
+    input = { signal: original.signal }
+  const pending = Promise.resolve(
+    f.run(() => f.handoffs.targets(f.credentials.alice, f.sessionID, { limit: 1 }, input)),
+  )
+  input.signal = new AbortController().signal
+  original.abort(new Error("Original destination discovery cancelled"))
+  await expect(pending).rejects.toThrow("Original destination discovery cancelled")
+})
+
+test("handoff destinations page only the current Session's eligible project participants", async () => {
+  await using f = await fixture()
+  await f.run(async () => {
+    await OrganizationSharing.share(f.credentials.alice, f.sessionID, { expectedShareGeneration: 0 })
+    for (const id of ["alice", "bob", "reader", "foreign"])
+      await Storage.write(Keys.accountRuntime(id, `runtime-${id}`), { runtimeID: `runtime-${id}` })
+    const original = (await Record.read(Record.RuntimeRegistration, Keys.runtime("runtime-alice")))!
+    await Storage.write(Keys.runtime("runtime-alice-2"), {
+      ...original,
+      runtimeID: "runtime-alice-2",
+      deviceID: "device-alice-2",
+      connectionEpoch: 0,
+    })
+    await Storage.write(Keys.accountRuntime("alice", "runtime-alice-2"), { runtimeID: "runtime-alice-2" })
+  })
+  const app = organizationApp(
+    () => true,
+    undefined,
+    "https://organization.example",
+    createRuntimeRegistrations(),
+    f.connections,
+    undefined,
+    f.forwarder,
+    f.execution,
+    f.gateway,
+    f.handoffs,
+  )
+  const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: (request) => f.run(() => app.fetch(request)) })
+  await using http = { [Symbol.asyncDispose]: () => server.stop(true) }
+  const baseUrl = server.url.toString()
+  const ordinary = await fetch(new URL("/org/v1/runtimes?limit=100", baseUrl), {
+    headers: f.apiHeaders("alice"),
+  })
+  expect(ordinary.status).toBe(200)
+  const registrations = Runtime.RegistrationPage.parse(await ordinary.json())
+  expect(registrations.items.some((item) => item.runtimeID === "runtime-bob")).toBe(false)
+  let cursor: string | undefined
+  const found: string[] = []
+  const availability = new Map<string, Handoff.Target["availability"]>()
+  for (let page = 0; page < 20; page++) {
+    const url = new URL(`/org/v1/sessions/${f.sessionID}/handoff-targets`, baseUrl)
+    url.searchParams.set("limit", "1")
+    if (cursor) url.searchParams.set("cursor", cursor)
+    const response = await fetch(url, { headers: f.apiHeaders("alice") })
+    expect(response.status).toBe(200)
+    const body = await response.text()
+    expect(body).not.toContain(f.targetKeys.publicKey)
+    const result = Handoff.TargetPage.parse(JSON.parse(body))
+    expect(result).toMatchObject({ sessionID: f.sessionID, sourceRuntimeID: "runtime-alice", bindingEpoch: 1 })
+    expect(result.items.length).toBeLessThanOrEqual(1)
+    for (const item of result.items) {
+      expect(found).not.toContain(item.runtimeID)
+      found.push(item.runtimeID)
+      availability.set(item.runtimeID, item.availability)
+    }
+    cursor = result.cursor
+    if (!cursor) break
+    if (page === 19) throw new Error("Handoff target paging did not terminate")
+  }
+  expect(found.sort()).toEqual(["runtime-alice-2", "runtime-bob"])
+  expect(Object.fromEntries(availability)).toEqual({ "runtime-alice-2": "offline", "runtime-bob": "incompatible" })
+  for (const id of ["bob", "reader", "admin", "foreign"]) {
+    const denied = await fetch(new URL(`/org/v1/sessions/${f.sessionID}/handoff-targets`, baseUrl), {
+      headers: f.apiHeaders(id),
+    })
+    expect(denied.status).toBe(id === "foreign" ? 401 : 403)
+  }
+  await f.run(() => OrganizationSharing.unshare(f.credentials.alice, f.sessionID, { expectedShareGeneration: 1 }))
+  const privateTargets = await fetch(new URL(`/org/v1/sessions/${f.sessionID}/handoff-targets?limit=100`, baseUrl), {
+    headers: f.apiHeaders("alice"),
+  })
+  expect(privateTargets.status).toBe(200)
+  expect(
+    Handoff.TargetPage.parse(await privateTargets.json()).items.every((item) => item.runtimeID !== "runtime-bob"),
+  ).toBe(true)
+})
+
+test("ready destination discovery does not provision a Runtime or reserve a handoff epoch", async () => {
+  await using f = await fixture("bob", 5)
+  await f.run(async () => {
+    await OrganizationSharing.share(f.credentials.alice, f.sessionID, { expectedShareGeneration: 0 })
+    await Storage.write(Keys.accountRuntime("bob", "runtime-bob"), { runtimeID: "runtime-bob" })
+    const original = (await Record.read(Record.SessionDirectory, Keys.session(f.sessionID)))!
+    const runtimes = await Storage.list(Keys.runtimes())
+    const page = await f.handoffs.targets(
+      f.credentials.alice,
+      f.sessionID,
+      { limit: 100 },
+      { signal: new AbortController().signal },
+    )
+    expect(page.items).toMatchObject([
+      { runtimeID: "runtime-bob", runtimeKind: "member", state: "active", availability: "ready" },
+    ])
+    expect(page.cursor).toBeUndefined()
+    expect(await Storage.list(Keys.runtimes())).toEqual(runtimes)
+    expect(await Storage.list(["organization", "handoffs"])).toEqual([])
+    expect(await Record.read(Record.SessionDirectory, Keys.session(f.sessionID))).toEqual(original)
+  })
+})
+
+test("the destination member reads only its original native directory before accepting a handoff", async () => {
+  await using f = await nativeInspectionFixture("inspect-original-directory")
+  const { native, prepared } = f
+  expect(prepared).toMatchObject({ phase: "preparing", canAccept: false, targetAccepted: false })
+  const observed = Promise.withResolvers<Handoff.SignedInspectionPlan>()
+  f.targetSocket.onmessage = async (event) => {
+    try {
+      const frame = Runtime.ServerFrame.parse(JSON.parse(String(event.data)))
+      if (frame.type !== "command" || frame.command.kind !== "handoff-inspection") return
+      const authorization = frame.command.authorization
+      expect(
+        await Handoff.verifyInspection(authorization.plan, authorization.signature, f.signing.identity.publicKey),
+      ).toBe(true)
+      const result = Handoff.InspectionResult.strip().parse({ ...authorization.plan, workspace: null, native })
+      f.targetSocket.send(
+        JSON.stringify({
+          type: "receipt",
+          connectionEpoch: frame.connectionEpoch,
+          exchangeID: frame.exchangeID,
+          reply: { kind: "handoff-inspection", authorization, result },
+        }),
+      )
+      observed.resolve(authorization)
+    } catch (error) {
+      observed.reject(error)
+    }
+  }
+  const app = organizationApp(
+    () => true,
+    undefined,
+    "https://organization.example",
+    createRuntimeRegistrations(),
+    f.connections,
+    undefined,
+    f.forwarder,
+    f.execution,
+    f.gateway,
+    f.handoffs,
+  )
+  const response = await f.run(() =>
+    app.fetch(
+      new Request(
+        `https://organization.example/org/v1/handoffs/${prepared.handoffID}/native-target?requestID=original-label`,
+        { headers: f.apiHeaders("bob") },
+      ),
+    ),
+  )
+  expect(response.status).toBe(200)
+  expect(Handoff.NativeTargetSelection.parse(await response.json())).toEqual({
+    requestID: "original-label",
+    handoffID: prepared.handoffID,
+    targetRuntimeID: "runtime-bob",
+    mappingPlanRevision: prepared.mappingPlanRevision,
+    mappingHash: prepared.mappingHash,
+    native,
+  })
+  expect((await observed.promise).plan.actor.subjectID).toBe("bob")
+  const current = await f.run(() => f.handoffs.get(f.credentials.bob, prepared.handoffID))
+  expect(current).toMatchObject({ phase: "preparing", targetAccepted: false })
+})
 
 test("target cleanup discovery shares the original Handoff transaction and validates bounded participant index pages", async () => {
   await using f = await fixture()
