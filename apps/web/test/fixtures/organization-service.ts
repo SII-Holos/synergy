@@ -9,6 +9,9 @@ const input = z
     clientOrigin: z.string(),
     key: z.string(),
     cert: z.string(),
+    issuerHost: z.enum(["localhost", "127.0.0.1"]).default("localhost"),
+    organizationName: z.string().min(1).default("Browser fixture"),
+    projectName: z.string().min(1).nullable().optional(),
   })
   .parse(JSON.parse(await Bun.stdin.text()))
 const stopped = Promise.withResolvers<void>()
@@ -22,7 +25,7 @@ const server = Bun.serve({
   fetch: (request) => (service ? service.fetch(request) : new Response(null, { status: 503 })),
 })
 try {
-  const issuer = `https://localhost:${server.port}`
+  const issuer = `https://${input.issuerHost}:${server.port}`
   service = await openOrganizationService({
     home: input.home,
     publicOrigin: issuer,
@@ -43,7 +46,7 @@ try {
       orgBootstrapInput: {
         token: await service.bootstrapToken(),
         requestID: crypto.randomUUID(),
-        organizationName: "Browser fixture",
+        organizationName: input.organizationName,
         loginName: "owner",
         displayName: "Fixture owner",
         password: "organization browser fixture password",
@@ -59,11 +62,24 @@ try {
     cookie: login.response.headers.get("set-cookie")!.split(";")[0]!,
     "x-csrf-token": login.data.csrfToken,
   }
-  await client.orgProjects.create({ orgProjectCreate: { name: "Shared project" } }, { headers, throwOnError: true })
+  const project =
+    input.projectName === null
+      ? undefined
+      : (
+          await client.orgProjects.create(
+            { orgProjectCreate: { name: input.projectName ?? "Shared project" } },
+            { headers, throwOnError: true },
+          )
+        ).data
   await client.orgAuth.logout({ orgEmptyInput: {} }, { headers, throwOnError: true })
   const deployment = await service.deployment()
   console.log(
-    JSON.stringify({ issuer, orgID: deployment.orgID, deploymentIncarnation: deployment.deploymentIncarnation }),
+    JSON.stringify({
+      issuer,
+      orgID: deployment.orgID,
+      deploymentIncarnation: deployment.deploymentIncarnation,
+      projectID: project?.projectID,
+    }),
   )
   await stopped.promise
 } finally {

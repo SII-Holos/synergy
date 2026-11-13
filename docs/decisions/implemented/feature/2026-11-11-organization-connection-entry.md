@@ -27,3 +27,5 @@ An unavailable discovery transport or HTTP response produces the existing connec
 ## Consequences
 
 The connection entry gains a focused hierarchy without introducing a second component or theme system. Custom client registrations retain their explicit configuration path. Organization workspace destinations require their own authorized views; defining a route alone does not establish completion of that workflow.
+
+The complete Web shell is exercised against two independently owned HTTPS organization Services with distinct cookie hosts. The browser checks wrong-password recovery, popup cancellation, verified menu names, project isolation, a late first-organization response, personal return and volatile access tokens at wide English and narrow Chinese sizes in both appearances. The separate combined-App fixture covers personal drafts, attachments, search and notification ownership across the same space transitions.
