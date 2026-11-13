@@ -339,7 +339,7 @@ export namespace OrganizationRecovery {
                       )
                         fail("requires its committed final current policy")
                       if (evidence) await OrganizationRecoveryWriters.assertReconciled(evidence)
-                      else await OrganizationRecoveryWriters.assertServiceOnly()
+                      else await OrganizationRecoveryWriters.assertServiceOnly({ signal })
                       assert()
                       const receipt = await Publication.write(tx, {
                         activation,
@@ -367,7 +367,7 @@ export namespace OrganizationRecovery {
                   },
                   complete,
                 )
-              await OrganizationRecoveryWriters.assertServiceOnly()
+              await OrganizationRecoveryWriters.assertServiceOnly({ signal })
               assert()
               return OrganizationRecoveryWriters.withPreflight(
                 {

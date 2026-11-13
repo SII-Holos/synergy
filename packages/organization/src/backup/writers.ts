@@ -11,6 +11,7 @@ import { HomeRestoration } from "@ericsanchezok/synergy-harness/lifecycle/home-r
 import { NamespaceRetirement } from "@ericsanchezok/synergy-harness/lifecycle/namespace-retirement"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { StorageCheckpoint } from "@ericsanchezok/synergy-harness/storage/checkpoint"
+import { StorageEntry } from "@ericsanchezok/synergy-harness/storage/portable"
 import type { StoreTransaction } from "@ericsanchezok/synergy-harness/storage/transactional-store"
 import type { VaultKeyProvider } from "@ericsanchezok/synergy-harness/secrets/encrypted-store"
 import { OrganizationRecord as Record } from "../storage/records"
@@ -21,6 +22,7 @@ import { OrganizationCommandHistory } from "../command-history"
 import { OrganizationExecutionGrants } from "../execution-grants"
 import { OrganizationGatewayHistory } from "../gateway-calls"
 import { OrganizationKnowledge } from "../knowledge"
+import { OrganizationPublications } from "../publications"
 import {
   OrganizationProtocol,
   OrganizationExecutionProtocol as Execution,
@@ -41,7 +43,9 @@ type Inventory = {
   assertTarget(): void
   assert(): void
   checkpoint?: Storage.ArtifactCheckpoint
+  historyComplete?: boolean
 }
+type HistoryIndex = Pick<Inventory, "database" | "assertTarget" | "historyComplete">
 type Frame = Inventory & { target: Reference; namespaceHash: string }
 const inspections = new WeakMap<OrganizationRecoveryWriters.Inspection, Frame>()
 const preflights = RuntimeContext.createAsyncContext<Frame>()
@@ -60,13 +64,13 @@ function frame(evidence: OrganizationRecoveryWriters.Inspection) {
   selected.assert()
   return selected
 }
-function sourceRow(selected: Inventory, key: string[]) {
+function sourceRow(selected: Pick<Inventory, "database">, key: string[]) {
   const row = selected.database
     .query<{ value: string; mode: Mode }, [string]>("SELECT value,mode FROM records WHERE key=?")
     .get(JSON.stringify(key))
   return row && { value: JSON.parse(row.value) as unknown, mode: row.mode }
 }
-function sourceValue<T>(selected: Inventory, schema: z.ZodType<T>, key: string[]) {
+function sourceValue<T>(selected: Pick<Inventory, "database">, schema: z.ZodType<T>, key: string[]) {
   const row = sourceRow(selected, key)
   if (!row) blocked("missing H1 owner record")
   return schema.parse(row.value)
@@ -125,6 +129,7 @@ function selection(selected: Inventory, orgID: string, value: Execution.Selectio
 async function classify(selected: Inventory, key: string[], value: unknown): Promise<Mode> {
   const [root, kind] = key
   if (root !== "organization") {
+    if (historyMatches(selected, key, value)) return "exact"
     if (OrganizationKnowledge.emptyHistory(historicalReader(selected), key, value)) {
       const sessionID = key[2]
       if (!sessionID) blocked("knowledge Session owner")
@@ -328,14 +333,15 @@ function projected(key: string[]) {
     domain.prefixes.some((prefix) => prefix.every((part, index) => key[index] === part)),
   )
 }
-function historicalReader(selected: Inventory): Record.HistoricalReader {
+function historicalReader(selected: HistoryIndex): Record.HistoricalReader {
   return {
     read(schema, key) {
+      selected.assertTarget()
       return sourceValue(selected, schema, key)
     },
     *entries(prefix) {
       const start = JSON.stringify(prefix).slice(0, -1) + ","
-      using rows = selected.database.query<{ key: string; value: string }, [string, string]>(
+      using rows = selected.database.prepare<{ key: string; value: string }, [string, string]>(
         "SELECT key,value FROM records WHERE key>=? AND key<? ORDER BY key",
       )
       for (const row of rows.iterate(start, start + "\uffff")) {
@@ -343,6 +349,155 @@ function historicalReader(selected: Inventory): Record.HistoricalReader {
         yield { key: JSON.parse(row.key), value: JSON.parse(row.value) }
       }
     },
+  }
+}
+
+function inventoryDatabase(filename: string) {
+  const database = new Database(filename)
+  database.exec(
+    "PRAGMA journal_mode=OFF; PRAGMA temp_store=FILE; PRAGMA cache_size=-2048; CREATE TABLE records(key TEXT PRIMARY KEY,value TEXT NOT NULL,mode TEXT NOT NULL); CREATE TABLE artifacts(key TEXT PRIMARY KEY,sha256 TEXT NOT NULL,size INTEGER NOT NULL,location TEXT NOT NULL); CREATE TABLE blobs(sha256 TEXT PRIMARY KEY,size INTEGER NOT NULL); CREATE TABLE verified(key TEXT PRIMARY KEY,location TEXT NOT NULL,pack TEXT NOT NULL); CREATE TABLE target_blobs(location TEXT PRIMARY KEY); CREATE TABLE history(key TEXT PRIMARY KEY); CREATE TABLE history_groups(key TEXT PRIMARY KEY,digest TEXT NOT NULL); CREATE TABLE history_artifacts(key TEXT PRIMARY KEY)",
+  )
+  return database
+}
+function historyMatches(selected: HistoryIndex, key: string[], value: unknown) {
+  if (!selected.historyComplete || !["organization-knowledge", "organization-publications"].includes(key[0]))
+    return false
+  using known = selected.database.query<{ key: string }, [string]>("SELECT key FROM history WHERE key=?")
+  return !!known.get(JSON.stringify(key)) && hash(sourceRow(selected, key)?.value) === hash(value)
+}
+async function validateKnowledge(selected: HistoryIndex, stream: (key: string[]) => AsyncIterable<Uint8Array>) {
+  const reader = historicalReader(selected)
+  using accept = selected.database.query("INSERT OR IGNORE INTO history VALUES(?)")
+  using group = selected.database.query<{ digest: string }, [string]>("SELECT digest FROM history_groups WHERE key=?")
+  using first = selected.database.query("INSERT INTO history_groups VALUES(?,?)")
+  using artifact = selected.database.query<{ sha256: string; size: number }, [string]>(
+    "SELECT sha256,size FROM artifacts WHERE key=?",
+  )
+  using acceptedArtifact = selected.database.query("INSERT OR IGNORE INTO history_artifacts VALUES(?)")
+  const history: OrganizationPublications.HistoricalSource = {
+    ...reader,
+    accept(key) {
+      selected.assertTarget()
+      if (!sourceRow(selected, key)) blocked("missing original historical owner row")
+      accept.run(JSON.stringify(key))
+    },
+    first(key, value) {
+      selected.assertTarget()
+      const id = JSON.stringify(key),
+        digest = hash(value),
+        previous = group.get(id)
+      if (previous) {
+        if (previous.digest !== digest) blocked("changed historical owner reference")
+        return false
+      }
+      first.run(id, digest)
+      return true
+    },
+    async binary(key, maximum) {
+      selected.assertTarget()
+      const expected = artifact.get(JSON.stringify(key))
+      if (!expected || expected.size > maximum) blocked("missing or oversized historical publication chunk")
+      const chunks: Uint8Array[] = []
+      let bytes = 0
+      const digest = createHash("sha256")
+      for await (const chunk of stream(key)) {
+        selected.assertTarget()
+        bytes += chunk.byteLength
+        if (bytes > maximum || bytes > expected.size) blocked("historical publication chunk exceeds its declared bytes")
+        const copy = Uint8Array.from(chunk)
+        digest.update(copy)
+        chunks.push(copy)
+      }
+      if (bytes !== expected.size || digest.digest("hex") !== expected.sha256)
+        blocked("historical publication chunk bytes changed")
+      acceptedArtifact.run(JSON.stringify(key))
+      return Uint8Array.from(Buffer.concat(chunks, bytes))
+    },
+  }
+  await OrganizationKnowledge.history(history)
+  using artifacts = selected.database.query<{ key: string }, []>("SELECT key FROM artifacts ORDER BY key")
+  using known = selected.database.query<{ key: string }, [string]>("SELECT key FROM history_artifacts WHERE key=?")
+  for (const row of artifacts.iterate()) {
+    selected.assertTarget()
+    const key: unknown = JSON.parse(row.key)
+    const parsed = z.array(z.string()).parse(key)
+    if (["organization-publications", "organization-knowledge"].includes(parsed[0]) && !known.get(row.key))
+      blocked("unreconciled historical publication bytes")
+  }
+  selected.historyComplete = true
+}
+
+async function withCurrentHistory<T>(body: (selected: HistoryIndex) => Promise<T>, signal?: AbortSignal) {
+  if (Storage.inTransaction()) blocked("historical byte inspection requires its original native boundary")
+  const runtime = RuntimeContext.current(),
+    primary = Storage.current(),
+    storage = runtime.storage,
+    root = runtime.host.root
+  const store = primary.store,
+    configuration = hash(store.options),
+    directory = primary.artifactDirectory
+  if (primary.artifactObjects) blocked("external historical artifact owner")
+  let open = true
+  const assert = () => {
+    signal?.throwIfAborted()
+    const current = Storage.current()
+    if (
+      !open ||
+      RuntimeContext.current() !== runtime ||
+      runtime.storage !== storage ||
+      runtime.host.root !== root ||
+      current.store !== store ||
+      primary.store !== store ||
+      hash(store.options) !== configuration ||
+      current.artifactDirectory !== directory ||
+      primary.artifactDirectory !== directory ||
+      current.artifactObjects ||
+      primary.artifactObjects
+    )
+      blocked("changed historical native Store")
+  }
+  assert()
+  const temporary = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-current-history-"))
+  const database = inventoryDatabase(path.join(temporary, "history.sqlite"))
+  const selected: HistoryIndex = { database, assertTarget: assert }
+  try {
+    return await Storage.withArtifactCheckpoint(
+      async (checkpoint) => {
+        using insert = database.query("INSERT INTO records VALUES(?,?,'metadata')")
+        using artifact = database.query("INSERT INTO artifacts VALUES(?,?,?,?)")
+        await Storage.snapshot(async (tx) => {
+          for await (const entry of tx.exportEntries()) {
+            assert()
+            if (entry.type === "record") insert.run(JSON.stringify(entry.key), JSON.stringify(entry.value))
+            else if (entry.type === "artifact")
+              artifact.run(
+                JSON.stringify(entry.key),
+                entry.location.sha256,
+                entry.location.size,
+                JSON.stringify(entry.location),
+              )
+          }
+        })
+        await validateKnowledge(selected, (key) =>
+          (async function* () {
+            assert()
+            const row = database
+              .query<{ location: string }, [string]>("SELECT location FROM artifacts WHERE key=?")
+              .get(JSON.stringify(key))
+            if (!row) blocked("missing historical native artifact")
+            const entry = StorageEntry.parse({ type: "artifact", key, location: JSON.parse(row.location) })
+            if (entry.type !== "artifact") blocked("another historical native artifact")
+            yield* checkpoint.stream(entry.location)
+          })(),
+        )
+        return body(selected)
+      },
+      { signal },
+    )
+  } finally {
+    open = false
+    database.close()
+    await fs.rm(temporary, { recursive: true, force: true })
   }
 }
 
@@ -513,7 +668,7 @@ export namespace OrganizationRecoveryWriters {
     }
     assert()
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-recovery-writers-"))
-    const database = new Database(path.join(directory, "writers.sqlite"))
+    const database = inventoryDatabase(path.join(directory, "writers.sqlite"))
     const selected: Frame = {
       kind,
       database,
@@ -524,11 +679,8 @@ export namespace OrganizationRecoveryWriters {
       assert,
     }
     try {
-      database.exec(
-        "PRAGMA journal_mode=OFF; PRAGMA temp_store=FILE; PRAGMA cache_size=-2048; CREATE TABLE records(key TEXT PRIMARY KEY,value TEXT NOT NULL,mode TEXT NOT NULL); CREATE TABLE artifacts(key TEXT PRIMARY KEY,sha256 TEXT NOT NULL,size INTEGER NOT NULL); CREATE TABLE blobs(sha256 TEXT PRIMARY KEY,size INTEGER NOT NULL); CREATE TABLE verified(key TEXT PRIMARY KEY,location TEXT NOT NULL,pack TEXT NOT NULL); CREATE TABLE target_blobs(location TEXT PRIMARY KEY)",
-      )
       using insert = database.query("INSERT INTO records VALUES(?,?,'metadata')")
-      using artifact = database.query("INSERT INTO artifacts VALUES(?,?,?)")
+      using artifact = database.query("INSERT INTO artifacts VALUES(?,?,?,?)")
       using blob = database.query<{ size: number }, [string]>("SELECT size FROM blobs WHERE sha256=?")
       using verifiedBlob = database.query("INSERT INTO blobs VALUES(?,?)")
       let unsafe: string | undefined
@@ -536,7 +688,12 @@ export namespace OrganizationRecoveryWriters {
         assertTarget()
         if (entry.type === "record") insert.run(JSON.stringify(entry.key), JSON.stringify(entry.value))
         else if (entry.type === "artifact") {
-          artifact.run(JSON.stringify(entry.key), entry.location.sha256, entry.location.size)
+          artifact.run(
+            JSON.stringify(entry.key),
+            entry.location.sha256,
+            entry.location.size,
+            JSON.stringify(entry.location),
+          )
           const before = blob.get(entry.location.sha256)
           if (before && before.size !== entry.location.size) blocked("inconsistent H1 artifact size")
           if (!before) {
@@ -558,6 +715,16 @@ export namespace OrganizationRecoveryWriters {
       }
       assert()
       if (unsafe) blocked(unsafe)
+      await validateKnowledge(selected, (key) =>
+        (async function* () {
+          assert()
+          const row = database
+            .query<{ sha256: string; size: number }, [string]>("SELECT sha256,size FROM artifacts WHERE key=?")
+            .get(JSON.stringify(key))
+          if (!row) blocked("missing fixed H1 publication chunk")
+          yield* StorageCheckpoint.streamArtifact({ directory: namespace.directory, location: row, signal })
+        })(),
+      )
       using rows = database.query<{ key: string; value: string }, []>("SELECT key,value FROM records ORDER BY key")
       using update = database.query("UPDATE records SET mode=? WHERE key=?")
       for (const row of rows.iterate()) {
@@ -824,11 +991,27 @@ export namespace OrganizationRecoveryWriters {
       blocked("publication reconciliation did not retain its original transaction")
     selected.assert()
   }
-  export async function assertServiceOnly() {
+  export async function assertServiceOnly(input: { signal?: AbortSignal } = {}) {
+    const signal = input.signal
     const store = Storage.current().store
     if (store.hasUnpublishedOwners()) blocked("unpublished native owners")
+    const selected = preflights.getStore()
+    if (selected) return scanServiceOnly(selected, signal)
+    const present = await Storage.snapshot(
+      async (tx) =>
+        (await tx.queryKeys({ prefix: ["organization-knowledge"], limit: 1 })).length ||
+        (await tx.queryKeys({ prefix: ["organization-publications"], limit: 1 })).length,
+    )
+    if (present) return withCurrentHistory((selected) => scanServiceOnly(selected, signal), signal)
+    return scanServiceOnly(undefined, signal)
+  }
+  async function scanServiceOnly(history?: HistoryIndex, signal?: AbortSignal) {
+    const store = Storage.current().store
     return Storage.snapshot(async (tx) => {
+      let accepted = 0
       for await (const entry of tx.exportEntries()) {
+        signal?.throwIfAborted()
+        history?.assertTarget()
         if (entry.type === "receipt") {
           if (
             !entry.operationID.startsWith("storage-checkpoint:") &&
@@ -839,6 +1022,10 @@ export namespace OrganizationRecoveryWriters {
         }
         if (entry.type === "event") blocked("unreconciled historical events")
         if (entry.type === "artifact") continue
+        if (history && historyMatches(history, entry.key, entry.value)) {
+          accepted++
+          continue
+        }
         const [root, kind] = entry.key
         if (root === "organization") {
           const marker = kind && schemaMarkers.get(kind)
@@ -851,6 +1038,12 @@ export namespace OrganizationRecoveryWriters {
             continue
           if (!kind || !serviceRecords.has(kind)) blocked("organization " + (kind ?? "owner"))
         } else if (!root || !safeRoots.has(root)) blocked("native " + (root ?? "owner"))
+      }
+      if (history) {
+        using count = history.database.query<{ count: number }, []>("SELECT COUNT(*) AS count FROM history")
+        const expected = count.get()
+        if (!expected || expected.count !== accepted) blocked("incomplete historical knowledge closure")
+        history.assertTarget()
       }
       if (store.hasUnpublishedOwners()) blocked("unpublished native owners")
       return { version: 1 as const, externalWriters: 0 as const }

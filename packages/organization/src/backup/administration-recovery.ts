@@ -227,7 +227,7 @@ export namespace OrganizationRecoveryAdministration {
               let retained = false
               try {
                 await RuntimeMaintenance.freeze(lease, await RuntimeMaintenance.drain(lease, { signal }))
-                await Writers.assertServiceOnly()
+                await Writers.assertServiceOnly({ signal })
                 return await Current.withSource(
                   {
                     lease,

@@ -11,7 +11,11 @@ const entry = installed
   ? path.join(installed, "node_modules/.bin/synergy-org")
   : path.resolve(import.meta.dir, "../../src/entry.ts")
 
-export async function preparedFixture() {
+export async function preparedFixture(
+  options: {
+    beforeH0?(source: Awaited<ReturnType<typeof fixture>>): Promise<void>
+  } = {},
+) {
   const source = await fixture()
   await source.initialize()
   const root = await fs.realpath(await fs.mkdtemp(path.join(process.env.SYNERGY_TEST_ROOT!, "cli-recovery-retry-")))
@@ -34,6 +38,7 @@ export async function preparedFixture() {
   await source.service.maintenance.run(() =>
     Storage.writeBinary(["organization", "retained-binary"], Buffer.from("original retained bytes")),
   )
+  await options.beforeH0?.(source)
   await source.service.close()
   const directory = path.join(root, "archive")
   await Administration.capture({ home: source.service.home, directory, buildVersion: "fixture", keys })

@@ -12,6 +12,7 @@ import type { Credentials } from "./auth/session"
 import { authorizePublicationScope } from "./publication-access"
 import { fail } from "./error"
 import type { Migration } from "@ericsanchezok/synergy-harness/migration/types"
+import type { OrganizationRecord } from "./storage/records"
 
 const LegacyUpload = Publication.Upload.extend({
   schemaVersion: z.literal(1),
@@ -40,6 +41,7 @@ const File = Publication.File.extend({
   receivedBytes: z.number().int().nonnegative().safe(),
 })
 const Chunk = z.strictObject({ bytes: z.number().int().positive(), sha256: z.string() })
+const CreateReceipt = z.strictObject({ uploadID: Identity.ID, requestHash: z.string() })
 const keys = {
   upload: (id: string) => ["organization-publications", "uploads", id],
   request: (orgID: string, accountID: string, id: string) => [
@@ -185,7 +187,166 @@ function chunkStatus(uploadID: string, file: z.infer<typeof File>, added = 0) {
   })
 }
 
+async function verifyManifest(
+  files: AsyncIterable<Publication.File> | Iterable<Publication.File>,
+  readChunk: (file: Publication.File, offset: number) => Promise<Uint8Array>,
+) {
+  const manifest = createHash("sha256")
+  let fileCount = 0
+  let totalBytes = 0
+  for await (const file of files) {
+    const digest = createHash("sha256")
+    for (let offset = 0; offset < file.bytes; offset += Publication.chunkBytes) {
+      const bytes = await readChunk(file, offset)
+      if (bytes.byteLength !== Math.min(Publication.chunkBytes, file.bytes - offset))
+        fail("INVALID_REQUEST", "Publication file has a missing or truncated chunk")
+      digest.update(bytes)
+    }
+    if (digest.digest("hex") !== file.sha256) fail("INVALID_REQUEST", "Publication file checksum does not match")
+    manifest.update(Publication.manifestLine(file))
+    fileCount++
+    totalBytes += file.bytes
+    if (!Number.isSafeInteger(totalBytes)) fail("INVALID_REQUEST", "Publication byte count is not representable")
+  }
+  return { manifestHash: manifest.digest("hex"), fileCount, totalBytes }
+}
+
 export namespace OrganizationPublications {
+  export interface HistoricalSource extends OrganizationRecord.HistoricalReader {
+    accept(key: string[]): void
+    first(group: string[], value: unknown): boolean
+    binary(key: string[], maximum: number): Promise<Uint8Array>
+  }
+  export function historicalRequests(reader: HistoricalSource) {
+    for (const row of reader.entries(["organization-publications", "requests"])) {
+      const [root, kind, orgID, accountID, requestID] = row.key
+      if (row.key.length !== 5 || !orgID || !accountID || !requestID)
+        fail("PROTOCOL_MISMATCH", "Historical publication request has another key")
+      const receipt = CreateReceipt.parse(row.value)
+      const upload = reader.read(Upload, keys.upload(receipt.uploadID))
+      const input = Publication.Create.parse({
+        requestID,
+        purpose: upload.purpose,
+        scope: upload.scope,
+        sourceSessionID: upload.sourceSessionID,
+      })
+      if (
+        root !== "organization-publications" ||
+        kind !== "requests" ||
+        upload.orgID !== orgID ||
+        upload.authorID !== accountID ||
+        upload.purpose !== "knowledge" ||
+        upload.state !== "sealed" ||
+        receipt.requestHash !== upload.requestHash ||
+        hash(JSON.stringify(input)) !== receipt.requestHash ||
+        !reader.first(["publication-create", upload.uploadID], upload.requestHash)
+      )
+        fail("PROTOCOL_MISMATCH", "Historical publication requires its original closed create request")
+      reader.accept(row.key)
+    }
+  }
+  export function* historicalFiles(reader: HistoricalSource, uploadID: string) {
+    for (const row of reader.entries(keys.files(uploadID))) {
+      const file = File.parse(row.value)
+      if (
+        JSON.stringify(row.key) !== JSON.stringify(keys.file(uploadID, file.fileID)) ||
+        file.fileID !== hash(file.path) ||
+        file.receivedBytes !== file.bytes
+      )
+        fail("PROTOCOL_MISMATCH", "Historical publication file has another identity or incomplete bytes")
+      reader.accept(row.key)
+      const canonical = portable(file.path)
+      reader.first(["publication-path-kind", uploadID, canonical], { kind: "file", fileID: file.fileID })
+      const index = keys.path(uploadID, hash(canonical))
+      if (reader.read(z.strictObject({ fileID: z.string() }), index).fileID !== file.fileID)
+        fail("PROTOCOL_MISMATCH", "Historical publication path index changed")
+      reader.accept(index)
+      for (const parent of parentPaths(canonical)) {
+        reader.first(["publication-path-kind", uploadID, parent], { kind: "directory" })
+        const directory = keys.directory(uploadID, hash(parent))
+        reader.read(z.strictObject({ schemaVersion: z.literal(1) }), directory)
+        reader.accept(directory)
+      }
+      yield publicFile(file)
+    }
+  }
+  export async function historicalUpload(
+    reader: HistoricalSource,
+    expected: {
+      uploadID: string
+      orgID: string
+      authorID: string
+      scope: Publication.Scope
+      manifestHash: string
+      fileCount: number
+      totalBytes: number
+    },
+  ) {
+    const upload = reader.read(Upload, keys.upload(expected.uploadID))
+    if (
+      upload.uploadID !== expected.uploadID ||
+      upload.orgID !== expected.orgID ||
+      upload.authorID !== expected.authorID ||
+      JSON.stringify(upload.scope) !== JSON.stringify(expected.scope) ||
+      upload.purpose !== "knowledge" ||
+      upload.state !== "sealed" ||
+      !upload.seal ||
+      upload.fileCount !== expected.fileCount ||
+      upload.totalBytes !== expected.totalBytes ||
+      upload.manifestHash !== expected.manifestHash ||
+      upload.seal.fileCount !== upload.fileCount ||
+      upload.seal.totalBytes !== upload.totalBytes ||
+      (upload.seal.manifestHash && upload.seal.manifestHash !== upload.manifestHash)
+    )
+      fail("PROTOCOL_MISMATCH", "Historical publication does not match its original sealed release")
+    if (reader.first(["publication-create", upload.uploadID], upload.requestHash))
+      fail("PROTOCOL_MISMATCH", "Historical publication is missing its original create receipt")
+    if (!reader.first(["publication-upload", upload.uploadID], upload)) return
+    const measured = await verifyManifest(historicalFiles(reader, upload.uploadID), async (file, offset) => {
+      const key = keys.chunk(upload.uploadID, file.fileID, offset)
+      const chunk = reader.read(Chunk, key)
+      const bytes = await reader.binary(keys.bytes(upload.uploadID, file.fileID, offset), Publication.chunkBytes)
+      if (chunk.bytes !== bytes.length || chunk.sha256 !== hash(bytes))
+        fail("PROTOCOL_MISMATCH", "Historical publication chunk changed")
+      reader.accept(key)
+      return bytes
+    })
+    if (
+      measured.manifestHash !== upload.manifestHash ||
+      measured.fileCount !== upload.fileCount ||
+      measured.totalBytes !== upload.totalBytes
+    )
+      fail("PROTOCOL_MISMATCH", "Historical publication manifest is incomplete")
+    reader.accept(keys.upload(upload.uploadID))
+  }
+  export function historicalRange(reader: HistoricalSource, uploadID: string) {
+    let retained: { key: string; bytes: Uint8Array } | undefined
+    return async (file: Publication.File, offset: number, length: number) => {
+      if (
+        !Number.isSafeInteger(offset) ||
+        !Number.isSafeInteger(length) ||
+        offset < 0 ||
+        length < 0 ||
+        offset + length > file.bytes
+      )
+        fail("INVALID_REQUEST", "Published file range is invalid")
+      const output = new Uint8Array(length)
+      let copied = 0
+      while (copied < length) {
+        const position = offset + copied
+        const chunkOffset = Math.floor(position / Publication.chunkBytes) * Publication.chunkBytes
+        const key = keys.bytes(uploadID, file.fileID, chunkOffset)
+        const id = JSON.stringify(key)
+        if (retained?.key !== id) retained = { key: id, bytes: await reader.binary(key, Publication.chunkBytes) }
+        const start = position - chunkOffset
+        const size = Math.min(retained.bytes.length - start, length - copied)
+        if (size <= 0) fail("SERVICE_UNAVAILABLE", "Published file data is incomplete")
+        output.set(retained.bytes.subarray(start, start + size), copied)
+        copied += size
+      }
+      return output
+    }
+  }
   export async function create(credentials: Credentials, value: Publication.Create) {
     const input = Publication.Create.parse(value)
     return Storage.transaction(async () => {
@@ -197,7 +358,7 @@ export namespace OrganizationPublications {
       }
       const requestKey = keys.request(account.orgID, account.accountID, input.requestID)
       const requestHash = hash(JSON.stringify(input))
-      const prior = await read(z.strictObject({ uploadID: Identity.ID, requestHash: z.string() }), requestKey)
+      const prior = await read(CreateReceipt, requestKey)
       if (prior) {
         if (prior.requestHash !== requestHash) fail("REVISION_CONFLICT", "Upload request identity changed")
         return view(await access(credentials, prior.uploadID, true))
@@ -413,23 +574,9 @@ export namespace OrganizationPublications {
     })
     if (upload.state === "sealed") return view(upload)
     try {
-      const manifest = createHash("sha256")
-      let fileCount = 0
-      let totalBytes = 0
-      for await (const file of allFiles(uploadID)) {
-        const digest = createHash("sha256")
-        for (let offset = 0; offset < file.bytes; offset += Publication.chunkBytes) {
-          const bytes = await readChunk(uploadID, file.fileID, offset)
-          if (bytes.byteLength !== Math.min(Publication.chunkBytes, file.bytes - offset))
-            fail("INVALID_REQUEST", "Publication file has a missing or truncated chunk")
-          digest.update(bytes)
-        }
-        if (digest.digest("hex") !== file.sha256) fail("INVALID_REQUEST", "Publication file checksum does not match")
-        manifest.update(Publication.manifestLine(file))
-        fileCount++
-        totalBytes += file.bytes
-      }
-      const manifestHash = manifest.digest("hex")
+      const { manifestHash, fileCount, totalBytes } = await verifyManifest(allFiles(uploadID), (file, offset) =>
+        readChunk(uploadID, file.fileID, offset),
+      )
       if (
         fileCount !== input.fileCount ||
         totalBytes !== input.totalBytes ||

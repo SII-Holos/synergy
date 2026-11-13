@@ -7,6 +7,7 @@ import {
   OrganizationIdentity as Identity,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { fail } from "./error"
+import type { OrganizationPublications } from "./publications"
 
 export namespace KnowledgeSelections {
   export const Header = Knowledge.SelectionSummary.extend({
@@ -82,19 +83,61 @@ export namespace KnowledgeSelections {
     if (value.itemID !== itemID) fail("SERVICE_UNAVAILABLE", "Knowledge manifest item index changed")
     return value
   }
-  export async function* references(header: Header) {
+  async function* checkedReferences(
+    header: Header,
+    rows: AsyncIterable<{ key: string[]; value: unknown }> | Iterable<{ key: string[]; value: unknown }>,
+  ) {
     let count = 0
     const hash = createHash("sha256").update("[")
-    for await (const row of Storage.records({ prefix: [...root(header), "references"], limit: 100 })) {
-      if (row.key.at(-1) !== position(count)) fail("SERVICE_UNAVAILABLE", "Knowledge manifest order is incomplete")
+    for await (const row of rows) {
+      if (JSON.stringify(row.key) !== JSON.stringify(referenceKey(header, count)))
+        fail("SERVICE_UNAVAILABLE", "Knowledge manifest order is incomplete")
       const value = Knowledge.Reference.parse(row.value)
       if (count) hash.update(",")
       hash.update(JSON.stringify(value))
-      count++
-      yield value
+      yield { key: row.key, value, ordinal: count++ }
     }
     if (count !== header.releaseCount || hash.update("]").digest("hex") !== header.manifestHash)
       fail("SERVICE_UNAVAILABLE", "Knowledge manifest checksum or count changed")
+  }
+  export async function* references(header: Header) {
+    for await (const row of checkedReferences(
+      header,
+      Storage.records({ prefix: [...root(header), "references"], limit: 100 }),
+    ))
+      yield row.value
+  }
+  export function historicalReference(
+    reader: OrganizationPublications.HistoricalSource,
+    header: Header,
+    itemID: string,
+  ) {
+    const ordinal = reader.read(z.number().int().nonnegative().safe(), itemKey(header, itemID))
+    const value = reader.read(Knowledge.Reference, referenceKey(header, ordinal))
+    if (ordinal >= header.releaseCount || value.itemID !== itemID)
+      fail("SERVICE_UNAVAILABLE", "Knowledge manifest item index changed")
+    return value
+  }
+  export async function history(
+    reader: OrganizationPublications.HistoricalSource,
+    header: Header,
+    validate: (reference: Knowledge.Reference) => void,
+  ) {
+    if (
+      !reader.first(["knowledge-manifest", header.orgID, header.manifestID], {
+        manifestHash: header.manifestHash,
+        releaseCount: header.releaseCount,
+      })
+    )
+      return
+    for await (const row of checkedReferences(header, reader.entries([...root(header), "references"]))) {
+      validate(row.value)
+      const index = itemKey(header, row.value.itemID)
+      if (reader.read(z.number().int().nonnegative().safe(), index) !== row.ordinal)
+        fail("SERVICE_UNAVAILABLE", "Knowledge manifest inverse index changed")
+      reader.accept(row.key)
+      reader.accept(index)
+    }
   }
   export async function page(header: Header, input: z.input<typeof Knowledge.SelectionPageQuery>) {
     const query = Knowledge.SelectionPageQuery.parse(input)

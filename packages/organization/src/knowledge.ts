@@ -8,6 +8,7 @@ import {
   OrganizationKnowledgeProtocol as Knowledge,
   OrganizationPublicationProtocol as Publication,
   OrganizationExecutionProtocol as Execution,
+  OrganizationProtocol as Protocol,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { authorize } from "./authorization"
 import type { Credentials } from "./auth/session"
@@ -24,6 +25,7 @@ import { OrganizationAuthorityHistory as History } from "./authority-history"
 const Item = Knowledge.Item.extend({ schemaVersion: z.literal(1) })
 const Release = Knowledge.Release.extend({ schemaVersion: z.literal(1), uploadID: Identity.ID })
 const Receipt = z.strictObject({ requestHash: z.string(), itemID: Identity.ID, version: z.number().int().positive() })
+const UpdateReceipt = z.strictObject({ updateID: Identity.ID, requestHash: z.string() })
 const Selection = Selections.Header
 const SelectionUpdate = Knowledge.SelectionUpdate.extend({
   schemaVersion: z.literal(1),
@@ -142,18 +144,20 @@ async function validateReference(credentials: Credentials, projectID: string, re
   return reference
 }
 
-async function validateSkill(uploadID: string) {
+async function skillFrom(
+  files: AsyncIterable<Publication.File> | Iterable<Publication.File>,
+  readRange: (file: Publication.File, offset: number, length: number) => Promise<Uint8Array>,
+) {
   let descriptor: Publication.File | undefined
-  for await (const file of Publications.allFiles(uploadID)) if (file.path === "SKILL.md") descriptor = file
+  for await (const file of files) if (file.path === "SKILL.md") descriptor = file
   if (!descriptor) fail("INVALID_REQUEST", "A Skill release must contain SKILL.md")
   let header = ""
   const decoder = new TextDecoder("utf-8", { fatal: true })
   try {
     for (let offset = 0; offset < descriptor.bytes; offset += 16 * 1024) {
-      header += decoder.decode(
-        await Publications.readRange(uploadID, descriptor, offset, Math.min(16 * 1024, descriptor.bytes - offset)),
-        { stream: true },
-      )
+      header += decoder.decode(await readRange(descriptor, offset, Math.min(16 * 1024, descriptor.bytes - offset)), {
+        stream: true,
+      })
       const boundary = /^---\r?\n[\s\S]*?\r?\n(?:---|\.\.\.)\s*(?:\r?\n|$)/.exec(header)
       if (boundary) {
         header = boundary[0]
@@ -174,8 +178,241 @@ async function validateSkill(uploadID: string) {
     fail("INVALID_REQUEST", "Skill frontmatter is invalid")
   }
 }
+function validateSkill(uploadID: string) {
+  return skillFrom(Publications.allFiles(uploadID), (file, offset, length) =>
+    Publications.readRange(uploadID, file, offset, length),
+  )
+}
 
 export namespace OrganizationKnowledge {
+  export async function history(reader: Publications.HistoricalSource) {
+    const bad = (message: string): never => fail("PROTOCOL_MISMATCH", "Historical knowledge " + message)
+    const currentOrgID = reader.read(Protocol.Deployment, OrganizationKeys.deployment()).orgID
+    const account = (orgID: string, accountID: string) => {
+      const value = reader.read(OrganizationRecord.Account, OrganizationKeys.account(accountID))
+      if (orgID !== currentOrgID || value.orgID !== orgID || value.accountID !== accountID)
+        bad("has another original account")
+      return value
+    }
+    const project = (orgID: string, projectID: string) => {
+      const value = reader.read(OrganizationRecord.Project, OrganizationKeys.project(projectID))
+      if (value.orgID !== orgID || value.projectID !== projectID) bad("has another original project")
+    }
+    const reference = (header: Selections.Header, value: Knowledge.Reference) => {
+      const item = reader.read(Item, keys.item(header.orgID, value.itemID))
+      const release = reader.read(Release, keys.release(header.orgID, value.itemID, value.version))
+      if (
+        item.orgID !== header.orgID ||
+        item.itemID !== value.itemID ||
+        (item.scope.kind === "project" && item.scope.projectID !== header.projectID) ||
+        release.orgID !== header.orgID ||
+        release.itemID !== value.itemID ||
+        release.version !== value.version ||
+        release.manifestHash !== value.manifestHash
+      )
+        bad("reference changed its original release")
+    }
+    Publications.historicalRequests(reader)
+    for (const row of reader.entries(["organization-knowledge", "items"])) {
+      const item = Item.parse(row.value)
+      if (digest(row.key) !== digest(keys.item(item.orgID, item.itemID))) bad("item has another canonical key")
+      account(item.orgID, item.authorID)
+      if (item.scope.kind === "project") project(item.orgID, item.scope.projectID)
+      let count = 0
+      for (const row of reader.entries(keys.releases(item.orgID, item.itemID))) {
+        const release = Release.parse(row.value)
+        if (
+          release.version !== ++count ||
+          digest(row.key) !== digest(keys.release(item.orgID, item.itemID, count)) ||
+          release.orgID !== item.orgID ||
+          release.itemID !== item.itemID ||
+          release.kind !== item.kind ||
+          digest(release.scope) !== digest(item.scope) ||
+          (count === 1 && release.authorID !== item.authorID) ||
+          (release.author && release.author.accountID !== release.authorID)
+        )
+          bad("release has another original item or version")
+        account(item.orgID, release.authorID)
+        await Publications.historicalUpload(reader, release)
+        if (release.kind === "skill") {
+          if (!release.skill) bad("Skill release has no original manifest")
+          if (reader.first(["knowledge-skill", release.uploadID], release.skill)) {
+            const parsed = await skillFrom(
+              Publications.historicalFiles(reader, release.uploadID),
+              Publications.historicalRange(reader, release.uploadID),
+            )
+            if (digest(parsed) !== digest(release.skill)) bad("Skill bytes differ from their original manifest")
+          }
+        } else if (release.skill) bad("material claims a Skill manifest")
+        reader.accept(row.key)
+      }
+      if (count !== item.latestVersion) bad("item version history is incomplete")
+      reader.accept(keys.item(item.orgID, item.itemID))
+      if (item.state === "published") {
+        const index = [...keys.index(item.orgID, item.scope), item.itemID]
+        if (reader.read(z.strictObject({ itemID: Identity.ID }), index).itemID !== item.itemID)
+          bad("item index changed")
+        reader.accept(index)
+      }
+    }
+    for (const row of reader.entries(["organization-knowledge", "receipts"])) {
+      const receipt = Receipt.parse(row.value)
+      const orgID = row.key[2],
+        accountID = row.key[3],
+        requestID = row.key[4]
+      if (row.key.length !== 5 || !orgID || !accountID || !requestID) bad("publication receipt has another key")
+      account(orgID, accountID)
+      Protocol.Digest.parse(receipt.requestHash)
+      const release = reader.read(Release, keys.release(orgID, receipt.itemID, receipt.version))
+      if (
+        release.orgID !== orgID ||
+        release.itemID !== receipt.itemID ||
+        release.version !== receipt.version ||
+        release.authorID !== accountID ||
+        !reader.first(["knowledge-publication", orgID, receipt.itemID, String(receipt.version)], release)
+      )
+        bad("publication receipt changed its original release")
+      reader.accept(row.key)
+    }
+    for (const row of reader.entries(["organization-knowledge", "releases"])) {
+      const release = Release.parse(row.value)
+      if (reader.first(["knowledge-publication", release.orgID, release.itemID, String(release.version)], release))
+        bad("release has no original publication receipt")
+    }
+    for (const row of reader.entries(["organization-knowledge", "update-requests"])) {
+      const receipt = UpdateReceipt.parse(row.value)
+      const orgID = row.key[2],
+        accountID = row.key[3],
+        requestID = row.key[4]
+      if (row.key.length !== 5 || !orgID || !accountID || !requestID) bad("selection request has another key")
+      const update = reader.read(SelectionUpdate, updateKey(orgID, accountID, receipt.updateID))
+      const input = Knowledge.BeginSelectionUpdate.parse({
+        requestID,
+        target: update.target,
+        expectedRevision: update.baseRevision,
+      })
+      if (
+        update.orgID !== orgID ||
+        update.accountID !== accountID ||
+        update.updateID !== receipt.updateID ||
+        receipt.requestHash !== update.requestHash ||
+        digest(input) !== receipt.requestHash ||
+        !reader.first(["knowledge-update", orgID, accountID, update.updateID], update.requestHash)
+      )
+        bad("selection request changed its original update")
+      reader.accept(row.key)
+    }
+    for (const row of reader.entries(["organization-knowledge", "updates"])) {
+      if (row.key.length !== 5) continue
+      const update = SelectionUpdate.parse(row.value)
+      if (
+        digest(row.key) !== digest(updateKey(update.orgID, update.accountID, update.updateID)) ||
+        update.state !== "committed" ||
+        !update.committed ||
+        update.committed.revision !== update.baseRevision + 1 ||
+        update.committed.updatedBy !== update.accountID ||
+        reader.first(["knowledge-update", update.orgID, update.accountID, update.updateID], update.requestHash)
+      )
+        bad("selection update has not closed its original request")
+      account(update.orgID, update.accountID)
+      project(update.orgID, update.projectID)
+      const pointer =
+        update.target.kind === "member"
+          ? keys.applied(update.orgID, update.accountID, update.target.projectID)
+          : keys.session(update.target.sessionID)
+      if (
+        digest(pointer) !== digest(update.pointer) ||
+        (update.target.kind === "member" && update.target.projectID !== update.projectID)
+      )
+        bad("selection update changed its pointer")
+      const header = Selection.parse({
+        ...update.committed,
+        schemaVersion: 2,
+        orgID: update.orgID,
+        projectID: update.projectID,
+        manifestID: update.updateID,
+      })
+      const current = reader.read(Selection, pointer)
+      if (
+        current.orgID !== update.orgID ||
+        current.projectID !== update.projectID ||
+        current.revision < header.revision
+      )
+        bad("selection update lost its published pointer")
+      await Selections.history(reader, header, (value) => reference(header, value))
+      let count = 0
+      for (const row of reader.entries(updateReferences(update))) {
+        const value = Knowledge.Reference.parse(row.value)
+        if (
+          digest(row.key) !== digest([...updateReferences(update), value.itemID]) ||
+          digest(Selections.historicalReference(reader, header, value.itemID)) !== digest(value)
+        )
+          bad("selection update references changed")
+        reader.accept(row.key)
+        count++
+      }
+      if (count !== header.releaseCount) bad("selection update references are incomplete")
+      count = 0
+      const pages = [...updateKey(update.orgID, update.accountID, update.updateID), "pages"]
+      for (const row of reader.entries(pages)) {
+        const sequence = Number(row.key.at(-1))
+        if (
+          !Number.isSafeInteger(sequence) ||
+          sequence < 0 ||
+          sequence >= update.nextSequence ||
+          digest(row.key) !== digest([...pages, String(sequence)])
+        )
+          bad("selection pages have another original sequence")
+        Protocol.Digest.parse(row.value)
+        reader.accept(row.key)
+        count++
+      }
+      if (count !== update.nextSequence) bad("selection pages are incomplete")
+      reader.accept(row.key)
+    }
+    for (const kind of ["applied", "sessions", "activated"] as const) {
+      for (const row of reader.entries(["organization-knowledge", kind])) {
+        const header = Selection.parse(row.value)
+        project(header.orgID, header.projectID)
+        account(header.orgID, header.updatedBy)
+        if (kind === "applied") {
+          if (
+            row.key.length !== 5 ||
+            digest(row.key) !== digest(keys.applied(header.orgID, header.updatedBy, header.projectID))
+          )
+            bad("applied pointer changed its original owner")
+        } else {
+          const sessionID = row.key[2]
+          const session = reader.read(OrganizationRecord.SessionDirectory, OrganizationKeys.session(sessionID))
+          if (
+            header.orgID !== session.orgID ||
+            header.projectID !== session.projectID ||
+            digest(row.key) !==
+              digest(kind === "sessions" ? keys.session(sessionID) : keys.activated(sessionID, header.manifestHash))
+          )
+            bad("Session selection changed its original owner")
+        }
+        await Selections.history(reader, header, (value) => reference(header, value))
+        reader.accept(row.key)
+      }
+    }
+    for (const row of reader.entries(["organization-knowledge", "activation-status"])) {
+      const sessionID = row.key[2]
+      const session = reader.read(OrganizationRecord.SessionDirectory, OrganizationKeys.session(sessionID))
+      const status = ActivationStatus.parse(row.value)
+      const activated = status.activated
+      if (!activated) fail("PROTOCOL_MISMATCH", "Historical knowledge activation has no original completed selection")
+      if (
+        digest(row.key) !== digest(keys.status(sessionID)) ||
+        status.bindingEpoch !== session.bindingEpoch ||
+        status.failedManifestHash
+      )
+        bad("activation has no original completed selection")
+      const header = reader.read(Selection, keys.activated(sessionID, activated.manifestHash))
+      if (digest(Selections.summary(header)) !== digest(activated)) bad("activation summary changed")
+      reader.accept(row.key)
+    }
+  }
   export function emptyHistory(reader: OrganizationRecord.HistoricalReader, key: string[], value: unknown) {
     const kind = key[1]
     if (key[0] !== "organization-knowledge" || !kind || !["sessions", "activated", "activation-status"].includes(kind))
@@ -545,7 +782,7 @@ export namespace OrganizationKnowledge {
       const requestKey = updateRequestKey(target.account.orgID, target.account.accountID, input.requestID)
       const [existing] = await Storage.readMany([requestKey])
       if (existing !== undefined) {
-        const receipt = z.strictObject({ updateID: Identity.ID, requestHash: z.string() }).parse(existing)
+        const receipt = UpdateReceipt.parse(existing)
         if (receipt.requestHash !== requestHash) fail("REVISION_CONFLICT", "Knowledge update request changed")
         return updateView(await loadUpdate(credentials, receipt.updateID))
       }
