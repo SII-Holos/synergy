@@ -129,7 +129,7 @@ async function openOrganizationNamespace(
   preparation?: OrganizationSourcePreparation.Original,
 ) {
   if (!path.isAbsolute(options.home)) throw new Error("Organization Home must be absolute")
-  const home = path.resolve(options.home)
+  const selectedHome = path.resolve(options.home)
   let publicOrigin = options.publicOrigin
   const webOptions = options.web ? { ...options.web } : undefined
   const database = options.database ? { ...options.database } : undefined
@@ -147,6 +147,15 @@ async function openOrganizationNamespace(
     if (url.origin !== publicOrigin || url.protocol !== "https:")
       throw new Error("Organization public origin must be an HTTPS origin")
   }
+  const existingHome =
+    mode === "serve"
+      ? await fs.lstat(selectedHome).catch((error: NodeJS.ErrnoException) => {
+          if (error.code !== "ENOENT") throw error
+        })
+      : undefined
+  if (existingHome && (!existingHome.isDirectory() || existingHome.isSymbolicLink()))
+    throw new Error("Organization Home requires an ordinary native directory")
+  const home = existingHome ? await fs.realpath(selectedHome) : selectedHome
   const web = mode === "serve" && webOptions ? await organizationWeb(webOptions.directory) : undefined
   const root = path.join(home, ".synergy")
   const context = RuntimeContext.create(

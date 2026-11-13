@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0183](0183-service-path-alias-changed-native-recovery-identity.md)
+
 - [0182](0182-process-sampling-raced-original-close-completion.md)
 
 - [0181](0181-source-freeze-preceded-durable-recovery-selection.md)
