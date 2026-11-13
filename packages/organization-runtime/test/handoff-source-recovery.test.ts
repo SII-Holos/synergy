@@ -2,6 +2,7 @@ import { expect, test } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { createSynergyClient } from "@ericsanchezok/synergy-sdk"
+import { readExistingIdentityFile } from "@ericsanchezok/synergy-util/filesystem-identity"
 import {
   OrganizationHandoffProtocol as Handoff,
   OrganizationRuntimeProtocol as Runtime,
@@ -18,9 +19,9 @@ import {
   SessionTransferEpochs as Epochs,
   SessionTransferCore as Core,
 } from "@ericsanchezok/synergy-harness/session/transfer"
-import { prepareMemberHome } from "../src/home"
-import { enrollMemberRuntime } from "../src/enrollment"
-import { openMemberRuntime } from "../src/runtime"
+import { prepareHostedHome, prepareMemberHome, readRuntimeHome } from "../src/home"
+import { enrollHostedRuntime, enrollMemberRuntime } from "../src/enrollment"
+import { openHostedRuntime, openMemberRuntime } from "../src/runtime"
 import { fixture } from "./support/organization"
 import { OrganizationHandoffCleanup as Cleanup } from "../src/handoff-recovery"
 import { registerSessionSchema } from "../src/session-schema"
@@ -45,7 +46,7 @@ type Mode =
   | "missing"
   | "surrender-foreign-primary"
   | "cancel-before-freeze-wrong-scope"
-async function sourceRecovery(mode: Mode) {
+async function sourceRecovery(mode: Mode, sourceKind: "member" | "hosted" = "member") {
   const surrender = mode.startsWith("surrender")
   const step = async <T>(label: string, work: Promise<T>) =>
     work.catch((error: unknown) => {
@@ -62,18 +63,37 @@ async function sourceRecovery(mode: Mode) {
   const coordinatorDirectory = path.join(f.root, "source-receipt-coordinator")
   await fs.mkdir(coordinatorDirectory, { mode: 0o700 })
   const workspaceCoordinator = new WorkspaceCoordinator({ directory: coordinatorDirectory })
-  async function member(deviceID: string) {
-    const home = await prepareMemberHome({
-      baseDirectory: path.join(f.root, "members"),
-      identity: { ...f.identity, deviceID },
-      origin: f.origin,
-    })
-    const registration = await enrollMemberRuntime({
-      home: home.home,
-      identity: home.identity,
-      ticket: await f.ticket(deviceID, home.publicKey),
-      ca: f.ca,
-    })
+  async function machine(name: string, kind: "member" | "hosted" = "member") {
+    const home =
+      kind === "hosted"
+        ? await prepareHostedHome({
+            baseDirectory: path.join(f.root, "hosted"),
+            identity: { orgID: f.identity.orgID, hostID: name },
+            origin: f.origin,
+          })
+        : await prepareMemberHome({
+            baseDirectory: path.join(f.root, "members"),
+            identity: { ...f.identity, deviceID: name },
+            origin: f.origin,
+          })
+    const ticket =
+      "hostID" in home.identity
+        ? (
+            await f.client.orgRuntime.registerHosted(
+              {
+                orgHostedRuntimeRegistration: {
+                  name: "Source receipt " + name,
+                  publicKey: home.publicKey,
+                },
+              },
+              options,
+            )
+          ).data
+        : await f.ticket(name, home.publicKey)
+    const registration =
+      "hostID" in home.identity
+        ? await enrollHostedRuntime({ home: home.home, identity: home.identity, ticket, ca: f.ca })
+        : await enrollMemberRuntime({ home: home.home, identity: home.identity, ticket, ca: f.ca })
     const connected = Promise.withResolvers<void>()
     const sockets = new Set<unknown>()
     f.interceptFrames((socket, raw) => {
@@ -82,18 +102,27 @@ async function sourceRecovery(mode: Mode) {
       if (frame.type === "heartbeat" && sockets.has(socket)) connected.resolve()
       return false
     })
-    const token = (deviceID === "source" ? "a" : "b").repeat(64)
+    const token = (name === "source" ? "a" : "b").repeat(64)
     const listen = { port: await port(), token }
     const runtime = await step(
-      "open " + deviceID,
-      openMemberRuntime({
-        home: home.home,
-        identity: home.identity,
-        ca: f.ca,
-        listen,
-        handoff: true,
-        workspaceCoordinator,
-      }),
+      "open " + name,
+      "hostID" in home.identity
+        ? openHostedRuntime({
+            home: home.home,
+            identity: home.identity,
+            ca: f.ca,
+            listen,
+            handoff: true,
+            workspaceCoordinator,
+          })
+        : openMemberRuntime({
+            home: home.home,
+            identity: home.identity,
+            ca: f.ca,
+            listen,
+            handoff: true,
+            workspaceCoordinator,
+          }),
     )
     const timer = setTimeout(() => connected.reject(new Error("Source receipt fixture machine did not connect")), 5000)
     try {
@@ -110,28 +139,32 @@ async function sourceRecovery(mode: Mode) {
     })
     return { home, registration, runtime, client, [Symbol.asyncDispose]: () => runtime.close() }
   }
-  await using source = await member("source")
-  await using target = await member("target")
+  await using source = await machine("source", sourceKind)
+  await using target = await machine("target")
+  const workspaceHost =
+    sourceKind === "hosted" ? await readExistingIdentityFile(path.join(source.home.root, "workspace-host")) : undefined
   f.interceptFrames(undefined)
   const directory = path.join(f.root, "working-directory")
-  await fs.mkdir(directory)
-  await Bun.write(path.join(directory, "retained.txt"), "Original Source bytes")
-  const initial = (
+  if (sourceKind === "member") {
+    await fs.mkdir(directory)
+    await Bun.write(path.join(directory, "retained.txt"), "Original Source bytes")
+    const initial = (
+      await step(
+        "source project",
+        source.client.orgLocalProject.get({ projectID: project.projectID }, { throwOnError: true }),
+      )
+    ).data
     await step(
-      "source project",
-      source.client.orgLocalProject.get({ projectID: project.projectID }, { throwOnError: true }),
+      "source directory",
+      source.client.orgLocalProject.bind(
+        {
+          projectID: project.projectID,
+          orgLocalProjectBind: { requestID: "original-directory", expectedRevision: initial.revision, directory },
+        },
+        { throwOnError: true },
+      ),
     )
-  ).data
-  await step(
-    "source directory",
-    source.client.orgLocalProject.bind(
-      {
-        projectID: project.projectID,
-        orgLocalProjectBind: { requestID: "original-directory", expectedRevision: initial.revision, directory },
-      },
-      { throwOnError: true },
-    ),
-  )
+  }
   const created = (
     await step(
       "create",
@@ -151,6 +184,22 @@ async function sourceRecovery(mode: Mode) {
     )
   ).data
   const sessionID = created.effect.sessionID
+  if (sourceKind === "hosted") {
+    expect(source.registration.runtimeKind).toBe("hosted")
+    expect("accountID" in source.home.identity).toBe(false)
+    expect(await source.runtime.run(() => Session.get(sessionID))).toMatchObject({
+      scope: { type: "project", id: project.projectID, local: null },
+      workspaceID: null,
+      environmentID: null,
+      organization: {
+        orgID: f.identity.orgID,
+        projectID: project.projectID,
+        creatorID: f.identity.accountID,
+        driverRuntimeID: source.registration.runtimeID,
+        bindingEpoch: 1,
+      },
+    })
+  }
   const handoffID = "source-receipt-" + mode
   const prepared = (
     await step(
@@ -453,12 +502,20 @@ async function sourceRecovery(mode: Mode) {
   expect((await f.client.orgHandoff.get({ handoffID }, options)).data.phase).toBe(
     surrender ? "surrendered" : "cancelled",
   )
-  expect(await Bun.file(path.join(directory, "retained.txt")).text()).toBe("Original Source bytes")
+  if (sourceKind === "member")
+    expect(await Bun.file(path.join(directory, "retained.txt")).text()).toBe("Original Source bytes")
+  else {
+    if (!workspaceHost) throw new Error("Actual Hosted Source did not retain its original native Host identity")
+    expect(await readExistingIdentityFile(path.join(source.home.root, "workspace-host"))).toBe(workspaceHost)
+    expect((await readRuntimeHome(source.home.home, source.home.identity)).publicKey).toBe(
+      source.registration.publicKey,
+    )
+  }
 }
 
 test.each(["surrender", "surrender-unknown", "cancel-before-freeze", "cancel-after-freeze", "missing"] as const)(
   "the original cold Source reconciles its retained %s receipt after device revocation",
-  sourceRecovery,
+  (mode) => sourceRecovery(mode),
   30_000,
 )
 test(
@@ -473,6 +530,11 @@ test(
 )
 test.each(["surrender-empty-ack", "surrender-wrong-ack", "surrender-abort-ack"] as const)(
   "Source receipt recovery preserves unknown after a committed %s reply and retries the same native fact",
-  sourceRecovery,
+  (mode) => sourceRecovery(mode),
+  30_000,
+)
+test.each(["surrender-unknown", "cancel-before-freeze"] as const)(
+  "the original cold Hosted Source reconciles its retained %s receipt after revocation",
+  (mode) => sourceRecovery(mode, "hosted"),
   30_000,
 )
