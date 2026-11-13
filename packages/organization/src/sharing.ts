@@ -5,6 +5,7 @@ import {
   OrganizationProtocol as Protocol,
   OrganizationRuntimeProtocol as Runtime,
   OrganizationSyncProtocol as Sync,
+  OrganizationSessionToolProtocol as SessionTool,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
@@ -149,7 +150,7 @@ async function currentState(session: Record.SessionDirectory) {
 }
 
 async function transcriptSnapshot<T>(
-  credentials: Credentials,
+  credentials: Credentials | (() => Promise<Record.SessionDirectory>),
   sessionID: string,
   source: string | undefined,
   watermark: number | undefined,
@@ -161,13 +162,17 @@ async function transcriptSnapshot<T>(
     authorize(): Promise<unknown>
   }) => Promise<void>,
 ) {
-  const initial = await Storage.snapshot(() => authorize(credentials, "session.read", { sessionID }))
-  const generation = initial.session.shareGeneration
+  const access =
+    typeof credentials === "function"
+      ? credentials
+      : async () => (await authorize(credentials, "session.read", { sessionID })).session
+  const initial = await Storage.snapshot(access)
+  const generation = initial.shareGeneration
   const check = async () => {
-    const current = await authorize(credentials, "session.read", { sessionID })
-    if (current.session.shareState !== "shared" || current.session.shareGeneration !== generation)
+    const current = await access()
+    if (current.sessionID !== sessionID || current.shareState !== "shared" || current.shareGeneration !== generation)
       fail("SHARE_REVOKED", "The Session share generation is no longer active")
-    return current.session
+    return current
   }
   await check()
   const fixed = prepare
@@ -510,6 +515,98 @@ async function commitBatch(session: Record.SessionDirectory, batch: Sync.Batch) 
 
 export namespace OrganizationSharing {
   export const describe = view
+  export async function readForExecution(input: {
+    query: SessionTool.ReadQuery
+    authorize(): Promise<Record.SessionDirectory>
+    signal: AbortSignal
+  }) {
+    const query = SessionTool.ReadQuery.parse(input.query)
+    const sessionID = query.targetSessionID
+    return transcriptSnapshot(input.authorize, sessionID, undefined, undefined, async ({ session, watermark }) => {
+      const prefix = Projection.messages(sessionID, session.shareGeneration, sessionID)
+      const anchor = query.around
+        ? await Projection.message(sessionID, session.shareGeneration, sessionID, query.around, watermark)
+        : undefined
+      if (query.around && (!anchor || anchor.event.type !== "message" || anchor.event.removed))
+        fail("NOT_FOUND", "Shared message not found")
+      const anchorEvent = anchor?.event.type === "message" ? anchor.event : undefined
+      const collect = async (count: number, descending: boolean, initial?: string[], offset = 0) => {
+        let after = initial
+        let skipped = 0
+        const messages: Array<z.infer<typeof Sync.MessageEvent>> = []
+        while (messages.length <= count) {
+          input.signal.throwIfAborted()
+          await input.authorize()
+          const rows = await Storage.query({ prefix, after, descending, limit: 64 })
+          if (!rows.length) break
+          for (const event of await indexedEvents(sessionID, session.shareGeneration, rows, watermark)) {
+            if (skipped++ < offset) continue
+            messages.push(Sync.MessageEvent.parse(event))
+            if (messages.length > count) break
+          }
+          after = rows.at(-1)!.key
+          if (rows.length < 64) break
+        }
+        return { messages: messages.slice(0, count), more: messages.length > count }
+      }
+      let selected: Awaited<ReturnType<typeof collect>>
+      if (anchorEvent && query.limit) {
+        const anchorKey = [...prefix, String(anchorEvent.createdAt).padStart(20, "0"), anchorEvent.messageID]
+        const newer = await collect(Math.floor(query.limit / 2), false, anchorKey)
+        const older = await collect(query.limit - newer.messages.length - 1, true, anchorKey)
+        if (newer.more && newer.messages.length + older.messages.length + 1 < query.limit) {
+          const fill = await collect(query.limit - older.messages.length - 1, false, anchorKey)
+          newer.messages = fill.messages
+          newer.more = fill.more
+        }
+        selected = {
+          messages: [...newer.messages.reverse(), anchorEvent, ...older.messages],
+          more: newer.more || older.more,
+        }
+      } else selected = await collect(query.limit, true, undefined, query.offset)
+      let partial = selected.more || query.offset > 0
+      let bytes = 0
+      const items: SessionTool.ReadResult["items"] = []
+      for (const message of selected.messages) {
+        input.signal.throwIfAborted()
+        bytes += Buffer.byteLength(JSON.stringify(message))
+        if (bytes > 1024 * 1024) {
+          partial = true
+          break
+        }
+        const partsPrefix = Projection.parts(sessionID, session.shareGeneration, sessionID, message.messageID)
+        const partRows = await Storage.query({ prefix: partsPrefix, limit: 129 })
+        const projected = (
+          await indexedEvents(sessionID, session.shareGeneration, partRows.slice(0, 128), watermark)
+        ).map((event) => Sync.PartEvent.parse(event))
+        const parts: SessionTool.ReadResult["items"][number]["parts"] = []
+        for (const part of projected) {
+          bytes += Buffer.byteLength(JSON.stringify(part))
+          if (bytes > 1024 * 1024) {
+            partial = true
+            break
+          }
+          parts.push(part)
+        }
+        if (partRows.length > 128) partial = true
+        items.push({ message, parts })
+        if (bytes > 1024 * 1024) break
+      }
+      input.signal.throwIfAborted()
+      const shared = await Record.read(
+        Record.SharedSession,
+        Keys.sharedSession(sessionID, session.shareGeneration, sessionID),
+      )
+      return {
+        targetSessionID: sessionID,
+        shareGeneration: session.shareGeneration,
+        watermark,
+        title: shared?.projection.title ?? "Shared Session",
+        items,
+        partial,
+      }
+    })
+  }
   export async function tasks(credentials: Credentials, sessionID: string, value: Sync.TaskQuery) {
     const query = Sync.TaskQuery.parse(value)
     const cursor = decodeWindowCursor(query.cursor, WindowPosition)

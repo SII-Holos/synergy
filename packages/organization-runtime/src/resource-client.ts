@@ -9,6 +9,7 @@ import {
   OrganizationHandoffProtocol as Handoff,
   OrganizationHandoffObjectProtocol as Objects,
   OrganizationCloudProtocol as Cloud,
+  OrganizationSessionToolProtocol as SessionTool,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { createOrganizationClient } from "@ericsanchezok/synergy-sdk/organization"
 import { OrganizationRuntimeError } from "./error"
@@ -59,6 +60,11 @@ export interface MemberResourceClient {
     query?: { cursor?: string; manifestHash?: string },
     signal?: AbortSignal,
   ): Promise<Knowledge.ExecutionPage>
+  sessionRead(
+    proof: Execution.DescriptionProof,
+    query: SessionTool.ReadQuery,
+    signal?: AbortSignal,
+  ): Promise<SessionTool.ReadResult>
   knowledgeFiles(
     proof: Execution.DescriptionProof,
     reference: Knowledge.Reference,
@@ -670,6 +676,35 @@ export function createMemberResourceClient(options: {
             result.selection.manifestHash !== query.manifestHash
           )
             throw failure("PROTOCOL_MISMATCH", "Activated knowledge manifest does not match this Session")
+        },
+        signal,
+      )
+    },
+    async sessionRead(value, input, signal) {
+      const proof = Execution.DescriptionProof.parse(value)
+      const query = SessionTool.ReadQuery.parse(input)
+      return invoke(
+        proof,
+        SessionTool.ReadResult,
+        async (signal) =>
+          client.orgSessionTools.read(
+            {
+              orgSessionToolReadRequest: {
+                ...query,
+                authority: { proof, signature: await Execution.signDescription(proof, options.key) },
+              },
+            },
+            { signal },
+          ),
+        (result) => {
+          const accepted = proof.receipt.accepted!
+          if (
+            result.orgID !== proof.orgID ||
+            result.callerSessionID !== accepted.permit.sessionID ||
+            result.rootID !== accepted.effect.messageID ||
+            result.targetSessionID !== query.targetSessionID
+          )
+            throw failure("PROTOCOL_MISMATCH", "Shared history belongs to another Session or accepted task")
         },
         signal,
       )

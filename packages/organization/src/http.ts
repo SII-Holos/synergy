@@ -35,6 +35,7 @@ import { handoffWorkspaceRoutes } from "./routes/handoff-workspaces"
 import { handoffRoutes, handoffMachineRoutes } from "./routes/handoff"
 import type { Handoffs } from "./handoff"
 import { knowledgeExecutionRoutes } from "./routes/knowledge-execution"
+import { sessionToolRoutes } from "./routes/session-tools"
 import { sessionReadRoutes } from "./routes/session-read"
 import type { SessionReadForwarder } from "./session-read"
 import type { OrganizationNotifications } from "./notifications"
@@ -213,6 +214,13 @@ export function organizationApp(
       handoffWorkspaceRoutes(() => {
         if (!handoffs) fail("SERVICE_UNAVAILABLE", "Workspace handoff authority is unavailable")
         return handoffs
+      }),
+    )
+    .route(
+      "/runtime/v1",
+      sessionToolRoutes(() => {
+        if (!execution) fail("SERVICE_UNAVAILABLE", "Execution binding is unavailable")
+        return execution
       }),
     )
     .route(

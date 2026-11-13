@@ -25,6 +25,8 @@
 
 - [0180](0180-explicit-background-waited-for-automatic-yield.md)
 
+- [0179](0179-hosted-session-reader-bypassed-object-authorization.md)
+
 - [0178](0178-explicit-skill-updates-interrupted-an-authorized-load.md)
 - [0177](0177-shared-projection-accepted-human-writer-authority.md)
 - [0176](0176-current-archive-used-a-logical-namespace-as-physical-identity.md)

@@ -357,6 +357,9 @@ import type {
   OrgSessionSyncSnapshotErrors,
   OrgSessionSyncSnapshotResponses,
   OrgSessionSyncUploadBlobResponses,
+  OrgSessionToolReadRequest,
+  OrgSessionToolsReadErrors,
+  OrgSessionToolsReadResponses,
   OrgSessionTranscriptTasksErrors,
   OrgSessionTranscriptTasksResponses,
   OrgSetupBootstrapErrors,
@@ -4166,6 +4169,32 @@ export class OrgHandoffWorkspace extends HeyApiClient {
   }
 }
 
+export class OrgSessionTools extends HeyApiClient {
+  /**
+   * Read an authorized shared projection for accepted native work
+   */
+  public read<ThrowOnError extends boolean = false>(
+    parameters: {
+      orgSessionToolReadRequest: OrgSessionToolReadRequest
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "orgSessionToolReadRequest", map: "body" }] }])
+    return (options?.client ?? this.client).post<OrgSessionToolsReadResponses, OrgSessionToolsReadErrors, ThrowOnError>(
+      {
+        url: "/runtime/v1/session-tools/read",
+        ...options,
+        ...params,
+        headers: {
+          "Content-Type": "application/json",
+          ...options?.headers,
+          ...params.headers,
+        },
+      },
+    )
+  }
+}
+
 export class OrgKnowledgeExecution extends HeyApiClient {
   /**
    * Read the versions selected by accepted Session work
@@ -4824,6 +4853,8 @@ export class OrganizationClient extends HeyApiClient {
   orgHandoffObject = new OrgHandoffObject({ client: this.client })
 
   orgHandoffWorkspace = new OrgHandoffWorkspace({ client: this.client })
+
+  orgSessionTools = new OrgSessionTools({ client: this.client })
 
   orgKnowledgeExecution = new OrgKnowledgeExecution({ client: this.client })
 

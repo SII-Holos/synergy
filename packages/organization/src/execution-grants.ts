@@ -12,7 +12,7 @@ import { assertRuntimeConnection, runtimeAuthority } from "./runtime-authority"
 import { OrganizationRecord as Record } from "./storage/records"
 import { OrganizationStoragePath as Keys } from "./storage/path"
 import { fail } from "./error"
-import { projectView, projectExecutionRole, sessionView } from "./authorization"
+import { accountSession, projectView, projectExecutionRole, sessionView } from "./authorization"
 import type { CommandAdmissions } from "./command-admission"
 import { OrganizationCommandHistory } from "./command-history"
 import type { RuntimeConnections } from "./runtime-connection"
@@ -1035,6 +1035,61 @@ export function createExecutionGrants(options: {
             }),
         })
       })
+    },
+    async withAuthority<T>(
+      value: Execution.DescriptionRequest,
+      read: (input: {
+        grant: Execution.BoundGrant
+        account: Record.Account
+        recheck(): Promise<Record.Account>
+      }) => Promise<T>,
+    ) {
+      if (Storage.inTransaction()) fail("INVALID_REQUEST", "Execution reads must own their authorization boundary")
+      const { proof, signature } = Execution.DescriptionRequest.parse(value)
+      window(proof)
+      const registered = await Storage.snapshot(() => machine(proof))
+      if (!(await Execution.verifyDescription(proof, signature, registered.runtime.publicKey)))
+        fail("PERMISSION_DENIED", "Execution read proof signature is invalid")
+      const connection = capture(proof, registered.runtime)
+      await options.admissions.observe(connection, proof.continuation?.receipt ?? proof.receipt)
+      let active = true
+      const check = () =>
+        Storage.snapshot(async () => {
+          if (!active) fail("PERMISSION_DENIED", "Execution read authority has ended")
+          window(proof)
+          connection.assertCurrent()
+          const { session, grant, account: machineAccount } = await resolve(proof, registered.runtime.publicKey)
+          await enabled(session, grant, machineAccount)
+          if (
+            grant.state !== "bound" ||
+            grant.retention.state !== "held" ||
+            grant.rootID !== proof.receipt.accepted!.effect.messageID
+          )
+            fail("PERMISSION_DENIED", "Execution reads require their original retained native root")
+          const actor = proof.continuation?.receipt.accepted!.permit.actor ?? grant.actor
+          if (actor.tokenID || actor.clientKind === "api")
+            fail("PERMISSION_DENIED", "Cross-Session tool reads require an interactive account authority")
+          const account = await Record.read(Record.Account, Keys.account(actor.subjectID))
+          if (
+            !account ||
+            account.accountID !== actor.subjectID ||
+            account.orgID !== grant.orgID ||
+            account.state !== "active"
+          )
+            fail("PERMISSION_DENIED", "Execution read account is no longer active")
+          await accountSession(account, session.sessionID, "session.read")
+          window(proof)
+          connection.assertCurrent()
+          return { grant, account }
+        })
+      try {
+        const { grant, account } = await check()
+        const result = await read({ grant, account, recheck: async () => (await check()).account })
+        await check()
+        return result
+      } finally {
+        active = false
+      }
     },
     async bind(value: Execution.BindingRequest): Promise<Execution.BoundGrant> {
       if (Storage.inTransaction()) fail("INVALID_REQUEST", "Execution binding must own its commit boundary")

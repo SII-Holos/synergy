@@ -15,6 +15,8 @@ import { registerOrganizationKnowledge } from "./knowledge-source"
 import { createMemberKnowledgeTool } from "./tools/knowledge"
 import { registerOrganizationHomeMigration } from "./home-migration"
 import { registerOrganizationNamespaceIdentity } from "./namespace-identity"
+import { registerOrganizationToolPolicy } from "./tool-policy"
+import { registerOrganizationSessionTools } from "./session-tool-source"
 
 export function registerMemberSources(identity: RuntimeIdentity, restoration?: HomeOwnershipFile.RestorationInfo) {
   registerSessionSchema({ orgID: identity.orgID })
@@ -44,6 +46,8 @@ export function registerMemberSources(identity: RuntimeIdentity, restoration?: H
       ]),
   })
   registerMemberExecution(identity)
+  registerOrganizationToolPolicy(identity)
+  registerOrganizationSessionTools(identity)
   registerMemberProviderSdks(identity)
   ToolRegistry.registerToolProvider("organization-runtime", () => [
     createMemberConnectionTool(identity),

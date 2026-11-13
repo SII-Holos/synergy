@@ -111,21 +111,10 @@ export async function authorize(
     return { ...current, resource, view }
   }
   if (target && "sessionID" in target) {
-    const session = await Record.read(Record.SessionDirectory, Keys.session(target.sessionID))
-    if (
-      !session ||
-      session.sessionID !== target.sessionID ||
-      session.orgID !== account.orgID ||
-      (session.shareState === "private" && session.creatorID !== account.accountID)
-    )
-      fail("NOT_FOUND", "Session not found")
-    const project = await Record.read(Record.Project, Keys.project(session.projectID))
-    if (!project) fail("NOT_FOUND", "Session not found")
+    const access = await accountSession(account, target.sessionID, action)
     if ("apiToken" in current)
-      assertApiTokenAction(current.apiToken, credentials.apiOperation, action, project.projectID)
-    const membership = await Record.read(Record.ProjectMember, Keys.projectMember(project.projectID, account.accountID))
-    const access = projectView(account, project, membership, "project.read")
-    return { ...current, session, project, view: sessionView(account, session, access, action) }
+      assertApiTokenAction(current.apiToken, credentials.apiOperation, action, access.project.projectID)
+    return { ...current, ...access }
   }
   if (target && "runtimeID" in target) {
     const runtime = await Record.read(Record.RuntimeRegistration, Keys.runtime(target.runtimeID))
@@ -171,6 +160,22 @@ export async function authorize(
   )
     fail("PERMISSION_DENIED", "This action is not allowed")
   return current
+}
+
+export async function accountSession(account: Record.Account, sessionID: string, action: string) {
+  const session = await Record.read(Record.SessionDirectory, Keys.session(sessionID))
+  if (
+    !session ||
+    session.sessionID !== sessionID ||
+    session.orgID !== account.orgID ||
+    (session.shareState === "private" && session.creatorID !== account.accountID)
+  )
+    fail("NOT_FOUND", "Session not found")
+  const project = await Record.read(Record.Project, Keys.project(session.projectID))
+  if (!project) fail("NOT_FOUND", "Session not found")
+  const membership = await Record.read(Record.ProjectMember, Keys.projectMember(project.projectID, account.accountID))
+  const access = projectView(account, project, membership, "project.read")
+  return { session, project, view: sessionView(account, session, access, action) }
 }
 
 export function sessionView(

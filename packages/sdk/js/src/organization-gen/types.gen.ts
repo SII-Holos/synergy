@@ -3668,19 +3668,63 @@ export type OrgHandoffWorkspaceRequest = {
   signature: string
 }
 
-export type OrgKnowledgeExecutionPage = {
+export type OrgSessionToolReadResult = {
   orgID: string
-  projectID: string
-  sessionID: string
-  selection: {
-    revision: number
-    manifestHash: string
-    updatedBy: string
-    updatedAt: number
-    releaseCount: number
-  }
-  items: Array<OrgKnowledgeRelease>
-  cursor?: string
+  callerSessionID: string
+  rootID: string
+  targetSessionID: string
+  title: string
+  shareGeneration: number
+  watermark: number
+  items: Array<{
+    message: {
+      type: "message"
+      sequence: number
+      sessionID?: string
+      messageID: string
+      role: "user" | "assistant"
+      createdAt: number
+      summary: string
+      actor?: ActorStamp
+      agent?: string
+      parentID?: string
+      rootID?: string
+      completedAt?: number
+      finish?: string
+      model?: {
+        providerID: string
+        modelID: string
+      }
+      mode?: string
+      cost?: number
+      tokens?: {
+        input: number
+        output: number
+        reasoning: number
+        cache: {
+          read: number
+          write: number
+        }
+      }
+      error?: {
+        code: string
+        message: string
+      }
+      removed?: true
+      integrity: string
+    }
+    parts: Array<{
+      type: "part"
+      sequence: number
+      sessionID?: string
+      messageID: string
+      partID: string
+      part?: OrgTranscriptPart
+      removed?: true
+      integrity: string
+    }>
+  }>
+  partial: boolean
 }
 
 export type OrgExecutionDescriptionProof = {
@@ -3792,6 +3836,29 @@ export type OrgExecutionDescriptionProof = {
 export type OrgExecutionDescriptionRequest = {
   proof: OrgExecutionDescriptionProof
   signature: string
+}
+
+export type OrgSessionToolReadRequest = {
+  targetSessionID: string
+  limit: number
+  offset: number
+  around?: string
+  authority: OrgExecutionDescriptionRequest
+}
+
+export type OrgKnowledgeExecutionPage = {
+  orgID: string
+  projectID: string
+  sessionID: string
+  selection: {
+    revision: number
+    manifestHash: string
+    updatedBy: string
+    updatedAt: number
+    releaseCount: number
+  }
+  items: Array<OrgKnowledgeRelease>
+  cursor?: string
 }
 
 export type OrgKnowledgeExecutionQuery = {
@@ -10449,6 +10516,51 @@ export type OrgHandoffWorkspaceRequestResponses = {
 
 export type OrgHandoffWorkspaceRequestResponse =
   OrgHandoffWorkspaceRequestResponses[keyof OrgHandoffWorkspaceRequestResponses]
+
+export type OrgSessionToolsReadData = {
+  body: OrgSessionToolReadRequest
+  path?: never
+  query?: never
+  url: "/runtime/v1/session-tools/read"
+}
+
+export type OrgSessionToolsReadErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgSessionToolsReadError = OrgSessionToolsReadErrors[keyof OrgSessionToolsReadErrors]
+
+export type OrgSessionToolsReadResponses = {
+  /**
+   * Success
+   */
+  200: OrgSessionToolReadResult
+}
+
+export type OrgSessionToolsReadResponse = OrgSessionToolsReadResponses[keyof OrgSessionToolsReadResponses]
 
 export type OrgKnowledgeExecutionSelectionData = {
   body: OrgKnowledgeExecutionQuery

@@ -20,7 +20,7 @@ Knowledge verifies paged releases before atomic per-Session selection. Deferred 
 
 Shared export owns ordered DTOs/authenticated chunks; private bodies stay local. Notification references retain original bindings; negotiated live delivery grants no authority. Verify exporter/transcript restart/ACK and notification-source/notifications-http.
 
-Private history and interactions use distinct signed permits, canonical Scope/lineage and binding fences. Attachments require native producer evidence, never bare hashes. Reuse pending windows and decision receipts; omit metadata/answers. Bound ranges/preparation/provenance. Verify session-read/attachment-read/interactions suites; regenerate SDKs after contract changes.
+Session/history/interaction reads require target authorization, signed permits, canonical Scope/lineage and binding fences. Attachments require native producer evidence, never bare hashes. Reuse pending windows and decision receipts; omit metadata/answers. Bound ranges/preparation/provenance. Verify session-read/attachment-read/interactions suites; regenerate SDKs after contract changes.
 
 Desktop Browser requires private managed launch data, explicit listener authentication and lazy page creation. Reject inherited native credentials and non-Desktop selection. Hosted/member machines share bridge/intake/worker composition; hosted identities have no human account. Verify desktop, hosted-home and hosted-runtime suites.
 
