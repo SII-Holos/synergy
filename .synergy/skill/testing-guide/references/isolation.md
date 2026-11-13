@@ -37,6 +37,10 @@ Do not run `quality:quick` alongside browser suites or development builds in the
 
 ## Use Real Isolation
 
+Native tool fixtures need the actual Session, canonical user root and assistant, live Run and original tool call. Reuse the owning rollout fixture; retain a real processor's execution wrapper instead of recording its tool twice. Controlled API observers register a Host before Runtime startup and capture that Runtime's opaque origin. DTO labels or arbitrary message identifiers cannot replace either provenance path.
+
+Release fixture-owned resource admission through its original `release()` before beginning maintenance unless a retained admission is under test. To mutate a Service roster during drainage, capture an actual accepted operation before new admission closes and complete through its original tail. Preserve unknown-receipt, no-replay and final release assertions rather than clearing Uses or bypassing writer guards.
+
 For native filesystem fault injection, prefer a test-scoped call-through spy on the shared module object over `mock.module`. Re-registering a saved namespace is not proof that cached default imports regain their original identity. Verify the failure-injection suite before its downstream consumer and after a consumer has preloaded the production module; confirm the runner's actual file order rather than assuming positional arguments determine it. See the [native filesystem isolation decision](../../../../docs/decisions/implemented/testing/2026-10-28-native-filesystem-spy-isolation.md).
 
 Queue-observation fixtures that call a production API which schedules execution must own a real Session lease while inspecting or manually materializing its input. Drive the real wake before assertions, then remove owned pending input, release without requesting more work, and drain before closing the Runtime. Keep execution tests on real model protocol fixtures instead; see [queue-fixture ownership](../../../../docs/decisions/implemented/testing/2026-09-27-own-session-wakes-in-queue-fixtures.md).

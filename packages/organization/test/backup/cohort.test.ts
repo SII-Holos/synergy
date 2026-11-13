@@ -3,8 +3,6 @@ import { createHash, randomBytes } from "node:crypto"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { OrganizationBackupCohort as Cohort } from "../../src/backup/cohort"
-import { OrganizationServiceNative } from "../../src/backup/service-native"
-import { OrganizationServiceHome } from "../../src/service-home"
 import { OrganizationRecoveryArchive } from "../../src/backup/archive"
 import { OrganizationStoragePath as Keys } from "../../src/storage/path"
 import { OrganizationRecord as Record } from "../../src/storage/records"
@@ -30,6 +28,7 @@ import { HomeOwnership } from "@ericsanchezok/synergy-harness/lifecycle/home-own
 import { HomeOwnershipFile } from "@ericsanchezok/synergy-harness/lifecycle/home-ownership-file"
 import { NativeNamespaceIdentity } from "@ericsanchezok/synergy-harness/lifecycle/namespace-identity"
 import { runtimeHome } from "@ericsanchezok/synergy-harness/test/support/runtime-home"
+import { fixture as serviceFixture } from "../support/organization"
 
 const actor = {
   kind: "system" as const,
@@ -38,43 +37,52 @@ const actor = {
   clientKind: "system" as const,
   requestID: "cohort-backup",
 }
-const deployment = {
-  schemaVersion: 1 as const,
-  orgID: "organization",
-  deploymentIncarnation: "deployment",
-  createdAt: 1,
-}
 const hash = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex")
-async function runtime(registration?: Runtime.HostedRegistrationRecord | "service") {
+async function serviceRuntime() {
+  const source = await serviceFixture()
+  try {
+    const owner = await source.initialize()
+    const service = source.service
+    const host = await service.maintenance.run(async () => RuntimeContext.current().host)
+    const close = () => source[Symbol.asyncDispose]()
+    return {
+      host,
+      run: service.maintenance.run,
+      close,
+      [Symbol.asyncDispose]: close,
+      async registerHosted(publicKey: string) {
+        const response = await owner.request("POST", "/runtimes/hosted", { name: "Hosted", publicKey })
+        expect(response.status).toBe(200)
+        const ticket = Runtime.Ticket.parse(await response.json())
+        return Runtime.HostedRegistrationRecord.parse(ticket.runtime)
+      },
+    }
+  } catch (error) {
+    await source[Symbol.asyncDispose]()
+    throw error
+  }
+}
+async function runtime(registration?: Runtime.HostedRegistrationRecord) {
   const home = await runtimeHome()
   const selected = {
     schemaVersion: 2 as const,
-    owner: registration === "service" ? "organization" : "organization-runtime",
-    identity:
-      registration === "service"
-        ? createHash("sha256").update("synergy.organization.service.v1").digest("hex")
-        : "f".repeat(64),
-    readerContract: registration === "service" ? OrganizationServiceHome.readerContract : "cohort-fixture-v1",
+    owner: "organization-runtime",
+    identity: "f".repeat(64),
+    readerContract: "cohort-fixture-v1",
   }
   if (registration) {
     await HomeOwnershipFile.open({ root: home.host.root, env: home.host.env, selected }).persist()
-    if (registration !== "service")
-      await Bun.write(path.join(home.host.root, "fixture-namespace.json"), JSON.stringify(registration))
+    await Bun.write(path.join(home.host.root, "fixture-namespace.json"), JSON.stringify(registration))
   }
   const runtime = await testRuntime({
     home: home.host.home,
     register() {
       RuntimeMaintenance.configure({ required: ["sessions", "loop-jobs", "environments"] })
       if (registration) {
-        if (registration === "service") OrganizationServiceNative.register({})
         HomeOwnership.select(selected)
         NativeNamespaceIdentity.register({
           owner: selected.owner,
           async read(): Promise<Record<string, string>> {
-            if (registration === "service") {
-              const current = OrganizationProtocol.Deployment.parse(await Storage.read(Keys.deployment()))
-              return { kind: "service", orgID: current.orgID, deploymentIncarnation: current.deploymentIncarnation }
-            }
             const current = Runtime.HostedRegistrationRecord.parse(
               await Bun.file(path.join(home.host.root, "fixture-namespace.json")).json(),
             )
@@ -98,7 +106,7 @@ async function runtime(registration?: Runtime.HostedRegistrationRecord | "servic
 }
 async function fixture() {
   const directory = await tmpdir()
-  const service = await runtime("service")
+  const service = await serviceRuntime()
   const material = randomBytes(32)
   const keys = {
     async current() {
@@ -109,27 +117,8 @@ async function fixture() {
     },
   }
   const pair = await crypto.subtle.generateKey("Ed25519", true, ["sign", "verify"])
-  const registration = Runtime.HostedRegistrationRecord.parse({
-    runtimeKind: "hosted",
-    runtimeID: "hosted",
-    orgID: deployment.orgID,
-    deploymentIncarnation: deployment.deploymentIncarnation,
-    publicKey: await Runtime.publicKey(pair.publicKey),
-    state: "active",
-    revision: 1,
-    connectionEpoch: 1,
-    createdAt: 1,
-    name: "Hosted",
-    createdBy: "owner",
-  })
+  const registration = await service.registerHosted(await Runtime.publicKey(pair.publicKey))
   const hosted = await runtime(registration)
-  await service.run(async () => {
-    await Storage.write(Keys.deployment(), deployment)
-    await Storage.write(
-      Keys.runtime(registration.runtimeID),
-      Record.RuntimeRegistration.parse({ ...registration, schemaVersion: 1 }),
-    )
-  })
   const registrationFile = path.join(hosted.host.root, "fixture-namespace.json")
   return {
     directory: directory.path,
@@ -355,38 +344,52 @@ test("cohort capture waits for a real native Session tail and preserves its acce
 })
 
 test("a changed hosted roster during real drainage prevents complete archive publication", async () => {
+  const { OrganizationServiceMaintenance } = await import("../../src/service-maintenance")
   await using f = await fixture()
+  const completion = await f.service.run(() =>
+    OrganizationServiceMaintenance.run(() => OrganizationServiceMaintenance.captureTail()),
+  )
   const original = RuntimeMaintenance.drain
   let changed = false
   using tail = spyOn(RuntimeMaintenance, "drain").mockImplementation(async (lease, options) => {
     if (!changed && RuntimeContext.current().host.root === f.service.host.root) {
       changed = true
-      await Storage.write(
-        Keys.runtime("late-hosted"),
-        Record.RuntimeRegistration.parse({ ...f.registration, runtimeID: "late-hosted", schemaVersion: 1 }),
-      )
+      try {
+        await completion.run(() =>
+          Storage.write(
+            Keys.runtime("late-hosted"),
+            Record.RuntimeRegistration.parse({ ...f.registration, runtimeID: "late-hosted", schemaVersion: 1 }),
+          ),
+        )
+      } finally {
+        completion.close()
+      }
     }
     return original(lease, options)
   })
   const directory = path.join(f.directory, "changed-roster")
-  await expect(
-    Cohort.capture({
-      service: f.source,
-      async resolve() {
-        return f.participant
-      },
-      directory,
-      archiveID: "changed-roster",
-      buildVersion: "fixture",
-      keys: f.keys,
-      actor,
-    }),
-  ).rejects.toThrow("roster changed")
-  expect(await fs.exists(directory)).toBe(false)
-  for (const runtime of [f.service, f.hosted])
-    await runtime.run(async () => {
-      expect((await RuntimeMaintenance.status())?.phase).toBe("released")
-    })
+  try {
+    await expect(
+      Cohort.capture({
+        service: f.source,
+        async resolve() {
+          return f.participant
+        },
+        directory,
+        archiveID: "changed-roster",
+        buildVersion: "fixture",
+        keys: f.keys,
+        actor,
+      }),
+    ).rejects.toThrow("roster changed")
+    expect(await fs.exists(directory)).toBe(false)
+    for (const runtime of [f.service, f.hosted])
+      await runtime.run(async () => {
+        expect((await RuntimeMaintenance.status())?.phase).toBe("released")
+      })
+  } finally {
+    completion.close()
+  }
 })
 
 test("a source describing another hosted identity cannot satisfy canonical namespace completeness", async () => {
@@ -433,7 +436,6 @@ test("a namespace with an unknown resource owner cannot be reported as a complet
 })
 
 test("the actual organization service and hosted namespace freeze one roster after its accepted service tail", async () => {
-  const { fixture: serviceFixture } = await import("../support/organization")
   const { OrganizationServiceMaintenance } = await import("../../src/service-maintenance")
   await using service = await serviceFixture()
   const owner = await service.initialize()
@@ -567,16 +569,9 @@ test("cohort discovery retains the original cancellation signal when its caller 
 
 test("cohort capture retains original participants, destination, actor and key-provider ports across discovery", async () => {
   await using f = await fixture()
-  await using replacement = await runtime("service")
+  await using replacement = await serviceRuntime()
   await f.service.run(() => Storage.write(["cohort-origin"], { namespace: "original" }))
-  await replacement.run(async () => {
-    await Storage.write(Keys.deployment(), deployment)
-    await Storage.write(
-      Keys.runtime(f.registration.runtimeID),
-      Record.RuntimeRegistration.parse({ ...f.registration, schemaVersion: 1 }),
-    )
-    await Storage.write(["cohort-origin"], { namespace: "replacement" })
-  })
+  await replacement.run(() => Storage.write(["cohort-origin"], { namespace: "replacement" }))
   const entered = Promise.withResolvers<void>()
   const proceed = Promise.withResolvers<void>()
   let initial = true

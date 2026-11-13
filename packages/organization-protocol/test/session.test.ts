@@ -36,8 +36,10 @@ test("directory views contain bounded identities and explicit permissions withou
   }
   const view = { ...metadata, permissions: { read: true as const, execute: false, stop: false } }
   expect(Protocol.View.parse(view)).toEqual(view)
+  const shared = { ...view, shareState: "shared", title: "Shared conversation" }
+  expect(Protocol.View.parse(shared)).toEqual(shared)
   for (const extra of [
-    { title: "Private title" },
+    { title: "x".repeat(513) },
     { messages: [] },
     { tools: [] },
     { localPath: "/private" },

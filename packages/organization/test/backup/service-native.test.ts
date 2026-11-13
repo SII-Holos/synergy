@@ -204,13 +204,23 @@ test("a native service segment preserves config meaning and its distinct immutab
   }
 })
 
-test("unregistered startup and unreconstructable external composition cannot yield a complete service native segment", async () => {
+test("unregistered startup is rejected and unused external profiles retain their exact reconstruction facet", async () => {
   await using unregistered = await fixture({}, false)
   await expect(unregistered.capture(path.join(unregistered.home, "backup"))).rejects.toThrow("startup")
   await using external = await fixture({
     cloud: { workspaceProfiles: { private: { blobStore: "external", settings: {} } } },
   })
-  await expect(external.capture(path.join(external.home, "backup"))).rejects.toThrow("composition")
+  const captured = await external.capture(path.join(external.home, "backup"))
+  const native = {
+    directory: captured.segment.directory,
+    expected: captured.segment.namespace,
+    source: captured.source.namespace,
+    keys,
+  }
+  await expect(Native.verify(native)).rejects.toThrow("exact original native resource facet")
+  const verified = await Native.verify({ ...native, resources: captured.segment.resources })
+  expect(verified.startup.requirements).toEqual(["cloud-composition"])
+  expect(verified.resources).toEqual(captured.segment.resources?.expected)
 })
 
 test("absent config stays explicit and a missing or foreign Home marker is never synthesized by capture", async () => {

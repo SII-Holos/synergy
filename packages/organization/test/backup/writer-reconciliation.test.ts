@@ -365,7 +365,18 @@ test("a target with H0 command facts cannot use its H1 Hosted registration to hi
         pendingAttemptID: "not-reconciled",
       }),
     )
-    await expect(Writers.withReconciled(input, async () => {})).rejects.toThrow("pending command")
+    let entered = false
+    await expect(
+      Writers.withReconciled(input, async () => {
+        entered = true
+      }),
+    ).rejects.toThrow("missing H1 owner record")
+    expect(entered).toBe(false)
+    expect(await Storage.read(Addresses.commandState("stale-session"))).toEqual({
+      schemaVersion: 1,
+      commandSeq: 2,
+      pendingAttemptID: "not-reconciled",
+    })
   })
 }, 30_000)
 

@@ -3,6 +3,8 @@ import { afterAll, expect, test } from "bun:test"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { ProcessRegistry } from "@ericsanchezok/synergy-harness/process/registry"
+import { Session } from "@ericsanchezok/synergy-harness/session"
+import { withToolRun } from "@ericsanchezok/synergy-harness/test/support/rollout"
 import type { BashContext } from "@ericsanchezok/synergy-harness/tool/bash-contract"
 import { SandboxBackend } from "../../src/sandbox/backend"
 import { LocalBashBackend } from "../../src/tools/bash/local"
@@ -12,15 +14,17 @@ const runtime = await testRuntime({ env: { SHELL: "/bin/sh" } })
 afterAll(() => runtime.close())
 const nativeTest = test.skipIf(process.platform !== "darwin")
 
-function context(options: {
-  workspace: string
-  mode?: "read_only" | "workspace_write"
-  shares?: string[]
-  abort?: AbortSignal
-}): BashContext {
+function context(
+  identity: Pick<BashContext, "sessionID" | "messageID" | "callID">,
+  options: {
+    workspace: string
+    mode?: "read_only" | "workspace_write"
+    shares?: string[]
+    abort?: AbortSignal
+  },
+): BashContext {
   return {
-    sessionID: crypto.randomUUID(),
-    messageID: "message",
+    ...identity,
     agent: PrimaryAgentIdentity.names.general,
     abort: options.abort ?? new AbortController().signal,
     metadata() {},
@@ -49,25 +53,30 @@ nativeTest(
       await ScopeContext.provide({
         scope: await tmp.scope(),
         async fn() {
-          const running = await LocalBashBackend.execute(
-            { command: "/bin/sleep 20", yieldSeconds: 0.01 },
-            { ...context({ workspace: tmp.path, mode: "read_only" }), workBrief: "read-only task" },
-          )
-          const processInfo = ProcessRegistry.get(running.metadata.processId!)!
-          expect(running.metadata.background).toBe(true)
-          try {
-            const result = await LocalBashBackend.execute(
-              { command: "printf independent" },
-              {
-                ...context({ workspace: tmp.path, abort: AbortSignal.timeout(5000) }),
-                workBrief: "independent writer",
-              },
-            )
-            expect(result.output).toBe("independent")
-            expect(processInfo.child?.alive?.()).toBe(true)
-          } finally {
-            await ProcessRegistry.terminate(processInfo)
-          }
+          const session = await Session.create({})
+          const params = { command: "/bin/sleep 20", yieldSeconds: 0.01 }
+          await withToolRun({ session, tool: "bash", args: params }, async (identity) => {
+            const running = await LocalBashBackend.execute(params, {
+              ...context(identity, { workspace: tmp.path, mode: "read_only" }),
+              workBrief: "read-only task",
+            })
+            const processInfo = ProcessRegistry.get(running.metadata.processId!)!
+            expect(running.metadata.background).toBe(true)
+            try {
+              const writer = await Session.create({})
+              const params = { command: "printf independent" }
+              const result = await withToolRun({ session: writer, tool: "bash", args: params }, (identity) =>
+                LocalBashBackend.execute(params, {
+                  ...context(identity, { workspace: tmp.path, abort: AbortSignal.timeout(5000) }),
+                  workBrief: "independent writer",
+                }),
+              )
+              expect(result.output).toBe("independent")
+              expect(processInfo.child?.alive?.()).toBe(true)
+            } finally {
+              await ProcessRegistry.terminate(processInfo)
+            }
+          })
         },
       })
     }),
@@ -83,41 +92,43 @@ nativeTest(
       const scopeA = await a.scope(),
         scopeB = await b.scope()
       for (const shared of [false, true]) {
-        const processInfo = await ScopeContext.provide({
+        await ScopeContext.provide({
           scope: scopeA,
           async fn() {
-            const running = await LocalBashBackend.execute(
-              { command: "/bin/sleep 20", yieldSeconds: 0.01 },
-              {
-                ...context({ workspace: a.path, mode: "workspace_write", shares: shared ? [b.path] : [] }),
+            const session = await Session.create({})
+            const params = { command: "/bin/sleep 20", yieldSeconds: 0.01 }
+            await withToolRun({ session, tool: "bash", args: params }, async (identity) => {
+              const running = await LocalBashBackend.execute(params, {
+                ...context(identity, { workspace: a.path, mode: "workspace_write", shares: shared ? [b.path] : [] }),
                 workBrief: "workspace writer",
-              },
-            )
-            return ProcessRegistry.get(running.metadata.processId!)!
+              })
+              const processInfo = ProcessRegistry.get(running.metadata.processId!)!
+              try {
+                await ScopeContext.provide({
+                  scope: scopeB,
+                  async fn() {
+                    const session = await Session.create({})
+                    const params = { command: "printf independent" }
+                    const result = withToolRun({ session, tool: "bash", args: params }, (identity) =>
+                      LocalBashBackend.execute(params, {
+                        ...context(identity, {
+                          workspace: b.path,
+                          mode: "workspace_write",
+                          abort: AbortSignal.timeout(5000),
+                        }),
+                        workBrief: "other workspace writer",
+                      }),
+                    )
+                    expect((await result).output).toBe("independent")
+                    expect(processInfo.child?.alive?.()).toBe(true)
+                  },
+                })
+              } finally {
+                await ProcessRegistry.terminate(processInfo)
+              }
+            })
           },
         })
-        try {
-          await ScopeContext.provide({
-            scope: scopeB,
-            async fn() {
-              const result = LocalBashBackend.execute(
-                { command: "printf independent" },
-                {
-                  ...context({
-                    workspace: b.path,
-                    mode: "workspace_write",
-                    abort: AbortSignal.timeout(5000),
-                  }),
-                  workBrief: "other workspace writer",
-                },
-              )
-              expect((await result).output).toBe("independent")
-              expect(processInfo.child?.alive?.()).toBe(true)
-            },
-          })
-        } finally {
-          await ProcessRegistry.terminate(processInfo)
-        }
       }
     }),
   20000,

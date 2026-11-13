@@ -6,7 +6,7 @@ import { WorkspaceBinding } from "@ericsanchezok/synergy-harness/workspace"
 import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
 import { WorkspaceOperations } from "@ericsanchezok/synergy-harness/workspace/operations"
 import { RuntimeMaintenance } from "@ericsanchezok/synergy-harness/storage/runtime-maintenance"
-import { testRuntime } from "@ericsanchezok/synergy-harness/test/support/runtime"
+import { testEnvironmentRuntime as testRuntime } from "@ericsanchezok/synergy-harness/test/support/environment-origin"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { registerNativeEnvironment } from "../../src/environment/native"
 import { WorkspaceCoordinator } from "../../src/workspace/coordinator"
@@ -32,6 +32,7 @@ for (const unknown of [false, true])
         spec: {},
       })
       await using resources = await EnvironmentResources.resolve({
+        origin: runtime.origin("maintenance-1"),
         scopeID: scope.id,
         workspaceID: workspace.id,
         environmentID: environment.id,
@@ -62,6 +63,7 @@ for (const unknown of [false, true])
       using receiptFault = spyOn(files, "checkpointStatus").mockImplementation((id) =>
         unknown ? Promise.resolve(undefined) : checkpointStatus(id),
       )
+      await resources.release()
       const lease = await RuntimeMaintenance.begin({
         purpose: "organization-backup",
         requestID: "original-file-maintenance",
@@ -73,6 +75,18 @@ for (const unknown of [false, true])
           requestID: "original-file-maintenance",
         },
       })
+      let primary: { error: unknown } | undefined
+      const report = (stage: string, error: unknown) => {
+        if (error instanceof RuntimeMaintenance.Blocked)
+          console.error(
+            "Workspace maintenance blockers",
+            JSON.stringify({
+              stage,
+              unknown,
+              requirements: error.data.requirements?.map(({ owner, code }) => ({ owner, code })),
+            }),
+          )
+      }
       try {
         if (unknown) {
           await expect(RuntimeMaintenance.drain(lease)).rejects.toBeInstanceOf(RuntimeMaintenance.Blocked)
@@ -86,8 +100,19 @@ for (const unknown of [false, true])
         expect(writes).toBe(1)
         expect(await WorkspaceOperations.write(input)).toMatchObject({ id: input.id, state: "completed" })
         expect(new Uint8Array(await Bun.file(path.join(temporary.path, input.path)).arrayBuffer())).toEqual(input.data)
+      } catch (error) {
+        primary = { error }
+        report("maintenance", error)
+        throw error
       } finally {
-        await RuntimeMaintenance.release(lease)
+        try {
+          await RuntimeMaintenance.release(lease)
+        } catch (error) {
+          report("release", error)
+          if (primary)
+            throw new AggregateError([primary.error, error], "Workspace maintenance and original release failed")
+          throw error
+        }
       }
     })
   }, 20_000)

@@ -12,7 +12,10 @@ import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { FileTime } from "@ericsanchezok/synergy-harness/file/time"
 import { ApplyPatchTool } from "../../src/tools/apply-patch"
 import { FileView } from "../../src/file/view"
-import { testRuntime } from "../support/runtime"
+import { testRuntime as localRuntime } from "../support/runtime"
+import { testEnvironmentRuntime } from "@ericsanchezok/synergy-harness/test/support/environment-origin"
+
+const testRuntime = (options: Parameters<typeof localRuntime>[0] = {}) => testEnvironmentRuntime(options, localRuntime)
 
 for (const phase of ["write", "delete"] as const)
   for (const reachable of [true, false])
@@ -35,6 +38,7 @@ for (const phase of ["write", "delete"] as const)
               backend: { provider: "objects", spec: { blobStore: "patch-receipt" } },
             })
             await using resources = await EnvironmentResources.resolve({
+              origin: runtime.origin("apply-patch-selected-1"),
               scopeID: workspace.scopeID,
               workspaceID: workspace.id,
               needs: { workspace: true },
@@ -162,6 +166,7 @@ for (const live of [false, true])
             spec: {},
           })
           await using resources = await EnvironmentResources.resolve({
+            origin: runtime.origin("apply-patch-selected-2"),
             ...selection,
             environmentID: environment.id,
             needs: live ? { execution: "exec" } : { workspace: true },

@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
 import path from "node:path"
-import { testRuntime } from "@ericsanchezok/synergy-harness/test/support/runtime"
+import { testEnvironmentRuntime as testRuntime } from "@ericsanchezok/synergy-harness/test/support/environment-origin"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { EnvironmentResources } from "@ericsanchezok/synergy-harness/environment/resources"
 import { Environment } from "@ericsanchezok/synergy-harness/environment"
@@ -33,6 +33,7 @@ test("native directory and object Workspaces resolve through one lazy execution 
     })
     const environment = await Environment.bind({ scopeID: scope.id, ownerID: "owner", provider: "native", spec: {} })
     await using files = await EnvironmentResources.resolve({
+      origin: runtime.origin("resources-1"),
       scopeID: scope.id,
       workspaceID: directory.id,
       environmentID: environment.id,
@@ -42,6 +43,7 @@ test("native directory and object Workspaces resolve through one lazy execution 
     expect((await Environment.get(environment.id, scope.id)).state).toBe("idle")
     {
       await using execution = await EnvironmentResources.resolve({
+        origin: runtime.origin("resources-2"),
         scopeID: scope.id,
         workspaceID: object.id,
         environmentID: environment.id,

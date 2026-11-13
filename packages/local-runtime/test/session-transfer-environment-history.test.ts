@@ -182,7 +182,7 @@ test("source preparation saves an exited native operation and retains its origin
         expect(completed.outputCursor).toBeGreaterThan(1)
         const original = await Storage.read(originalKey)
         expect(original).toHaveProperty("execution.retainedOwnerFields.nested.original", "preserved exactly")
-        expect(prepared.root.owners["session-environments"]).toBe(2)
+        expect(prepared.root.owners["session-environments"]).toBe(3)
         return {
           session: await Session.get(session.id),
           environment,

@@ -1,6 +1,8 @@
 import { $ } from "bun"
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import path from "path"
+import { Session } from "@ericsanchezok/synergy-harness/session"
+import { withToolRun } from "@ericsanchezok/synergy-harness/test/support/rollout"
 import { BashTool } from "@ericsanchezok/synergy-local-runtime/tools/bash"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
@@ -32,6 +34,28 @@ async function worktreeFixture() {
 }
 
 const inProject = <T>(fn: () => T) => runtime.run(() => withProjectScope(async () => fn()))
+
+async function bashTool() {
+  const tool = await BashTool.init()
+  const session = await Session.create({})
+  return {
+    ...tool,
+    execute: (params: Parameters<typeof tool.execute>[0], context: Parameters<typeof tool.execute>[1]) =>
+      withToolRun({ session, tool: "bash", args: params }, (identity) =>
+        tool.execute(params, { ...context, ...identity }),
+      ),
+  }
+}
+
+async function executeLocalBash(
+  params: Parameters<typeof LocalBashBackend.execute>[0],
+  context: Parameters<typeof LocalBashBackend.execute>[1],
+) {
+  const session = await Session.create({})
+  return withToolRun({ session, tool: "bash", args: params }, (identity) =>
+    LocalBashBackend.execute(params, { ...context, ...identity }),
+  )
+}
 
 const ctx = {
   sessionID: "test",
@@ -101,7 +125,7 @@ describe("tool.bash", () => {
       await ScopeContext.provide({
         scope: (await Scope.fromDirectory(projectRoot)).scope,
         fn: async () => {
-          const bash = await BashTool.init()
+          const bash = await bashTool()
           const result = await bash.execute(
             {
               command: "echo 'test'",
@@ -151,7 +175,7 @@ describe("tool.bash", () => {
 
   test("accepts positive timing controls and rejects invalid timing values", () =>
     inProject(async () => {
-      const bash = await BashTool.init()
+      const bash = await bashTool()
       expect(bash.parameters.safeParse({ command: "echo ok" }).success).toBe(true)
       expect(
         bash.parameters.safeParse({
@@ -171,7 +195,7 @@ describe("tool.bash", () => {
 
   test("rejects removed envID instead of falling back to local execution", () =>
     inProject(async () => {
-      const bash = await BashTool.init()
+      const bash = await bashTool()
       expect(
         bash.parameters.safeParse({
           command: "echo unsafe",
@@ -183,7 +207,7 @@ describe("tool.bash", () => {
   test("auto-backgrounds long commands after yieldSeconds", () =>
     inProject(async () => {
       await withProjectScope(async () => {
-        const bash = await BashTool.init()
+        const bash = await bashTool()
         const result = await bash.execute(
           {
             command: sleepCommand(2000),
@@ -202,7 +226,7 @@ describe("tool.bash", () => {
   test("commands that finish before auto-backgrounding return foreground results", () =>
     inProject(async () => {
       await withProjectScope(async () => {
-        const bash = await BashTool.init()
+        const bash = await bashTool()
         const result = await bash.execute(
           {
             command: "echo foreground",
@@ -224,7 +248,7 @@ describe("tool.bash", () => {
           ...ctx,
           extra: { ...ctx.extra, shellAllowDetachedDaemons: true },
         }
-        const result = await LocalBashBackend.execute(
+        const result = await executeLocalBash(
           {
             command: "(sleep 0.05; printf late-tail) &",
 
@@ -242,7 +266,7 @@ describe("tool.bash", () => {
     inProject(async () => {
       ProcessRegistry.reset()
       await withProjectScope(async () => {
-        const result = await LocalBashBackend.execute(
+        const result = await executeLocalBash(
           {
             command: sleepCommand(100),
 
@@ -269,7 +293,7 @@ describe("tool.bash", () => {
   test("parallel bash calls return independent inline outputs", () =>
     inProject(async () => {
       await withProjectScope(async () => {
-        const bash = await BashTool.init()
+        const bash = await bashTool()
         const [left, right] = await Promise.all([
           bash.execute({ command: "echo left" }, { ...ctx, workBrief: "Echo left" }),
           bash.execute({ command: "echo right" }, { ...ctx, workBrief: "Echo right" }),
@@ -299,7 +323,7 @@ describe("tool.bash", () => {
     inProject(async () => {
       await withProjectScope(async () => {
         await expect(
-          LocalBashBackend.execute(
+          executeLocalBash(
             {
               command: "nohup echo hi > daemon.log 2>&1 &",
             },
@@ -317,7 +341,7 @@ describe("tool.bash", () => {
           extra: { ...ctx.extra, shellAllowDetachedDaemons: true },
         }
         // no rejection expected; command may fail at runtime but should not be blocked
-        const result = await LocalBashBackend.execute(
+        const result = await executeLocalBash(
           {
             command: "echo allowed",
           },
@@ -334,7 +358,7 @@ describe("tool.bash", () => {
           ...ctx,
           extra: { ...ctx.extra, controlProfile: "full_access" },
         }
-        const result = await LocalBashBackend.execute(
+        const result = await executeLocalBash(
           {
             command: "echo allowed",
           },
@@ -361,7 +385,7 @@ describe("tool.bash", () => {
       await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
-          const bash = await BashTool.init()
+          const bash = await bashTool()
           const result = await bash.execute(
             {
               command: bunEval(
@@ -397,7 +421,7 @@ describe("tool.bash permissions", () => {
       await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
-          const bash = await BashTool.init()
+          const bash = await bashTool()
           const requests: Array<Omit<PermissionNext.Request, "id" | "sessionID" | "tool">> = []
           const testCtx = {
             ...ctx,
@@ -424,7 +448,7 @@ describe("tool.bash permissions", () => {
       await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
-          const bash = await BashTool.init()
+          const bash = await bashTool()
           const requests: Array<Omit<PermissionNext.Request, "id" | "sessionID" | "tool">> = []
           const testCtx = {
             ...ctx,
@@ -453,7 +477,7 @@ describe("tool.bash permissions", () => {
       await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
-          const bash = await BashTool.init()
+          const bash = await bashTool()
           const requests: Array<Omit<PermissionNext.Request, "id" | "sessionID" | "tool">> = []
           const testCtx = {
             ...ctx,
@@ -481,7 +505,7 @@ describe("tool.bash permissions", () => {
       await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
-          const bash = await BashTool.init()
+          const bash = await bashTool()
           const requests: Array<Omit<PermissionNext.Request, "id" | "sessionID" | "tool">> = []
           const testCtx = {
             ...ctx,
@@ -506,7 +530,7 @@ describe("tool.bash permissions", () => {
       await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
-          const bash = await BashTool.init()
+          const bash = await bashTool()
           const requests: Array<Omit<PermissionNext.Request, "id" | "sessionID" | "tool">> = []
           const testCtx = {
             ...ctx,
@@ -533,7 +557,7 @@ describe("tool.bash permissions", () => {
       await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
-          const bash = await BashTool.init()
+          const bash = await bashTool()
           const requests: Array<Omit<PermissionNext.Request, "id" | "sessionID" | "tool">> = []
           const testCtx = {
             ...ctx,
@@ -563,7 +587,7 @@ describe("tool.bash permissions", () => {
       await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
-          const bash = await BashTool.init()
+          const bash = await bashTool()
           const requests: Array<Omit<PermissionNext.Request, "id" | "sessionID" | "tool">> = []
           const testCtx = {
             ...ctx,
@@ -589,7 +613,7 @@ describe("tool.bash permissions", () => {
       await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
-          const bash = await BashTool.init()
+          const bash = await bashTool()
           const requests: Array<Omit<PermissionNext.Request, "id" | "sessionID" | "tool">> = []
           const testCtx = {
             ...ctx,
@@ -615,7 +639,7 @@ describe("tool.bash permissions", () => {
       await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
-          const bash = await BashTool.init()
+          const bash = await bashTool()
           const testCtx = {
             ...ctx,
             extra: {
@@ -644,7 +668,7 @@ describe("tool.bash truncation", () => {
       await ScopeContext.provide({
         scope: (await Scope.fromDirectory(projectRoot)).scope,
         fn: async () => {
-          const bash = await BashTool.init()
+          const bash = await bashTool()
           const lineCount = Truncate.MAX_LINES + 500
           const result = await bash.execute(
             {
@@ -664,7 +688,7 @@ describe("tool.bash truncation", () => {
       await ScopeContext.provide({
         scope: (await Scope.fromDirectory(projectRoot)).scope,
         fn: async () => {
-          const bash = await BashTool.init()
+          const bash = await bashTool()
           const byteCount = Truncate.MAX_BYTES + 10000
           const result = await bash.execute(
             {
@@ -684,7 +708,7 @@ describe("tool.bash truncation", () => {
       await ScopeContext.provide({
         scope: (await Scope.fromDirectory(projectRoot)).scope,
         fn: async () => {
-          const bash = await BashTool.init()
+          const bash = await bashTool()
           const result = await bash.execute(
             {
               command: bunEval(`console.log("hello")`),
@@ -703,7 +727,7 @@ describe("tool.bash truncation", () => {
       await ScopeContext.provide({
         scope: (await Scope.fromDirectory(projectRoot)).scope,
         fn: async () => {
-          const bash = await BashTool.init()
+          const bash = await bashTool()
           const lineCount = Truncate.MAX_LINES + 100
           const result = await bash.execute(
             {
@@ -734,7 +758,7 @@ describe("tool.bash output cap", () => {
       await ScopeContext.provide({
         scope: (await Scope.fromDirectory(projectRoot)).scope,
         fn: async () => {
-          const bash = await BashTool.init()
+          const bash = await bashTool()
           const result = await bash.execute(
             {
               command: bunEval(`process.stdout.write("x".repeat(300000))`),
@@ -753,7 +777,7 @@ describe("tool.bash output cap", () => {
       await ScopeContext.provide({
         scope: (await Scope.fromDirectory(projectRoot)).scope,
         fn: async () => {
-          const bash = await BashTool.init()
+          const bash = await bashTool()
           const result = await bash.execute(
             {
               command: bunEval(`process.stdout.write("x".repeat(300000))`),
@@ -806,7 +830,7 @@ describe("tool.bash metadata throttling", () => {
         await ScopeContext.provide({
           scope: (await Scope.fromDirectory(projectRoot)).scope,
           fn: async () => {
-            const bash = await BashTool.init()
+            const bash = await bashTool()
             const tracker = metadataTracker()
 
             await bash.execute(
@@ -829,7 +853,7 @@ describe("tool.bash metadata throttling", () => {
       await ScopeContext.provide({
         scope: (await Scope.fromDirectory(projectRoot)).scope,
         fn: async () => {
-          const bash = await BashTool.init()
+          const bash = await bashTool()
           const tracker = metadataTracker()
 
           await bash.execute(
@@ -862,7 +886,7 @@ describe("tool.bash workspace boundary enforcement", () => {
           originalCheckout,
         },
         fn: async () => {
-          const bash = await BashTool.init()
+          const bash = await bashTool()
           const result = await bash.execute(
             {
               command: "echo 'direct backend'",
@@ -887,7 +911,7 @@ describe("tool.bash workspace boundary enforcement", () => {
           scopeID: (await tmp.scope()).id,
         },
         fn: async () => {
-          const bash = await BashTool.init()
+          const bash = await bashTool()
           // Bash with workdir inside the active workspace should succeed
           const result = await bash.execute(
             {
@@ -916,7 +940,7 @@ describe("tool.bash workspace boundary enforcement", () => {
           originalCheckout,
         },
         fn: async () => {
-          const bash = await BashTool.init()
+          const bash = await bashTool()
           const requests: Array<Omit<PermissionNext.Request, "id" | "sessionID" | "tool">> = []
           const testCtx = {
             ...ctx,
@@ -947,7 +971,7 @@ describe("tool.bash workspace boundary enforcement", () => {
           scopeID: (await tmp.scope()).id,
         },
         fn: async () => {
-          const bash = await BashTool.init()
+          const bash = await bashTool()
           const outsideDir = "/tmp/outside-" + Math.random().toString(36).slice(2)
           const requests: Array<Omit<PermissionNext.Request, "id" | "sessionID" | "tool">> = []
           const testCtx = {
@@ -983,7 +1007,7 @@ describe("tool.bash workspace boundary enforcement", () => {
           originalCheckout: tmp.originalCheckout,
         },
         fn: async () => {
-          const bash = await BashTool.init()
+          const bash = await bashTool()
           const result = await bash.execute(
             {
               command: "echo 'test'",

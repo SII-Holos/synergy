@@ -6,6 +6,8 @@ import { ChildProcessClose } from "@ericsanchezok/synergy-harness/process/child-
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { LocalBashBackend } from "../src/tools/bash/local"
+import { Session } from "@ericsanchezok/synergy-harness/session"
+import { withToolRun } from "@ericsanchezok/synergy-harness/test/support/rollout"
 import { testRuntime } from "./support/runtime"
 
 test("closing a Runtime drains a background child even after its history entry is removed", async () => {
@@ -51,22 +53,24 @@ test("closing a Runtime drains a background child even after its history entry i
             "base64",
           )
           const command = `"${process.execPath}" -e "eval(Buffer.from('${script}', 'base64').toString())"`
+          const session = await Session.create({})
           phase = "starting shell"
           controller.signal.throwIfAborted()
-          execution = LocalBashBackend.execute(
-            { command, yieldSeconds: 0.01 },
-            {
-              sessionID: "process-owner",
-              messageID: "message",
-              agent: PrimaryAgentIdentity.names.general,
-              abort: controller.signal,
-              metadata({ metadata }) {
-                const match = /^ready:(\d+)\r?\n/.exec(metadata?.output ?? "")
-                if (match) ready.resolve(Number(match[1]))
+          execution = withToolRun({ session, tool: "bash", args: { command, yieldSeconds: 0.01 } }, (identity) =>
+            LocalBashBackend.execute(
+              { command, yieldSeconds: 0.01 },
+              {
+                ...identity,
+                agent: PrimaryAgentIdentity.names.general,
+                abort: controller.signal,
+                metadata({ metadata }) {
+                  const match = /^ready:(\d+)\r?\n/.exec(metadata?.output ?? "")
+                  if (match) ready.resolve(Number(match[1]))
+                },
+                async ask() {},
+                extra: { shellBypassSandbox: true },
               },
-              async ask() {},
-              extra: { shellBypassSandbox: true },
-            },
+            ),
           )
           const result = await Promise.race([execution, expired.promise])
           expect(result.metadata.background).toBe(true)

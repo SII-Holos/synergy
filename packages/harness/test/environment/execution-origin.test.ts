@@ -16,6 +16,7 @@ import { StoragePath } from "../../src/storage/path"
 import { MigrationRegistry } from "../../src/migration/registry"
 import { environmentMigrations } from "../../src/environment/migration"
 import { executionOriginPhysicalMigration } from "../../src/environment/execution-origin-migration"
+import { executionSourcePhysicalMigration } from "../../src/environment/execution-source-migration"
 import { tmpdir } from "../support/fixture"
 import { SessionLifecycle } from "../../src/session/lifecycle"
 import { SessionTransferEpochs } from "../../src/session/transfer-epochs"
@@ -68,7 +69,11 @@ async function fixture(
         MigrationRegistry.unregister("environment")
         MigrationRegistry.register(
           "environment",
-          environmentMigrations.filter((migration) => migration.id !== executionOriginPhysicalMigration.id),
+          environmentMigrations.filter(
+            (migration) =>
+              migration.id !== executionOriginPhysicalMigration.id &&
+              migration.id !== executionSourcePhysicalMigration.id,
+          ),
         )
       }
       EnvironmentProviders.register({

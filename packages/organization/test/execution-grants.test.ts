@@ -488,24 +488,28 @@ test("a signed root proof reconciles a lost B receipt and binds once across conn
   })
 })
 
-test("shared work retains its original resources while resource changes authorize the actual selector", async () => {
-  await using f = await commandFixture()
-  await f.connect()
-  const prepared = await task(f, "bob")
-  await f.run(async () => {
-    expect((await Resources.available(f.credentials.bob, "project", { limit: 50 })).items).toEqual([])
-    const bob = (await Record.read(Record.Account, Keys.account("bob")))!
-    await Storage.write(Keys.account("bob"), { ...bob, state: "removed", authRevision: bob.authRevision + 1 })
-    const bound = await f.execution.bind(await proof(f, prepared.receipt))
-    expect(bound.actor.subjectID).toBe("bob")
-    expect(bound.selection.modelResourceID).toBe(prepared.resource.resourceID)
-    const alice = (await Record.read(Record.Account, Keys.account("alice")))!
-    await Storage.write(Keys.account("alice"), { ...alice, state: "removed", authRevision: alice.authRevision + 1 })
-    await expect(f.execution.bind(await proof(f, prepared.receipt))).rejects.toMatchObject({
-      data: { code: "PERMISSION_DENIED" },
+for (const removed of ["actor", "resource-owner"] as const)
+  test(`shared work retains original resources and rejects a removed ${removed}`, async () => {
+    await using f = await commandFixture()
+    await f.connect()
+    const prepared = await task(f, "bob")
+    await f.run(async () => {
+      expect((await Resources.available(f.credentials.bob, "project", { limit: 50 })).items).toEqual([])
+      const bound = await f.execution.bind(await proof(f, prepared.receipt))
+      expect(bound.actor.subjectID).toBe("bob")
+      expect(bound.selection.modelResourceID).toBe(prepared.resource.resourceID)
+      const accountID = removed === "actor" ? "bob" : "alice"
+      const account = (await Record.read(Record.Account, Keys.account(accountID)))!
+      await Storage.write(Keys.account(accountID), {
+        ...account,
+        state: "removed",
+        authRevision: account.authRevision + 1,
+      })
+      await expect(f.execution.bind(await proof(f, prepared.receipt))).rejects.toMatchObject({
+        data: { code: "PERMISSION_DENIED" },
+      })
     })
   })
-})
 
 for (const change of ["expiry", "connection"] as const)
   test(`root publication rolls back when ${change} changes after its writes`, async () => {
@@ -628,7 +632,10 @@ test("binding rejects altered proofs, unaccepted attempts, disabled resources an
     await Storage.write(Keys.projectMember("project", "alice"), member)
     const project = (await Record.read(Record.Project, Keys.project("project")))!
     await Storage.write(Keys.project("project"), { ...project, state: "archived" })
-    expect((await f.execution.bind(original)).state).toBe("bound")
+    await expect(f.execution.bind(original)).rejects.toMatchObject({ data: { code: "PERMISSION_DENIED" } })
+    expect(
+      (await Record.read(Record.ExecutionGrant, Keys.executionGrant(prepared.permit.provisionalGrantID!)))?.state,
+    ).toBe("provisional")
   })
   const browser = await fetch(new URL("/runtime/v1/execution/bind", f.baseUrl), {
     method: "POST",

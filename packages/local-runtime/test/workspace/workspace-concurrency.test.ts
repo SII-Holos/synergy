@@ -4,6 +4,7 @@ import path from "node:path"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
+import { withToolRun } from "@ericsanchezok/synergy-harness/test/support/rollout"
 import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
 import { WorkspaceCoordinator } from "../../src/workspace/coordinator"
 import { Worktree } from "../../src/workspace/worktree"
@@ -51,27 +52,27 @@ test("an exited full-access Bash does not block another worktree while its turn 
           scope,
           workspace: a!.workspace,
           fn: () =>
-            WorkspaceAccess.task({ sessionID: a!.id, workspace: a!.workspace, lazy: true }, async () => {
-              const result = await LocalBashBackend.execute(
-                { command: "echo audit-command-finished" },
-                {
-                  ...{
-                    sessionID: a!.id,
-                    messageID: "audit-a",
-                    callID: "audit-a",
-                    agent: PrimaryAgentIdentity.names.general,
-                    abort: AbortSignal.timeout(10000),
-                    metadata() {},
-                    async ask() {},
-                    extra: { shellBypassSandbox: true, controlProfile: "full_access" },
+            withToolRun({ session: a!, tool: "bash", args: { command: "echo audit-command-finished" } }, (identity) =>
+              WorkspaceAccess.task({ sessionID: a!.id, workspace: a!.workspace, lazy: true }, async () => {
+                const result = await LocalBashBackend.execute(
+                  { command: "echo audit-command-finished" },
+                  {
+                    ...{
+                      ...identity,
+                      agent: PrimaryAgentIdentity.names.general,
+                      abort: AbortSignal.timeout(10000),
+                      metadata() {},
+                      async ask() {},
+                      extra: { shellBypassSandbox: true, controlProfile: "full_access" },
+                    },
+                    workBrief: "Analysis fixture",
                   },
-                  workBrief: "Analysis fixture",
-                },
-              )
-              expect(result.output.trim()).toBe("audit-command-finished")
-              ready.resolve()
-              await release.promise
-            }),
+                )
+                expect(result.output.trim()).toBe("audit-command-finished")
+                ready.resolve()
+                await release.promise
+              }),
+            ),
         })
         void writer.catch((error) => ready.reject(error))
         try {
@@ -86,19 +87,17 @@ test("an exited full-access Bash does not block another worktree while its turn 
                 { sessionID: b!.id, workspace: b!.workspace, signal: scanAbort.signal, lazy: true },
                 async () => {
                   const tool = await ScanFilesTool.init()
-                  return tool.execute(
-                    { pattern: "audit-marker-7fd0", include: "audit-marker.txt" },
-                    {
-                      sessionID: b!.id,
-                      messageID: "audit-b",
-                      callID: "audit-b",
+                  const params = { pattern: "audit-marker-7fd0", include: "audit-marker.txt" }
+                  return withToolRun({ session: b!, tool: "scan_files", args: params }, (identity) =>
+                    tool.execute(params, {
+                      ...identity,
                       agent: PrimaryAgentIdentity.names.general,
                       abort: scanAbort.signal,
                       metadata() {},
                       async ask() {
                         scanning = true
                       },
-                    },
+                    }),
                   )
                 },
               ),
@@ -157,59 +156,60 @@ for (const shared of [false, true])
               originalCheckout: tmp.path,
             },
           })
-          const context = (id: string) => ({
-            sessionID: id,
-            messageID: "test",
-            callID: crypto.randomUUID(),
+          const context = (identity: { sessionID: string; messageID: string; callID: string }) => ({
+            ...identity,
             agent: PrimaryAgentIdentity.names.general,
             abort: AbortSignal.timeout(10_000),
             metadata() {},
             async ask() {},
             extra: { shellBypassSandbox: true, controlProfile: "full_access" },
           })
-          const result = await ScopeContext.provide({
+          await ScopeContext.provide({
             scope,
             workspace: a.workspace,
-            fn: () =>
-              LocalBashBackend.execute(
-                {
-                  command: process.platform === "win32" ? "ping -n 30 127.0.0.1 >NUL" : "/bin/sleep 30",
-
-                  yieldSeconds: 0.01,
-                },
-                { ...context(a.id), workBrief: "live work" },
-              ),
-          })
-          const running = ProcessRegistry.get(result.metadata.processId!)!
-          expect(result.metadata.background).toBe(true)
-          try {
-            await ScopeContext.provide({
-              scope,
-              workspace: b.workspace,
-              async fn() {
-                const written = await LocalBashBackend.execute(
-                  { command: "echo independent > concurrent.txt" },
-                  { ...context(b.id), workBrief: "concurrent work" },
-                )
-                expect(written.metadata.exit).toBe(0)
-                const scanner = await ScanFilesTool.init()
+            async fn() {
+              const params = {
+                command: process.platform === "win32" ? "ping -n 30 127.0.0.1 >NUL" : "/bin/sleep 30",
+                yieldSeconds: 0.01,
+              }
+              await withToolRun({ session: a, tool: "bash", args: params }, async (identity) => {
+                const result = await LocalBashBackend.execute(params, { ...context(identity), workBrief: "live work" })
+                const running = ProcessRegistry.get(result.metadata.processId!)!
+                expect(result.metadata.background).toBe(true)
+                try {
+                  await ScopeContext.provide({
+                    scope,
+                    workspace: b.workspace,
+                    async fn() {
+                      const params = { command: "echo independent > concurrent.txt" }
+                      const written = await withToolRun({ session: b, tool: "bash", args: params }, (identity) =>
+                        LocalBashBackend.execute(params, { ...context(identity), workBrief: "concurrent work" }),
+                      )
+                      expect(written.metadata.exit).toBe(0)
+                      const scanner = await ScanFilesTool.init()
+                      const scanParams = { pattern: "independent", include: "concurrent.txt" }
+                      const scanned = await withToolRun(
+                        { session: b, tool: "scan_files", args: scanParams },
+                        (identity) => scanner.execute(scanParams, context(identity)),
+                      )
+                      expect(scanned.output).toContain("independent")
+                      expect(running.child?.alive?.()).toBe(true)
+                      await expect(WorkspaceAccess.exclusive([first.path], async () => {})).rejects.toMatchObject({
+                        name: "WorkspaceBusyError",
+                      })
+                    },
+                  })
+                } finally {
+                  await ProcessRegistry.terminate(running)
+                }
                 expect(
-                  (await scanner.execute({ pattern: "independent", include: "concurrent.txt" }, context(b.id))).output,
-                ).toContain("independent")
-                expect(running.child?.alive?.()).toBe(true)
-                await expect(WorkspaceAccess.exclusive([first.path], async () => {})).rejects.toMatchObject({
-                  name: "WorkspaceBusyError",
-                })
-              },
-            })
-          } finally {
-            await ProcessRegistry.terminate(running)
-          }
-          expect(
-            (await Worktree.list())
-              .filter((item) => item.id === first.id || item.id === second.id)
-              .every((item) => !item.locked),
-          ).toBe(true)
+                  (await Worktree.list())
+                    .filter((item) => item.id === first.id || item.id === second.id)
+                    .every((item) => !item.locked),
+                ).toBe(true)
+              })
+            },
+          })
         },
       })
     })

@@ -62,7 +62,7 @@ test("an API token is shown once, survives restart and is fenced by project, ope
     await Storage.write(Keys.project("other"), { ...project, projectID: "other" })
     await Storage.write(Keys.session("one"), { ...session, projectID: "other" })
   })
-  expect((await read()).status).toBe(403)
+  expect((await read()).status).toBe(404)
   await f.run(async () => {
     const session = (await Record.read(Record.SessionDirectory, Keys.session("one")))!
     await Storage.write(Keys.session("one"), { ...session, projectID: "project" })
@@ -208,7 +208,7 @@ test("external bearer commands preserve signed token attribution, exact retries 
   expect((await fetch(new URL(`/org/v1/commands/request`, f.baseUrl), { headers })).status).toBe(401)
 })
 
-test("expiry and deployment replacement invalidate API tokens independently of browser sign-in", async () => {
+test("expiry fences the API token alone while deployment replacement fences all credentials", async () => {
   await using f = await directoryFixture()
   await f.run(() =>
     Storage.write(Keys.deployment(), {
@@ -226,6 +226,7 @@ test("expiry and deployment replacement invalidate API tokens independently of b
   const list = (token: string) =>
     fetch(new URL("/org/v1/projects/project/sessions", f.baseUrl), { headers: { authorization: `Bearer ${token}` } })
   expect((await list(issued.token!)).status).toBe(401)
+  expect((await f.request("alice", "/projects/project/sessions")).status).toBe(200)
   const second = await f.run(() => Tokens.create(f.credentials.alice, { ...input(), requestID: "new" }))
   await f.run(() =>
     Storage.write(Keys.deployment(), {
@@ -236,7 +237,7 @@ test("expiry and deployment replacement invalidate API tokens independently of b
     }),
   )
   expect((await list(second.token!)).status).toBe(401)
-  expect((await f.request("alice", "/projects/project/sessions")).status).toBe(200)
+  expect((await f.request("alice", "/projects/project/sessions")).status).toBe(401)
   expect(Protocol.Create.safeParse({ ...input(), operations: ["sessions.read", "sessions.read"] }).success).toBe(false)
 })
 

@@ -9,7 +9,7 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
 import type { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
-import { testRuntime } from "@ericsanchezok/synergy-harness/test/support/runtime"
+import { testEnvironmentRuntime as testRuntime } from "@ericsanchezok/synergy-harness/test/support/environment-origin"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { registerLocalRuntime } from "@ericsanchezok/synergy-local-runtime/register"
@@ -91,6 +91,7 @@ async function fixture(
           await using resources =
             needs?.workspace && caller?.workspaceID
               ? await EnvironmentResources.resolve({
+                  origin: runtime.origin("workbench-view-1"),
                   scopeID: caller.scope.id,
                   workspaceID: caller.workspaceID,
                   workspaceGeneration: ScopeContext.current.workspace?.generation,

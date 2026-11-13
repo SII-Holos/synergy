@@ -9,6 +9,7 @@ import { testRuntime } from "../support/runtime"
 import { tmpdir } from "../support/fixture"
 import { Tool } from "../../src/tool/tool"
 import { EnvironmentResources } from "../../src/environment/resources"
+import { EnvironmentOrigin } from "../../src/environment/origin"
 
 test("Workspace services share a generation and isolate sibling directories", async () => {
   const started: string[] = []
@@ -103,8 +104,10 @@ test("logical Workspace state has no filesystem prerequisite and remains owned b
 
 test("logical Workspace startup runs once through tools and Scope routes without a local projection", async () => {
   const started: string[] = []
+  let host: ReturnType<typeof EnvironmentOrigin.registerHost> | undefined
   await using runtime = await testRuntime({
     register() {
+      host = EnvironmentOrigin.registerHost("logical-workspace-startup-fixture")
       ScopeStartup.register({
         name: "logical-service",
         phase: "surface",
@@ -120,7 +123,13 @@ test("logical Workspace startup runs once through tools and Scope routes without
     await using fixture = await tmpdir()
     const scope = await fixture.scope()
     const workspace = await WorkspaceCatalog.create({ scopeID: scope.id, backend: { provider: "objects", spec: {} } })
-    const selection = { scopeID: scope.id, workspaceID: workspace.id, needs: { workspace: true } }
+    if (!host) throw new Error("Logical Workspace fixture has no registered native origin")
+    const selection = {
+      scopeID: scope.id,
+      workspaceID: workspace.id,
+      origin: host.capture("logical-workspace-startup"),
+      needs: { workspace: true },
+    }
     await using resources = await EnvironmentResources.resolve(selection)
     await ScopeContext.provide({
       scope,

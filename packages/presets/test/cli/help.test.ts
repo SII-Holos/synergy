@@ -26,12 +26,14 @@ describe("product CLI help", () => {
     runtime.run(async () => {
       await using tmp = await tmpdir()
       const env = { SYNERGY_HOME: tmp.path, SYNERGY_CWD: tmp.path }
-      expect(await cliHelp(["--help"], env)).not.toContain("synergy org")
+      const independentHelp = await cliHelp(["--help"], env)
+      expect(independentHelp).not.toMatch(/^\s*synergy org(?:\s|$)/m)
+      expect(independentHelp).toMatch(/^\s*synergy org-runtime(?:\s|$)/m)
       await Bun.write(
         `${tmp.path}/.synergy/config/synergy.d/140-features.jsonc`,
         JSON.stringify({ features: { optIn: ["organization"] } }),
       )
-      expect(await cliHelp(["--help"], env)).toContain("synergy org")
+      expect(await cliHelp(["--help"], env)).toMatch(/^\s*synergy org(?:\s|$)/m)
       expect(await cliHelp(["org", "init", "--help"], env)).toContain("--output")
       const serve = await cliHelp(["org", "serve", "--help"], env)
       for (const flag of ["--origin", "--port", "--hostname"]) expect(serve).toContain(flag)

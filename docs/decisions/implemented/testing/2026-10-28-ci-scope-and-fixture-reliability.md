@@ -18,6 +18,8 @@ The file-explorer and source-navigation fixtures retain one prepared Vite server
 
 Library deletion waits for the complete dialog set to disappear within its existing five-second deadline. Both detail and confirmation dialogs legitimately remain mounted until deletion and refetch settle, so a strict single-element disappearance locator races that transition. The neighboring-item and empty-list focus assertions still run after both dialogs close.
 
+Native tool fixtures create their actual Session, user root, assistant, Run and tool call through the original execution owners. Controlled resource observers instead use a composition-registered Host origin. Maintenance fixtures release their own resource admission before drainage unless that admission is the behavior under test. A roster mutation during Service drainage retains an operation accepted before admission closed and completes through that same captured tail. Derived reader versions, complete migration registries and public schema oracles follow the registered owners while retaining historical refusal and opaque-content checks.
+
 ## Alternatives considered
 
 **Increase global timeouts or rerun failed tests automatically.** This hides ordering and ownership defects while raising feedback cost; it does not demonstrate a repaired invariant.
