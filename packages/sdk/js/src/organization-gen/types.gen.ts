@@ -2076,6 +2076,11 @@ export type OrgCloudEnvironmentCreate = {
   name: string
 }
 
+export type OrgCloudEnvironmentPage = {
+  items: Array<OrgCloudEnvironment>
+  cursor?: string
+}
+
 export type OrgCloudCleanupPage = {
   version: 1
   grantID: string
@@ -3122,6 +3127,48 @@ export type OrgHandoffOptions = {
     projectRevision: string
     label: string
   } | null
+  environment?: {
+    source:
+      | {
+          kind: "none"
+        }
+      | {
+          kind: "native"
+          environmentID: string
+          provider: string
+          generation: number
+          descriptor: {
+            version: 1
+            kind: "native"
+            platform: string
+            architecture: string
+            capabilities: Array<"exec" | "pty" | "files">
+          }
+        }
+      | {
+          kind: "organization"
+          resourceID: string
+          resourceRevision: number
+          environmentID: string
+        }
+    expectedSelectionRevision: number
+    native: {
+      kind: "native"
+      provider: string
+      descriptor: {
+        version: 1
+        kind: "native"
+        platform: string
+        architecture: string
+        capabilities: Array<"exec" | "pty" | "files">
+      }
+      reference: {
+        environmentID: string
+        generation: number
+      } | null
+    } | null
+    choices: Array<"none" | "native" | "organization">
+  }
   choices: Array<
     | {
         kind: "native" | "organization-object" | "organization-live"
@@ -3138,6 +3185,59 @@ export type OrgHandoffOptions = {
         requiresDifference: false
       }
   >
+}
+
+export type OrgHandoffEnvironmentMapping = {
+  version: 1
+  expectedSelectionRevision: number
+  source:
+    | {
+        kind: "none"
+      }
+    | {
+        kind: "native"
+        environmentID: string
+        provider: string
+        generation: number
+        descriptor: {
+          version: 1
+          kind: "native"
+          platform: string
+          architecture: string
+          capabilities: Array<"exec" | "pty" | "files">
+        }
+      }
+    | {
+        kind: "organization"
+        resourceID: string
+        resourceRevision: number
+        environmentID: string
+      }
+  target:
+    | {
+        kind: "none"
+      }
+    | {
+        kind: "native"
+        provider: string
+        descriptor: {
+          version: 1
+          kind: "native"
+          platform: string
+          architecture: string
+          capabilities: Array<"exec" | "pty" | "files">
+        }
+        reference: {
+          environmentID: string
+          generation: number
+        } | null
+      }
+    | {
+        kind: "organization"
+        resourceID: string
+        resourceRevision: number
+        environmentID: string
+      }
 }
 
 export type OrgHandoffView = {
@@ -3233,6 +3333,7 @@ export type OrgHandoffView = {
         }
         acceptedDiffHash: null
       }
+  environmentMapping?: OrgHandoffEnvironmentMapping
   mappingHash: string
   cancelRequested: boolean
   workspaceDifference?: {
@@ -3316,6 +3417,7 @@ export type OrgHandoffPrepare =
             }
             acceptedDiffHash: null
           }
+      environmentMapping?: OrgHandoffEnvironmentMapping
     }
   | {
       handoffID: string
@@ -3393,6 +3495,7 @@ export type OrgHandoffProof =
       mappingPlanRevision: number
       shareGeneration: number
       purpose: "source-frozen"
+      environmentMappingHash?: string
       manifestHash: string
       commandSeq: number
       receivedSeq: number
@@ -3417,6 +3520,7 @@ export type OrgHandoffProof =
       mappingPlanRevision: number
       shareGeneration: number
       purpose: "target-prepared"
+      environmentMappingHash?: string
       manifestHash: string
       compatibilityHash: string
       convertedHash: string
@@ -9984,6 +10088,58 @@ export type OrgCloudEnvironmentsCreateResponses = {
 
 export type OrgCloudEnvironmentsCreateResponse =
   OrgCloudEnvironmentsCreateResponses[keyof OrgCloudEnvironmentsCreateResponses]
+
+export type OrgCloudEnvironmentsListData = {
+  body?: never
+  path: {
+    projectID: string
+  }
+  query: {
+    limit?: number
+    cursor?: string
+    resourceID: string
+  }
+  url: "/org/v1/projects/{projectID}/cloud/environments"
+}
+
+export type OrgCloudEnvironmentsListErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgCloudEnvironmentsListError = OrgCloudEnvironmentsListErrors[keyof OrgCloudEnvironmentsListErrors]
+
+export type OrgCloudEnvironmentsListResponses = {
+  /**
+   * Success
+   */
+  200: OrgCloudEnvironmentPage
+}
+
+export type OrgCloudEnvironmentsListResponse =
+  OrgCloudEnvironmentsListResponses[keyof OrgCloudEnvironmentsListResponses]
 
 export type OrgCloudEnvironmentsGetData = {
   body?: never

@@ -85,7 +85,11 @@ export function handoffRoutes(handoffs: () => Handoffs, publicOrigin?: string) {
       validator("param", session, validation),
       validator("json", Handoff.Prepare, validation),
       async (c) =>
-        c.json(await handoffs().prepare(credentials(c), c.req.valid("param").sessionID, c.req.valid("json"))),
+        c.json(
+          await handoffs().prepare(credentials(c), c.req.valid("param").sessionID, c.req.valid("json"), {
+            signal: c.req.raw.signal,
+          }),
+        ),
     )
     .get(
       "/sessions/:sessionID/handoffs",

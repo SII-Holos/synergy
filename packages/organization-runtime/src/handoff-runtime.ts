@@ -12,6 +12,7 @@ import { RuntimeIdentity } from "./home"
 import type { MemberConnectionOptions } from "./connection"
 import { createHandoffInspection } from "./handoff-inspection"
 import { registerHandoffCleanup } from "./handoff-recovery"
+import { OrganizationHandoffEnvironments } from "./handoff-environment"
 
 export function createRuntimeHandoff(input: { identity: RuntimeIdentity; runtimeID: string; ca?: string | string[] }) {
   const identity = RuntimeIdentity.parse(input.identity)
@@ -19,7 +20,7 @@ export function createRuntimeHandoff(input: { identity: RuntimeIdentity; runtime
   const target = Target.create({ identity, runtimeID: input.runtimeID })
   const closeCleanup = registerHandoffCleanup({ ...input, target: target.recover })
   const assertOwner = WorkspaceContent.captureOwner()
-  const dispatch: NonNullable<MemberConnectionOptions["handoff"]> = async (
+  const execute: NonNullable<MemberConnectionOptions["handoff"]> = async (
     authorization,
     connection,
     signal,
@@ -36,6 +37,8 @@ export function createRuntimeHandoff(input: { identity: RuntimeIdentity; runtime
       async mapping(session: Readonly<Session.Info>) {
         assertOwner()
         signal.throwIfAborted()
+        if (plan.environmentPlan)
+          return { workspaceIDs: {}, ...(await OrganizationHandoffEnvironments.targetMapping(session)) }
         const environment = session.environmentID
           ? await Environment.select({ scopeID: session.scope.id, ownerID: `handoff:${plan.handoffID}:${session.id}` })
           : undefined
@@ -96,6 +99,10 @@ export function createRuntimeHandoff(input: { identity: RuntimeIdentity; runtime
       ...(fact.purpose === "target-difference" ? { workspaceDifference: fact.difference } : {}),
     })
   }
+  const dispatch: NonNullable<MemberConnectionOptions["handoff"]> = (authorization, connection, signal, resources) =>
+    OrganizationHandoffEnvironments.withPlan(authorization, signal, () =>
+      execute(authorization, connection, signal, resources),
+    )
   return {
     dispatch,
     inspection: createHandoffInspection({ identity, runtimeID: input.runtimeID }),

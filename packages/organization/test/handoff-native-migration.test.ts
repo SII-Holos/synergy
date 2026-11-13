@@ -94,7 +94,7 @@ test("the original Handoff owner reads fresh records and upgrades both previous 
         cancelRequested: false,
       })
       expect(upgradeAccessRecord(key, value)).toMatchObject({
-        version: 3,
+        version: 4,
         request: previous.request,
         selectionActor: null,
       })
@@ -112,6 +112,28 @@ test("the original Handoff owner reads fresh records and upgrades both previous 
       expect(await Storage.read(key)).toEqual(value)
       expect(await Storage.read(cleanupKey)).toEqual({ version: 1, handoffID })
     }
+    const current4 = upgradeAccessRecord(key, current)
+    await Storage.write(key, current4)
+    expect((await handoffs.get(f.credentials.alice, handoffID)).handoffID).toBe(handoffID)
+    expect(await Storage.read(key)).toEqual(current4)
+    await expect(
+      f.run(async () => {
+        const concealed = {
+          ...current,
+          request: {
+            ...current.request,
+            environmentMapping: {
+              version: 1,
+              expectedSelectionRevision: 0,
+              source: { kind: "none" },
+              target: { kind: "none" },
+            },
+          },
+        }
+        await Storage.write(key, concealed)
+        return handoffs.get(f.credentials.alice, handoffID)
+      }),
+    ).rejects.toThrow()
     const actor = (subjectID: string) => ({
       kind: "account",
       orgID: "org",

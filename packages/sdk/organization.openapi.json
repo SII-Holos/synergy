@@ -4916,6 +4916,66 @@
         }
       }
     },
+    "/org/v1/projects/{projectID}/cloud/environments": {
+      "get": {
+        "operationId": "orgCloudEnvironments.list",
+        "summary": "List currently authorized Environments without allocating compute",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgCloudEnvironmentPage" } } }
+          },
+          "400": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "404": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectID",
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": { "default": 50, "type": "integer", "minimum": 1, "maximum": 100 }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
+          },
+          {
+            "in": "query",
+            "name": "resourceID",
+            "schema": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+            "required": true
+          }
+        ]
+      }
+    },
     "/org/v1/cloud/environments/{environmentID}": {
       "get": {
         "operationId": "orgCloudEnvironments.get",
@@ -11682,6 +11742,15 @@
         "required": ["projectID", "resourceID", "requestID", "name"],
         "additionalProperties": false
       },
+      "OrgCloudEnvironmentPage": {
+        "type": "object",
+        "properties": {
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/OrgCloudEnvironment" } },
+          "cursor": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
+        },
+        "required": ["items"],
+        "additionalProperties": false
+      },
       "OrgCloudCleanupPage": {
         "type": "object",
         "properties": {
@@ -13803,6 +13872,125 @@
               { "type": "null" }
             ]
           },
+          "environment": {
+            "type": "object",
+            "properties": {
+              "source": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": { "kind": { "type": "string", "const": "none" } },
+                    "required": ["kind"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": { "type": "string", "const": "native" },
+                      "environmentID": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 128,
+                        "pattern": "^[a-zA-Z0-9_-]+$"
+                      },
+                      "provider": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+                      "generation": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                      "descriptor": {
+                        "type": "object",
+                        "properties": {
+                          "version": { "type": "number", "const": 1 },
+                          "kind": { "type": "string", "const": "native" },
+                          "platform": { "type": "string", "minLength": 1, "maxLength": 64 },
+                          "architecture": { "type": "string", "minLength": 1, "maxLength": 64 },
+                          "capabilities": {
+                            "type": "array",
+                            "items": { "type": "string", "enum": ["exec", "pty", "files"] }
+                          }
+                        },
+                        "required": ["version", "kind", "platform", "architecture", "capabilities"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": ["kind", "environmentID", "provider", "generation", "descriptor"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": { "type": "string", "const": "organization" },
+                      "resourceID": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 128,
+                        "pattern": "^[a-zA-Z0-9_-]+$"
+                      },
+                      "resourceRevision": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                      "environmentID": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 128,
+                        "pattern": "^[a-zA-Z0-9_-]+$"
+                      }
+                    },
+                    "required": ["kind", "resourceID", "resourceRevision", "environmentID"],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              "expectedSelectionRevision": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "native": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": { "type": "string", "const": "native" },
+                      "provider": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+                      "descriptor": {
+                        "type": "object",
+                        "properties": {
+                          "version": { "type": "number", "const": 1 },
+                          "kind": { "type": "string", "const": "native" },
+                          "platform": { "type": "string", "minLength": 1, "maxLength": 64 },
+                          "architecture": { "type": "string", "minLength": 1, "maxLength": 64 },
+                          "capabilities": {
+                            "type": "array",
+                            "items": { "type": "string", "enum": ["exec", "pty", "files"] }
+                          }
+                        },
+                        "required": ["version", "kind", "platform", "architecture", "capabilities"],
+                        "additionalProperties": false
+                      },
+                      "reference": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "environmentID": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 128,
+                                "pattern": "^[a-zA-Z0-9_-]+$"
+                              },
+                              "generation": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+                            },
+                            "required": ["environmentID", "generation"],
+                            "additionalProperties": false
+                          },
+                          { "type": "null" }
+                        ]
+                      }
+                    },
+                    "required": ["kind", "provider", "descriptor", "reference"],
+                    "additionalProperties": false
+                  },
+                  { "type": "null" }
+                ]
+              },
+              "choices": { "type": "array", "items": { "type": "string", "enum": ["none", "native", "organization"] } }
+            },
+            "required": ["source", "expectedSelectionRevision", "native", "choices"],
+            "additionalProperties": false
+          },
           "choices": {
             "type": "array",
             "items": {
@@ -13851,6 +14039,131 @@
           "native",
           "choices"
         ],
+        "additionalProperties": false
+      },
+      "OrgHandoffEnvironmentMapping": {
+        "type": "object",
+        "properties": {
+          "version": { "type": "number", "const": 1 },
+          "expectedSelectionRevision": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "source": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": { "kind": { "type": "string", "const": "none" } },
+                "required": ["kind"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": { "type": "string", "const": "native" },
+                  "environmentID": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-zA-Z0-9_-]+$"
+                  },
+                  "provider": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+                  "generation": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                  "descriptor": {
+                    "type": "object",
+                    "properties": {
+                      "version": { "type": "number", "const": 1 },
+                      "kind": { "type": "string", "const": "native" },
+                      "platform": { "type": "string", "minLength": 1, "maxLength": 64 },
+                      "architecture": { "type": "string", "minLength": 1, "maxLength": 64 },
+                      "capabilities": {
+                        "type": "array",
+                        "items": { "type": "string", "enum": ["exec", "pty", "files"] }
+                      }
+                    },
+                    "required": ["version", "kind", "platform", "architecture", "capabilities"],
+                    "additionalProperties": false
+                  }
+                },
+                "required": ["kind", "environmentID", "provider", "generation", "descriptor"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": { "type": "string", "const": "organization" },
+                  "resourceID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+                  "resourceRevision": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                  "environmentID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
+                },
+                "required": ["kind", "resourceID", "resourceRevision", "environmentID"],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "target": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": { "kind": { "type": "string", "const": "none" } },
+                "required": ["kind"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": { "type": "string", "const": "native" },
+                  "provider": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+                  "descriptor": {
+                    "type": "object",
+                    "properties": {
+                      "version": { "type": "number", "const": 1 },
+                      "kind": { "type": "string", "const": "native" },
+                      "platform": { "type": "string", "minLength": 1, "maxLength": 64 },
+                      "architecture": { "type": "string", "minLength": 1, "maxLength": 64 },
+                      "capabilities": {
+                        "type": "array",
+                        "items": { "type": "string", "enum": ["exec", "pty", "files"] }
+                      }
+                    },
+                    "required": ["version", "kind", "platform", "architecture", "capabilities"],
+                    "additionalProperties": false
+                  },
+                  "reference": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "environmentID": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 128,
+                            "pattern": "^[a-zA-Z0-9_-]+$"
+                          },
+                          "generation": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+                        },
+                        "required": ["environmentID", "generation"],
+                        "additionalProperties": false
+                      },
+                      { "type": "null" }
+                    ]
+                  }
+                },
+                "required": ["kind", "provider", "descriptor", "reference"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": { "type": "string", "const": "organization" },
+                  "resourceID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+                  "resourceRevision": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                  "environmentID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
+                },
+                "required": ["kind", "resourceID", "resourceRevision", "environmentID"],
+                "additionalProperties": false
+              }
+            ]
+          }
+        },
+        "required": ["version", "expectedSelectionRevision", "source", "target"],
         "additionalProperties": false
       },
       "OrgHandoffView": {
@@ -14087,6 +14400,7 @@
               }
             ]
           },
+          "environmentMapping": { "$ref": "#/components/schemas/OrgHandoffEnvironmentMapping" },
           "mappingHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
           "cancelRequested": { "type": "boolean" },
           "workspaceDifference": {
@@ -14344,7 +14658,8 @@
                     "additionalProperties": false
                   }
                 ]
-              }
+              },
+              "environmentMapping": { "$ref": "#/components/schemas/OrgHandoffEnvironmentMapping" }
             },
             "required": [
               "handoffID",
@@ -14511,6 +14826,7 @@
               "mappingPlanRevision": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
               "shareGeneration": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
               "purpose": { "type": "string", "const": "source-frozen" },
+              "environmentMappingHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
               "manifestHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
               "commandSeq": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
               "receivedSeq": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
@@ -14571,6 +14887,7 @@
               "mappingPlanRevision": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
               "shareGeneration": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
               "purpose": { "type": "string", "const": "target-prepared" },
+              "environmentMappingHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
               "manifestHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
               "compatibilityHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
               "convertedHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },

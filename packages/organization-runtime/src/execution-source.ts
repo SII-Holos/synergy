@@ -4,6 +4,7 @@ import {
   OrganizationGatewayProtocol as Gateway,
   OrganizationCloudExecutionProtocol as CloudEnvironment,
   OrganizationCloudCleanupProtocol as CloudCleanup,
+  OrganizationHandoffProtocol as Handoff,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { Provider } from "@ericsanchezok/synergy-harness/provider/provider"
@@ -113,6 +114,73 @@ function current() {
   if (!value) throw denied("Organization command admission is unavailable")
   value.signal.throwIfAborted()
   return value
+}
+
+export async function withMemberHandoffPlan<T>(
+  value: Handoff.SignedMachinePlan,
+  signal: AbortSignal,
+  body: (plan: Readonly<Handoff.MachinePlan>, assert: () => void) => Promise<T>,
+): Promise<T> {
+  const authorization = Handoff.SignedMachinePlan.parse(value)
+  const source = current()
+  const owner = WorkspaceContent.captureOwner(signal)
+  const connection = source.connection
+  const signer = { ...connection.signingIdentity }
+  const selected = {
+    orgID: connection.orgID,
+    deploymentIncarnation: connection.deploymentIncarnation,
+    runtimeID: connection.runtimeID,
+    connectionEpoch: connection.connectionEpoch,
+  }
+  const { plan } = authorization
+  const assert = () => {
+    owner()
+    signal.throwIfAborted()
+    source.signal.throwIfAborted()
+    EnvironmentExecutionSource.assertRegisteredOwner("organization")
+    if (
+      current() !== source ||
+      source.connection !== connection ||
+      connection.signingIdentity.keyID !== signer.keyID ||
+      connection.signingIdentity.publicKey !== signer.publicKey ||
+      connection.orgID !== selected.orgID ||
+      connection.deploymentIncarnation !== selected.deploymentIncarnation ||
+      connection.runtimeID !== selected.runtimeID ||
+      connection.connectionEpoch !== selected.connectionEpoch ||
+      plan.orgID !== selected.orgID ||
+      plan.deploymentIncarnation !== selected.deploymentIncarnation ||
+      plan.runtimeID !== selected.runtimeID ||
+      plan.connectionEpoch !== selected.connectionEpoch ||
+      plan.keyID !== signer.keyID ||
+      plan.issuedAt > Date.now() ||
+      plan.expiresAt <= Date.now()
+    )
+      throw new OrganizationRuntimeError({
+        code: "HANDOFF_BLOCKED",
+        message: "Environment mapping requires its original live enrolled machine authorization",
+        outcome: "not_dispatched",
+        retryable: false,
+      })
+  }
+  assert()
+  if (!(await Handoff.verifyMachinePlan(plan, authorization.signature, signer.publicKey)))
+    throw denied("Environment mapping has no original service signature")
+  assert()
+  const result = await body(plan, assert)
+  try {
+    assert()
+  } catch (error) {
+    throw new OrganizationRuntimeError(
+      {
+        code: "HANDOFF_BLOCKED",
+        message: "Original Environment mapping callback ended after native acceptance",
+        outcome: "unknown",
+        retryable: false,
+      },
+      { cause: error },
+    )
+  }
+  return result
 }
 
 function assertInfrastructureOwner(selection: Execution.Selection) {

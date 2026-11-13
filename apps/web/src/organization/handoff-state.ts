@@ -170,7 +170,12 @@ export function createOrganizationHandoffState(input: {
 }
 
 export function organizationHandoffOutcomeKnown(action: OrganizationHandoffAction, view: Handoff.View) {
-  if (action.kind === "prepare") return action.body.handoffID === view.handoffID
+  if (action.kind === "prepare")
+    return (
+      action.body.handoffID === view.handoffID &&
+      (!action.body.environmentMapping ||
+        JSON.stringify(action.body.environmentMapping) === JSON.stringify(view.environmentMapping))
+    )
   if (
     view.phase === "cancelled" &&
     view.workspaceMapping.kind === "organization-native" &&

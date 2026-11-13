@@ -13789,6 +13789,58 @@ msgid "organization.handoff.directory.unavailable"
 msgstr "尚未在此核验原先选定的目录名称。"
 
 #. js-lingui-explicit-id
+msgid "organization.handoff.environment.chooseEnvironment"
+msgstr "选择环境"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.environment.chooseResource"
+msgstr "选择执行资源"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.environment.cloud"
+msgstr "组织环境"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.environment.empty"
+msgstr "此资源下没有可用环境。"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.environment.incompatible"
+msgstr "请选择与此文件位置兼容的命令执行环境。"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.environment.keep"
+msgstr "继续使用当前云环境"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.environment.keepHint"
+msgstr "后续命令继续使用同一组织环境。移动对话不会分配计算资源或重新启动进程。"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.environment.label"
+msgstr "命令执行环境"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.environment.native"
+msgstr "目标电脑"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.environment.nativeHint"
+msgstr "后续命令将在目标电脑上执行。不会复制正在运行的进程或凭据。"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.environment.none"
+msgstr "仅使用文件"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.environment.noneHint"
+msgstr "文件仍可访问。执行命令前需另行选择执行环境。"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.environment.refresh"
+msgstr "重新检查环境"
+
+#. js-lingui-explicit-id
 msgid "organization.handoff.finishCancel"
 msgstr "确认源端取消"
 

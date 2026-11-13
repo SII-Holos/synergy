@@ -1024,6 +1024,10 @@ export namespace OrganizationCloud {
         name: input.name,
       })
       await Storage.write(key("environments", environment.id), locator)
+      await Storage.write(
+        [...projectKey("environments", account.orgID, input.projectID, resource.resourceID), environment.id],
+        { id: environment.id },
+      )
       await Storage.write(receipt, EnvironmentReceipt.parse({ schemaVersion: 1, digest: hash, id: environment.id }))
       return environmentView(locator)
     })
@@ -1040,6 +1044,39 @@ export namespace OrganizationCloud {
       generation: environment.generation,
       state: environment.state,
       activeUses: (await Environment.uses(locator.id)).length,
+    })
+  }
+
+  export async function listEnvironments(
+    credentials: Credentials,
+    projectID: string,
+    resourceID: string,
+    value: Identity.Page,
+  ) {
+    const page = Identity.Page.parse(value)
+    return Storage.snapshot(async () => {
+      const { account, resource } = await authorize(credentials, "resource.read", { resourceID, projectID })
+      if (resource.configuration.protocol !== "environment" || resource.state !== "enabled")
+        fail("NOT_FOUND", "Environment resource not found")
+      const prefix = projectKey("environments", account.orgID, projectID, resourceID)
+      const rows = await Storage.query({
+        prefix,
+        after: page.cursor ? [...prefix, page.cursor] : undefined,
+        limit: page.limit + 1,
+      })
+      const items = await Promise.all(
+        rows.slice(0, page.limit).map(async (row) => {
+          const id = Identity.ID.parse(row.key.at(-1))
+          const { locator } = await resolve(credentials, "environments", id)
+          if (locator.orgID !== account.orgID || locator.projectID !== projectID || locator.resourceID !== resourceID)
+            fail("PROTOCOL_MISMATCH", "Environment index has another resource or project owner")
+          return environmentView(locator)
+        }),
+      )
+      return Cloud.EnvironmentPage.parse({
+        items,
+        cursor: rows.length > page.limit ? items.at(-1)?.environmentID : undefined,
+      })
     })
   }
 

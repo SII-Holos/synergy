@@ -29,6 +29,7 @@ import {
   type HandoffTargetPlan,
 } from "./handoff-target-record"
 import { readRuntimeRegistration } from "./registration"
+import { OrganizationHandoffEnvironments } from "./handoff-environment"
 import { readHandoffCleanupAuthorization, type HandoffCleanupAuthorization } from "./handoff-recovery"
 
 export namespace OrganizationHandoffTarget {
@@ -183,11 +184,14 @@ export namespace OrganizationHandoffTarget {
       )
         fail("Native target consent belongs to another enrolled member")
       await assertHandoffHome(identity, runtimeID, plan)
+      if (plan.environmentPlan) OrganizationHandoffEnvironments.assertPlan(plan, "target")
       assertOwner(input.signal)
       const manifestHash = plan.manifestHash
       const frozen = plan.frozen?.proof
       if (!manifestHash || !frozen || frozen.purpose !== "source-frozen")
         fail("Destination preparation requires the authoritative frozen source fact")
+      if (plan.environmentPlan && frozen.environmentMappingHash !== plan.environmentPlan.hash)
+        fail("Destination preparation has another frozen Environment mapping")
       return { plan, manifestHash, frozen }
     }
     type Kind = "prepared" | "activated" | "retired" | "difference" | "preview-released"
@@ -703,6 +707,7 @@ export namespace OrganizationHandoffTarget {
           const fact = Handoff.Proof.parse({
             ...factBinding(plan),
             purpose: "target-prepared",
+            ...(plan.environmentPlan ? { environmentMappingHash: plan.environmentPlan.hash } : {}),
             manifestHash,
             compatibilityHash: compatibilityHash(root.owners),
             convertedHash: prepared.convertedHash,
@@ -760,6 +765,8 @@ export namespace OrganizationHandoffTarget {
         )
           fail("Destination activation requires its exact retained preparation")
         const preparedFact = saved.fact
+        if (plan.environmentPlan && preparedFact.environmentMappingHash !== plan.environmentPlan.hash)
+          fail("Destination activation changed its prepared Environment mapping")
         return Adoption.run(signedPermit, input.connection, async () => {
           const previous = await receipt(plan, "activated")
           if (previous) {

@@ -19,6 +19,7 @@ import { organizationAuthorityMigration } from "./authority-history"
 import { sharedTaskMigration } from "./shared-tasks"
 import { OrganizationServiceHome } from "./service-home"
 import { OrganizationLoginSessions } from "./auth/login-sessions"
+import { cloudEnvironmentCatalogMigration } from "./cloud-environment-catalog-migration"
 
 const migrations: Migration[] = [
   executionMigration,
@@ -30,6 +31,8 @@ const migrations: Migration[] = [
   OrganizationHandoffExecution.migration,
   OrganizationHandoffExecution.workspaceMigration,
   OrganizationHandoffExecution.differenceMigration,
+  OrganizationHandoffExecution.environmentMigration,
+  cloudEnvironmentCatalogMigration,
   OrganizationHandoffExecution.cleanupMigration,
   sharedProjectionMigration,
   sharedWindowMigration,

@@ -47,6 +47,7 @@ export namespace OrganizationSessionResources {
   export function mappedWorkspace(
     contract: Record.SessionResources,
     target: { resourceID: string; workspaceID: string } | null,
+    environment?: { resourceID: string; environmentID: string } | null,
   ) {
     return Record.SessionResources.parse({
       ...contract,
@@ -56,6 +57,7 @@ export namespace OrganizationSessionResources {
         infrastructure: {
           ...contract.selection!.infrastructure,
           workspace: target && { resourceID: target.resourceID, workspaceID: target.workspaceID },
+          ...(environment !== undefined ? { environment } : {}),
         },
       },
     })
@@ -64,13 +66,14 @@ export namespace OrganizationSessionResources {
     session: Record.SessionDirectory,
     original: Record.SessionResources,
     target: { resourceID: string; workspaceID: string } | null,
+    environment?: { resourceID: string; environmentID: string } | null,
   ) {
     if (!Storage.inTransaction() || !session.handoffID || session.retainedExecutionGrants)
       fail("HANDOFF_BLOCKED", "Mapped resources require their drained original handoff transaction")
     const current = await read(session)
     if (JSON.stringify(current) !== JSON.stringify(original))
       fail("REVISION_CONFLICT", "The consented resource contract changed")
-    const mapped = mappedWorkspace(original, target)
+    const mapped = mappedWorkspace(original, target, environment)
     await enabled({ ...session, resourceIDs: Execution.resourceIDs(mapped.selection!) }, mapped.selection!)
     await Storage.write(Keys.sessionResources(session.sessionID), mapped)
     return mapped

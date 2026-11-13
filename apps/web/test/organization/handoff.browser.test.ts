@@ -89,9 +89,10 @@ beforeAll(async () => {
     import {useConfirm} from ${JSON.stringify(`/@fs/${source}/components/dialog/confirm-dialog.tsx`)};
     import {organizationNativeHandoffMessages as nativeCopy} from ${JSON.stringify(`/@fs/${source}/organization/handoff-native-messages.ts`)};
     import {organizationHandoffTargetMessages as targetCopy} from ${JSON.stringify(`/@fs/${source}/organization/handoff-target-messages.ts`)};
+    import {organizationHandoffEnvironmentMessages as environmentCopy} from ${JSON.stringify(`/@fs/${source}/organization/handoff-environment-messages.ts`)};
     import {useLingui} from "@lingui/solid"; import {organizationHandoffMessages as copy} from ${JSON.stringify(`/@fs/${source}/organization/handoff-messages.ts`)};
     const platform={platform:"web",openLink(){},fetch:async()=>Response.json({healthy:false}),organization:{protocolVersion:2,list:()=>window.hostList(),request:async value=>{const result=await window.hostRequest(value);window.handoffResponses=(window.handoffResponses??0)+1;if(value.path.includes("/native-target"))window.nativeDirectoryResponses=(window.nativeDirectoryResponses??0)+1;return result},cancel:()=>Promise.resolve({ok:true}),startMember:()=>{throw new Error("No automatic runtime start")}}};
-    function Fixture(){const {_}=useLingui();window.handoffCopy=key=>_(copy[key]);window.nativeHandoffCopy=key=>_(nativeCopy[key]);window.handoffMore=()=>_(targetCopy.next);window.handoffTargetCopy=key=>_(targetCopy[key]);const space=useSpace();const [execute,setExecute]=createSignal(true);const [epoch,setEpoch]=createSignal(7);window.changeHandoffBinding=()=>setEpoch(8);const other=useConfirm();window.revoke=()=>setExecute(false);window.openOther=()=>other.show({title:"Unrelated confirmation",description:"Keep this dialog",confirmLabel:"Confirm",tone:"neutral",onConfirm(){}});const session={sessionID:"session-a",projectID:"project-a",creatorID:new URLSearchParams(location.search).has("recipient")?"source-account":new URLSearchParams(location.search).has("cloud")?"account-a":"different-creator",driverRuntimeID:"source",get bindingEpoch(){return epoch()},shareState:"shared",resourceIDs:[],createdAt:0,get permissions(){return {read:true,execute:execute(),stop:true}},runtime:{runtimeID:"source",runtimeKind:"member",ownerID:new URLSearchParams(location.search).has("recipient")?"source-account":"account-a",state:"online",connectionEpoch:1}};return <Show when={space.current()?.key} keyed>{()=> <OrganizationHandoff session={session} changed={()=>window.hostChanged()} compact={new URLSearchParams(location.search).has("compact")} />}</Show>}
+    function Fixture(){const {_}=useLingui();window.handoffCopy=key=>_(copy[key]);window.nativeHandoffCopy=key=>_(nativeCopy[key]);window.handoffMore=()=>_(targetCopy.next);window.handoffTargetCopy=key=>_(targetCopy[key]);window.handoffEnvironmentCopy=key=>_(environmentCopy[key]);const space=useSpace();const [execute,setExecute]=createSignal(true);const [epoch,setEpoch]=createSignal(7);window.changeHandoffBinding=()=>setEpoch(8);const other=useConfirm();window.revoke=()=>setExecute(false);window.openOther=()=>other.show({title:"Unrelated confirmation",description:"Keep this dialog",confirmLabel:"Confirm",tone:"neutral",onConfirm(){}});const session={sessionID:"session-a",projectID:"project-a",creatorID:new URLSearchParams(location.search).has("recipient")?"source-account":new URLSearchParams(location.search).has("cloud")?"account-a":"different-creator",driverRuntimeID:"source",get bindingEpoch(){return epoch()},shareState:"shared",resourceIDs:[],createdAt:0,get permissions(){return {read:true,execute:execute(),stop:true}},runtime:{runtimeID:"source",runtimeKind:"member",ownerID:new URLSearchParams(location.search).has("recipient")?"source-account":"account-a",state:"online",connectionEpoch:1}};return <Show when={space.current()?.key} keyed>{()=> <OrganizationHandoff session={session} changed={()=>window.hostChanged()} compact={new URLSearchParams(location.search).has("compact")} />}</Show>}
     render(()=> <PlatformProvider value={platform}><AppBaseProviders><SpaceProvider><Fixture/></SpaceProvider></AppBaseProviders></PlatformProvider>,document.getElementById("root"));
   `,
   )
@@ -132,6 +133,7 @@ async function open(
     holdOptions?: Promise<void>
     native?: boolean
     download?: boolean
+    environment?: boolean
     noNativeDirectory?: boolean
     dropPreview?: boolean
     holdDifferencePage?: Promise<void>
@@ -324,6 +326,48 @@ async function open(
                 label: "Existing destination project folder",
                 projectRevision: "a".repeat(64),
               },
+        ...(input.environment
+          ? {
+              environment: {
+                expectedSelectionRevision: 3,
+                source: input.native
+                  ? {
+                      kind: "organization",
+                      resourceID: "compute-current",
+                      resourceRevision: 2,
+                      environmentID: "current-environment",
+                    }
+                  : {
+                      kind: "native",
+                      environmentID: "source-native",
+                      provider: "native",
+                      generation: 0,
+                      descriptor: {
+                        version: 1,
+                        kind: "native",
+                        platform: "linux",
+                        architecture: "x64",
+                        capabilities: ["exec", "files"],
+                      },
+                    },
+                native: input.cloud
+                  ? null
+                  : {
+                      kind: "native",
+                      provider: "native",
+                      descriptor: {
+                        version: 1,
+                        kind: "native",
+                        platform: "linux",
+                        architecture: "x64",
+                        capabilities: ["exec", "files"],
+                      },
+                      reference: null,
+                    },
+                choices: ["none", ...(!input.cloud ? ["native"] : []), "organization"],
+              },
+            }
+          : {}),
         choices: [
           {
             kind: input.cloud || input.native ? "organization-live" : input.object ? "organization-object" : "native",
@@ -398,7 +442,10 @@ async function open(
         currentDriver: "source",
         bindingEpoch: 7,
         workspaceMapping: prepared.workspaceMapping,
-        mappingHash: "a".repeat(64),
+        environmentMapping: prepared.environmentMapping,
+        mappingHash: prepared.environmentMapping
+          ? await Handoff.planHash(prepared.workspaceMapping, prepared.environmentMapping)
+          : "a".repeat(64),
       })
       if (input.drop === "prepare" && !dropped) {
         dropped = true
@@ -410,6 +457,23 @@ async function open(
       const allowed = url.searchParams.has("cursor")
       return result({
         items: [
+          ...(input.environment && allowed
+            ? [
+                Resource.View.parse({
+                  resourceID: "compute-allowed",
+                  orgID: entry.orgID,
+                  scope: { kind: "organization" },
+                  kind: "environment",
+                  name: "Team execution",
+                  state: "enabled",
+                  revision: 5,
+                  createdAt: 0,
+                  updatedAt: 0,
+                  definition: { protocol: "environment" },
+                  permissions: { use: true },
+                }),
+              ]
+            : []),
           Resource.View.parse({
             resourceID: allowed ? "storage-allowed" : "storage-denied",
             orgID: entry.orgID,
@@ -425,6 +489,24 @@ async function open(
           }),
         ],
         ...(!allowed ? { cursor: "resources-two" } : {}),
+      })
+    }
+    if (input.environment && url.pathname === "/org/v1/projects/project-a/cloud/environments") {
+      const next = url.searchParams.has("cursor")
+      return result({
+        items: [
+          Cloud.Environment.parse({
+            environmentID: next ? "second-environment" : "first-environment",
+            orgID: entry.orgID,
+            projectID: "project-a",
+            resourceID: "compute-allowed",
+            name: next ? "Second environment" : "First environment",
+            generation: 0,
+            state: "idle",
+            activeUses: 0,
+          }),
+        ],
+        ...(!next ? { cursor: "environments-two" } : {}),
       })
     }
     if (url.pathname === "/org/v1/projects/project-a/cloud/workspaces") {
@@ -2327,3 +2409,158 @@ test("the real Chinese native comparison keeps two readable versions and reachab
     }
   }
 }, 60_000)
+
+test("cloud command selection pages actual resources and binds its complete Environment mapping before preparation", async () => {
+  const f = await open({ object: true, environment: true })
+  try {
+    await choose(f)
+    await f.dialog.getByRole("button", { name: "Load more", exact: true }).click()
+    await f.dialog.getByRole("button", { name: /^Storage resource:/ }).click()
+    await f.page.getByRole("option", { name: "Project storage", exact: true }).click()
+    await f.dialog.getByText("No inactive workspace is available for this storage resource.").waitFor()
+    await f.dialog.getByRole("button", { name: "Load more", exact: true }).click()
+    await f.dialog.getByRole("button", { name: /^Choose an inactive workspace:/ }).click()
+    await f.page.getByRole("option", { name: "Archive workspace", exact: true }).click()
+    await f.dialog.getByRole("textbox", { name: "New folder in this workspace", exact: true }).fill("environment-move")
+    expect(await f.dialog.getByRole("button", { name: "Prepare move", exact: true }).isDisabled()).toBe(true)
+    const environment = f.dialog.getByText("Command environment", { exact: true }).locator("..")
+    await environment.getByRole("button", { name: /^Command environment:/ }).click()
+    await f.page.getByRole("option", { name: "Organization environment", exact: true }).click()
+    await environment.getByRole("button", { name: "Load more", exact: true }).click()
+    await environment.getByRole("button", { name: /^Choose an execution resource:/ }).click()
+    await f.page.getByRole("option", { name: "Team execution", exact: true }).click()
+    await environment.getByRole("button", { name: "Load more", exact: true }).click()
+    await environment.getByRole("button", { name: /^Choose an environment:/ }).click()
+    await f.page.getByRole("option", { name: "Second environment", exact: true }).click()
+    await f.dialog.getByRole("button", { name: "Prepare move", exact: true }).click()
+    const sent = f.requests.find((request) => request.method === "POST" && request.path.endsWith("/handoffs"))
+    const plan = Handoff.CurrentPrepare.parse(sent?.body)
+    expect(plan.environmentMapping?.expectedSelectionRevision).toBe(3)
+    expect(plan.environmentMapping?.target).toEqual({
+      kind: "organization",
+      resourceID: "compute-allowed",
+      resourceRevision: 5,
+      environmentID: "second-environment",
+    })
+    expect(
+      f.requests
+        .filter((request) => /cloud\/environments/.test(request.path))
+        .every((request) => request.method === "GET"),
+    ).toBe(true)
+    expect(f.requests.some((request) => /commands|controls|start-member/.test(request.path))).toBe(false)
+    expect(f.errors).toEqual([])
+  } finally {
+    await f.close()
+  }
+})
+
+test("a cloud return preserves compute by default and a native download needs a separate explicit Environment choice", async () => {
+  for (const colorScheme of ["light", "dark"] as const) {
+    const f = await open({
+      native: true,
+      download: true,
+      noNativeDirectory: true,
+      environment: true,
+      colorScheme,
+      viewport: { width: 375, height: 740 },
+    })
+    try {
+      await chooseNativeDestination(f)
+      const environment = f.dialog.getByText("Command environment", { exact: true }).locator("..")
+      expect(
+        await environment
+          .getByText(
+            "Future commands use the same organization environment. Moving the conversation does not allocate compute or restart processes.",
+          )
+          .isVisible(),
+      ).toBe(true)
+      expect(
+        f.requests.some(
+          (request) => request.path.includes("/cloud/environments") || request.path.includes("/resources"),
+        ),
+      ).toBe(false)
+      await f.dialog.locator(".organization-handoff-field").nth(1).getByRole("button").click()
+      await f.page.getByRole("option", { name: await f.nativeCopy("download"), exact: true }).click()
+      expect(await f.dialog.getByRole("button", { name: "Prepare move", exact: true }).isDisabled()).toBe(true)
+      await environment.getByRole("button", { name: /^Command environment:/ }).click()
+      await f.page.getByRole("option", { name: "Destination computer", exact: true }).click()
+      await f.dialog.getByRole("button", { name: "Prepare move", exact: true }).scrollIntoViewIfNeeded()
+      expect(await f.page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+      await capture(f.page, `handoff-environment-download-375-${colorScheme}.png`)
+      await f.dialog.getByRole("button", { name: "Prepare move", exact: true }).click()
+      const plan = Handoff.CurrentPrepare.parse(
+        f.requests.find((request) => request.method === "POST" && request.path.endsWith("/handoffs"))?.body,
+      )
+      expect(plan.environmentMapping?.source.kind).toBe("organization")
+      expect(plan.environmentMapping?.target.kind === "native" && plan.environmentMapping.target.reference).toBeNull()
+      expect(f.requests.some((request) => /commands|controls|start-member/.test(request.path))).toBe(false)
+      expect(f.errors).toEqual([])
+    } finally {
+      await f.close()
+    }
+  }
+}, 30000)
+
+test("the real Chinese Environment selector keeps complete context and reachable consent in both narrow themes", async () => {
+  for (const colorScheme of ["light", "dark"] as const) {
+    const f = await open({
+      native: true,
+      download: true,
+      noNativeDirectory: true,
+      environment: true,
+      locale: "zh-CN",
+      colorScheme,
+      viewport: { width: 375, height: 740 },
+    })
+    try {
+      const environmentCopy = (key: string) =>
+        f.page.evaluate((key) => {
+          const translate = Reflect.get(window, "handoffEnvironmentCopy")
+          if (typeof translate !== "function") throw new Error("The actual Environment locale owner is unavailable")
+          const value = translate(key)
+          if (typeof value !== "string") throw new Error("The Environment locale owner returned no label")
+          return value
+        }, key)
+      await chooseNativeDestination(f)
+      expect(await f.page.evaluate(() => document.documentElement.lang)).toBe("zh-CN")
+      const description = f.dialog.locator(".organization-handoff > p").first()
+      await description.scrollIntoViewIfNeeded()
+      const heading = f.dialog.getByRole("heading").first()
+      const top = await heading.boundingBox(),
+        paragraph = await description.boundingBox()
+      if (!top || !paragraph) throw new Error("The original dialog context is unavailable")
+      expect(paragraph.y).toBeGreaterThanOrEqual(top.y + top.height)
+      expect(await description.isVisible()).toBe(true)
+      await capture(f.page, `handoff-environment-zh-375-${colorScheme}-top.png`)
+      const environment = f.dialog.getByText(await environmentCopy("environment"), { exact: true }).locator("..")
+      await environment.scrollIntoViewIfNeeded()
+      expect(await environment.getByText(await environmentCopy("keepHint"), { exact: true }).isVisible()).toBe(true)
+      await f.dialog.locator(".organization-handoff-field").nth(1).getByRole("button").click()
+      await f.page.getByRole("option", { name: await f.nativeCopy("download"), exact: true }).click()
+      await f.page.getByRole("listbox").waitFor({ state: "hidden" })
+      const prepare = f.dialog.getByRole("button", { name: await f.copy("begin"), exact: true })
+      expect(await prepare.isDisabled()).toBe(true)
+      await environment.getByRole("button").first().click()
+      await f.page.getByRole("option", { name: await environmentCopy("native"), exact: true }).click()
+      await f.page.getByRole("listbox").waitFor({ state: "hidden" })
+      await prepare.scrollIntoViewIfNeeded()
+      expect(await environment.getByText(await environmentCopy("nativeHint"), { exact: true }).isVisible()).toBe(true)
+      expect(await prepare.isEnabled()).toBe(true)
+      expect(await f.dialog.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true)
+      expect(await f.page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+      await capture(f.page, `handoff-environment-zh-375-${colorScheme}-actions.png`)
+      await prepare.click()
+      const plan = Handoff.CurrentPrepare.parse(
+        f.requests.find((request) => request.method === "POST" && request.path.endsWith("/handoffs"))?.body,
+      )
+      expect(plan.environmentMapping?.source.kind).toBe("organization")
+      if (plan.environmentMapping?.target.kind !== "native")
+        throw new Error("Missing the actual consented native template")
+      expect(plan.environmentMapping.target.reference).toBeNull()
+      expect(f.requests.some((request) => /commands|controls|start-member/.test(request.path))).toBe(false)
+      expect(f.errors).toEqual([])
+    } finally {
+      await f.close()
+    }
+  }
+}, 30000)

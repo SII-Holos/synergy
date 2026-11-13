@@ -13789,6 +13789,58 @@ msgid "organization.handoff.directory.unavailable"
 msgstr "The name of the originally selected directory has not been verified here."
 
 #. js-lingui-explicit-id
+msgid "organization.handoff.environment.chooseEnvironment"
+msgstr "Choose an environment"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.environment.chooseResource"
+msgstr "Choose an execution resource"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.environment.cloud"
+msgstr "Organization environment"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.environment.empty"
+msgstr "No environments are available in this resource."
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.environment.incompatible"
+msgstr "Choose a command environment compatible with this file location."
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.environment.keep"
+msgstr "Keep the current cloud environment"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.environment.keepHint"
+msgstr "Future commands use the same organization environment. Moving the conversation does not allocate compute or restart processes."
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.environment.label"
+msgstr "Command environment"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.environment.native"
+msgstr "Destination computer"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.environment.nativeHint"
+msgstr "Use the destination computer for future commands. Running processes and credentials are not copied."
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.environment.none"
+msgstr "Files only"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.environment.noneHint"
+msgstr "Files remain available. Commands need an environment selected separately."
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.environment.refresh"
+msgstr "Check environments again"
+
+#. js-lingui-explicit-id
 msgid "organization.handoff.finishCancel"
 msgstr "Confirm source cancellation"
 

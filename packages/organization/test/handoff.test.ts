@@ -1226,3 +1226,35 @@ for (const first of ["handoff", "archive"] as const)
       await winner.catch(() => {})
     }
   })
+
+test("reader seven rejects explicit Environment mapping before source inspection, freeze, or admission", async () => {
+  await using f = await fixture("bob", 7)
+  await f.run(async () => {
+    await OrganizationSharing.share(f.credentials.alice, f.sessionID, { expectedShareGeneration: 0 })
+    const original = (await Record.read(Record.SessionDirectory, Keys.session(f.sessionID)))!
+    let outcome: unknown
+    try {
+      await f.handoffs.prepare(f.credentials.alice, f.sessionID, {
+        handoffID: "unsupported-environment-map",
+        targetRuntimeID: "runtime-bob",
+        expectedBindingEpoch: original.bindingEpoch,
+        expectedControlRevision: original.controlRevision,
+        mappingPlanRevision: 1,
+        workspaceMapping: { kind: "native" },
+        environmentMapping: {
+          version: 1,
+          expectedSelectionRevision: 0,
+          source: { kind: "none" },
+          target: { kind: "none" },
+        },
+      })
+    } catch (error) {
+      outcome = error
+    }
+    expect(outcome).toMatchObject({ data: { code: "HANDOFF_BLOCKED" } })
+    if (!(outcome instanceof Error)) throw new Error("Expected the original compatibility refusal")
+    expect(outcome.message).toContain("Environment")
+    expect(await Record.read(Record.SessionDirectory, Keys.session(f.sessionID))).toEqual(original)
+    expect(await Storage.count({ prefix: ["organization", "handoffs"] })).toBe(0)
+  })
+})

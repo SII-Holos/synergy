@@ -85,6 +85,9 @@ export namespace OrganizationCloudProtocol {
     })
     .meta({ ref: "OrgCloudEnvironment" })
   export type Environment = z.infer<typeof Environment>
+  export const EnvironmentPage = z
+    .strictObject({ items: z.array(Environment), cursor: Identity.ID.optional() })
+    .meta({ ref: "OrgCloudEnvironmentPage" })
 
   const RootPath = z.union([Path, z.literal("")])
   const FileBytes = z.string().max(Math.ceil((8 * 1024 * 1024) / 3) * 4)

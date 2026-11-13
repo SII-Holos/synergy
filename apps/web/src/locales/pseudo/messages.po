@@ -13789,6 +13789,58 @@ msgid "organization.handoff.directory.unavailable"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "organization.handoff.environment.chooseEnvironment"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.environment.chooseResource"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.environment.cloud"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.environment.empty"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.environment.incompatible"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.environment.keep"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.environment.keepHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.environment.label"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.environment.native"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.environment.nativeHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.environment.none"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.environment.noneHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.environment.refresh"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "organization.handoff.finishCancel"
 msgstr ""
 

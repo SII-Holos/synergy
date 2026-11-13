@@ -163,10 +163,10 @@ export namespace OrganizationCloudResourceHistory {
         const loc = Wire.Locator.parse(value)
         if (!equal(loc, locator(reader, kind, key[3]!))) fail("has another locator")
         kind === "workspaces" ? workspace(reader, loc.id) : environment(reader, loc.id)
-      } else if (kind === "project" && key.length === 8 && key[3] === "workspaces") {
-        const loc = locator(reader, "workspaces", key[7]!)
+      } else if (kind === "project" && key.length === 8 && (key[3] === "workspaces" || key[3] === "environments")) {
+        const loc = locator(reader, key[3], key[7]!)
         if (
-          !equal(key, [...Wire.projectKey("workspaces", loc.orgID, loc.projectID, loc.resourceID), loc.id]) ||
+          !equal(key, [...Wire.projectKey(key[3], loc.orgID, loc.projectID, loc.resourceID), loc.id]) ||
           !equal(value, { id: loc.id })
         )
           fail("has another cloud project index")

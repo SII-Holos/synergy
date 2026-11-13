@@ -15,6 +15,7 @@ import { authorize, projectView, resourceView } from "./authorization"
 import { OrganizationRecord as Record } from "./storage/records"
 import { OrganizationStoragePath as Keys } from "./storage/path"
 import { OrganizationSessionResources } from "./session-resources"
+import { OrganizationHandoffEnvironments as Environments } from "./handoff-environments"
 import { OrganizationSharing } from "./sharing"
 import { fail, revision, OrganizationError } from "./error"
 import { assertRuntimeConnection, runtimeAuthority } from "./runtime-authority"
@@ -79,8 +80,8 @@ const PreviousStored = MappedStored.extend({ version: z.literal(2) }).refine(
   (record) => record.request.workspaceMapping.kind !== "organization-native" && selection(record),
   "Version-two handoffs require their original mapping reader",
 )
-const Stored = MappedStored.extend({
-  version: z.literal(3),
+const FileStored = MappedStored.extend({
+  version: z.union([z.literal(3), z.literal(4)]),
   targetActor: ActorStamp.Info.optional(),
   difference: Handoff.SignedDifference.optional(),
   differenceConsent: Handoff.DifferenceConsent.optional(),
@@ -107,6 +108,7 @@ const Stored = MappedStored.extend({
       invalid("Only an existing native directory can carry a target difference")
     if (
       !native &&
+      !record.request.environmentMapping &&
       (record.targetActor ||
         record.difference ||
         record.differenceConsent ||
@@ -187,7 +189,25 @@ const Stored = MappedStored.extend({
     )
       invalid("Native preview release has another inactive preparation")
   })
-const RawStored = z.union([LegacyStored, PreviousStored, Stored])
+const PreviousFileStored = FileStored.safeExtend({ version: z.literal(3) })
+const Stored = FileStored.safeExtend({ version: z.literal(4) }).superRefine((record, context) => {
+  if (!record.request.environmentMapping) return
+  if (record.request.environmentMapping.expectedSelectionRevision !== (record.workspaceContract?.revision ?? 0))
+    context.addIssue({ code: "custom", message: "Environment mapping lost its original resource contract" })
+  if (
+    !record.selectionActor ||
+    record.selectionActor.kind !== "account" ||
+    record.selectionActor.subjectID !== record.initiator
+  )
+    context.addIssue({ code: "custom", message: "Environment mapping lost its original authenticated selector" })
+  if (
+    record.targetAccepted &&
+    record.target.runtimeKind === "member" &&
+    record.targetActor?.subjectID !== record.target.accountID
+  )
+    context.addIssue({ code: "custom", message: "Environment mapping has no exact destination member consent" })
+})
+const RawStored = z.union([LegacyStored, PreviousStored, PreviousFileStored, Stored])
 type Stored = z.infer<typeof Stored>
 const key = (id: string) => ["organization", "handoffs", id]
 const sessionKey = (sessionID: string) => ["organization", "session-handoffs", sessionID]
@@ -297,13 +317,15 @@ export function registerHandoffAuthorityHistory() {
               ...("selectionActor" in record ? [record.selectionActor] : []),
               ...("workspaceContract" in record && record.workspaceContract ? [record.workspaceContract] : []),
               ...("workspaceSource" in record && record.workspaceSource ? [record.workspaceSource] : []),
-              ...(record.version === 3 && record.targetActor ? [record.targetActor] : []),
-              ...(record.version === 3 && record.difference ? [record.difference] : []),
-              ...(record.version === 3 && record.differenceConsent
+              ...((record.version === 3 || record.version === 4) && record.targetActor ? [record.targetActor] : []),
+              ...((record.version === 3 || record.version === 4) && record.difference ? [record.difference] : []),
+              ...((record.version === 3 || record.version === 4) && record.differenceConsent
                 ? [record.differenceConsent, record.differenceActor]
                 : []),
-              ...(record.version === 3 && record.previewReleased ? [record.previewReleased] : []),
-              ...(record.version === 3 && record.sourceBinding
+              ...((record.version === 3 || record.version === 4) && record.previewReleased
+                ? [record.previewReleased]
+                : []),
+              ...((record.version === 3 || record.version === 4) && record.sourceBinding
                 ? [record.sourceBinding, record.sourceControlRevision]
                 : []),
               record.frozen,
@@ -461,6 +483,22 @@ export namespace OrganizationHandoffExecution {
       if (key.length !== 3 || key[0] !== "organization" || key[1] !== "handoffs" || value.version !== 2) return
       PreviousStored.parse(value)
       value.version = 3
+      PreviousFileStored.parse(value)
+    },
+  }
+  export const environmentMigration: Migration = {
+    id: "20261114-organization-handoff-environment-mapping",
+    description: "Retain explicit logical Environment consent alongside the original file mapping",
+    scope: "global",
+    execution: "record",
+    dependsOn: ["organization/20261113-organization-handoff-native-difference"],
+    async up() {},
+    upgradeRecord(key, value) {
+      if (key.length !== 3 || key[0] !== "organization" || key[1] !== "handoffs" || value.version !== 3) return
+      const original = PreviousFileStored.parse(value)
+      if (original.request.environmentMapping)
+        fail("PROTOCOL_MISMATCH", "An old Handoff reader cannot introduce Environment consent")
+      value.version = 4
       Stored.parse(value)
     },
   }
@@ -475,8 +513,9 @@ export namespace OrganizationHandoffExecution {
       let count = 0
       for await (const row of Storage.records({ prefix: ["organization", "handoffs"], limit: 128 })) {
         UpgradeWork.signal()?.throwIfAborted()
+        if (row.key.length !== 3) fail("SERVICE_UNAVAILABLE", "Handoff index has another canonical record address")
         const record = Stored.parse(upgradeAccessRecord(row.key, row.value))
-        if (row.key.length !== 3 || row.key[2] !== record.handoffID)
+        if (row.key[2] !== record.handoffID)
           fail("SERVICE_UNAVAILABLE", "Handoff participant index has another canonical record")
         await Storage.transaction(() => indexCleanup(record))
         progress(++count, 0)
@@ -495,9 +534,9 @@ export namespace OrganizationHandoffExecution {
       let count = 0
       for await (const row of Storage.records({ prefix: ["organization", "handoffs"], limit: 128 })) {
         UpgradeWork.signal()?.throwIfAborted()
+        if (row.key.length !== 3) fail("SERVICE_UNAVAILABLE", "Handoff index has another canonical record address")
         const record = Stored.parse(upgradeAccessRecord(row.key, row.value))
-        if (row.key.length !== 3 || row.key[2] !== record.handoffID)
-          fail("SERVICE_UNAVAILABLE", "Handoff history has another canonical key")
+        if (row.key[2] !== record.handoffID) fail("SERVICE_UNAVAILABLE", "Handoff history has another canonical key")
         await Storage.transaction(() => index(record))
         progress(++count, 0)
       }
@@ -646,7 +685,8 @@ export function createHandoffs(options: {
     return Handoff.View.strip().parse({
       ...record,
       workspaceMapping: record.request.workspaceMapping,
-      mappingHash: await Handoff.mappingHash(record.request.workspaceMapping),
+      mappingHash: await Handoff.planHash(record.request.workspaceMapping, record.request.environmentMapping),
+      environmentMapping: record.request.environmentMapping,
       workspaceDifference: record.difference?.proof.difference,
       ...(record.request.workspaceMapping.kind === "organization-native" &&
       record.request.workspaceMapping.target.kind === "existing"
@@ -678,6 +718,35 @@ export function createHandoffs(options: {
     return { account, view }
   }
 
+  function mappedWorkspace(record: Stored, contract: Record.SessionResources) {
+    const mapping = record.request.workspaceMapping
+    return mapping.kind === "organization-object"
+      ? mapping.target
+      : mapping.kind === "organization-native"
+        ? null
+        : (contract.selection?.infrastructure.workspace ?? null)
+  }
+  async function environmentSelector(record: Stored, current: Record.SessionDirectory) {
+    const mapping = record.request.environmentMapping
+    if (!mapping || !Environments.changed(mapping) || mapping.target.kind !== "organization") return
+    const selector = record.selectionActor
+    if (selector?.kind !== "account") fail("PERMISSION_DENIED", "Environment mapping has no authenticated selector")
+    const { account, view } = await accountExecution(selector.subjectID, current)
+    const resource = await Record.read(Record.Resource, Keys.resource(record.orgID, mapping.target.resourceID))
+    if (!resource) fail("RESOURCE_UNAVAILABLE", "The selected Environment resource is unavailable")
+    const [personal, shared] = await Promise.all([
+      Record.read(
+        Record.ResourceGrant,
+        Keys.resourceGrant(record.orgID, resource.resourceID, { kind: "account", id: account.accountID }),
+      ),
+      Record.read(
+        Record.ResourceGrant,
+        Keys.resourceGrant(record.orgID, resource.resourceID, { kind: "project", id: current.projectID }),
+      ),
+    ])
+    if (!resourceView(account, resource, view, personal, shared).permissions.use)
+      fail("PERMISSION_DENIED", "The original Environment selector cannot use its new resource")
+  }
   async function eligible(record: Stored) {
     const current = await session(record)
     if (current.handoffID !== record.handoffID || current.shareGeneration !== record.shareGeneration)
@@ -718,10 +787,33 @@ export function createHandoffs(options: {
     const contract = await OrganizationSessionResources.read(current)
     if (contract?.selection) await OrganizationSessionResources.enabled(current, contract.selection)
     const mapping = record.request.workspaceMapping
+    const environmentMapping = record.request.environmentMapping
+    if (environmentMapping) {
+      const original = record.workspaceContract
+      await Environments.validate({
+        session: current,
+        contract: original,
+        mapping: environmentMapping,
+        workspace: mapping,
+        targetKind: record.target.runtimeKind,
+      })
+      if (original) {
+        const expected = committed
+          ? OrganizationSessionResources.mappedWorkspace(
+              original,
+              mappedWorkspace(record, original),
+              Environments.selected(environmentMapping),
+            )
+          : original
+        if (!same(contract, expected)) fail("REVISION_CONFLICT", "The complete consented resource contract changed")
+      } else if (contract) fail("REVISION_CONFLICT", "The original empty resource contract changed")
+      await environmentSelector(record, current)
+    }
     if (
       mapping.kind === "organization-native" &&
       mapping.target.kind === "private-copy" &&
-      contract?.selection?.infrastructure.environment
+      contract?.selection?.infrastructure.environment &&
+      !record.request.environmentMapping
     )
       fail("HANDOFF_BLOCKED", "Downloading a native Workspace requires an explicit compatible Environment mapping")
     if (mapping.kind === "organization-object") {
@@ -1006,7 +1098,7 @@ export function createHandoffs(options: {
               expiresAt,
             }),
           )
-          const mappingHash = await Handoff.mappingHash(access.mapping)
+          const mappingHash = await Handoff.planHash(access.mapping, access.record.request.environmentMapping)
           access.connection.assertCurrent()
           return { access, authorization, mappingHash }
         })
@@ -1328,6 +1420,30 @@ export function createHandoffs(options: {
             fail("STALE_BINDING", "Handoff choices changed during inspection")
           const source = results[0]!.workspace
           const native = results[1]!.native
+          const environmentContract = await OrganizationSessionResources.read(current.session)
+          const environmentReady = admitted.participants.every(
+            (participant) => participant.connection.handshake.schemas.handoffs >= 8,
+          )
+          if (environmentReady && results[0]!.sourceEnvironment === undefined)
+            fail("PROTOCOL_MISMATCH", "Environment handoff requires its actual source selection inspection")
+          const environment: Handoff.Options["environment"] = environmentReady
+            ? {
+                source: await Environments.source(
+                  current.session,
+                  environmentContract,
+                  results[0]!.sourceEnvironment ?? null,
+                ),
+                expectedSelectionRevision: environmentContract?.revision ?? 0,
+                native: results[1]!.nativeEnvironment ?? null,
+                choices: [
+                  "none",
+                  ...(current.target.runtimeKind === "member" && results[1]!.nativeEnvironment
+                    ? ["native" as const]
+                    : []),
+                  "organization",
+                ],
+              }
+            : undefined
           const choices: Handoff.Options["choices"] = []
           if (!source || source.kind === "native") {
             if (current.target.runtimeKind === "member") choices.push({ kind: "native", requiresDifference: false })
@@ -1380,7 +1496,7 @@ export function createHandoffs(options: {
             if (
               completeRoot &&
               current.target.runtimeKind === "member" &&
-              !contract?.selection?.infrastructure.environment &&
+              (!contract?.selection?.infrastructure.environment || !!environment) &&
               admitted.participants.every((participant) => participant.connection.handshake.schemas.handoffs >= 6)
             )
               choices.push({ kind: "organization-native", targetKind: "private-copy", requiresDifference: false })
@@ -1400,6 +1516,7 @@ export function createHandoffs(options: {
             targetRuntimeID: current.target.runtimeID,
             source,
             native,
+            environment,
             choices,
           })
         })
@@ -1588,13 +1705,18 @@ export function createHandoffs(options: {
       const mapping = record.request.workspaceMapping
       const workspaceContinuation =
         !cancelled &&
-        (mapping.kind === "organization-object" || mapping.kind === "organization-native") &&
+        (mapping.kind === "organization-object" ||
+          mapping.kind === "organization-native" ||
+          record.request.environmentMapping) &&
         record.workspaceContract
           ? {
               before: record.workspaceContract,
               after: OrganizationSessionResources.mappedWorkspace(
                 record.workspaceContract,
-                mapping.kind === "organization-native" ? null : mapping.target,
+                mappedWorkspace(record, record.workspaceContract),
+                record.request.environmentMapping
+                  ? Environments.selected(record.request.environmentMapping)
+                  : undefined,
               ),
             }
           : undefined
@@ -1739,6 +1861,8 @@ export function createHandoffs(options: {
         const runtime = role === "source" ? record.source : record.target
         const connection = options.connections.captureHandoff(runtime.runtimeID)
         const mapping = record.request.workspaceMapping
+        if (record.request.environmentMapping && connection.handshake.schemas.handoffs < 8)
+          fail("HANDOFF_BLOCKED", "Explicit Environment handoff requires its complete mapping reader")
         if (wholeWorkspace(mapping) && connection.handshake.schemas.handoffs < 7)
           fail("HANDOFF_BLOCKED", "Whole Workspace handoff requires both participants' root reader")
         if (
@@ -1775,6 +1899,19 @@ export function createHandoffs(options: {
         const plan = Handoff.MachinePlan.strip().parse({
           ...record,
           ...request,
+          ...(record.request.environmentMapping
+            ? {
+                mappingPlanHash: await Handoff.planHash(
+                  record.request.workspaceMapping,
+                  record.request.environmentMapping,
+                ),
+                environmentPlan: {
+                  mapping: record.request.environmentMapping,
+                  hash: await Handoff.environmentMappingHash(record.request.environmentMapping),
+                  selectionActor: record.selectionActor,
+                },
+              }
+            : {}),
           workspacePlan:
             connection.handshake.schemas.handoffs >= 2
               ? {
@@ -1850,8 +1987,33 @@ export function createHandoffs(options: {
       })
       return reply.result
     },
-    async prepare(credentials: Credentials, sessionID: string, value: Handoff.Prepare) {
+    async prepare(
+      credentials: Credentials,
+      sessionID: string,
+      value: Handoff.Prepare,
+      input?: { signal: AbortSignal },
+    ): Promise<Handoff.View> {
       const request = Handoff.Prepare.parse(value)
+      let inspection: Handoff.Options | undefined
+      if (request.environmentMapping) {
+        const retained = await Storage.snapshot(async () => {
+          await authorize(credentials, "session.read", { sessionID })
+          const [existing] = await Storage.readMany([key(request.handoffID)])
+          if (existing !== undefined) return true
+          const access = await inspectionAccess(credentials, sessionID, request.targetRuntimeID)
+          for (const runtime of [access.source, access.target])
+            if (options.connections.captureHandoff(runtime.runtimeID).handshake.schemas.handoffs < 8)
+              fail("HANDOFF_BLOCKED", "Explicit Environment handoff requires both participants' mapping reader")
+          return false
+        })
+        if (!retained)
+          inspection = await api.options(
+            credentials,
+            sessionID,
+            { requestID: request.handoffID, targetRuntimeID: request.targetRuntimeID },
+            { signal: input?.signal ?? AbortSignal.timeout(timeoutMs) },
+          )
+      }
       const guards: Array<() => void> = []
       return History.credentials(
         credentials,
@@ -1902,12 +2064,46 @@ export function createHandoffs(options: {
             source.runtimeID === target.runtimeID
           )
             fail("NOT_FOUND", "Handoff destination is unavailable")
+          if (request.environmentMapping) {
+            const actual = inspection?.environment
+            if (
+              !actual ||
+              actual.expectedSelectionRevision !== request.environmentMapping.expectedSelectionRevision ||
+              !same(actual.source, request.environmentMapping.source)
+            )
+              fail("REVISION_CONFLICT", "Environment mapping must match its actual current source inspection")
+            if (
+              request.environmentMapping.target.kind === "native" &&
+              !same(request.environmentMapping.target, actual.native)
+            )
+              fail(
+                "REVISION_CONFLICT",
+                "Native Environment mapping must match its destination's actual registered selection",
+              )
+            const contract = await OrganizationSessionResources.read(current)
+            await Environments.validate({
+              session: current,
+              contract,
+              mapping: request.environmentMapping,
+              workspace: request.workspaceMapping,
+              targetKind: target.runtimeKind,
+            })
+            if (
+              Environments.changed(request.environmentMapping) &&
+              request.environmentMapping.target.kind === "organization"
+            )
+              await authorize(credentials, "resource.use", {
+                resourceID: request.environmentMapping.target.resourceID,
+                projectID: current.projectID,
+              })
+          }
           if (request.workspaceMapping.kind === "organization-native" && target.runtimeKind !== "member")
             fail("HANDOFF_BLOCKED", "A native Workspace requires its destination member")
           if (
             request.workspaceMapping.kind === "organization-native" &&
             request.workspaceMapping.target.kind === "private-copy" &&
-            (await OrganizationSessionResources.read(current))?.selection?.infrastructure.environment
+            (await OrganizationSessionResources.read(current))?.selection?.infrastructure.environment &&
+            !request.environmentMapping
           )
             fail(
               "HANDOFF_BLOCKED",
@@ -1924,7 +2120,7 @@ export function createHandoffs(options: {
           const command = await Record.read(Record.CommandState, Keys.commandState(sessionID))
           const record = Stored.parse({
             schemaVersion: 1,
-            version: 3,
+            version: 4,
             selectionActor: {
               kind: "account",
               orgID: access.account.orgID,
@@ -1953,7 +2149,8 @@ export function createHandoffs(options: {
             request,
             workspaceContract:
               request.workspaceMapping.kind === "organization-object" ||
-              request.workspaceMapping.kind === "organization-native"
+              request.workspaceMapping.kind === "organization-native" ||
+              !!request.environmentMapping
                 ? await OrganizationSessionResources.read(current)
                 : undefined,
             ...(request.workspaceMapping.kind === "organization-native"
@@ -1979,6 +2176,8 @@ export function createHandoffs(options: {
           ] as const) {
             const files = options.connections.captureHandoff(runtime.runtimeID)
             files.assertCurrent()
+            if (request.environmentMapping && files.handshake.schemas.handoffs < 8)
+              fail("HANDOFF_BLOCKED", "Explicit Environment handoff requires both participants' mapping reader")
             if (wholeWorkspace(request.workspaceMapping) && files.handshake.schemas.handoffs < 7)
               fail("HANDOFF_BLOCKED", "Whole Workspace handoff requires both participants' root reader")
             if (request.workspaceMapping.kind === "organization-object" && files.handshake.schemas.handoffs < 2)
@@ -2068,8 +2267,10 @@ export function createHandoffs(options: {
           revision(input.mappingPlanRevision, record.mappingPlanRevision)
           if (
             ("mappingHash" in input &&
-              input.mappingHash !== (await Handoff.mappingHash(record.request.workspaceMapping))) ||
-            (record.request.workspaceMapping.kind !== "native" && !("mappingHash" in input))
+              input.mappingHash !==
+                (await Handoff.planHash(record.request.workspaceMapping, record.request.environmentMapping))) ||
+            ((record.request.workspaceMapping.kind !== "native" || !!record.request.environmentMapping) &&
+              !("mappingHash" in input))
           )
             fail("REVISION_CONFLICT", "Destination consent must bind the complete original Workspace mapping")
           if (record.phase !== "preparing" || record.cancelRequested)
@@ -2098,7 +2299,10 @@ export function createHandoffs(options: {
               requestID: record.handoffID,
               ...("tokenID" in access ? { tokenID: access.tokenID } : {}),
             }
-          } else if (record.request.workspaceMapping.kind === "organization-native" && !record.targetAccepted)
+          } else if (
+            (record.request.workspaceMapping.kind === "organization-native" || record.request.environmentMapping) &&
+            !record.targetAccepted
+          )
             record.targetActor = {
               kind: "account",
               orgID: account.orgID,
@@ -2204,7 +2408,12 @@ export function createHandoffs(options: {
             fail("HANDOFF_BLOCKED", "Source execution resources have not drained")
           const mapping = record.request.workspaceMapping
           let resourceIDs = allowed.current.resourceIDs
-          if (mapping.kind === "organization-object" || mapping.kind === "organization-native") {
+          if (
+            mapping.kind === "organization-object" ||
+            mapping.kind === "organization-native" ||
+            (record.request.environmentMapping &&
+              (record.workspaceContract || record.request.environmentMapping.target.kind === "organization"))
+          ) {
             if (!record.workspaceContract)
               fail("HANDOFF_BLOCKED", "Workspace mapping has no original resource contract")
             if (mapping.kind === "organization-object") {
@@ -2215,18 +2424,20 @@ export function createHandoffs(options: {
               )
                 fail("HANDOFF_BLOCKED", "Workspace mapping has no matching prepared CAS receipt")
             } else if (
-              record.prepared.proof.purpose !== "target-prepared" ||
-              !record.prepared.proof.workspaceNativeReceiptHash ||
-              (mapping.target.kind === "existing"
-                ? !record.differenceConsent ||
-                  record.prepared.proof.workspaceDifferenceHash !== record.differenceConsent.diffHash
-                : record.prepared.proof.workspaceDifferenceHash !== undefined)
+              mapping.kind === "organization-native" &&
+              (record.prepared.proof.purpose !== "target-prepared" ||
+                !record.prepared.proof.workspaceNativeReceiptHash ||
+                (mapping.target.kind === "existing"
+                  ? !record.differenceConsent ||
+                    record.prepared.proof.workspaceDifferenceHash !== record.differenceConsent.diffHash
+                  : record.prepared.proof.workspaceDifferenceHash !== undefined))
             )
               fail("HANDOFF_BLOCKED", "Native mapping has no exact consented target receipt")
             const mapped = await OrganizationSessionResources.rebindHandoff(
               allowed.current,
               record.workspaceContract,
-              mapping.kind === "organization-native" ? null : mapping.target,
+              mappedWorkspace(record, record.workspaceContract),
+              record.request.environmentMapping ? Environments.selected(record.request.environmentMapping) : undefined,
             )
             resourceIDs = Execution.resourceIDs(mapped.selection!)
           }
@@ -2271,6 +2482,12 @@ export function createHandoffs(options: {
       const result = await History.system("handoff.proof", async (identify, actionID) => {
         const current = await load(record.handoffID)
         const proof = signed.proof
+        if (
+          current.request.environmentMapping &&
+          (proof.purpose === "source-frozen" || proof.purpose === "target-prepared") &&
+          proof.environmentMappingHash !== (await Handoff.environmentMappingHash(current.request.environmentMapping))
+        )
+          fail("PROTOCOL_MISMATCH", "Native handoff facts must retain their complete Environment mapping")
         if (bindingFields.some((field) => current[field] !== proof[field]))
           fail("PROTOCOL_MISMATCH", "Handoff proof binding does not match")
         if (current.manifestHash && current.manifestHash !== proof.manifestHash)

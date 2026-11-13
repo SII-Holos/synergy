@@ -10,6 +10,7 @@ import type {
   OrgRuntimeRegistration,
   OrgResourceView,
   OrgCloudWorkspace,
+  OrgCloudEnvironment,
 } from "@ericsanchezok/synergy-sdk/organization"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
@@ -25,6 +26,12 @@ import { WorkspaceError } from "./workspace-error"
 import { organizationHandoffMessages as messages } from "./handoff-messages"
 import { organizationNativeHandoffMessages as nativeMessages } from "./handoff-native-messages"
 import { OrganizationNativeDifference } from "./handoff-native"
+import { OrganizationHandoffEnvironment } from "./handoff-environment"
+import { organizationHandoffEnvironmentMessages as environmentMessages } from "./handoff-environment-messages"
+import {
+  organizationHandoffEnvironmentDefault,
+  organizationHandoffEnvironmentMapping,
+} from "./handoff-environment-state"
 import { organizationNativeHandoffMapping } from "./handoff-native-state"
 import {
   organizationDirectoryFromOptions,
@@ -53,6 +60,13 @@ const choiceKey = (choice: WorkspaceChoice) =>
   choice.kind === "organization-native" ? `${choice.kind}:${choice.targetKind}` : choice.kind
 const existingDirectory = (mapping: Handoff.WorkspaceMapping) =>
   mapping.kind === "organization-native" && mapping.target.kind === "existing"
+function environmentMessage(kind: Handoff.EnvironmentTargetSelection["kind"]) {
+  return kind === "organization"
+    ? environmentMessages.cloud
+    : kind === "native"
+      ? environmentMessages.native
+      : environmentMessages.none
+}
 function workspaceMessage(value: WorkspaceChoice | Handoff.WorkspaceMapping) {
   if (value.kind === "organization-native")
     return ("target" in value ? value.target.kind : value.targetKind) === "private-copy"
@@ -158,11 +172,13 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
     history: Handoff.View[]
     resources: OrgResourceView[]
     workspaces: OrgCloudWorkspace[]
+    environmentResources: OrgResourceView[]
+    environments: OrgCloudEnvironment[]
     view?: Handoff.View
     preview?: Handoff.Options
     machine?: Handoff.MachineResult
     cancellationMachine?: Handoff.MachineResult
-  }>({ runtimes: [], history: [], resources: [], workspaces: [] })
+  }>({ runtimes: [], history: [], resources: [], workspaces: [], environmentResources: [], environments: [] })
   const [saved, setSaved] = createSignal<OrganizationHandoffSaved>()
   const [destination, setDestination] = createSignal("")
   const [kind, setKind] = createSignal<Handoff.WorkspaceMapping["kind"]>("native")
@@ -170,6 +186,15 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
   const [resourceID, setResourceID] = createSignal("")
   const [workspaceID, setWorkspaceID] = createSignal("")
   const [path, setPath] = createSignal("")
+  const [environmentKind, setEnvironmentKind] = createSignal("none")
+  const [environmentResourceID, setEnvironmentResourceID] = createSignal("")
+  const [environmentID, setEnvironmentID] = createSignal("")
+  const [environmentResourceCursor, setEnvironmentResourceCursor] = createSignal<string>()
+  const [environmentCursor, setEnvironmentCursor] = createSignal<string>()
+  const [environmentsLoading, setEnvironmentsLoading] = createSignal(false)
+  const [environmentResourcesLoading, setEnvironmentResourcesLoading] = createSignal(false)
+  let environmentRevision = 0
+
   const [targetPageCursor, setTargetPageCursor] = createSignal<string>()
   const [historyCursor, setHistoryCursor] = createSignal<string>()
   const [resourceCursor, setResourceCursor] = createSignal<string>()
@@ -335,7 +360,8 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
       (view.targetRuntimeID !== action.body.targetRuntimeID ||
         view.fromEpoch !== action.body.expectedBindingEpoch ||
         view.mappingPlanRevision !== action.body.mappingPlanRevision ||
-        JSON.stringify(view.workspaceMapping) !== JSON.stringify(action.body.workspaceMapping))
+        JSON.stringify(view.workspaceMapping) !== JSON.stringify(action.body.workspaceMapping) ||
+        JSON.stringify(view.environmentMapping) !== JSON.stringify(action.body.environmentMapping))
     )
       throw new Error("Handoff returned another original plan")
     if (action && organizationHandoffOutcomeKnown(action, view)) confirmed(view.handoffID)
@@ -559,6 +585,18 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
       )
         throw { code: "STALE_BINDING" }
       setState("preview", reconcile(value))
+      environmentRevision++
+      setEnvironmentsLoading(false)
+      setEnvironmentResourcesLoading(false)
+      setEnvironmentResourceID("")
+      setEnvironmentID("")
+      setEnvironmentResourceCursor(undefined)
+      setEnvironmentCursor(undefined)
+      setState("environmentResources", reconcile([]))
+      setState("environments", reconcile([]))
+      const defaultEnvironment = organizationHandoffEnvironmentDefault(value)
+      setEnvironmentKind(defaultEnvironment?.kind === "organization" ? "keep" : (defaultEnvironment?.kind ?? ""))
+
       const initial = supportedChoices().find((choice) => !choice.requiresDifference) ?? supportedChoices()[0]
       if (initial) chooseWorkspace(choiceKey(initial))
     } catch (error) {
@@ -566,6 +604,105 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
     } finally {
       if (current() && revision === selectionRevision) setChecking(false)
     }
+  }
+  async function environmentResources(more = false) {
+    if (environmentResourcesLoading()) return
+    const ownerRevision = selectionRevision
+    setEnvironmentResourcesLoading(true)
+    try {
+      const result = await api.orgProjectResources.list(
+        { projectID, limit: 50, cursor: more ? environmentResourceCursor() : undefined },
+        options,
+      )
+      if (!current() || selectionRevision !== ownerRevision) return
+      setState(
+        "environmentResources",
+        reconcile(more ? [...state.environmentResources, ...result.data.items] : result.data.items, {
+          key: "resourceID",
+        }),
+      )
+      setEnvironmentResourceCursor(result.data.cursor)
+    } catch (error) {
+      if (current() && selectionRevision === ownerRevision) failure(error)
+    } finally {
+      if (current() && selectionRevision === ownerRevision) setEnvironmentResourcesLoading(false)
+    }
+  }
+  async function environments(id: string, more = false) {
+    if (!id || environmentsLoading()) return
+    const revision = ++environmentRevision
+    const ownerRevision = selectionRevision
+    setEnvironmentResourceID(id)
+    if (!more) {
+      setEnvironmentID("")
+      setState("environments", reconcile([]))
+      setEnvironmentCursor(undefined)
+    }
+    setEnvironmentsLoading(true)
+    try {
+      const result = await api.orgCloudEnvironments.list(
+        { projectID, resourceID: id, limit: 50, cursor: more ? environmentCursor() : undefined },
+        options,
+      )
+      if (
+        !current() ||
+        revision !== environmentRevision ||
+        ownerRevision !== selectionRevision ||
+        environmentResourceID() !== id
+      )
+        return
+      if (result.data.items.some((item) => item.projectID !== projectID || item.resourceID !== id))
+        throw new Error("Environment selection returned another resource")
+      setState(
+        "environments",
+        reconcile(more ? [...state.environments, ...result.data.items] : result.data.items, { key: "environmentID" }),
+      )
+      setEnvironmentCursor(result.data.cursor)
+    } catch (error) {
+      if (current() && revision === environmentRevision && ownerRevision === selectionRevision) failure(error)
+    } finally {
+      if (current() && revision === environmentRevision && ownerRevision === selectionRevision)
+        setEnvironmentsLoading(false)
+    }
+  }
+  function chooseEnvironment(value: string) {
+    environmentRevision++
+    setEnvironmentsLoading(false)
+    setEnvironmentKind(value)
+    if (value === "organization") void environmentResources()
+  }
+  function environmentMapping() {
+    const preview = state.preview,
+      workspace = mapping()
+    if (!preview?.environment || !workspace) return
+    let target: Handoff.EnvironmentTargetSelection | undefined
+    if (environmentKind() === "keep" && preview.environment.source.kind === "organization")
+      target = preview.environment.source
+    else if (environmentKind() === "native") target = preview.environment.native ?? undefined
+    else if (environmentKind() === "none") target = { kind: "none" }
+    else if (environmentKind() === "organization") {
+      const resource = state.environmentResources.find(
+        (item) =>
+          item.resourceID === environmentResourceID() &&
+          item.state === "enabled" &&
+          item.permissions.use &&
+          item.definition.protocol === "environment",
+      )
+      const environment = state.environments.find(
+        (item) =>
+          item.environmentID === environmentID() &&
+          item.resourceID === resource?.resourceID &&
+          item.projectID === projectID,
+      )
+      if (resource && environment)
+        target = {
+          kind: "organization",
+          resourceID: resource.resourceID,
+          resourceRevision: resource.revision,
+          environmentID: environment.environmentID,
+        }
+    }
+    return organizationHandoffEnvironmentMapping(preview, workspace, target)
   }
   async function resources(more = false) {
     if (resourcesLoading()) return
@@ -1066,7 +1203,15 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
     try {
       const preview = state.preview
       const selected = mapping()
-      if (!allowed() || !sourceOwner() || pending() || !preview || !selected) return
+      if (
+        !allowed() ||
+        !sourceOwner() ||
+        pending() ||
+        !preview ||
+        !selected ||
+        (preview.environment && !environmentMapping())
+      )
+        return
       const handoffID = generateSecureUUID()
       const workspaceMapping =
         selected.kind === "organization-object" || selected.kind === "organization-native"
@@ -1082,6 +1227,7 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
             expectedControlRevision: preview.controlRevision,
             mappingPlanRevision: 1,
             workspaceMapping,
+            ...(preview.environment ? { environmentMapping: environmentMapping() } : {}),
           },
         },
         handoffID,
@@ -1490,9 +1636,33 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
                         </Show>
                         <TextField label={_(messages.path)} value={path()} onChange={setPath} maxLength={4096} />
                       </Show>
+                      <Show when={preview().environment}>
+                        {(environment) => (
+                          <OrganizationHandoffEnvironment
+                            options={environment()}
+                            value={environmentKind()}
+                            resourceID={environmentResourceID()}
+                            environmentID={environmentID()}
+                            resources={state.environmentResources}
+                            environments={state.environments}
+                            loading={environmentsLoading() || environmentResourcesLoading()}
+                            resourceMore={!!environmentResourceCursor()}
+                            more={!!environmentCursor()}
+                            valid={!!environmentMapping()}
+                            onChange={chooseEnvironment}
+                            onResource={(id) => void environments(id)}
+                            onEnvironment={setEnvironmentID}
+                            onMoreResources={() => void environmentResources(true)}
+                            onMore={() => void environments(environmentResourceID(), true)}
+                            onRefresh={() => void environments(environmentResourceID())}
+                          />
+                        )}
+                      </Show>
                       <Button
                         variant="primary"
-                        disabled={!allowed() || checking() || !mapping()}
+                        disabled={
+                          !allowed() || checking() || !mapping() || (!!preview().environment && !environmentMapping())
+                        }
                         onClick={() => void begin()}
                       >
                         {_(messages.begin)}
@@ -1521,6 +1691,14 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
                   <dt>{_(messages.workspace)}</dt>
                   <dd>{_(workspaceMessage(view().workspaceMapping))}</dd>
                 </div>
+                <Show when={view().environmentMapping}>
+                  {(environment) => (
+                    <div>
+                      <dt>{_(environmentMessages.environment)}</dt>
+                      <dd>{_(environmentMessage(environment().target.kind))}</dd>
+                    </div>
+                  )}
+                </Show>
                 <Show when={existingDirectory(view().workspaceMapping)}>
                   <div>
                     <dt>{_(nativeMessages.directory)}</dt>

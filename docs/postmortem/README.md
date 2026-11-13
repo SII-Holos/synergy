@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0191](0191-native-handoff-required-an-unowned-resource-contract.md)
+
 - [0190](0190-verified-organization-names-were-missing-from-the-switcher.md)
 
 - [0189](0189-discovery-connectivity-was-reported-as-identity-change.md)

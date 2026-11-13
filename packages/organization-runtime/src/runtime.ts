@@ -30,6 +30,7 @@ import { OrganizationHandoffWorkspaceTarget } from "./handoff-workspace-target"
 import { OrganizationHandoffWorkspaceSource } from "./handoff-workspace-source"
 import { OrganizationWorkspaceFileSource } from "./workspace-file-source"
 import { OrganizationEnvironmentExecutionSource } from "./environment-execution-source"
+import { OrganizationHandoffEnvironments } from "./handoff-environment"
 import { EnvironmentExecutionSource } from "@ericsanchezok/synergy-harness/environment/execution-source"
 import {
   SessionTransferCore,
@@ -148,6 +149,7 @@ async function openOrganizationRuntime(input: MemberRuntimeOptions) {
         OrganizationHandoffWorkspaceTarget.register()
         OrganizationHandoffWorkspaceSource.register()
         SessionTransferEnvironments.register()
+        if (input.handoff) OrganizationHandoffEnvironments.register()
         registerOrganizationTransferOwner()
         if (!("accountID" in member.identity)) {
           OrganizationRuntimeNative.register({ identity: member.identity, ca: input.ca })
@@ -216,7 +218,7 @@ async function openOrganizationRuntime(input: MemberRuntimeOptions) {
               ? {
                   handoff: context.bind(handoff.dispatch),
                   handoffInspection: context.bind(handoff.inspection),
-                  handoffVersion: 7 as const,
+                  handoffVersion: 8 as const,
                 }
               : {}),
             notifications: true,

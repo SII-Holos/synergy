@@ -68,6 +68,8 @@ import type {
   OrgCloudEnvironmentsCreateResponses,
   OrgCloudEnvironmentsGetErrors,
   OrgCloudEnvironmentsGetResponses,
+  OrgCloudEnvironmentsListErrors,
+  OrgCloudEnvironmentsListResponses,
   OrgCloudExecutionInspectErrors,
   OrgCloudExecutionInspectionRequest,
   OrgCloudExecutionInspectResponses,
@@ -3659,6 +3661,42 @@ export class OrgCloudEnvironments extends HeyApiClient {
         ...options?.headers,
         ...params.headers,
       },
+    })
+  }
+
+  /**
+   * List currently authorized Environments without allocating compute
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters: {
+      projectID: string
+      limit?: number
+      cursor?: string
+      resourceID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "projectID" },
+            { in: "query", key: "limit" },
+            { in: "query", key: "cursor" },
+            { in: "query", key: "resourceID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      OrgCloudEnvironmentsListResponses,
+      OrgCloudEnvironmentsListErrors,
+      ThrowOnError
+    >({
+      url: "/org/v1/projects/{projectID}/cloud/environments",
+      ...options,
+      ...params,
     })
   }
 

@@ -24,6 +24,7 @@ import { createCommandIntake } from "./command-intake"
 import { RuntimeIdentity } from "./home"
 import { assertHandoffHome } from "./handoff-home"
 import { OrganizationRuntimeError } from "./error"
+import { OrganizationHandoffEnvironments } from "./handoff-environment"
 import type { MemberResourceClient } from "./resource-client"
 import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
 import { WorkspaceMove } from "@ericsanchezok/synergy-harness/workspace/move"
@@ -131,6 +132,7 @@ export namespace OrganizationHandoffSource {
         fail("Source controller requires the current finite service authorization")
       input.signal.throwIfAborted()
       await assertHandoffHome(identity, runtimeID, plan)
+      if (plan.environmentPlan) OrganizationHandoffEnvironments.assertPlan(plan, "source")
       const session = await Session.get(plan.sessionID)
       if (
         session.parentID ||
@@ -438,6 +440,7 @@ export namespace OrganizationHandoffSource {
         if (previous) {
           if (
             !fields.every((field) => previous.plan[field] === plan[field]) ||
+            previous.plan.environmentPlan?.hash !== plan.environmentPlan?.hash ||
             previous.plan.commandSeq !== plan.commandSeq
           )
             fail("Source preparation is already using another immutable handoff")
@@ -476,6 +479,7 @@ export namespace OrganizationHandoffSource {
             const fact = Handoff.Proof.parse({
               ...factBinding(plan),
               purpose: "source-frozen",
+              ...(plan.environmentPlan ? { environmentMappingHash: plan.environmentPlan.hash } : {}),
               manifestHash: prepared.manifestHash,
               commandSeq: plan.commandSeq,
               receivedSeq: plan.commandSeq,

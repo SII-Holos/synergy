@@ -163,6 +163,12 @@ test("two native Homes map dormant Environments atomically and retain safe evide
           }),
         ).rejects.toThrow("canonical Core selection")
         await Owners.validate("session-core", core)
+        await expect(
+          Owners.validate("session-environments", {
+            ...context,
+            mapping: { ...context.mapping, environmentMappingHash: "a".repeat(64) },
+          }),
+        ).rejects.toThrow("versioned source fact")
         await Owners.validate("session-environments", context)
         expect(await Environment.binding("home", captured.session.id)).toBeUndefined()
         expect(
@@ -458,12 +464,22 @@ test("a registered Environment mapping callback owns publication while retained 
   let originalID: string | undefined
   let expectedMapping: NonNullable<ReturnType<Environments.MappingSource["capture"]>>["mapping"] | undefined
   const frame = () => {
-    const runtime = RuntimeContext.current(), current = Storage.current(), namespace = JSON.stringify(current.store.options)
+    const runtime = RuntimeContext.current(),
+      current = Storage.current(),
+      namespace = JSON.stringify(current.store.options)
     const owner: { open: boolean; assert(): void } = {
       open: true,
       assert() {
         const selected = Storage.current()
-        if (!owner.open || frames.getStore() !== owner || RuntimeContext.current() !== runtime || selected.store !== current.store || JSON.stringify(selected.store.options) !== namespace || selected.artifactDirectory !== current.artifactDirectory || selected.artifactObjects !== current.artifactObjects)
+        if (
+          !owner.open ||
+          frames.getStore() !== owner ||
+          RuntimeContext.current() !== runtime ||
+          selected.store !== current.store ||
+          JSON.stringify(selected.store.options) !== namespace ||
+          selected.artifactDirectory !== current.artifactDirectory ||
+          selected.artifactObjects !== current.artifactObjects
+        )
           throw new Error("Original Environment mapping callback has ended or changed its namespace")
       },
     }
@@ -493,28 +509,48 @@ test("a registered Environment mapping callback owns publication while retained 
           }
           return { mapping: expectedMapping, assert: owner.assert.bind(owner) }
         },
-        target() { throw new Error("The source callback cannot publish a target") },
+        target() {
+          throw new Error("The source callback cannot publish a target")
+        },
       })
     },
   })
-  const captured = await source.run(() => ScopeContext.provide({
-    scope: Scope.home(), workspace: null,
-    fn: async () => {
-      using allocation = spyOn(EnvironmentProviders.get("native"), "allocate")
-      const environment = await Environment.bind({ scopeID: "home", ownerID: "logical-source", provider: "native", spec: {} })
-      const session = await Session.create({ environmentID: environment.id, workspaceID: null })
-      originalID = session.id
-      const binding = { scopeID: "home", sessionID: session.id, handoffID: "explicit-native-transition", sourceID: "source-runtime", targetID: "target-runtime", fromEpoch: 1, toEpoch: 2 }
-      const owner = frame()
-      try {
-        const prepared = await frames.run(owner, () => Source.prepare({ binding, store, signal, async verify() {} }))
-        expect(prepared.root.owners["session-environments"]).toBe(3)
-        expect(allocation).not.toHaveBeenCalled()
-        expect(await Environment.get(environment.id, "home")).toMatchObject({ state: "idle", generation: 0 })
-        return { binding, prepared, session: await Session.get(session.id), environment }
-      } finally { owner.open = false }
-    },
-  }))
+  const captured = await source.run(() =>
+    ScopeContext.provide({
+      scope: Scope.home(),
+      workspace: null,
+      fn: async () => {
+        using allocation = spyOn(EnvironmentProviders.get("native"), "allocate")
+        const environment = await Environment.bind({
+          scopeID: "home",
+          ownerID: "logical-source",
+          provider: "native",
+          spec: {},
+        })
+        const session = await Session.create({ environmentID: environment.id, workspaceID: null })
+        originalID = session.id
+        const binding = {
+          scopeID: "home",
+          sessionID: session.id,
+          handoffID: "explicit-native-transition",
+          sourceID: "source-runtime",
+          targetID: "target-runtime",
+          fromEpoch: 1,
+          toEpoch: 2,
+        }
+        const owner = frame()
+        try {
+          const prepared = await frames.run(owner, () => Source.prepare({ binding, store, signal, async verify() {} }))
+          expect(prepared.root.owners["session-environments"]).toBe(3)
+          expect(allocation).not.toHaveBeenCalled()
+          expect(await Environment.get(environment.id, "home")).toMatchObject({ state: "idle", generation: 0 })
+          return { binding, prepared, session: await Session.get(session.id), environment }
+        } finally {
+          owner.open = false
+        }
+      },
+    }),
+  )
   await using target = await testRuntime({
     register() {
       register()
@@ -523,55 +559,85 @@ test("a registered Environment mapping callback owns publication while retained 
         capture: () => undefined,
         target(context, source, selected) {
           const owner = authority()
-          if (selected !== null || source.mapping.hash !== hash || context.mapping.environmentMappingHash !== hash || JSON.stringify(source.mapping) !== JSON.stringify(expectedMapping))
+          if (
+            selected !== null ||
+            source.mapping.hash !== hash ||
+            context.mapping.environmentMappingHash !== hash ||
+            JSON.stringify(source.mapping) !== JSON.stringify(expectedMapping)
+          )
             throw new Error("The explicit target changed its original mapping")
           return owner.assert.bind(owner)
         },
       })
     },
   })
-  await target.run(() => ScopeContext.provide({
-    scope: Scope.home(), workspace: null,
-    fn: async () => {
-      using allocation = spyOn(EnvironmentProviders.get("native"), "allocate")
-      await Staging.receive({ handoffID: captured.binding.handoffID, root: captured.prepared.root, store, signal })
-      const input = { handoffID: captured.binding.handoffID, rootSessionID: captured.session.id, session: captured.session, signal, mapping: { environmentID: null, environmentMappingHash: hash } }
-      const core = await Staging.context({ ...input, ownerID: "session-core" })
-      const context = await Staging.context({ ...input, ownerID: "session-environments" })
-      await expect(Owners.validate("session-environments", context)).rejects.toThrow("original callback")
-      await Owners.validate("session-core", core)
-      await Epochs.reserve(captured.binding, captured.prepared.manifestHash)
-      const contexts = [{ ownerID: "session-core", context: core }, { ownerID: "session-environments", context }]
-      const ended = frame()
-      await frames.run(ended, async () => {
-        await Owners.validate("session-environments", context)
-        await expect(Epochs.activate(captured.binding, captured.prepared.manifestHash, async () => {
-          await Staging.publish({ handoffID: captured.binding.handoffID, contexts })
-          ended.open = false
-        })).rejects.toThrow("callback has ended")
-      })
-      expect(await Environments.receipt(captured.binding)).toBeUndefined()
-      await expect(Session.get(captured.session.id)).rejects.toThrow()
-      expect(await Environment.binding("home", captured.session.id)).toBeUndefined()
-      const freshCore = await Staging.context({ ...input, ownerID: "session-core" })
-      const freshContext = await Staging.context({ ...input, ownerID: "session-environments" })
-      const freshContexts = [{ ownerID: "session-core", context: freshCore }, { ownerID: "session-environments", context: freshContext }]
-      const current = frame()
-      try {
-        await frames.run(current, async () => {
-          await Owners.validate("session-core", freshCore)
-          await Owners.validate("session-environments", freshContext)
-          await Epochs.activate(captured.binding, captured.prepared.manifestHash, () => Staging.publish({ handoffID: captured.binding.handoffID, contexts: freshContexts }))
+  await target.run(() =>
+    ScopeContext.provide({
+      scope: Scope.home(),
+      workspace: null,
+      fn: async () => {
+        using allocation = spyOn(EnvironmentProviders.get("native"), "allocate")
+        await Staging.receive({ handoffID: captured.binding.handoffID, root: captured.prepared.root, store, signal })
+        const input = {
+          handoffID: captured.binding.handoffID,
+          rootSessionID: captured.session.id,
+          session: captured.session,
+          signal,
+          mapping: { environmentID: null, environmentMappingHash: hash },
+        }
+        const core = await Staging.context({ ...input, ownerID: "session-core" })
+        const context = await Staging.context({ ...input, ownerID: "session-environments" })
+        await expect(Owners.validate("session-environments", context)).rejects.toThrow("original callback")
+        await Owners.validate("session-core", core)
+        await Epochs.reserve(captured.binding, captured.prepared.manifestHash)
+        const contexts = [
+          { ownerID: "session-core", context: core },
+          { ownerID: "session-environments", context },
+        ]
+        const ended = frame()
+        await frames.run(ended, async () => {
+          await Owners.validate("session-environments", context)
+          await expect(
+            Epochs.activate(captured.binding, captured.prepared.manifestHash, async () => {
+              await Staging.publish({ handoffID: captured.binding.handoffID, contexts })
+              ended.open = false
+            }),
+          ).rejects.toThrow("callback has ended")
         })
-      } finally { current.open = false }
-      const receipt = await Environments.receipt(captured.binding)
-      expect(receipt).toMatchObject({ version: 3, source: { selected: { environmentID: captured.environment.id }, mapping: expectedMapping }, target: null })
-      expect((await Session.get(captured.session.id)).environmentID).toBeNull()
-      expect((await Session.get(captured.session.id)).paused).toBeDefined()
-      expect(await Environment.binding("home", captured.session.id)).toBeUndefined()
-      expect(allocation).not.toHaveBeenCalled()
-      await expect(Owners.validate("session-environments", freshContext)).rejects.toThrow("callback")
-      expect(await Environments.receipt(captured.binding)).toEqual(receipt)
-    },
-  }))
+        expect(await Environments.receipt(captured.binding)).toBeUndefined()
+        await expect(Session.get(captured.session.id)).rejects.toThrow()
+        expect(await Environment.binding("home", captured.session.id)).toBeUndefined()
+        const freshCore = await Staging.context({ ...input, ownerID: "session-core" })
+        const freshContext = await Staging.context({ ...input, ownerID: "session-environments" })
+        const freshContexts = [
+          { ownerID: "session-core", context: freshCore },
+          { ownerID: "session-environments", context: freshContext },
+        ]
+        const current = frame()
+        try {
+          await frames.run(current, async () => {
+            await Owners.validate("session-core", freshCore)
+            await Owners.validate("session-environments", freshContext)
+            await Epochs.activate(captured.binding, captured.prepared.manifestHash, () =>
+              Staging.publish({ handoffID: captured.binding.handoffID, contexts: freshContexts }),
+            )
+          })
+        } finally {
+          current.open = false
+        }
+        const receipt = await Environments.receipt(captured.binding)
+        expect(receipt).toMatchObject({
+          version: 3,
+          source: { selected: { environmentID: captured.environment.id }, mapping: expectedMapping },
+          target: null,
+        })
+        expect((await Session.get(captured.session.id)).environmentID).toBeNull()
+        expect((await Session.get(captured.session.id)).paused).toBeDefined()
+        expect(await Environment.binding("home", captured.session.id)).toBeUndefined()
+        expect(allocation).not.toHaveBeenCalled()
+        await expect(Owners.validate("session-environments", freshContext)).rejects.toThrow("callback")
+        expect(await Environments.receipt(captured.binding)).toEqual(receipt)
+      },
+    }),
+  )
 })

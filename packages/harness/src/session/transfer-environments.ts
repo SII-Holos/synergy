@@ -38,11 +38,14 @@ export namespace SessionTransferEnvironments {
     RuntimeContext.assertCompositionOpen("Environment transfer mapping sources")
     provider = z.string().min(1).max(4096).parse(provider)
     if (mappingSources().has(provider)) throw new Error("Environment transfer mapping source is already registered")
-    mappingSources().set(provider, Object.freeze({
-      applies: port.applies.bind(port),
-      capture: port.capture.bind(port),
-      target: port.target.bind(port),
-    }))
+    mappingSources().set(
+      provider,
+      Object.freeze({
+        applies: port.applies.bind(port),
+        capture: port.capture.bind(port),
+        target: port.target.bind(port),
+      }),
+    )
   }
   function explicitMapping(context: Owners.SourceContext, selected: S.Selection | null) {
     let observed: { mapping: S.Mapping; assert(): void } | undefined
@@ -97,7 +100,11 @@ export namespace SessionTransferEnvironments {
       descriptor: provider.portableDescriptor(info.spec),
     })
   }
-  export async function nativeSelection(input: { environmentID: string | null; scopeID: string; signal?: AbortSignal }) {
+  export async function nativeSelection(input: {
+    environmentID: string | null
+    scopeID: string
+    signal?: AbortSignal
+  }) {
     const assertOwner = guard(input.signal ?? new AbortController().signal)
     const selected = await selection(input.environmentID, input.scopeID)
     assertOwner()
@@ -221,7 +228,12 @@ export namespace SessionTransferEnvironments {
           }),
         )
       },
-      { commitGuard() { assertOwner(); mapping?.assert() } },
+      {
+        commitGuard() {
+          assertOwner()
+          mapping?.assert()
+        },
+      },
     )
     assertOwner()
   }
@@ -415,6 +427,11 @@ export namespace SessionTransferEnvironments {
       )
     const mapped = context.mapping.environmentID
     if (mapped !== null && typeof mapped !== "string") fail("Environment requires an explicit destination mapping")
+    if (
+      context.mapping.environmentMappingHash !== undefined &&
+      (source.version !== 3 || source.mapping.hash !== context.mapping.environmentMappingHash)
+    )
+      fail("Explicit Environment mapping requires its original versioned source fact")
     const selected = await selection(mapped, core.info.scope.id)
     assertOwner()
     let assertMapping = assertOwner
@@ -423,7 +440,10 @@ export namespace SessionTransferEnvironments {
       if (!port) fail("Explicit Environment mapping requires its registered native owner")
       const verify = port.target(context, structuredClone(source), selected ? structuredClone(selected) : null)
       if (typeof verify !== "function") fail("Explicit Environment mapping has no original target authority")
-      assertMapping = () => { assertOwner(); verify() }
+      assertMapping = () => {
+        assertOwner()
+        verify()
+      }
       assertMapping()
       hash.update(JSON.stringify({ mapping: source.mapping, target: selected }) + "\n")
     } else {
@@ -517,7 +537,12 @@ export namespace SessionTransferEnvironments {
             requirements: [requirement(error)],
           })
         }
-        return !!current.environmentID || count > 0 || [...mappingSources().values()].some((port) => port.applies(current)) || Records.hasReceipts(current.scope.id, current.id)
+        return (
+          !!current.environmentID ||
+          count > 0 ||
+          [...mappingSources().values()].some((port) => port.applies(current)) ||
+          Records.hasReceipts(current.scope.id, current.id)
+        )
       },
       inspect,
       freeze,

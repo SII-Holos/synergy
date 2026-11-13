@@ -7,6 +7,57 @@ import { WorkspacePath } from "./workspace-path.js"
 
 export namespace OrganizationHandoffProtocol {
   export const Hash = z.string().regex(/^[a-f0-9]{64}$/)
+  export const NativeEnvironmentDescriptor = z.strictObject({
+    version: z.literal(1),
+    kind: z.literal("native"),
+    platform: z.string().min(1).max(64),
+    architecture: z.string().min(1).max(64),
+    capabilities: z.array(z.enum(["exec", "pty", "files"])).refine((items) => new Set(items).size === items.length),
+  })
+  export const NativeEnvironmentSelection = z.strictObject({
+    kind: z.literal("native"),
+    environmentID: Identity.ID,
+    provider: Identity.ID,
+    generation: Identity.Revision,
+    descriptor: NativeEnvironmentDescriptor,
+  })
+  export type NativeEnvironmentSelection = z.infer<typeof NativeEnvironmentSelection>
+  export const NativeEnvironmentTarget = z.strictObject({
+    kind: z.literal("native"),
+    provider: Identity.ID,
+    descriptor: NativeEnvironmentDescriptor,
+    reference: z.strictObject({ environmentID: Identity.ID, generation: Identity.Revision }).nullable(),
+  })
+  export type NativeEnvironmentTarget = z.infer<typeof NativeEnvironmentTarget>
+  export const OrganizationEnvironmentSelection = z.strictObject({
+    kind: z.literal("organization"),
+    resourceID: Identity.ID,
+    resourceRevision: Identity.Revision,
+    environmentID: Identity.ID,
+  })
+  export const EnvironmentSourceSelection = z.discriminatedUnion("kind", [
+    z.strictObject({ kind: z.literal("none") }),
+    NativeEnvironmentSelection,
+    OrganizationEnvironmentSelection,
+  ])
+  export type EnvironmentSourceSelection = z.infer<typeof EnvironmentSourceSelection>
+  export const EnvironmentTargetSelection = z.discriminatedUnion("kind", [
+    z.strictObject({ kind: z.literal("none") }),
+    NativeEnvironmentTarget,
+    OrganizationEnvironmentSelection,
+  ])
+  export type EnvironmentTargetSelection = z.infer<typeof EnvironmentTargetSelection>
+  export const EnvironmentMapping = z
+    .strictObject({
+      version: z.literal(1),
+      expectedSelectionRevision: Identity.Revision,
+      source: EnvironmentSourceSelection,
+      target: EnvironmentTargetSelection,
+    })
+    .meta({ ref: "OrgHandoffEnvironmentMapping" })
+  export type EnvironmentMapping = z.infer<typeof EnvironmentMapping>
+  export const environmentMappingHash = (mapping: EnvironmentMapping) =>
+    digestProtocol(EnvironmentMapping, "synergy.organization.handoff.environment-mapping.v1\n", mapping)
   export const Requirement = z.strictObject({
     code: Identity.ID,
     label: z.string().min(1).max(1024),
@@ -96,6 +147,7 @@ export namespace OrganizationHandoffProtocol {
     .discriminatedUnion("purpose", [
       Binding.extend({
         purpose: z.literal("source-frozen"),
+        environmentMappingHash: Hash.optional(),
         manifestHash: Hash,
         commandSeq: Identity.Revision,
         receivedSeq: Identity.Revision,
@@ -109,6 +161,7 @@ export namespace OrganizationHandoffProtocol {
       }),
       Binding.extend({
         purpose: z.literal("target-prepared"),
+        environmentMappingHash: Hash.optional(),
         manifestHash: Hash,
         compatibilityHash: Hash,
         convertedHash: Hash,
@@ -247,7 +300,18 @@ export namespace OrganizationHandoffProtocol {
     expectedControlRevision: Identity.Revision,
     mappingPlanRevision: z.number().int().positive().safe(),
   })
-  export const CurrentPrepare = LegacyPrepare.extend({ workspaceMapping: WorkspaceMapping })
+  export const CurrentPrepare = LegacyPrepare.extend({
+    workspaceMapping: WorkspaceMapping,
+    environmentMapping: EnvironmentMapping.optional(),
+  })
+  export const planHash = (workspaceMapping: WorkspaceMapping, environmentMapping?: EnvironmentMapping) =>
+    environmentMapping === undefined
+      ? mappingHash(workspaceMapping)
+      : digestProtocol(
+          z.strictObject({ workspaceMapping: WorkspaceMapping, environmentMapping: EnvironmentMapping }),
+          "synergy.organization.handoff.mapping-plan.v1\n",
+          { workspaceMapping, environmentMapping },
+        )
   export const Prepare = z
     .union([CurrentPrepare, LegacyPrepare])
     .transform((value) =>
@@ -396,6 +460,8 @@ export namespace OrganizationHandoffProtocol {
       role: z.enum(["source", "target"]),
       workspace: SourceWorkspace.nullable(),
       native: NativeTarget.nullable(),
+      sourceEnvironment: NativeEnvironmentSelection.nullable().optional(),
+      nativeEnvironment: NativeEnvironmentTarget.nullable().optional(),
     })
     .refine(
       (value) => (value.role === "source" ? value.native === null : value.workspace === null),
@@ -428,6 +494,14 @@ export namespace OrganizationHandoffProtocol {
       targetRuntimeID: Identity.ID,
       source: SourceWorkspace.nullable(),
       native: NativeTarget.nullable(),
+      environment: z
+        .strictObject({
+          source: EnvironmentSourceSelection,
+          expectedSelectionRevision: Identity.Revision,
+          native: NativeEnvironmentTarget.nullable(),
+          choices: z.array(z.enum(["none", "native", "organization"])),
+        })
+        .optional(),
       choices: z.array(
         z.union([
           z.strictObject({
@@ -464,6 +538,7 @@ export namespace OrganizationHandoffProtocol {
   })
   export const View = LegacyView.extend({
     workspaceMapping: WorkspaceMapping,
+    environmentMapping: EnvironmentMapping.optional(),
     mappingHash: Hash,
     cancelRequested: z.boolean(),
     workspaceDifference: Difference.optional(),
@@ -533,6 +608,14 @@ export namespace OrganizationHandoffProtocol {
     cleanup: SignedProof.optional(),
     authorization: SignedPermit.optional(),
     object: ObjectRange.optional(),
+    mappingPlanHash: Hash.optional(),
+    environmentPlan: z
+      .strictObject({
+        mapping: EnvironmentMapping,
+        hash: Hash,
+        selectionActor: ActorStamp.Info.nullable(),
+      })
+      .optional(),
     workspacePlan: z
       .strictObject({
         mapping: WorkspaceMapping,

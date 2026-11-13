@@ -6,6 +6,8 @@ Run `bun run typecheck` and `bun run test`; verify mounted OpenAPI and regenerat
 
 Handoff proofs/plans bind purpose/ownership/operations/watermarks/connections and existing/private-copy targets; only existing requires differences. Separate `SourceReceiptPermit` signatures. Distinguish file hashes/directory CAS receipts. Refresh authority; reject system-driven human controls. Verify handoff-inspection/tampering/completion. Ranges never authorize arbitrary content.
 
+Bridge eight adds strict native/organization/none Environment choices and inspected native templates. Hash the complete plan and retain the Environment hash in source/prepared facts. Do not substitute Workspace hashes or renderer identifiers for those contracts; verify `test/handoff-environment.test.ts`.
+
 API token schemas separate one-time secrets from metadata and bind explicit project/operation/expiry scope. Trusted routes select purposes; token scope never replaces current authorization. Reuse the portable account actor schema from Util, including optional signed token attribution. Command permits bind the logical request, actor, deployment, target, epochs, sequences and finite signing window; signature validity alone does not establish current execution admission. Preserve existing proof bytes when sharing signing primitives, and verify compiled Node imports across package boundaries.
 
 Hash complete inputs/targets; distinguish missing publication receipts. Keep skip authorization in a separate signature domain and bind its original attempt. Test UTF-8 byte bounds, changed bodies and targets, and immutable accepted-effect identity independently of attempt rejection.
