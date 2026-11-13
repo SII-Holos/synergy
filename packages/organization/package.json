@@ -9,6 +9,8 @@
   },
   "exports": {
     "./service": "./src/service.ts",
+    "./backup": "./src/backup.ts",
+    "./backup/recovery": "./src/backup-recovery.ts",
     "./component": "./src/component.ts",
     "./config-schema": "./src/config-schema.ts",
     "./infrastructure": "./src/infrastructure.ts",

@@ -6,13 +6,15 @@ import { NamespaceRetirement } from "@ericsanchezok/synergy-harness/lifecycle/na
 import { HomeRestoration } from "@ericsanchezok/synergy-harness/lifecycle/home-restoration"
 import { HomeOwnershipFile } from "@ericsanchezok/synergy-harness/lifecycle/home-ownership-file"
 import { openOrganizationRecovery, openOrganizationService } from "@ericsanchezok/synergy-organization/service"
-import { OrganizationRecovery } from "../../../organization/src/backup/recovery"
-import { OrganizationCurrentAuthority } from "../../../organization/src/backup/current-authority"
-import { OrganizationSourceRetirement } from "../../../organization/src/backup/source-retirement"
-import { OrganizationRecoveryPublication } from "../../../organization/src/backup/publication"
+import {
+  OrganizationRecovery,
+  OrganizationCurrentAuthority,
+  OrganizationSourceRetirement,
+  OrganizationRecoveryPublication,
+  OrganizationServiceNative,
+  OrganizationRecoveryAuthority,
+} from "@ericsanchezok/synergy-organization/backup/recovery"
 import { cert, key as certificateKey } from "@ericsanchezok/synergy-testing/organization-tls"
-import { OrganizationServiceNative } from "../../../organization/src/backup/service-native"
-import { OrganizationRecoveryAuthority } from "../../../organization/src/backup/authority"
 import { HomeOwnership } from "@ericsanchezok/synergy-harness/lifecycle/home-ownership"
 import { RuntimeMaintenance } from "@ericsanchezok/synergy-harness/storage/runtime-maintenance"
 import { SnapshotMaintenance } from "@ericsanchezok/synergy-harness/session/snapshot-maintenance"
@@ -37,8 +39,10 @@ import {
   verifyCompletedTaskHistory,
 } from "../support/hosted-task"
 import { openHostedRuntime } from "../../src/runtime"
-import { OrganizationBackupCohort as Cohort } from "../../../organization/src/backup/cohort"
-import { OrganizationRecoveryArchive as Archive } from "../../../organization/src/backup/archive"
+import {
+  OrganizationBackupCohort as Cohort,
+  OrganizationRecoveryArchive as Archive,
+} from "@ericsanchezok/synergy-organization/backup"
 import { withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
 import { HostedBinding } from "../../src/home-schema"
 import { FileAtomicWrite } from "@ericsanchezok/synergy-local-runtime/file/atomic-write"
