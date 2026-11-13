@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, expect, test } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"
-import { chromium, type Browser, type Page } from "playwright"
+import { chromium, type Browser, type Locator, type Page } from "playwright"
 import {
   OrganizationDesktop as Desktop,
   OrganizationHandoffRecovery as Recovery,
@@ -61,10 +61,28 @@ const descriptor = Recovery.Descriptor.parse({
   manifestHash: "b".repeat(64),
 })
 const response = (body: unknown) => ({ ok: true, value: { status: 200, body: JSON.stringify(body) } })
-async function capture(page: Page, name: string) {
+async function capture(page: Page, control: Locator, name: string) {
   const output = process.env.SYNERGY_UI_SCREENSHOT_DIR
   if (!output) return
   await fs.mkdir(output, { recursive: true })
+  const state = await control.evaluate((element) => {
+    const backgrounds = []
+    for (let current: Element | null = element; current; current = current.parentElement) {
+      const style = getComputedStyle(current)
+      backgrounds.push({ tag: current.tagName, background: style.backgroundColor, opacity: style.opacity })
+    }
+    const style = getComputedStyle(element)
+    return {
+      label: element.textContent,
+      disabled: element instanceof HTMLButtonElement && element.disabled,
+      ariaBusy: element.getAttribute("aria-busy"),
+      color: style.color,
+      fontSize: style.fontSize,
+      fontWeight: style.fontWeight,
+      backgrounds,
+    }
+  })
+  await Bun.write(path.join(output, name.replace(/\.png$/, "-control.json")), JSON.stringify(state, null, 2))
   await page.screenshot({ path: path.join(output, name), animations: "disabled" })
 }
 
@@ -345,7 +363,8 @@ test("the real Chinese account device pages and cleanup dialog remain reachable 
           }),
         ),
       ).toBe(true)
-      await capture(f.page, `${name}-page.png`)
+      expect(await inspect.isEnabled()).toBe(true)
+      await capture(f.page, inspect, `${name}-page.png`)
       const returnFocus = await inspect.elementHandle()
       if (!returnFocus) throw new Error("The original cleanup row is not connected")
       await inspect.click()
@@ -355,9 +374,14 @@ test("the real Chinese account device pages and cleanup dialog remain reachable 
       await check.scrollIntoViewIfNeeded()
       await check.click()
       await f.page.waitForFunction((before) => Number(Reflect.get(window, "accountResponses") ?? 0) > before, before)
+      await f.page.waitForFunction(
+        (button) => button instanceof HTMLButtonElement && button.isConnected && !button.disabled,
+        await check.elementHandle(),
+      )
+      expect(await check.isEnabled()).toBe(true)
       expect(await dialog.getByText(await f.copy("cleanupUnknown", true), { exact: true }).isVisible()).toBe(true)
       expect(await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true)
-      await capture(f.page, `${name}-dialog.png`)
+      await capture(f.page, check, `${name}-dialog.png`)
       await f.page.keyboard.press("Escape")
       await dialog.waitFor({ state: "detached" })
       await f.page.waitForFunction((button) => button.isConnected && button === document.activeElement, returnFocus)

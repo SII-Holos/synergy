@@ -30,7 +30,37 @@ export function organizationDirectoryFromOptions(input: {
   return OrganizationNativeDirectory.parse({ plan, label: options.native.label })
 }
 
-export function organizationDirectoryLabel(value: OrganizationNativeDirectory | undefined, view: Handoff.View) {
+export function organizationDirectoryFromInspection(view: Handoff.View, requestID: string, value: unknown) {
+  const inspection = Handoff.NativeTargetSelection.parse(value)
+  const target = view.workspaceMapping.kind === "organization-native" ? view.workspaceMapping.target : undefined
+  if (
+    !target ||
+    inspection.requestID !== requestID ||
+    inspection.handoffID !== view.handoffID ||
+    inspection.targetRuntimeID !== view.targetRuntimeID ||
+    inspection.mappingPlanRevision !== view.mappingPlanRevision ||
+    inspection.mappingHash !== view.mappingHash ||
+    inspection.native.reference.workspaceID !== target.workspaceID ||
+    inspection.native.reference.generation !== target.generation ||
+    inspection.native.reference.revision !== target.expectedRevision ||
+    inspection.native.projectRevision !== target.projectRevision
+  )
+    throw new Error("Directory inspection returned another original selection")
+  return inspection
+}
+
+export function organizationDirectoryLabel(
+  value: OrganizationNativeDirectory | undefined,
+  view: Handoff.View,
+  inspection?: Handoff.NativeTargetSelection,
+) {
+  if (inspection) {
+    try {
+      return organizationDirectoryFromInspection(view, inspection.requestID, inspection).native.label
+    } catch {
+      return
+    }
+  }
   if (
     !value ||
     value.plan.handoffID !== view.handoffID ||

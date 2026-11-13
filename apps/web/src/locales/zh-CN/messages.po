@@ -14101,6 +14101,50 @@ msgid "organization.handoff.targetPrepare"
 msgstr "正在等待目标端校验文件和依赖。"
 
 #. js-lingui-explicit-id
+msgid "organization.handoff.targets.choose"
+msgstr "选择目标"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.targets.directoryChecking"
+msgstr "正在核验最初选择的目录…"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.targets.empty"
+msgstr "本页没有目标。"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.targets.first"
+msgstr "返回目标列表首页"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.targets.incompatible"
+msgstr "需要更新"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.targets.next"
+msgstr "下一页目标"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.targets.offline"
+msgstr "离线"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.targets.pending"
+msgstr "等待完成注册"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.targets.refresh"
+msgstr "刷新目标列表"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.targets.revoked"
+msgstr "访问权限已撤销"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.targets.unavailable"
+msgstr "本页的目标均未就绪。请检查连接或更新 Synergy 后刷新。"
+
+#. js-lingui-explicit-id
 msgid "organization.handoff.unknown"
 msgstr "上一步的结果尚未确认。请先检查此次迁移，再进行下一步。"
 

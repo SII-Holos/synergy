@@ -88,10 +88,10 @@ beforeAll(async () => {
     import {OrganizationHandoff} from ${JSON.stringify(`/@fs/${source}/organization/handoff.tsx`)};
     import {useConfirm} from ${JSON.stringify(`/@fs/${source}/components/dialog/confirm-dialog.tsx`)};
     import {organizationNativeHandoffMessages as nativeCopy} from ${JSON.stringify(`/@fs/${source}/organization/handoff-native-messages.ts`)};
-    import {organizationWorkspaceMessages as workspaceCopy} from ${JSON.stringify(`/@fs/${source}/organization/workspace-messages.ts`)};
+    import {organizationHandoffTargetMessages as targetCopy} from ${JSON.stringify(`/@fs/${source}/organization/handoff-target-messages.ts`)};
     import {useLingui} from "@lingui/solid"; import {organizationHandoffMessages as copy} from ${JSON.stringify(`/@fs/${source}/organization/handoff-messages.ts`)};
-    const platform={platform:"web",openLink(){},fetch:async()=>Response.json({healthy:false}),organization:{protocolVersion:2,list:()=>window.hostList(),request:async value=>{const result=await window.hostRequest(value);window.handoffResponses=(window.handoffResponses??0)+1;return result},cancel:()=>Promise.resolve({ok:true}),startMember:()=>{throw new Error("No automatic runtime start")}}};
-    function Fixture(){const {_}=useLingui();window.handoffCopy=key=>_(copy[key]);window.nativeHandoffCopy=key=>_(nativeCopy[key]);window.handoffMore=()=>_(workspaceCopy.more);const space=useSpace();const [execute,setExecute]=createSignal(true);const other=useConfirm();window.revoke=()=>setExecute(false);window.openOther=()=>other.show({title:"Unrelated confirmation",description:"Keep this dialog",confirmLabel:"Confirm",tone:"neutral",onConfirm(){}});const session={sessionID:"session-a",projectID:"project-a",creatorID:new URLSearchParams(location.search).has("cloud")?"account-a":"different-creator",driverRuntimeID:"source",bindingEpoch:7,shareState:"shared",resourceIDs:[],createdAt:0,get permissions(){return {read:true,execute:execute(),stop:true}},runtime:{runtimeID:"source",runtimeKind:"member",ownerID:"account-a",state:"online",connectionEpoch:1}};return <Show when={space.current()?.key} keyed>{()=> <OrganizationHandoff session={session} changed={()=>window.hostChanged()} compact={new URLSearchParams(location.search).has("compact")} />}</Show>}
+    const platform={platform:"web",openLink(){},fetch:async()=>Response.json({healthy:false}),organization:{protocolVersion:2,list:()=>window.hostList(),request:async value=>{const result=await window.hostRequest(value);window.handoffResponses=(window.handoffResponses??0)+1;if(value.path.includes("/native-target"))window.nativeDirectoryResponses=(window.nativeDirectoryResponses??0)+1;return result},cancel:()=>Promise.resolve({ok:true}),startMember:()=>{throw new Error("No automatic runtime start")}}};
+    function Fixture(){const {_}=useLingui();window.handoffCopy=key=>_(copy[key]);window.nativeHandoffCopy=key=>_(nativeCopy[key]);window.handoffMore=()=>_(targetCopy.next);window.handoffTargetCopy=key=>_(targetCopy[key]);const space=useSpace();const [execute,setExecute]=createSignal(true);const [epoch,setEpoch]=createSignal(7);window.changeHandoffBinding=()=>setEpoch(8);const other=useConfirm();window.revoke=()=>setExecute(false);window.openOther=()=>other.show({title:"Unrelated confirmation",description:"Keep this dialog",confirmLabel:"Confirm",tone:"neutral",onConfirm(){}});const session={sessionID:"session-a",projectID:"project-a",creatorID:new URLSearchParams(location.search).has("recipient")?"source-account":new URLSearchParams(location.search).has("cloud")?"account-a":"different-creator",driverRuntimeID:"source",get bindingEpoch(){return epoch()},shareState:"shared",resourceIDs:[],createdAt:0,get permissions(){return {read:true,execute:execute(),stop:true}},runtime:{runtimeID:"source",runtimeKind:"member",ownerID:new URLSearchParams(location.search).has("recipient")?"source-account":"account-a",state:"online",connectionEpoch:1}};return <Show when={space.current()?.key} keyed>{()=> <OrganizationHandoff session={session} changed={()=>window.hostChanged()} compact={new URLSearchParams(location.search).has("compact")} />}</Show>}
     render(()=> <PlatformProvider value={platform}><AppBaseProviders><SpaceProvider><Fixture/></SpaceProvider></AppBaseProviders></PlatformProvider>,document.getElementById("root"));
   `,
   )
@@ -134,6 +134,12 @@ async function open(
     noNativeDirectory?: boolean
     dropPreview?: boolean
     holdDifferencePage?: Promise<void>
+    peer?: boolean
+    recipient?: boolean
+    unreadyTargets?: boolean
+    changedTargetScope?: boolean
+    holdTargets?: Promise<void>
+    holdNativeDirectory?: Promise<void>
   } = {},
 ) {
   const context = await browser.newContext({
@@ -156,6 +162,8 @@ async function open(
   const errors: string[] = []
   const cancellationRequested = Promise.withResolvers<void>()
   const differenceRequested = Promise.withResolvers<void>()
+  const targetsRequested = Promise.withResolvers<void>()
+  const directoryRequested = Promise.withResolvers<void>()
   page.on("pageerror", (error) => errors.push(error.message))
   let view: Handoff.View | undefined
   let dropped = false
@@ -169,6 +177,7 @@ async function open(
   let sourceCancellationAttempt = 0
   let sessionDenied = false
   let cleanupReleased = false
+  let changedNativeDirectory = false
   const comparison = Handoff.Difference.parse({
     sourceSnapshotHash: "b".repeat(64),
     targetDigest: "c".repeat(64),
@@ -189,7 +198,37 @@ async function open(
         accountID: undefined,
         deviceID: undefined,
       }
-    : runtime("target")
+    : { ...runtime("target"), ...(input.peer ? { accountID: "peer-account" } : {}) }
+  if (input.recipient)
+    view = Handoff.View.parse({
+      ...tuple,
+      handoffID: "restored-native-move",
+      initiator: "source-account",
+      phase: "preparing",
+      targetAccepted: false,
+      cancelRequested: false,
+      canAccept: true,
+      canCancel: false,
+      canContinue: false,
+      commandSeq: 4,
+      currentDriver: "source",
+      bindingEpoch: 7,
+      missingRequirements: requirements,
+      mappingHash: "a".repeat(64),
+      workspaceMapping: {
+        kind: "organization-native",
+        moveID: "original-native-move",
+        source: { workspaceID: "source-workspace", generation: 3 },
+        resource: { resourceID: "workspace-storage", workspaceID: "source-workspace", generation: 3, path: "project" },
+        target: {
+          kind: "existing",
+          workspaceID: "default-target",
+          generation: 1,
+          expectedRevision: 1,
+          projectRevision: "a".repeat(64),
+        },
+      },
+    })
   await page.context().exposeFunction("hostList", () => ({
     ok: true,
     value: [
@@ -205,12 +244,51 @@ async function open(
     const body = request.body ? JSON.parse(request.body) : undefined
     requests.push({ path: url.pathname + url.search, method: request.method, body })
     if (url.pathname === "/org/v1/runtimes")
+      throw new Error("The private Runtime directory cannot supply handoff choices")
+    if (url.pathname === "/org/v1/runtimes/target") {
+      if (input.peer) throw new Error("A peer's private registration cannot supply its destination label")
+      return result(target)
+    }
+    if (url.pathname === "/org/v1/sessions/session-a/handoff-targets") {
+      targetsRequested.resolve()
+      if (input.holdTargets) await input.holdTargets
+      const next = url.searchParams.has("cursor")
+      const selected = Handoff.Target.parse(
+        target.runtimeKind === "hosted"
+          ? { runtimeID: "target", runtimeKind: "hosted", name: target.name, state: "active", availability: "ready" }
+          : {
+              runtimeID: "target",
+              runtimeKind: "member",
+              accountID: target.accountID,
+              displayName: input.peer ? "Another member" : account.displayName,
+              deviceID: target.deviceID,
+              state: "active",
+              availability: "ready",
+            },
+      )
       return result({
-        items: input.empty ? [] : url.searchParams.has("cursor") ? [target] : [runtime("source")],
-        ...(!input.empty && !url.searchParams.has("cursor") ? { cursor: "page-two" } : {}),
+        sessionID: "session-a",
+        sourceRuntimeID: "source",
+        bindingEpoch: 7,
+        controlRevision: input.changedTargetScope && next ? controlRevision + 1 : controlRevision,
+        shareGeneration: 0,
+        items:
+          input.empty || !next
+            ? []
+            : [
+                ...(input.unreadyTargets
+                  ? [
+                      { ...selected, runtimeID: "offline-target", availability: "offline" },
+                      { ...selected, runtimeID: "incompatible-target", availability: "incompatible" },
+                    ]
+                  : []),
+                selected,
+              ],
+        ...(!input.empty && !next ? { cursor: "page-two" } : {}),
       })
-    if (url.pathname === "/org/v1/runtimes/target") return result(target)
+    }
     if (url.pathname.endsWith("/handoff-options")) {
+      if (input.recipient) throw new Error("The target member cannot use source-only preflight")
       if (input.holdOptions) await input.holdOptions
       return result({
         sessionID: "session-a",
@@ -254,6 +332,24 @@ async function open(
         ],
       })
     }
+    if (view && url.pathname === `/org/v1/handoffs/${view.handoffID}/native-target`) {
+      directoryRequested.resolve()
+      if (input.holdNativeDirectory) await input.holdNativeDirectory
+      if (changedNativeDirectory)
+        return { ok: true, value: { status: 409, body: JSON.stringify({ code: "REVISION_CONFLICT" }) } }
+      return result({
+        requestID: url.searchParams.get("requestID"),
+        handoffID: view.handoffID,
+        targetRuntimeID: view.targetRuntimeID,
+        mappingPlanRevision: view.mappingPlanRevision,
+        mappingHash: view.mappingHash,
+        native: {
+          reference: { workspaceID: "default-target", generation: 1, revision: 1 },
+          label: "Existing destination project folder",
+          projectRevision: "a".repeat(64),
+        },
+      })
+    }
     if (url.pathname.endsWith("/handoffs") && request.method === "GET")
       return sessionDenied
         ? {
@@ -288,7 +384,7 @@ async function open(
         handoffID: prepared.handoffID,
         targetAccepted: !!input.cloud,
         cancelRequested: false,
-        canAccept: !input.cloud,
+        canAccept: !input.cloud && !input.peer,
         phase: "preparing",
         initiator: account.accountID,
         commandSeq: 4,
@@ -459,7 +555,11 @@ async function open(
             : [],
         })
       }
-      if (input.native && ["preview-target", "inspect-target"].includes(operation.operation)) {
+      if (
+        input.native &&
+        (operation.operation === "preview-target" ||
+          (operation.operation === "inspect-target" && view.workspaceDifference))
+      ) {
         if (operation.operation === "preview-target") {
           if (!view.targetAccepted || view.missingRequirements.some((item) => item.code === "source_freeze"))
             throw new Error("Preview ran before initial consent and final source freeze")
@@ -616,6 +716,7 @@ async function open(
   const query = new URLSearchParams({
     ...(input.cloud ? { cloud: "" } : {}),
     ...(input.compact ? { compact: "" } : {}),
+    ...(input.recipient ? { recipient: "" } : {}),
   })
   await page.goto(new URL(`/organization/org-a/account-a/deployment-a?${query}`, fixture.url).href)
   if (input.compact) await page.getByRole("button", { name: "Conversation actions", exact: true }).click()
@@ -636,6 +737,19 @@ async function open(
     errors,
     comparison,
     differenceRequested: differenceRequested.promise,
+    targetsRequested: targetsRequested.promise,
+    directoryRequested: directoryRequested.promise,
+    changeNativeDirectory() {
+      changedNativeDirectory = true
+    },
+    freezeOriginalSource() {
+      if (!view) throw new Error("The original move is unavailable")
+      view = {
+        ...view,
+        manifestHash: "9".repeat(64),
+        missingRequirements: requirements.filter((requirement) => requirement.code !== "source_freeze"),
+      }
+    },
     more() {
       return page.evaluate(() => {
         const translate = Reflect.get(window, "handoffMore")
@@ -644,6 +758,15 @@ async function open(
         if (typeof value !== "string") throw new Error("The workspace locale owner returned no label")
         return value
       })
+    },
+    targetCopy(key: string) {
+      return page.evaluate((key) => {
+        const translate = Reflect.get(window, "handoffTargetCopy")
+        if (typeof translate !== "function") throw new Error("The destination locale owner is unavailable")
+        const value = translate(key)
+        if (typeof value !== "string") throw new Error("The destination locale owner returned no label")
+        return value
+      }, key)
     },
     nativeCopy(key: string) {
       return page.evaluate((key) => {
@@ -697,7 +820,7 @@ async function open(
   }
 }
 async function choose(f: Awaited<ReturnType<typeof open>>) {
-  await f.dialog.getByRole("button", { name: "Load more", exact: true }).click()
+  await f.dialog.getByRole("button", { name: await f.more(), exact: true }).click()
   await f.dialog.getByRole("button", { name: /^Destination:/ }).click()
   await f.page.getByRole("option", { name: /Destination-computer|Hosted destination/ }).click()
   await f.page
@@ -889,8 +1012,8 @@ test("empty, keyboard and narrow layouts stay reachable in both themes without o
   for (const colorScheme of ["light", "dark"] as const) {
     const f = await open({ empty: true, viewport: { width: 375, height: 667 }, colorScheme })
     try {
-      await f.dialog.getByText(/No other runtime is available/).waitFor()
-      expect(await f.dialog.getByText(/No other runtime is available/).isVisible()).toBe(true)
+      await f.dialog.getByText("No destinations on this page.", { exact: true }).waitFor()
+      expect(await f.dialog.getByText("No destinations on this page.", { exact: true }).isVisible()).toBe(true)
       expect(await f.dialog.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true)
       await f.page.keyboard.press("Escape")
       await f.dialog.waitFor({ state: "detached" })
@@ -916,7 +1039,7 @@ test("a late preflight cannot reopen a move after switching organization owner",
   const held = Promise.withResolvers<void>()
   const f = await open({ holdOptions: held.promise })
   try {
-    await f.dialog.getByRole("button", { name: "Load more", exact: true }).click()
+    await f.dialog.getByRole("button", { name: await f.more(), exact: true }).click()
     await f.dialog.getByRole("button", { name: /^Destination:/ }).click()
     await f.page.getByRole("option", { name: "Destination-computer" }).click()
     await f.dialog.getByText("Checking the current workspaces…").waitFor()
@@ -982,7 +1105,9 @@ test("a definite unsent preparation is re-inspected while an unavailable durable
   try {
     await choose(f)
     await f.dialog.getByRole("button", { name: "Prepare move", exact: true }).click()
-    await f.dialog.getByRole("button", { name: "Retry", exact: true }).click()
+    await f.dialog.getByRole("alert").waitFor()
+    await f.dialog.getByRole("button", { name: await f.targetCopy("refresh"), exact: true }).click()
+    await choose(f)
     await f.dialog.getByRole("button", { name: "Prepare move", exact: true }).click()
     await f.dialog.getByRole("button", { name: "Accept this move", exact: true }).waitFor()
     const bodies = f.requests
@@ -1072,7 +1197,7 @@ test("execute revocation retires only this move's confirmation and never release
 test("the compact conversation menu hands dialog focus back to its connected trigger", async () => {
   const f = await open({ compact: true, empty: true, viewport: { width: 375, height: 667 } })
   try {
-    await f.dialog.getByText(/No other runtime is available/).waitFor()
+    await f.dialog.getByText("No destinations on this page.", { exact: true }).waitFor()
     await f.page.keyboard.press("Escape")
     await f.dialog.waitFor({ state: "detached" })
     await f.page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Conversation actions")
@@ -1573,17 +1698,209 @@ async function chooseNativeDestination(f: Awaited<ReturnType<typeof open>>) {
   await f.page.getByRole("listbox").waitFor({ state: "hidden" })
   await f.dialog.getByRole("button", { name: await f.copy("begin"), exact: true }).waitFor()
 }
-async function chooseExisting(f: Awaited<ReturnType<typeof open>>) {
+async function beginExisting(f: Awaited<ReturnType<typeof open>>) {
   await chooseNativeDestination(f)
   await f.dialog.locator(".organization-handoff-field").nth(1).getByRole("button").click()
   await f.page.getByRole("option", { name: await f.nativeCopy("existing"), exact: true }).click()
   await f.page.getByRole("listbox").waitFor({ state: "hidden" })
   await f.dialog.getByText("Existing destination project folder", { exact: true }).waitFor()
   await f.dialog.getByRole("button", { name: await f.copy("begin"), exact: true }).click()
+}
+async function chooseExisting(f: Awaited<ReturnType<typeof open>>) {
+  await beginExisting(f)
   await f.dialog.getByRole("button", { name: await f.nativeCopy("acceptDirectory"), exact: true }).click()
   await f.dialog.getByRole("button", { name: await f.copy("prepareSource"), exact: true }).click()
   await f.dialog.getByRole("button", { name: await f.nativeCopy("preview"), exact: true }).click({ trial: true })
 }
+
+test("Session-scoped destinations expose eligible peers and disabled availability without a private Runtime directory", async () => {
+  const f = await open({ peer: true, unreadyTargets: true })
+  try {
+    await f.dialog.getByText(await f.targetCopy("empty"), { exact: true }).waitFor()
+    await f.dialog.getByRole("button", { name: await f.more(), exact: true }).click()
+    await f.dialog.getByRole("button", { name: /^Destination:/ }).click()
+    expect(await f.page.getByRole("option", { name: /Offline/ }).getAttribute("aria-disabled")).toBe("true")
+    expect(await f.page.getByRole("option", { name: /Update required/ }).getAttribute("aria-disabled")).toBe("true")
+    await f.page.getByRole("option", { name: "Another member · Destination-computer", exact: true }).click()
+    await f.page.getByRole("listbox").waitFor({ state: "hidden" })
+    await f.dialog.getByRole("button", { name: await f.copy("begin"), exact: true }).click()
+    await f.dialog
+      .getByText("The destination member must accept this workspace plan before preparation can continue.", {
+        exact: true,
+      })
+      .waitFor()
+    expect(f.requests.some((request) => request.path.startsWith("/org/v1/runtimes"))).toBe(false)
+    expect(f.requests.filter((request) => request.path.includes("/handoff-targets"))).toHaveLength(2)
+    expect(f.requests.filter((request) => request.method === "POST").map((request) => request.path)).toEqual([
+      "/org/v1/sessions/session-a/handoffs",
+    ])
+    expect(f.errors).toEqual([])
+  } finally {
+    await f.close()
+  }
+}, 30_000)
+
+test("scoped destination pages retire stale generations and cannot mix a changed control scope", async () => {
+  const held = Promise.withResolvers<void>()
+  const f = await open({ holdTargets: held.promise })
+  try {
+    await f.targetsRequested
+    await f.page.evaluate("window.changeHandoffBinding()")
+    const received = await f.page.evaluate(() => Number(Reflect.get(window, "handoffResponses") ?? 0))
+    held.resolve()
+    await f.page.waitForFunction(
+      (received) => Number(Reflect.get(window, "handoffResponses") ?? 0) > received,
+      received,
+    )
+    expect(await f.dialog.getByRole("button", { name: await f.more(), exact: true }).count()).toBe(0)
+    expect(f.requests.some((request) => request.path.includes("handoff-options") || request.method === "POST")).toBe(
+      false,
+    )
+    expect(f.errors).toEqual([])
+  } finally {
+    held.resolve()
+    await f.close()
+  }
+  const changed = await open({ changedTargetScope: true })
+  try {
+    await changed.dialog.getByRole("button", { name: await changed.more(), exact: true }).click()
+    await changed.dialog.getByRole("alert").waitFor()
+    await changed.dialog.getByRole("button", { name: /^Destination:/ }).click()
+    expect(await changed.page.getByRole("option").count()).toBe(0)
+    expect(
+      changed.requests.some((request) => request.path.includes("handoff-options") || request.method === "POST"),
+    ).toBe(false)
+    expect(changed.errors).toEqual([])
+  } finally {
+    await changed.close()
+  }
+}, 30_000)
+
+test("the original destination member restores its exact native directory and separately accepts the sealed difference", async () => {
+  const f = await open({ native: true, recipient: true })
+  try {
+    const initial = f.dialog.getByRole("button", { name: await f.nativeCopy("acceptDirectory"), exact: true })
+    await initial.click({ trial: true })
+    expect(await f.dialog.getByText("Existing destination project folder", { exact: true }).isVisible()).toBe(true)
+    expect(f.requests.some((request) => /handoff-options|handoff-targets/.test(request.path))).toBe(false)
+    expect(
+      await f.page.evaluate(() => {
+        const value = Object.entries(localStorage).find(([key]) => key.includes("organization-handoff"))
+        return value ? JSON.parse(value[1]).nativeDirectory : undefined
+      }),
+    ).toBeUndefined()
+    await initial.click()
+    await initial.waitFor({ state: "detached" })
+    f.freezeOriginalSource()
+    await f.dialog.getByRole("button", { name: await f.copy("check"), exact: true }).click()
+    const preview = f.dialog.getByRole("button", { name: await f.nativeCopy("preview"), exact: true })
+    await preview.click()
+    const reader = f.dialog.getByRole("region", { name: await f.nativeCopy("differences"), exact: true })
+    await reader.getByText(".git/index", { exact: true }).waitFor()
+    const reviewed = reader.getByRole("checkbox", { name: await f.nativeCopy("reviewed"), exact: true })
+    await reviewed.focus()
+    await reviewed.press("Space")
+    await reader.getByRole("button", { name: await f.nativeCopy("accept"), exact: true }).click()
+    const confirmation = f.page.getByRole("dialog", { name: await f.nativeCopy("accept"), exact: true })
+    expect(await confirmation.getByText(/Existing destination project folder/).isVisible()).toBe(true)
+    await confirmation.getByRole("button", { name: await f.nativeCopy("accept"), exact: true }).click()
+    await confirmation.waitFor({ state: "detached" })
+    expect(f.requests.filter((request) => request.path.endsWith("/accept")).map((request) => request.body)).toEqual([
+      { mappingPlanRevision: 1, mappingHash: "a".repeat(64) },
+      {
+        mappingPlanRevision: 1,
+        mappingHash: "a".repeat(64),
+        workspaceDifference: Handoff.DifferenceConsent.strip().parse(f.comparison),
+      },
+    ])
+    expect(f.requests.some((request) => request.path.endsWith("/commands") || request.path.includes("/control"))).toBe(
+      false,
+    )
+    expect(f.errors).toEqual([])
+  } finally {
+    await f.close()
+  }
+}, 30_000)
+
+test("an original native-directory reply cannot restore acceptance after cancellation or account retirement", async () => {
+  for (const changeAccount of [false, true]) {
+    const held = Promise.withResolvers<void>()
+    const f = await open({ native: true, holdNativeDirectory: held.promise })
+    try {
+      await beginExisting(f)
+      await f.directoryRequested
+      const initial = f.dialog.getByRole("button", { name: await f.nativeCopy("acceptDirectory"), exact: true })
+      expect(await initial.isDisabled()).toBe(true)
+      if (changeAccount) {
+        await f.page.evaluate(() => {
+          history.pushState(null, "", "/organization/org-b/account-b/deployment-a")
+          window.dispatchEvent(new PopStateEvent("popstate"))
+        })
+        await f.dialog.waitFor({ state: "detached" })
+      } else {
+        await f.dialog.getByRole("button", { name: await f.copy("cancel"), exact: true }).click()
+        await f.page
+          .getByRole("dialog", { name: await f.copy("cancel"), exact: true })
+          .getByRole("button", { name: await f.copy("cancel"), exact: true })
+          .click()
+        await f.dialog
+          .getByText("Cancellation has been requested. The source remains paused until it confirms cancellation.", {
+            exact: true,
+          })
+          .waitFor()
+      }
+      const received = await f.page.evaluate(() => Number(Reflect.get(window, "handoffResponses") ?? 0))
+      held.resolve()
+      await f.page.waitForFunction(
+        (received) => Number(Reflect.get(window, "handoffResponses") ?? 0) > received,
+        received,
+      )
+      expect(
+        await f.page.getByRole("button", { name: await f.nativeCopy("acceptDirectory"), exact: true }).count(),
+      ).toBe(0)
+      expect(f.requests.filter((request) => request.path.endsWith("/accept"))).toHaveLength(0)
+      expect(f.errors).toEqual([])
+    } finally {
+      held.resolve()
+      await f.close()
+    }
+  }
+}, 45_000)
+
+test("directory verification never confirms an unknown original native operation after reload", async () => {
+  const f = await open({ native: true, drop: "prepare-source" })
+  try {
+    await beginExisting(f)
+    await f.dialog.getByRole("button", { name: await f.nativeCopy("acceptDirectory"), exact: true }).click()
+    await f.dialog.getByRole("button", { name: await f.copy("prepareSource"), exact: true }).click()
+    await f.dialog.getByText(/no confirmed outcome/).waitFor()
+    const retained = await f.page.evaluate(() => {
+      const value = Object.entries(localStorage).find(([key]) => key.includes("organization-handoff"))
+      return value ? JSON.parse(value[1]).pending : undefined
+    })
+    expect(retained).toMatchObject({ kind: "drive", body: { operation: "prepare-source" } })
+    await f.page.reload()
+    await f.page.getByRole("button", { name: "Move conversation", exact: true }).click()
+    await f.page.waitForFunction(() => Number(Reflect.get(window, "nativeDirectoryResponses") ?? 0) > 0)
+    await f.dialog.getByText(await f.targetCopy("directoryChecking"), { exact: true }).waitFor({ state: "hidden" })
+    expect(
+      await f.page.evaluate(() => {
+        const value = Object.entries(localStorage).find(([key]) => key.includes("organization-handoff"))
+        return value ? JSON.parse(value[1]).pending : undefined
+      }),
+    ).toEqual(retained)
+    expect(await f.dialog.getByText("Existing destination project folder", { exact: true }).isVisible()).toBe(true)
+    expect(
+      f.requests.filter(
+        (request) =>
+          request.path.endsWith("/drive") && Handoff.Drive.parse(request.body).operation === "prepare-source",
+      ),
+    ).toHaveLength(1)
+    expect(f.errors).toEqual([])
+  } finally {
+    await f.close()
+  }
+}, 30_000)
 
 test("existing native directory adoption reviews real paged hashes and requires a distinct destination-version consent", async () => {
   const f = await open({ native: true })
@@ -1654,7 +1971,7 @@ test("existing native directory adoption reviews real paged hashes and requires 
   }
 }, 45_000)
 
-test("a restored native move names only its saved originally inspected directory without another preflight", async () => {
+test("a restored native move keeps its original directory identity without another source preflight", async () => {
   const f = await open({ native: true })
   try {
     await chooseExisting(f)
@@ -1689,6 +2006,7 @@ test("legacy or unavailable native directory captions cannot turn a current defa
   const f = await open({ native: true })
   try {
     await chooseExisting(f)
+    f.changeNativeDirectory()
     const before = f.requests.filter((request) => request.path.includes("handoff-options")).length
     expect(
       await f.page.evaluate(() => {

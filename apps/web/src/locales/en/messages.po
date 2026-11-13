@@ -14101,6 +14101,50 @@ msgid "organization.handoff.targetPrepare"
 msgstr "Waiting for the destination to verify its files and dependencies."
 
 #. js-lingui-explicit-id
+msgid "organization.handoff.targets.choose"
+msgstr "Choose a destination"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.targets.directoryChecking"
+msgstr "Checking the originally selected directory…"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.targets.empty"
+msgstr "No destinations on this page."
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.targets.first"
+msgstr "First page of destinations"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.targets.incompatible"
+msgstr "Update required"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.targets.next"
+msgstr "Next page of destinations"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.targets.offline"
+msgstr "Offline"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.targets.pending"
+msgstr "Registration pending"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.targets.refresh"
+msgstr "Refresh destinations"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.targets.revoked"
+msgstr "Access revoked"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.targets.unavailable"
+msgstr "No destination on this page is ready. Check its connection or update Synergy, then refresh."
+
+#. js-lingui-explicit-id
 msgid "organization.handoff.unknown"
 msgstr "The last operation has no confirmed outcome. Check this move before taking another step."
 

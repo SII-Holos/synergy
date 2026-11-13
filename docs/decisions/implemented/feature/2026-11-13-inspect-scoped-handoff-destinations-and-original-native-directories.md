@@ -14,6 +14,8 @@ The ordinary Runtime registry deliberately limits a member to its own registrati
 
 Both routes are reads. They allocate no resources, reserve no epoch, accept no target and create no execution permit. They retain the existing inspection signature domain and machine protocol. Generated SDK operations and mounted OpenAPI definitions are the client entry points.
 
+The Web dialog keeps one bounded destination metadata page and validates its source, epoch, control and sharing scope before selection. Its full Runtime registration state remains separate for the destination member and original cleanup. Original native inspection lives only in the dialog and cannot recreate a saved preparation or settle an unknown mutation. Selection, cancellation, access loss and Space changes retire late responses. Desktop admits only the two exact product GET routes; machine proof and recovery remain outside human IPC.
+
 ## Alternatives considered
 
 **Broaden ordinary Runtime registry access.** The picker needs a name, device identity and availability, not a colleague's full registration. Session-scoped authorization gives it only the required metadata.
@@ -24,4 +26,4 @@ Both routes are reads. They allocate no resources, reserve no epoch, accept no t
 
 ## Consequences
 
-The destination must remain online with the current inspection protocol and original selection. Missing, changed or incompatible metadata leaves acceptance unavailable. Metadata does not start a machine or establish native transfer completeness. Web integration, Desktop IPC admission and final rendered interaction acceptance belong to their owning consumers.
+The destination must remain online with the current inspection protocol and original selection. Missing, changed or incompatible metadata leaves acceptance unavailable. Metadata does not start a machine or establish native transfer completeness. Rendered component fixtures cover the scoped picker, reloaded destination consent, held-response retirement and original unknown operations, with Chinese wide/narrow light/dark views. They do not establish physical transfer, real-provider or visible Electron acceptance. Control screenshots wait for actual enablement and retain computed colors so transient loading styles cannot be mistaken for the final palette.

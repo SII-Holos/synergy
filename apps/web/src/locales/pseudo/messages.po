@@ -14101,6 +14101,50 @@ msgid "organization.handoff.targetPrepare"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "organization.handoff.targets.choose"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.targets.directoryChecking"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.targets.empty"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.targets.first"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.targets.incompatible"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.targets.next"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.targets.offline"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.targets.pending"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.targets.refresh"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.targets.revoked"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.targets.unavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "organization.handoff.unknown"
 msgstr ""
 

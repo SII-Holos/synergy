@@ -2,6 +2,7 @@ import { expect, test } from "bun:test"
 import { OrganizationHandoffProtocol as Handoff } from "@ericsanchezok/synergy-organization-protocol"
 import {
   organizationDirectoryFromOptions,
+  organizationDirectoryFromInspection,
   organizationDirectoryLabel,
 } from "../../src/organization/handoff-directory-state"
 
@@ -109,4 +110,31 @@ test("a saved directory caption never names a changed handoff, generation, revis
     { workspaceMapping: { ...mapping, target: { ...mapping.target, projectRevision: "c".repeat(64) } } },
   ])
     expect(organizationDirectoryLabel(directory, Handoff.View.parse({ ...view, ...changed }))).toBeUndefined()
+})
+
+test("an original handoff directory inspection names a target member's move without reconstructing its preparation", () => {
+  const inspection = Handoff.NativeTargetSelection.parse({
+    requestID: "original-inspection",
+    handoffID: view.handoffID,
+    targetRuntimeID: view.targetRuntimeID,
+    mappingPlanRevision: view.mappingPlanRevision,
+    mappingHash: view.mappingHash,
+    native: options.native,
+  })
+  expect(organizationDirectoryLabel(undefined, view, inspection)).toBe("Originally selected folder")
+  expect(organizationDirectoryFromInspection(view, inspection.requestID, inspection)).toEqual(inspection)
+  expect(() => organizationDirectoryFromInspection(view, "another-request", inspection)).toThrow("selection")
+  for (const changed of [
+    { handoffID: "another-handoff" },
+    { targetRuntimeID: "another-target" },
+    { mappingPlanRevision: 2 },
+    { mappingHash: "c".repeat(64) },
+    { native: { ...inspection.native, reference: { workspaceID: "another-directory", generation: 2, revision: 3 } } },
+    { native: { ...inspection.native, reference: { workspaceID: "native", generation: 3, revision: 3 } } },
+    { native: { ...inspection.native, reference: { workspaceID: "native", generation: 2, revision: 4 } } },
+    { native: { ...inspection.native, projectRevision: "d".repeat(64) } },
+  ])
+    expect(
+      organizationDirectoryLabel(undefined, view, Handoff.NativeTargetSelection.parse({ ...inspection, ...changed })),
+    ).toBeUndefined()
 })

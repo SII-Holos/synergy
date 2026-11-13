@@ -45,3 +45,5 @@ See the [main repository](https://github.com/SII-Holos/synergy) for setup instru
 MIT
 
 Account’s My computers section discovers the current account’s original cancelled-move preparations without opening a conversation. See [device cleanup discovery](../../docs/decisions/implemented/feature/2026-11-13-discover-owned-runtime-cleanup-without-session-access.md).
+
+Conversation destination selection uses the Session-scoped metadata page instead of exposing colleagues' Runtime registrations. A destination member can reload and verify its original native directory before consent; directory inspection preserves unknown original operations and never substitutes the current default. See [scoped destination inspection](../../docs/decisions/implemented/feature/2026-11-13-inspect-scoped-handoff-destinations-and-original-native-directories.md).

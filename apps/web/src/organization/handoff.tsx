@@ -3,6 +3,7 @@ import { createStore, reconcile } from "solid-js/store"
 import { useLingui } from "@lingui/solid"
 import {
   OrganizationHandoffProtocol as Handoff,
+  OrganizationRuntimeProtocol as Runtime,
   type OrganizationSessionProtocol as Session,
 } from "@ericsanchezok/synergy-organization-protocol"
 import type {
@@ -25,7 +26,13 @@ import { organizationHandoffMessages as messages } from "./handoff-messages"
 import { organizationNativeHandoffMessages as nativeMessages } from "./handoff-native-messages"
 import { OrganizationNativeDifference } from "./handoff-native"
 import { organizationNativeHandoffMapping } from "./handoff-native-state"
-import { organizationDirectoryFromOptions, organizationDirectoryLabel } from "./handoff-directory-state"
+import {
+  organizationDirectoryFromOptions,
+  organizationDirectoryFromInspection,
+  organizationDirectoryLabel,
+} from "./handoff-directory-state"
+import { organizationHandoffTargetsPage, organizationHandoffTargetReady } from "./handoff-targets-state"
+import { organizationHandoffTargetMessages as targetMessages } from "./handoff-target-messages"
 import { organizationDirectoryMessages } from "./account-device-messages"
 import { OrganizationNativeCleanup } from "./handoff-native-cleanup"
 import { organizationNativeCleanupHandle, type OrganizationNativeCleanupHandle } from "./handoff-native-cleanup-state"
@@ -131,6 +138,9 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
   const recovery = createOrganizationHandoffState({ storage: localStorage, owner: owner.key, projectID, sessionID })
   const [state, setState] = createStore<{
     runtimes: OrgRuntimeRegistration[]
+    targets?: Handoff.TargetPage
+    selectedTarget?: Handoff.Target
+    nativeDirectory?: Handoff.NativeTargetSelection
     history: Handoff.View[]
     resources: OrgResourceView[]
     workspaces: OrgCloudWorkspace[]
@@ -145,14 +155,14 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
   const [resourceID, setResourceID] = createSignal("")
   const [workspaceID, setWorkspaceID] = createSignal("")
   const [path, setPath] = createSignal("")
-  const [runtimeCursor, setRuntimeCursor] = createSignal<string>()
+  const [targetPageCursor, setTargetPageCursor] = createSignal<string>()
   const [historyCursor, setHistoryCursor] = createSignal<string>()
   const [resourceCursor, setResourceCursor] = createSignal<string>()
   const [workspaceCursor, setWorkspaceCursor] = createSignal<string>()
   const [busy, setBusy] = createSignal(false)
   const [cancelling, setCancelling] = createSignal(false)
   const [inspecting, setInspecting] = createSignal(false)
-  const [listing, setListing] = createSignal(false)
+  const [listing, setListing] = createSignal(true)
   const [checking, setChecking] = createSignal(false)
   const [resourcesLoading, setResourcesLoading] = createSignal(false)
   const [workspacesLoading, setWorkspacesLoading] = createSignal(false)
@@ -162,10 +172,25 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
   const [retryable, setRetryable] = createSignal(false)
   const [nativeRevision, setNativeRevision] = createSignal(0)
   const [cleanup, setCleanup] = createSignal<OrganizationNativeCleanupHandle>()
+  const [directoryLoading, setDirectoryLoading] = createSignal(false)
+  const [directoryError, setDirectoryError] = createSignal<unknown>()
   let selectionRevision = 0
+  let targetsRevision = 0
+  let directoryRevision = 0
+  let targetReads = new AbortController()
+  let directoryReads = new AbortController()
+  const runtimeReads = new Set<string>()
+  let directoryKey = ""
   let workspaceRevision = 0
   let handoffRevision = 0
-  let observedBinding = `${props.session.driverRuntimeID}:${props.session.bindingEpoch}`
+  const sessionSelection = () =>
+    JSON.stringify([
+      props.session.driverRuntimeID,
+      props.session.bindingEpoch,
+      props.session.shareState,
+      props.session.sync?.shareGeneration,
+    ])
+  let observedBinding = sessionSelection()
   let first: HTMLButtonElement | undefined
   const current = () =>
     !signal.aborted &&
@@ -187,7 +212,13 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
     props.session.runtime?.runtimeKind === "member"
       ? props.session.runtime.ownerID === accountID
       : props.session.creatorID === accountID
-  const targetRuntime = () => state.runtimes.find((runtime) => runtime.runtimeID === state.view?.targetRuntimeID)
+  const selectedTarget = (id: string) =>
+    state.selectedTarget?.runtimeID === id
+      ? state.selectedTarget
+      : state.targets?.items.find((runtime) => runtime.runtimeID === id)
+  const targetRuntime = () =>
+    state.runtimes.find((runtime) => runtime.runtimeID === state.view?.targetRuntimeID) ??
+    (state.view ? selectedTarget(state.view.targetRuntimeID) : undefined)
   const targetOwner = () => {
     const target = targetRuntime()
     return target?.runtimeKind === "member"
@@ -196,15 +227,23 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
   }
   const sourceCanDrive = () => state.view?.initiator === accountID
   const label = (id: string) => {
-    const runtime = state.runtimes.find((entry) => entry.runtimeID === id)
+    const runtime = selectedTarget(id) ?? state.runtimes.find((entry) => entry.runtimeID === id)
     return runtime
       ? runtime.runtimeKind === "hosted"
         ? runtime.name
-        : runtime.deviceID
+        : "displayName" in runtime && runtime.accountID !== accountID
+          ? `${runtime.displayName} · ${runtime.deviceID}`
+          : runtime.deviceID
       : id === props.session.driverRuntimeID
         ? (props.session.runtime?.name ?? _(messages.source))
         : _(messages.destination)
   }
+  const targetStatus = (target: Handoff.Target) =>
+    target.state !== "active"
+      ? _(targetMessages[target.state])
+      : target.availability !== "ready"
+        ? _(targetMessages[target.availability])
+        : undefined
   function failure(error: unknown, display = true) {
     if (!current()) return
     if (display) setError(error)
@@ -215,6 +254,13 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
     }
     if (["PERMISSION_DENIED", "SHARE_REVOKED", "permission_denied"].includes(String(code))) {
       setAccessLost(true)
+      selectionRevision++
+      targetsRevision++
+      targetReads.abort()
+      setState("targets", undefined)
+      setState("selectedTarget", undefined)
+      setState("preview", undefined)
+      setDestination("")
       confirm.closeOwned()
     }
   }
@@ -281,6 +327,10 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
     const cancelled = cancellation()
     if (cancelled && organizationHandoffOutcomeKnown(cancelled, view)) cancellationConfirmed(view.handoffID)
     setState("view", reconcile(view))
+    targetsRevision++
+    targetReads.abort()
+    setListing(false)
+    void runtime(view.targetRuntimeID).catch((error) => failure(error, false))
     if (terminal(view)) {
       try {
         if (view.phase === "cancelled" && view.workspaceMapping.kind === "organization-native" && view.manifestHash) {
@@ -367,34 +417,70 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
       return acceptView(result.data)
   }
   async function runtime(id: string) {
-    if (state.runtimes.some((runtime) => runtime.runtimeID === id)) return
-    const result = await api.orgRuntime.get({ runtimeID: id }, options)
-    if (current()) {
-      setState("runtimes", reconcile([...state.runtimes, result.data]))
-      rememberCleanup()
-    }
-  }
-  async function loadRuntimes(more = false) {
-    if (listing()) return
-    setListing(true)
+    if (state.runtimes.some((runtime) => runtime.runtimeID === id) || runtimeReads.has(id)) return
+    const known = selectedTarget(id)
+    if (known?.runtimeKind === "member" && known.accountID !== accountID) return
+    runtimeReads.add(id)
     try {
-      const result = await api.orgRuntime.list({ limit: 50, cursor: more ? runtimeCursor() : undefined }, options)
+      const result = await api.orgRuntime.get({ runtimeID: id }, options)
       if (!current()) return
-      const previous = more
-        ? state.runtimes
-        : state.runtimes.filter((entry) =>
-            [state.view?.sourceRuntimeID, state.view?.targetRuntimeID].includes(entry.runtimeID),
-          )
-      setState(
-        "runtimes",
-        reconcile([...new Map([...previous, ...result.data.items].map((entry) => [entry.runtimeID, entry])).values()]),
-      )
-      setRuntimeCursor(result.data.cursor)
+      const value = Runtime.Registration.parse(result.data)
+      if (value.runtimeID !== id || value.orgID !== orgID || value.deploymentIncarnation !== incarnation)
+        throw new Error("Handoff participant returned another Runtime")
+      if (value.runtimeKind === "member" && value.accountID !== accountID) return
+      setState("runtimes", reconcile([...state.runtimes, value]))
       rememberCleanup()
     } catch (error) {
-      failure(error)
+      if (error && typeof error === "object" && "code" in error && error.code === "NOT_FOUND") return
+      throw error
     } finally {
-      if (current()) setListing(false)
+      runtimeReads.delete(id)
+    }
+  }
+  async function loadTargets(at?: string) {
+    if (!actionable() || !sourceOwner() || saved() || state.view || cleanup()) return
+    const version = ++targetsRevision
+    const original = sessionSelection()
+    const previous = at ? state.targets : undefined
+    targetReads.abort()
+    targetReads = new AbortController()
+    const requestSignal = AbortSignal.any([signal, targetReads.signal])
+    selectionRevision++
+    setDestination("")
+    setState("preview", undefined)
+    setState("selectedTarget", undefined)
+    setListing(true)
+    setError(undefined)
+    try {
+      const result = await api.orgHandoff.targets(
+        { sessionID, limit: 50, cursor: at },
+        { throwOnError: true, signal: requestSignal },
+      )
+      if (
+        !current() ||
+        version !== targetsRevision ||
+        original !== sessionSelection() ||
+        !props.session.permissions.execute ||
+        !sourceOwner() ||
+        saved() ||
+        state.view
+      )
+        return
+      const page = organizationHandoffTargetsPage(
+        {
+          sessionID,
+          sourceRuntimeID: props.session.driverRuntimeID,
+          bindingEpoch: props.session.bindingEpoch,
+          previous,
+        },
+        result.data,
+      )
+      setState("targets", reconcile(page))
+      setTargetPageCursor(at)
+    } catch (error) {
+      if (version === targetsRevision && original === sessionSelection()) failure(error)
+    } finally {
+      if (current() && version === targetsRevision) setListing(false)
     }
   }
   async function history(more = false) {
@@ -403,7 +489,7 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
         { sessionID, limit: 50, cursor: more ? historyCursor() : undefined },
         options,
       )
-      if (!current()) return
+      if (!current()) return false
       const rows = result.data.items.map((view) => Handoff.View.parse(view))
       if (
         rows.some(
@@ -418,17 +504,24 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
         if (active) {
           retain(active.handoffID)
           acceptView(active)
-          await runtime(active.targetRuntimeID)
         }
       }
+      return true
     } catch (error) {
       failure(error)
+      return false
     }
   }
   async function inspectChoices(id: string) {
-    if (!allowed() || pending() || !id) return
+    const target = state.targets?.items.find((target) => target.runtimeID === id)
+    const page = state.targets
+    if (!allowed() || pending() || !id || !page || !target || !organizationHandoffTargetReady(target)) return
+    const controlRevision = page.controlRevision
+    const shareGeneration = page.shareGeneration
     const revision = ++selectionRevision
+    const original = sessionSelection()
     setDestination(id)
+    setState("selectedTarget", reconcile(target))
     setState("preview", undefined)
     setChecking(true)
     setError(undefined)
@@ -437,14 +530,17 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
         { sessionID, requestID: generateSecureUUID(), targetRuntimeID: id },
         options,
       )
-      if (!current() || revision !== selectionRevision || destination() !== id) return
+      if (!current() || revision !== selectionRevision || destination() !== id || original !== sessionSelection())
+        return
       const value = Handoff.Options.parse(result.data)
       if (
         value.sessionID !== sessionID ||
         value.projectID !== projectID ||
         value.sourceRuntimeID !== props.session.driverRuntimeID ||
         value.targetRuntimeID !== id ||
-        value.bindingEpoch !== props.session.bindingEpoch
+        value.bindingEpoch !== props.session.bindingEpoch ||
+        value.controlRevision !== controlRevision ||
+        state.targets?.shareGeneration !== shareGeneration
       )
         throw { code: "STALE_BINDING" }
       setState("preview", reconcile(value))
@@ -729,7 +825,64 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
     }
   }
   function nativeDirectoryLabel(view: Handoff.View) {
-    return organizationDirectoryLabel(saved()?.nativeDirectory, view)
+    return organizationDirectoryLabel(saved()?.nativeDirectory, view, state.nativeDirectory)
+  }
+  const directorySelection = () => {
+    const view = state.view
+    return view &&
+      actionable() &&
+      targetOwner() &&
+      view.workspaceMapping.kind === "organization-native" &&
+      !view.cancelRequested &&
+      ["preparing", "prepared"].includes(view.phase)
+      ? JSON.stringify([
+          view.handoffID,
+          view.targetRuntimeID,
+          view.fromEpoch,
+          view.shareGeneration,
+          view.mappingPlanRevision,
+          view.mappingHash,
+          view.workspaceMapping,
+        ])
+      : ""
+  }
+  async function readOriginalDirectory() {
+    const view = state.view
+    const original = directorySelection()
+    if (!view || !original) return
+    const version = ++directoryRevision
+    directoryReads.abort()
+    directoryReads = new AbortController()
+    const requestSignal = AbortSignal.any([signal, directoryReads.signal])
+    const requestID = generateSecureUUID()
+    setDirectoryLoading(true)
+    setDirectoryError(undefined)
+    setState("nativeDirectory", undefined)
+    try {
+      const response = await api.orgHandoff.nativeTarget(
+        { handoffID: view.handoffID, requestID },
+        { throwOnError: true, signal: requestSignal },
+      )
+      if (!current() || version !== directoryRevision || directorySelection() !== original || !state.view) return
+      const value = organizationDirectoryFromInspection(state.view, requestID, response.data)
+      setState("nativeDirectory", reconcile(value))
+    } catch (error) {
+      if (current() && version === directoryRevision && directorySelection() === original) {
+        setDirectoryError(error)
+        failure(error, false)
+      }
+    } finally {
+      if (current() && version === directoryRevision) setDirectoryLoading(false)
+    }
+  }
+  function nativeConsentAvailable(view: Handoff.View) {
+    return (
+      !!nativeDirectoryLabel(view) &&
+      (!directorySelection() ||
+        (!directoryLoading() &&
+          !directoryError() &&
+          !!organizationDirectoryLabel(undefined, view, state.nativeDirectory)))
+    )
   }
   async function readDifference(summary: Handoff.Difference, cursor?: string) {
     const view = state.view
@@ -788,7 +941,8 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
       captured.workspaceMapping.kind !== "organization-native" ||
       !captured.targetAccepted ||
       !captured.workspaceDifference ||
-      !targetOwner()
+      !targetOwner() ||
+      !nativeConsentAvailable(captured)
     )
       return
     const consent = Handoff.DifferenceConsent.parse(value)
@@ -817,6 +971,7 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
           !currentView.workspaceDifference ||
           currentView.cancelRequested ||
           nativeDirectoryLabel(currentView) !== directory ||
+          !nativeConsentAvailable(currentView) ||
           JSON.stringify(Handoff.DifferenceConsent.strip().parse(currentView.workspaceDifference)) !==
             JSON.stringify(consent)
         )
@@ -1011,12 +1166,12 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
       setStorageFailed(true)
       failure(error)
     }
-    void loadRuntimes()
-    void history()
-    if (saved())
-      void refresh()
-        .then((view) => view && runtime(view.targetRuntimeID))
-        .catch(failure)
+    void history().then((loaded) => {
+      if (!current()) return
+      if (loaded && !saved() && !state.view && sourceOwner() && actionable()) void loadTargets()
+      else setListing(false)
+    })
+    if (saved()) void refresh().catch(failure)
   })
   createEffect(() => {
     if (!current()) {
@@ -1025,15 +1180,41 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
     }
   })
   createEffect(() => {
-    if (!props.session.permissions.execute) confirm.closeOwned()
+    if (props.session.permissions.execute) return
+    confirm.closeOwned()
+    selectionRevision++
+    targetsRevision++
+    targetReads.abort()
+    setListing(false)
+    setState("targets", undefined)
+    setState("selectedTarget", undefined)
+    setState("preview", undefined)
+    setDestination("")
   })
   createEffect(() => {
-    const binding = `${props.session.driverRuntimeID}:${props.session.bindingEpoch}`
+    const binding = sessionSelection()
     if (binding === observedBinding) return
     observedBinding = binding
     selectionRevision++
+    targetsRevision++
+    targetReads.abort()
+    setListing(false)
+    setState("targets", undefined)
+    setState("selectedTarget", undefined)
     setState("preview", undefined)
     setDestination("")
+    confirm.closeOwned()
+  })
+  createEffect(() => {
+    const next = directorySelection()
+    if (directoryKey === next) return
+    directoryKey = next
+    directoryRevision++
+    directoryReads.abort()
+    setState("nativeDirectory", undefined)
+    setDirectoryError(undefined)
+    setDirectoryLoading(false)
+    if (next) void readOriginalDirectory()
   })
   const aborted = () => {
     confirm.closeOwned()
@@ -1042,6 +1223,8 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
   signal.addEventListener("abort", aborted, { once: true })
   onCleanup(() => {
     signal.removeEventListener("abort", aborted)
+    targetReads.abort()
+    directoryReads.abort()
     controller.abort()
     confirm.closeOwned()
   })
@@ -1100,7 +1283,7 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
           retry={
             !pending() && !busy()
               ? () =>
-                  state.view ? void check() : destination() ? void inspectChoices(destination()) : void loadRuntimes()
+                  state.view ? void check() : destination() ? void inspectChoices(destination()) : void loadTargets()
               : undefined
           }
         />
@@ -1113,36 +1296,43 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
                   ariaLabel={_(messages.destination)}
                   value={destination()}
                   onChange={(id) => void inspectChoices(id)}
-                  triggerLabel={!destination() ? _(messages.chooseDestination) : undefined}
+                  triggerLabel={!destination() ? _(targetMessages.choose) : label(destination())}
                   disabled={busy() || checking() || listing()}
-                  options={state.runtimes
-                    .filter(
-                      (runtime) => runtime.runtimeID !== props.session.driverRuntimeID && runtime.state === "active",
-                    )
-                    .map((runtime) => ({ value: runtime.runtimeID, label: label(runtime.runtimeID) }))}
+                  options={(state.targets?.items ?? []).map((target) => ({
+                    value: target.runtimeID,
+                    label: [label(target.runtimeID), targetStatus(target)].filter(Boolean).join(" · "),
+                    disabled: !organizationHandoffTargetReady(target),
+                  }))}
                 />
               </label>
               <Show when={listing()}>
                 <p role="status">{_(common.loading)}</p>
               </Show>
+              <Show when={!listing() && !!state.targets && !state.targets.items.length}>
+                <p>{_(targetMessages.empty)}</p>
+              </Show>
               <Show
                 when={
                   !listing() &&
-                  !state.runtimes.some(
-                    (runtime) => runtime.runtimeID !== props.session.driverRuntimeID && runtime.state === "active",
-                  )
+                  !!state.targets?.items.length &&
+                  !state.targets.items.some(organizationHandoffTargetReady)
                 }
               >
-                <p>{_(messages.noDestination)}</p>
+                <p>{_(targetMessages.unavailable)}</p>
               </Show>
               <div class="organization-handoff-actions">
-                <Show when={runtimeCursor()}>
-                  <Button disabled={listing()} onClick={() => void loadRuntimes(true)}>
-                    {_(common.more)}
+                <Show when={targetPageCursor()}>
+                  <Button disabled={listing()} onClick={() => void loadTargets()}>
+                    {_(targetMessages.first)}
                   </Button>
                 </Show>
-                <Button variant="ghost" disabled={listing()} onClick={() => void loadRuntimes()}>
-                  {_(messages.refresh)}
+                <Show when={state.targets?.cursor}>
+                  <Button disabled={listing()} onClick={() => void loadTargets(state.targets?.cursor)}>
+                    {_(targetMessages.next)}
+                  </Button>
+                </Show>
+                <Button variant="ghost" disabled={listing()} onClick={() => void loadTargets()}>
+                  {_(targetMessages.refresh)}
                 </Button>
               </div>
               <Show when={checking()}>
@@ -1221,8 +1411,7 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
                       <Show
                         when={
                           preview().source?.kind === "organization" &&
-                          state.runtimes.find((runtime) => runtime.runtimeID === preview().targetRuntimeID)
-                            ?.runtimeKind === "member" &&
+                          selectedTarget(preview().targetRuntimeID)?.runtimeKind === "member" &&
                           !preview().native
                         }
                       >
@@ -1365,6 +1554,13 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
               <Show when={view().workspaceMapping.kind === "organization-native" && !nativeDirectoryLabel(view())}>
                 <p role="status">{_(organizationDirectoryMessages.hint)}</p>
               </Show>
+              <Show when={directoryLoading()}>
+                <p role="status">{_(targetMessages.directoryChecking)}</p>
+              </Show>
+              <WorkspaceError
+                error={directoryError()}
+                retry={!directoryLoading() && !!directorySelection() ? () => void readOriginalDirectory() : undefined}
+              />
               <Show when={!terminal(view()) && requirements().length}>
                 <ul class="organization-handoff-requirements">
                   <For each={requirements()}>
@@ -1423,7 +1619,7 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
                     revision={nativeRevision()}
                     disabled={!allowed()}
                     pending={!!pending()}
-                    consentAvailable={!!nativeDirectoryLabel(view())}
+                    consentAvailable={nativeConsentAvailable(view())}
                     read={readDifference}
                     preview={() => void drive("preview-target")}
                     accept={acceptDifference}
@@ -1440,7 +1636,7 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
                         variant="primary"
                         disabled={
                           !allowed() ||
-                          (view().workspaceMapping.kind === "organization-native" && !nativeDirectoryLabel(view()))
+                          (view().workspaceMapping.kind === "organization-native" && !nativeConsentAvailable(view()))
                         }
                         onClick={() =>
                           void perform({
@@ -1635,9 +1831,7 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
                     try {
                       retain(view.handoffID)
                       setState("view", undefined)
-                      void refresh()
-                        .then(() => runtime(view.targetRuntimeID))
-                        .catch(failure)
+                      void refresh().catch(failure)
                     } catch (error) {
                       failure(error)
                     }
