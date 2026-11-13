@@ -165,6 +165,18 @@ SYNERGY_HOME=/absolute/identity-qualified-home ./node_modules/.bin/synergy-org-r
 
 Use `--kind member` with the matching member request. The command shares supervised startup, readiness and graceful shutdown; it does not start a personal Runtime. Keep request files private and out of logs or command arguments.
 
+## Inspect and retire original native targets
+
+Use `synergy-org-runtime cleanup` on the original enrolled member Home when a cancelled native Handoff retains an inactive destination. The matching full product exposes `synergy org-runtime cleanup`. An active Runtime holding that Home lock blocks the command; cleanup never stops it. Bounded private stdin carries `version: 1`, `identity: { orgID, accountID, deviceID }`, the expected `deploymentIncarnation` and optional trusted PEM `ca`. The service origin and machine key come from the retained Home.
+
+```sh
+SYNERGY_HOME=/absolute/identity-qualified-home ./node_modules/.bin/synergy-org-runtime cleanup list --limit 50 < /absolute/private/cleanup.json
+```
+
+Follow the returned cursor for another page. To inspect one original target, add its exact returned `descriptor` to the same private request and invoke `cleanup inspect`. Use `cleanup retire` with that descriptor only after inspection identifies the inactive target to release. Retirement submits the original signed cleanup fact through the enrolled service origin. If the acknowledgement is unknown, inspect again; do not create a new descriptor or infer that a timeout released the claim.
+
+List and inspect attach existing storage read-only. Retirement validates its current schema, namespace, manifest and dataset identities before taking the normal writer fence; unfinished migrations or projections require their owning maintenance procedure. The command starts no ordinary member connection or execution services and grants no preparation, activation, new Handoff or Continue authority. See [restricted cleanup](../decisions/implemented/feature/2026-11-13-reconcile-original-machine-targets-through-a-restricted-cli.md).
+
 ## Hosted Runtime entry
 
 Supervisors and hosted images use `synergy-org-runtime hosted-runtime` with the same serving lifecycle. For programmatic preparation, `prepareHostedHome({ baseDirectory, identity: { orgID, hostID }, origin })` comes from `./home`; the public CLI follows the [same registration flow](#register-and-serve-a-runtime). Private stdin receives the existing `HostedLaunchRequest` with the prepared identity, deployment incarnation, explicit local port, ephemeral 64-hex bearer, optional CA and optional enrollment ticket. End at EOF; the request is bounded to 64 KiB and never appears in arguments/output. Retained registration permits restart without replaying the ticket. The local listener stays loopback-only.

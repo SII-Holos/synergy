@@ -163,6 +163,35 @@ export namespace StorageBootstrap {
     }
   }
 
+  export async function openExisting(root: string) {
+    const inspected = await inspect(root)
+    if (!inspected) throw new StorageIntegrityError("An active storage manifest is required for cleanup")
+    const { readonly: _, ...options } = inspected.store.options
+    try {
+      await StorageCompat.assertConverged(inspected.store)
+    } finally {
+      await inspected.store.close()
+    }
+    const store = await TransactionalStore.openExisting(options)
+    try {
+      const identity = DatasetIdentity.parse(await store.read(["storage_meta", "identity"]))
+      const manifest = await status(root)
+      const current = resolveStoreOptions(root, await readStorageConfiguration(root), inspected.manifest.namespace)
+      if (
+        JSON.stringify(manifest) !== JSON.stringify(inspected.manifest) ||
+        targetIdentity(current) !== inspected.manifest.target ||
+        identity.storeID !== inspected.manifest.storeID ||
+        identity.artifactStoreID !== inspected.manifest.artifactStoreID ||
+        (await optionalJson(path.join(root, "data", "storage", "switch.json")))
+      )
+        throw new StorageIntegrityError("Existing cleanup attachment changed its original dataset")
+      return { store, artifactDirectory: inspected.artifactDirectory, manifest: inspected.manifest }
+    } catch (error) {
+      await store.close()
+      throw error
+    }
+  }
+
   export async function migrateTarget(input: {
     root: string
     store: TransactionalStore

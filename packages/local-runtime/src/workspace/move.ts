@@ -214,56 +214,64 @@ export function registerNativeWorkspaceMove(coordinator: WorkspaceCoordinator) {
         },
       }
     },
-    async release(source, id, value, compatibleIDs) {
-      source = { ...source }
-      let reference = value === undefined ? undefined : retainedReference(value, !!compatibleIDs?.length)
-      const admissible = new Set([id, ...(compatibleIDs ?? [])])
-      const assert = nativeOwner()
-      assert()
-      const matches = (await coordinator.inspect()).filter((claim) => admissible.has(claim.id))
-      assert()
-      if (matches.length > 1) throw new Error("Workspace move has multiple retained native dispatch identities")
-      const original = matches[0]
-      if (!reference && !original) return
-      if (original && (!original.durable || original.kind !== "exclusive"))
-        throw new Error("Workspace move dispatch has another native claim")
-      if (!reference) {
-        reference = LegacyReference.parse({ ...source, claim: { id: original!.id, token: original!.token } })
-      }
-      if (
-        reference.workspaceID !== source.workspaceID ||
-        reference.scopeID !== source.scopeID ||
-        reference.generation !== source.generation
-      )
-        throw new Error("Workspace move release belongs to another native source")
-      if (!admissible.has(reference.claim.id))
-        throw new Error("Workspace move release belongs to another native namespace or request")
-      if (original && original.token !== reference.claim.token)
-        throw new Error("Workspace move native dispatch has another retained token")
-      const complete = Reference.safeParse(reference)
-      if (original && (!original.roots || original.roots.length !== 1))
-        throw new Error("Original Workspace dispatch has no bounded physical root")
-      if (complete.success) {
-        const expected = complete.data
-        const locations = WorkspaceLocation.source(),
-          hostID = locations.hostID.bind(locations)
-        const host = await hostID()
-        assert()
-        const root = original?.roots?.[0]
-        // Catalog identities may include a volume UUID; coordinator roots retain their admission-time identities.
-        if (
-          host !== expected.hostID ||
-          (original &&
-            (!root ||
-              root.path !== (process.platform === "win32" ? expected.path.toLowerCase() : expected.path) ||
-              !root.physicalID))
-        )
-          throw new Error("Workspace move release changed its original native physical identity")
-      }
-      const lease = await coordinator.recover(reference.claim)
-      await lease.release()
-      if (!(await lease.isReleased())) throw new Error("Workspace move native source release is unresolved")
-      assert()
-    },
+    release: nativeWorkspaceRelease(coordinator),
   })
+}
+
+function nativeWorkspaceRelease(coordinator: WorkspaceCoordinator): WorkspaceMove.SourceHost["release"] {
+  return async (source, id, value, compatibleIDs) => {
+    source = { ...source }
+    let reference = value === undefined ? undefined : retainedReference(value, !!compatibleIDs?.length)
+    const admissible = new Set([id, ...(compatibleIDs ?? [])])
+    const assert = nativeOwner()
+    assert()
+    const matches = (await coordinator.inspect()).filter((claim) => admissible.has(claim.id))
+    assert()
+    if (matches.length > 1) throw new Error("Workspace move has multiple retained native dispatch identities")
+    const original = matches[0]
+    if (!reference && !original) return
+    if (original && (!original.durable || original.kind !== "exclusive"))
+      throw new Error("Workspace move dispatch has another native claim")
+    if (!reference) {
+      reference = LegacyReference.parse({ ...source, claim: { id: original!.id, token: original!.token } })
+    }
+    if (
+      reference.workspaceID !== source.workspaceID ||
+      reference.scopeID !== source.scopeID ||
+      reference.generation !== source.generation
+    )
+      throw new Error("Workspace move release belongs to another native source")
+    if (!admissible.has(reference.claim.id))
+      throw new Error("Workspace move release belongs to another native namespace or request")
+    if (original && original.token !== reference.claim.token)
+      throw new Error("Workspace move native dispatch has another retained token")
+    const complete = Reference.safeParse(reference)
+    if (original && (!original.roots || original.roots.length !== 1))
+      throw new Error("Original Workspace dispatch has no bounded physical root")
+    if (complete.success) {
+      const expected = complete.data
+      const locations = WorkspaceLocation.source(),
+        hostID = locations.hostID.bind(locations)
+      const host = await hostID()
+      assert()
+      const root = original?.roots?.[0]
+      // Catalog identities may include a volume UUID; coordinator roots retain their admission-time identities.
+      if (
+        host !== expected.hostID ||
+        (original &&
+          (!root ||
+            root.path !== (process.platform === "win32" ? expected.path.toLowerCase() : expected.path) ||
+            !root.physicalID))
+      )
+        throw new Error("Workspace move release changed its original native physical identity")
+    }
+    const lease = await coordinator.recover(reference.claim)
+    await lease.release()
+    if (!(await lease.isReleased())) throw new Error("Workspace move native source release is unresolved")
+    assert()
+  }
+}
+
+export function registerNativeWorkspaceCleanup(coordinator: WorkspaceCoordinator) {
+  WorkspaceMove.registerCleanupHost({ release: nativeWorkspaceRelease(coordinator) })
 }

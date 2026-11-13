@@ -1,4 +1,5 @@
 import type { CommandEntry, CommandModule } from "@ericsanchezok/synergy-util/cli-command"
+import type { CleanupRuntimeFactory } from "./cli/cleanup"
 
 export const commands: CommandEntry[] = [
   {
@@ -15,16 +16,21 @@ export const commands: CommandEntry[] = [
   },
   {
     command: "org-runtime",
-    describe: "register or serve an independent organization Runtime",
+    describe: "register, serve or clean up an independent organization Runtime",
     initialization: "owner",
     load: async () =>
       (await import("./cli/organization-runtime")).OrganizationRuntimeCommand as unknown as CommandModule,
   },
 ]
 
-export async function standaloneCommands(): Promise<CommandEntry[]> {
+export async function standaloneCommands(
+  options: { cleanupRuntime?: CleanupRuntimeFactory } = {},
+): Promise<CommandEntry[]> {
   const { organizationRuntimeCommands } = await import("./cli/organization-runtime")
-  const publicCommands = organizationRuntimeCommands.map((command) => {
+  const { createCleanupCommand } = await import("./cli/cleanup")
+  const publicCommands = organizationRuntimeCommands.map((original) => {
+    const command =
+      original.command === "cleanup" && options.cleanupRuntime ? createCleanupCommand(options.cleanupRuntime) : original
     if (typeof command.command !== "string" || typeof command.describe !== "string")
       throw new Error("Independent machine commands require names and help text")
     return {

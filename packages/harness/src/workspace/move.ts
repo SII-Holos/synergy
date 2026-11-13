@@ -214,8 +214,10 @@ export namespace WorkspaceMove {
       compatibleIDs?: readonly string[],
     ): Promise<void>
   }
+  export type CleanupHost = Pick<SourceHost, "release">
   const state = RuntimeContext.state(() => ({
     host: undefined as SourceHost | undefined,
+    cleanupHost: undefined as CleanupHost | undefined,
     captured: new Map<string, CapturedSourceHost>(),
     jobs: new Map<
       string,
@@ -307,17 +309,23 @@ export namespace WorkspaceMove {
   }
   export function registerSourceHost(value: SourceHost) {
     RuntimeContext.assertCompositionOpen("Workspace move source")
-    if (state().host) throw new Error("Workspace move source Host is already registered")
+    if (state().host || state().cleanupHost) throw new Error("Workspace move source Host is already registered")
     state().host = Object.freeze({
       preview: value.preview.bind(value),
       hold: value.hold.bind(value),
       release: value.release.bind(value),
     })
   }
+  export function registerCleanupHost(value: CleanupHost) {
+    RuntimeContext.assertCompositionOpen("Workspace move cleanup")
+    if (state().host || state().cleanupHost || state().captured.size)
+      throw new Error("Workspace move source Host is already registered")
+    state().cleanupHost = Object.freeze({ release: value.release.bind(value) })
+  }
   export function registerCapturedSourceHost(id: string, value: CapturedSourceHost) {
     RuntimeContext.assertCompositionOpen("Captured Workspace move source")
     ID.parse(id)
-    if (id === "native" || state().captured.has(id))
+    if (state().cleanupHost || id === "native" || state().captured.has(id))
       throw new Error("Captured Workspace move source is already registered")
     state().captured.set(id, Object.freeze({ capture: value.capture.bind(value) }))
   }
@@ -497,10 +505,12 @@ export namespace WorkspaceMove {
     return { workspaceID: selected.workspaceID, scopeID: selected.scopeID, generation: selected.generation }
   }
   async function releaseNative(request: Input) {
+    const release = state().host?.release ?? state().cleanupHost?.release
     const assert = WorkspaceContent.captureOwner()
     const record = await read(request)
     assert()
     if (!record || (!record.nativeRequested && record.native === undefined)) return
+    if (!release) throw new Error("Native Workspace move cleanup Host is unavailable")
     const dispatch = await nativeDispatch(request, record)
     await Storage.transaction(
       async () => {
@@ -516,7 +526,7 @@ export namespace WorkspaceMove {
         },
       },
     )
-    await host().release(physical(request), dispatch.id, record.native, dispatch.compatibleIDs)
+    await release(physical(request), dispatch.id, record.native, dispatch.compatibleIDs)
     assert()
     await Storage.transaction(
       async () => {

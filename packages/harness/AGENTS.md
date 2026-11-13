@@ -27,7 +27,7 @@ Register PG contracts in `test/support/storage-backends.ts`; see [backend select
 
 Vault and execution-time secret resolution stay here; detection belongs to `packages/secret-detection`. Derived batches use `SecretMask.captureAndApplyMany`/`revision()`. Register replacement detectors through `secrets/detector-source` before runtime startup. Run `bun test test/secrets/` and `bun run benchmark:secrets` for capture changes; the benchmark owns a disposable home.
 
-Before copying deferred datasets, use `storage/compat` convergence. Central migrations stage shared records and owner cohorts; Runtime Handle drains imports.
+Check `storage/compat` before copies. Existing-only attachment validates without initialization; test `storage/existing-attach`. Central migrations own upgrades; Runtime Handle drains imports.
 
 Preserve Snapshot ownership, callback-bound readers, Archive verification/paging and preparations. Publish heads/receipts together. `WorkspaceMove` guards range/adoption claims through COMMIT and unknown outcomes; release outside SQL. Verify `test/snapshot/`, `test/workspace/{content-producer,portable-tree,archive,archive-paged,tree-import}.test.ts` and Local Runtime's `test/workspace/{move,native-adoption,change-attribution}.test.ts`.
 

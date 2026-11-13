@@ -6,6 +6,7 @@ import { createSynergyClient } from "@ericsanchezok/synergy-sdk"
 import { createOrganizationClient } from "@ericsanchezok/synergy-sdk/organization"
 import { OrganizationHandoffCleanup as Cleanup } from "../src/handoff-recovery"
 import { openMemberConnection } from "../src/connection"
+import { memberEnvironment } from "../src/environment"
 import {
   OrganizationCloudProtocol as Cloud,
   OrganizationHandoffProtocol as Handoff,
@@ -60,11 +61,15 @@ for (const scenario of [
   "return-adopt-role-cleanup",
   "return-adopt-runtime-revoked-cleanup",
   "return-adopt-account-removed-cleanup",
+  "return-adopt-runtime-revoked-cli-cleanup",
 ] as const)
   test(`consented native files complete one cross-Realm receipt (${scenario})`, async () => {
     const adopting = scenario.startsWith("return-adopt")
+    const cliCleanup = scenario === "return-adopt-runtime-revoked-cli-cleanup"
     const revokedRecovery =
-      scenario === "return-adopt-runtime-revoked-cleanup" || scenario === "return-adopt-account-removed-cleanup"
+      scenario === "return-adopt-runtime-revoked-cleanup" ||
+      scenario === "return-adopt-account-removed-cleanup" ||
+      cliCleanup
     const restrictedRecipient =
       scenario === "return-adopt-unshare-cleanup" || scenario === "return-adopt-role-cleanup" || revokedRecovery
     await using resources = testResources()
@@ -1154,7 +1159,10 @@ for (const scenario of [
             }
             const original = await receiver.runtime.run(async () =>
               z
-                .object({ request: WorkspaceMove.NativeRequest })
+                .object({
+                  request: WorkspaceMove.NativeRequest,
+                  native: z.object({ claim: z.object({ id: z.string(), token: z.string() }) }),
+                })
                 .parse(await Storage.read(["workspace_move", project.projectID, "return-existing-native"])),
             )
             expect(await receiver.runtime.run(() => WorkspaceMove.inspect(original.request))).toMatchObject({
@@ -1232,7 +1240,7 @@ for (const scenario of [
                   })
                 })
               }
-              if (scenario === "return-adopt-runtime-revoked-cleanup") {
+              if (scenario === "return-adopt-runtime-revoked-cleanup" || cliCleanup) {
                 const projectNow = (await f.client.orgProjects.get({ projectID: project.projectID }, options)).data
                 await f.client.orgProjects.member(
                   {
@@ -1359,12 +1367,120 @@ for (const scenario of [
                 }
               const before = await receiver.runtime.run(() => Cleanup.inspect(descriptor))
               expect(before).toMatchObject({ state: "blocked", facts: [] })
-              if (scenario === "return-adopt-runtime-revoked-cleanup") {
+              if (scenario === "return-adopt-runtime-revoked-cleanup" || cliCleanup) {
                 const controller = actualTargets.get(receiver.registration.runtimeID)!,
                   ended = cleanupInputs.get(receiver.registration.runtimeID)!
                 await expect(receiver.runtime.run(() => controller.recover(ended))).rejects.toThrow(
                   "real enrolled HTTP authorization owner",
                 )
+              }
+              if (cliCleanup) {
+                const input = {
+                  version: 1,
+                  identity: receiver.home.identity,
+                  deploymentIncarnation: receiver.registration.deploymentIncarnation,
+                  ca: f.ca,
+                }
+                async function cli(operation: "list" | "inspect" | "retire", request: unknown = input) {
+                  const child = Bun.spawn(
+                    [
+                      process.execPath,
+                      "--no-env-file",
+                      "--no-bunfig",
+                      path.resolve(import.meta.dir, "support/runtime-cleanup-entry.ts"),
+                      "cleanup",
+                      operation,
+                      ...(operation === "list" ? ["--limit", "1"] : []),
+                    ],
+                    {
+                      env: {
+                        ...memberEnvironment(receiver.home, process.env),
+                        SYNERGY_TEST_ROOT: process.env.SYNERGY_TEST_ROOT,
+                        SYNERGY_TEST_CLEANUP_COORDINATOR: path.join(f.root, "workspace-coordinator"),
+                      },
+                      cwd: receiver.home.home,
+                      stdin: Buffer.from(JSON.stringify(request)),
+                      stdout: "pipe",
+                      stderr: "pipe",
+                      timeout: 15000,
+                    },
+                  )
+                  const [code, stdout, stderr] = await Promise.all([
+                    child.exited,
+                    new Response(child.stdout).text(),
+                    new Response(child.stderr).text(),
+                  ])
+                  return { code, stdout, stderr }
+                }
+                const locked = await cli("list")
+                expect(locked.code).not.toBe(0)
+                expect(locked.stderr + locked.stdout).toContain("Another Synergy runtime already owns this Home")
+                await receiver.runtime.close()
+                const paths: string[] = []
+                let proofPosts = 0
+                f.interceptHTTP(async (request) => {
+                  const pathname = new URL(request.url).pathname
+                  paths.push(pathname)
+                  if (pathname !== "/runtime/v1/handoffs/proof") return
+                  proofPosts++
+                  const result = await f.service.fetch(request)
+                  if (result.status !== 200) return result
+                  return Response.json(
+                    {
+                      code: "SERVICE_UNAVAILABLE",
+                      message: "Lost original cleanup acknowledgement",
+                      outcome: "unknown",
+                      retryable: false,
+                    },
+                    { status: 503 },
+                  )
+                })
+                const list = await cli("list")
+                expect({ code: list.code, stderr: list.stderr }).toEqual({ code: 0, stderr: "" })
+                const listed = Recovery.Page.parse(JSON.parse(list.stdout))
+                expect(listed.items).toMatchObject([{ handoffID: returningID }])
+                expect(listed.cursor).toBeUndefined()
+                const retained = listed.items[0]!
+                expect(retained).toEqual(descriptor)
+                const check = await cli("inspect", { ...input, descriptor: retained })
+                expect({ code: check.code, stderr: check.stderr }).toEqual({ code: 0, stderr: "" })
+                expect(Handoff.MachineResult.parse(JSON.parse(check.stdout))).toMatchObject({
+                  state: "blocked",
+                  facts: [],
+                })
+                expect((await cli("list", { ...input, identity: source.home.identity })).code).not.toBe(0)
+                expect((await cli("list", { ...input, ca: "invalid certificate" })).code).not.toBe(0)
+                const credentialFile = path.join(receiver.home.root, "auth/organization-runtime.json")
+                const originalCredentials = await fs.readFile(credentialFile)
+                try {
+                  await fs.copyFile(path.join(source.home.root, "auth/organization-runtime.json"), credentialFile)
+                  expect((await cli("list")).code).not.toBe(0)
+                } finally {
+                  await fs.writeFile(credentialFile, originalCredentials)
+                }
+                expect(
+                  (await workspaceCoordinator.inspect()).some((claim) => claim.id === original.native.claim.id),
+                ).toBe(true)
+                const retired = await cli("retire", { ...input, descriptor: retained })
+                expect(retired.code).not.toBe(0)
+                expect(retired.stderr + retired.stdout).toContain("unknown")
+                expect(proofPosts).toBe(1)
+                f.interceptHTTP(async (request) => {
+                  paths.push(new URL(request.url).pathname)
+                })
+                const inspected = await cli("inspect", { ...input, descriptor: retained })
+                expect({ code: inspected.code, stderr: inspected.stderr }).toEqual({ code: 0, stderr: "" })
+                expect(Handoff.MachineResult.parse(JSON.parse(inspected.stdout))).toMatchObject({
+                  state: "complete",
+                  stage: "target-never-activate",
+                })
+                expect(
+                  (await workspaceCoordinator.inspect()).some((claim) => claim.id === original.native.claim.id),
+                ).toBe(false)
+                expect(new Set(paths)).toEqual(new Set(["/runtime/v1/handoffs/recovery", "/runtime/v1/handoffs/proof"]))
+                expect(allocations).toBe(0)
+                f.interceptHTTP(undefined)
+                return
               }
               let proofPosts = 0
               if (scenario === "return-adopt-runtime-revoked-cleanup")
@@ -1412,10 +1528,12 @@ for (const scenario of [
               ).toBe(false)
               expect(allocations).toBe(0)
             } finally {
-              await receiver.runtime.run(async () => {
-                await Epochs.neverActivate(selected, returning.data.manifestHash ?? returnedFrozen!.manifestHash!)
-                await WorkspaceMove.release(original.request, "retired")
-              })
+              if (cliCleanup) await (await workspaceCoordinator.recover(original.native.claim)).release()
+              else
+                await receiver.runtime.run(async () => {
+                  await Epochs.neverActivate(selected, returning.data.manifestHash ?? returnedFrozen!.manifestHash!)
+                  await WorkspaceMove.release(original.request, "retired")
+                })
             }
             return
           }

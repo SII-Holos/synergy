@@ -20,6 +20,7 @@ import type { StorageMaintenanceOperation } from "@ericsanchezok/synergy-util/ru
 import { StoragePath } from "./path"
 import { SqliteDriver } from "./sqlite-driver"
 import { PostgresDriver } from "./postgres-driver"
+import { verifySqliteSchema } from "./sqlite-schema"
 import { sqlParameterBytes } from "./sql-contract"
 import { Identifier } from "../id/id"
 import { EvidenceOwnerProjection, evidenceOwnerTables, evidenceOwnerTriggers } from "./evidence-owner-projection"
@@ -1519,10 +1520,19 @@ export class TransactionalStore {
   ) {}
 
   static async open(options: StoreOptions) {
+    return TransactionalStore.openSelected(options, false)
+  }
+
+  static async openExisting(options: StoreOptions) {
+    if (options.readonly) throw new StorageIntegrityError("Existing writer attachment requires writable ownership")
+    return TransactionalStore.openSelected({ ...options, mustExist: true }, true)
+  }
+
+  private static async openSelected(options: StoreOptions, existingOnly: boolean) {
     if (!/^[a-zA-Z0-9_-]{1,128}$/.test(options.namespace)) throw new StorageIntegrityError("Invalid storage namespace")
     const driver: SqlDriver =
       options.backend === "sqlite"
-        ? await SqliteDriver.open(options.filename, options.readonly, options.mustExist)
+        ? await SqliteDriver.open(options.filename, options.readonly, options.mustExist, existingOnly)
         : await PostgresDriver.open(options.url, options.namespace, options.maxConnections, options.readonly)
     const store = new TransactionalStore(driver, options)
     driver.onUnavailable((error) => {
@@ -1530,13 +1540,14 @@ export class TransactionalStore {
     })
     try {
       if (!options.readonly && driver instanceof PostgresDriver) {
-        if (options.backend === "postgres" && options.schema === "verify")
+        if (existingOnly || (options.backend === "postgres" && options.schema === "verify"))
           await driver.verifySchema(schemaFor("postgres"))
         else await driver.initializeSchema(schemaFor("postgres"))
       }
       await driver.transaction(
         async (connection) => {
-          if (!options.readonly && options.backend === "sqlite")
+          if (options.backend === "sqlite" && existingOnly) await verifySqliteSchema(connection, schemaFor("sqlite"))
+          else if (!options.readonly && options.backend === "sqlite")
             for (const statement of schemaFor("sqlite"))
               await connection.query(statement, [], {
                 // `CREATE INDEX` reads every existing row, so on a large store it
@@ -1560,6 +1571,23 @@ export class TransactionalStore {
           // store current before its rows are rewritten is exactly what would
           // let a v2 store claim v3 while still holding hex keys.
           const version = existing ? Number(existing.version) : options.backend === "sqlite" ? 3 : 2
+          if (existingOnly && version !== (options.backend === "sqlite" ? 3 : 2))
+            throw new StorageIntegrityError("Existing storage format requires an explicit storage upgrade")
+          if (existingOnly) {
+            if (options.backend === "sqlite") {
+              const [projection] = await connection.query(
+                "SELECT phase FROM storage_evidence_preparation WHERE namespace = ?",
+                [options.namespace],
+              )
+              if (projection?.phase !== "ready")
+                throw new StorageIntegrityError("Existing storage projection requires explicit preparation")
+            }
+            const [pending] = await connection.query(
+              "SELECT 1 FROM storage_records WHERE namespace = ? AND kind = 'compat_pending' AND body IS NOT NULL LIMIT 1",
+              [options.namespace],
+            )
+            if (pending) throw new StorageIntegrityError("Existing storage compatibility migration is incomplete")
+          }
           store.keyEncoding = options.backend === "sqlite" && version >= 3 ? "bytes" : "hex"
           // The artifact layout is a property of the table, not of the recorded
           // format: a format 3 namespace falls back to a physical `pack` when its
@@ -1589,7 +1617,8 @@ export class TransactionalStore {
             "INSERT INTO storage_namespaces(namespace, version, owner, state) VALUES (?, ?, ?, 'active') ON CONFLICT(namespace) DO UPDATE SET version = CASE WHEN storage_namespaces.version >= 2 THEN storage_namespaces.version ELSE 2 END, owner = excluded.owner, state = excluded.state",
             [options.namespace, options.backend === "sqlite" ? 3 : 2, store.owner],
           )
-          if (options.backend === "sqlite") await EvidenceOwnerProjection.initialize(connection, options.namespace)
+          if (options.backend === "sqlite" && !existingOnly)
+            await EvidenceOwnerProjection.initialize(connection, options.namespace)
         },
         { readOnly: options.readonly },
       )
@@ -1598,7 +1627,7 @@ export class TransactionalStore {
         [options.namespace],
       )
       store.admission.pending = Boolean(pending)
-      if (!options.readonly) store.scheduleEvidencePreparation()
+      if (!options.readonly && !existingOnly) store.scheduleEvidencePreparation()
       return store
     } catch (error) {
       await driver.close()

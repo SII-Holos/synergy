@@ -50,16 +50,21 @@ export async function identifyDirectory(directory: string, allowMissing = false,
   }
 }
 
+export async function readExistingIdentityFile(filename: string): Promise<string> {
+  const value = await fs.readFile(filename, "utf8")
+  if (!/^[0-9a-f-]{36}$/.test(value)) throw new Error("Invalid local filesystem namespace identity")
+  return value
+}
+
 export async function readOrCreateIdentityFile(filename: string): Promise<string> {
   return withFileLock(
     { directory: path.join(path.dirname(filename), ".locks"), key: path.basename(filename) },
     async () => {
-      const existing = await fs.readFile(filename, "utf8").catch((error: NodeJS.ErrnoException) => {
+      const existing = await readExistingIdentityFile(filename).catch((error: NodeJS.ErrnoException) => {
         if (error.code === "ENOENT") return undefined
         throw error
       })
       if (existing !== undefined) {
-        if (!/^[0-9a-f-]{36}$/.test(existing)) throw new Error("Invalid local filesystem namespace identity")
         return existing
       }
       const identity = randomUUID()

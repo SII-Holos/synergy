@@ -21,7 +21,7 @@ Harness owns lifecycle. Local Host snapshots Home/environment. `createLocalClien
 
 Workspace removal and reclamation share the lifecycle gate and native retirement claim. Git/setup commands use the Workspace process owner; short metadata mutations cannot reserve read-only turns as writers. Preserve active users, on-disk locks and unverified commits. Run `bun test test/workspace` and Presets worktree suites.
 
-Cooperating Runtimes coordinate physical overlap/process identity. Bind before commands; retain through saving. Original tokens prove release; recovered exclusive claims require unchanged physical roots. Move/adoption claims guard publication; release outside SQL. Never undo published data. Verify `test/process/owned-process.test.ts`, `test/workspace/{move,access-maintenance,bash-footprint}.test.ts` and Windows suites.
+Cooperating Runtimes coordinate physical overlap/process identity. Bind before commands; retain through saving. Tokens prove release; exclusive recovery requires unchanged roots; `workspace/cleanup` only releases. Move/adoption claims guard publication; release outside SQL. Never undo published data. Verify `test/process/owned-process.test.ts`, `test/workspace/{move,access-maintenance,bash-footprint}.test.ts` and Windows suites.
 
 Workspace file indexes, native subscriptions and edit evidence follow the resolved Workspace generation. Configuration subscriptions are Scope-owned. File events carry Workspace identity and the committed content version; test sibling directories with `bun test test/workspace-file/isolation.test.ts`.
 
@@ -41,4 +41,4 @@ Trusted transfers use `workspace-file/service`: imports accept stable operation 
 
 Explicit `environment: "native"` selects the native provider/default without personal profiles. Hosted compositions supply providers. Descriptor portability requires explicit composition; verify `test/session-transfer-environment*.test.ts`.
 
-Transfers: `session-transfer-workspaces`, `session-transfer-workspace-target`, `workspace/native-adoption`; trees: `workspace/{file-host,portable-tree,portable-git,portable-target}`; claims: `session-transfer-physical`. Paged checkpoints/imports preserve identity/policy. Verify source/target/physical, file-host-paged, mount-paged, tree/Git.
+Transfers: `session-transfer-workspaces`, `session-transfer-workspace-target`, `workspace/{native-adoption,cleanup}`; trees: `workspace/{file-host,portable-tree,portable-git,portable-target}`; claims: `session-transfer-physical`. Paged checkpoints/imports preserve identity/policy. Verify source/target/physical, file-host-paged, mount-paged, tree/Git.

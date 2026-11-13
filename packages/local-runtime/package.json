@@ -57,6 +57,7 @@
     "./workspace/worktree": "./src/workspace/worktree.ts",
     "./workspace/process": "./src/workspace/process.ts",
     "./workspace/coordinator": "./src/workspace/coordinator.ts",
+    "./workspace/cleanup": "./src/workspace/cleanup.ts",
     "./workspace/native-adoption": "./src/workspace/native-adoption.ts",
     "./workspace/relocation": "./src/workspace/relocation.ts",
     "./index": "./src/index.ts",

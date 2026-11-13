@@ -7,6 +7,7 @@ import { RuntimeRegistrationRequest } from "../launch"
 import { MemberHomeError } from "../record"
 import { readMachineInput } from "./input"
 import { explicitHome, serveSupervisedRuntime } from "./supervisor"
+import { createCleanupCommand } from "./cleanup"
 
 export const OrganizationRuntimeRegisterCommand = cmd({
   command: "register",
@@ -72,11 +73,12 @@ export const OrganizationRuntimeServeCommand = cmd({
 export const organizationRuntimeCommands = [
   OrganizationRuntimeRegisterCommand,
   OrganizationRuntimeServeCommand,
+  createCleanupCommand(),
 ] as unknown as CommandModule[]
 
 export const OrganizationRuntimeCommand = cmd({
   command: "org-runtime",
-  describe: "register or serve an independent organization Runtime",
+  describe: "register, serve or clean up an independent organization Runtime",
   builder: (yargs) => {
     for (const command of organizationRuntimeCommands) yargs.command(command)
     return yargs.demandCommand()

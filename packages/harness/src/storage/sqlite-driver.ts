@@ -115,8 +115,16 @@ export class SqliteDriver implements SqlDriver {
     })
   }
 
-  static async open(filename: string, readonly = false, mustExist = false) {
-    if (!readonly) await fs.mkdir(path.dirname(filename), { recursive: true, mode: 0o700 })
+  static async open(filename: string, readonly = false, mustExist = false, existingOnly = false) {
+    if (mustExist) {
+      try {
+        await fs.access(filename)
+      } catch (error) {
+        if (error && typeof error === "object" && "code" in error && error.code === "ENOENT")
+          throw new StorageIntegrityError("The active SQLite database is missing")
+        throw error
+      }
+    } else if (!readonly) await fs.mkdir(path.dirname(filename), { recursive: true, mode: 0o700 })
     let ownership: { release(): Promise<void> } | undefined
     if (!readonly) {
       try {
@@ -129,16 +137,7 @@ export class SqliteDriver implements SqlDriver {
     }
     const driver = new SqliteDriver(filename, ownership)
     try {
-      if (mustExist) {
-        try {
-          await fs.access(filename)
-        } catch (error) {
-          if (error && typeof error === "object" && "code" in error && error.code === "ENOENT")
-            throw new StorageIntegrityError("The active SQLite database is missing")
-          throw error
-        }
-      }
-      await driver.writer.request({ action: "open", filename, readonly })
+      await driver.writer.request({ action: "open", filename, readonly, mustExist, existingOnly })
       await driver.reader.request({ action: "open", filename, readonly: true })
       if (!readonly && process.platform !== "win32") {
         // The worker's umask keeps new files owner-only; chmod also repairs

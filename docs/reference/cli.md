@@ -34,7 +34,7 @@ Generated from the core and product CLI catalogs and explicit command contributi
 | `migration` | manage schema and data migrations |
 | `models` | list all available models |
 | `org` | initialize, administer or serve a dedicated organization |
-| `org-runtime` | register or serve an independent organization Runtime |
+| `org-runtime` | register, serve or clean up an independent organization Runtime |
 | `plugin` | install, remove, update, and inspect plugins |
 | `remove` | remove explicitly installed packages and unused dependencies |
 | `secrets` | manage the secret vault |
@@ -768,7 +768,35 @@ serve organization APIs without Agent execution; print JSON readiness
 
 ## org-runtime
 
-register or serve an independent organization Runtime
+register, serve or clean up an independent organization Runtime
+
+
+## org-runtime cleanup
+
+reconcile cancelled native targets using this original machine's retained enrollment
+
+| Option | Description |
+| --- | --- |
+| `--limit` (number) | maximum number of original targets (1–100) |
+| `--cursor` (string) | cursor returned by the previous cleanup page |
+
+## org-runtime cleanup inspect
+
+read only the retained target receipt named in the private stdin descriptor
+
+
+## org-runtime cleanup list
+
+list this original machine's outstanding cancelled native targets
+
+| Option | Description |
+| --- | --- |
+| `--limit` (number) | maximum number of original targets (1–100) |
+| `--cursor` (string) | cursor returned by the previous cleanup page |
+
+## org-runtime cleanup retire
+
+release the named inactive target and submit its original signed cleanup fact
 
 
 ## org-runtime register

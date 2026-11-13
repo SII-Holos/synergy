@@ -10,6 +10,7 @@
   "exports": {
     "./home": "./src/home.ts",
     "./handoff-recovery": "./src/handoff-recovery.ts",
+    "./handoff-cleanup-runtime": "./src/handoff-cleanup-runtime.ts",
     "./home-migration": "./src/home-migration.ts",
     "./enrollment": "./src/enrollment.ts",
     "./registration": "./src/registration.ts",

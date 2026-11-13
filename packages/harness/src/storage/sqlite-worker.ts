@@ -63,7 +63,7 @@ process.on("message", (request: SqliteRequest) => {
     if (request.action === "open") {
       readonly = request.readonly ?? false
       writer = new Database(request.filename!, {
-        create: !request.readonly,
+        create: !request.readonly && !request.mustExist,
         readonly: request.readonly,
         strict: true,
         safeIntegers: true,
@@ -75,8 +75,10 @@ process.on("message", (request: SqliteRequest) => {
         // file is still empty, so a new database must declare it before the WAL
         // journal creates that header. An existing non-empty database keeps its
         // current mode here and only converts through a VACUUM.
-        writer.run("PRAGMA auto_vacuum = INCREMENTAL")
-        writer.run("PRAGMA journal_mode = WAL")
+        if (!request.existingOnly) {
+          writer.run("PRAGMA auto_vacuum = INCREMENTAL")
+          writer.run("PRAGMA journal_mode = WAL")
+        }
         writer.run("PRAGMA synchronous = FULL")
         // The WAL is recycled by the automatic PASSIVE checkpoint; this bounds
         // how much disk it may occupy before that checkpoint shortens the file,

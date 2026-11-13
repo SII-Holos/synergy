@@ -82,6 +82,8 @@ export type SqliteRequest = {
   action: "open" | "query" | "close" | "ping" | "maintain"
   filename?: string
   readonly?: boolean
+  mustExist?: boolean
+  existingOnly?: boolean
   statement?: string
   cacheStatement?: boolean
   values?: SqlValue[]
