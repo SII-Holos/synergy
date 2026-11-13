@@ -32,13 +32,15 @@ export namespace EnvironmentPortableSchema {
     version: z.literal(2),
     executions: z.number().int().nonnegative().safe(),
   })
-  export const Mapping = z.strictObject({
-    version: z.literal(1),
-    provider: ID,
-    hash: z.string().regex(/^[a-f0-9]{64}$/),
-    source: JsonValue,
-    target: JsonValue,
-  }).refine((value) => JSON.stringify(value).length <= 16_384, "Environment mapping evidence exceeds its bound")
+  export const Mapping = z
+    .strictObject({
+      version: z.literal(1),
+      provider: ID,
+      hash: z.string().regex(/^[a-f0-9]{64}$/),
+      source: JsonValue,
+      target: JsonValue,
+    })
+    .refine((value) => JSON.stringify(value).length <= 16_384, "Environment mapping evidence exceeds its bound")
   export type Mapping = z.infer<typeof Mapping>
   export const ExplicitSource = CurrentSource.extend({ version: z.literal(3), mapping: Mapping })
   const NativeSource = z.discriminatedUnion("version", [LegacySource, CurrentSource])
@@ -57,11 +59,13 @@ export namespace EnvironmentPortableSchema {
       ReceiptFields.extend({ version: z.literal(3), source: ExplicitSource }),
     ])
     .refine(({ version, source, target }) =>
-      version === 3 ? true : source.selected === null
-        ? target === null
-        : target !== null &&
-          source.selected.provider === target.provider &&
-          JSON.stringify(source.selected.descriptor) === JSON.stringify(target.descriptor),
+      version === 3
+        ? true
+        : source.selected === null
+          ? target === null
+          : target !== null &&
+            source.selected.provider === target.provider &&
+            JSON.stringify(source.selected.descriptor) === JSON.stringify(target.descriptor),
     )
   export type Receipt = z.infer<typeof Receipt>
   export const Record = z.union([Source, Receipt])

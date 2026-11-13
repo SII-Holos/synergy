@@ -19,10 +19,15 @@ export async function runtimeAuthority(target: {
     runtime.connectionEpoch !== target.connectionEpoch
   )
     fail("PERMISSION_DENIED", "Runtime is not authorized")
-  const account = runtime.runtimeKind === "member"
-    ? await Record.read(Record.Account, Keys.account(runtime.accountID))
-    : undefined
-  if (runtime.runtimeKind === "member" && (!account || account.accountID !== runtime.accountID || account.orgID !== runtime.orgID || account.state !== "active"))
+  const account =
+    runtime.runtimeKind === "member" ? await Record.read(Record.Account, Keys.account(runtime.accountID)) : undefined
+  if (
+    runtime.runtimeKind === "member" &&
+    (!account ||
+      account.accountID !== runtime.accountID ||
+      account.orgID !== runtime.orgID ||
+      account.state !== "active")
+  )
     fail("PERMISSION_DENIED", "Runtime account is not active")
   return { runtime, account }
 }
@@ -34,7 +39,8 @@ export function assertRuntimeConnection(runtime: Record.RuntimeRegistration, han
     handshake.orgID !== runtime.orgID ||
     handshake.deploymentIncarnation !== runtime.deploymentIncarnation ||
     handshake.connectionEpoch !== runtime.connectionEpoch ||
-    (handshake.runtimeKind === "member" && runtime.runtimeKind === "member" &&
+    (handshake.runtimeKind === "member" &&
+      runtime.runtimeKind === "member" &&
       (handshake.accountID !== runtime.accountID || handshake.deviceID !== runtime.deviceID))
   )
     fail("STALE_CONNECTION", "Runtime registration and active connection do not match")

@@ -133,13 +133,15 @@ export namespace OrganizationSyncProtocol {
   })
   export type CortexProjection = z.infer<typeof CortexProjection>
 
-  export const TaskSummary = CortexProjection.omit({ visibility: true }).extend({
-    sessionID: Identity.ID,
-    deliveryNotifiedAt: z.number().int().nonnegative().optional(),
-    agent: z.string().max(256).optional(),
-    model: z.strictObject({ providerID: z.string().max(256), modelID: z.string().max(512) }).optional(),
-    category: z.string().max(512).optional(),
-  }).meta({ ref: "OrgTaskSummary" })
+  export const TaskSummary = CortexProjection.omit({ visibility: true })
+    .extend({
+      sessionID: Identity.ID,
+      deliveryNotifiedAt: z.number().int().nonnegative().optional(),
+      agent: z.string().max(256).optional(),
+      model: z.strictObject({ providerID: z.string().max(256), modelID: z.string().max(512) }).optional(),
+      category: z.string().max(512).optional(),
+    })
+    .meta({ ref: "OrgTaskSummary" })
   export type TaskSummary = z.infer<typeof TaskSummary>
 
   export const SessionProjection = z.strictObject({

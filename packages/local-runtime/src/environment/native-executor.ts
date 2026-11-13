@@ -76,7 +76,10 @@ export class NativeExecutor implements Executor {
       separateUser: Boolean(options.runAs),
     })
     this.preparations = new NativeExecutionPreparation({
-      target: options.target, directory: options.directory, inputs: this.inputs, sandbox: options.sandbox,
+      target: options.target,
+      directory: options.directory,
+      inputs: this.inputs,
+      sandbox: options.sandbox,
       guard: async (id, phase) => {
         const operation = this.operations.get(id)
         const receipt = await this.read(id)
@@ -84,8 +87,11 @@ export class NativeExecutor implements Executor {
           this.assertTarget(receipt.status.target)
           if (receipt.status.id !== id) throw new Error("Native preparation has another original command receipt")
         }
-        if (this.starting.has(id) || (operation && !operation.released) ||
-          (receipt && (phase === "prepare" || !receipt.released)))
+        if (
+          this.starting.has(id) ||
+          (operation && !operation.released) ||
+          (receipt && (phase === "prepare" || !receipt.released))
+        )
           throw new Error("Original execution retains its native preparation until saving completes")
       },
     })
@@ -220,9 +226,12 @@ export class NativeExecutor implements Executor {
       this.assertDigest(result, request.digest)
       return result
     }
-    const start = this.preparations.admit(request.id, request.command.sandboxID,
+    const start = this.preparations.admit(
+      request.id,
+      request.command.sandboxID,
       Boolean(request.command.sandboxID && this.sandboxes.has(request.command.sandboxID)),
-      () => this.inputs.admit(request.id, () => this.prepare(request)))
+      () => this.inputs.admit(request.id, () => this.prepare(request)),
+    )
     this.starting.set(request.id, start)
     try {
       return await start

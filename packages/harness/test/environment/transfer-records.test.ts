@@ -148,7 +148,12 @@ test("an explicit logical Environment mapping preserves immutable native source 
         generation: selected.generation,
         descriptor: selected.descriptor,
       },
-      target: { kind: "organization", resourceID: "selected-compute", resourceRevision: 2, environmentID: "cloud-environment" },
+      target: {
+        kind: "organization",
+        resourceID: "selected-compute",
+        resourceRevision: 2,
+        environmentID: "cloud-environment",
+      },
     }
     const current = S.Source.parse({ ...original, version: 3, executions: 0, mapping })
     const receipt = S.Receipt.parse({ version: 3, kind: "receipt", source: current, target: null })
@@ -167,9 +172,18 @@ test("an explicit logical Environment mapping preserves immutable native source 
     expect(receipt.target).toBeNull()
     expect(upgradeImportedRecord(Records.key(current), current)).toEqual(current)
     expect(upgradeImportedRecord(Records.key(receipt), receipt)).toEqual(receipt)
-    expect(S.Receipt.safeParse({ version: 2, kind: "receipt", source: { ...original, version: 2, executions: 0 }, target: null }).success).toBe(false)
+    expect(
+      S.Receipt.safeParse({
+        version: 2,
+        kind: "receipt",
+        source: { ...original, version: 2, executions: 0 },
+        target: null,
+      }).success,
+    ).toBe(false)
     expect(S.Source.safeParse({ ...current, mapping: { ...mapping, hash: "unknown" } }).success).toBe(false)
-    expect(S.Source.safeParse({ ...current, mapping: { ...mapping, allocationID: "caller-allocation" } }).success).toBe(false)
+    expect(S.Source.safeParse({ ...current, mapping: { ...mapping, allocationID: "caller-allocation" } }).success).toBe(
+      false,
+    )
     const changed = S.Source.parse({ ...current, mapping: { ...mapping, hash: "b".repeat(64) } })
     await expect(Storage.transaction(() => Records.save(changed))).rejects.toThrow("cannot change")
     expect(await Records.source(current)).toEqual(current)

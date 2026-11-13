@@ -8,15 +8,15 @@ test("native cleanup selectors expose only original fact identities and separate
     environmentID: "original-environment",
     useID: JSON.stringify(["execution", "original-scope", "original-physical-operation"]),
     useHash: "a".repeat(64),
-  }
-  const preparation = { ...admission, kind: "preparation" }
+  } satisfies Cleanup.Candidate
+  const preparation = { ...admission, kind: "preparation" } satisfies Cleanup.Candidate
   const execution = {
     kind: "execution",
     scopeID: admission.scopeID,
     environmentID: admission.environmentID,
     id: "original-physical-operation",
     digest: "b".repeat(64),
-  }
+  } satisfies Cleanup.Candidate
   for (const selector of [admission, preparation, execution]) {
     expect(Cleanup.Candidate.parse(selector)).toEqual(selector)
     for (const extra of [{ directory: "/another" }, { origin: { owner: "claimed" } }, { view: {} }, { source: {} }])

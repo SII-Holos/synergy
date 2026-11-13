@@ -55,7 +55,10 @@ export namespace SessionCortexIndex {
   export async function prepare(scopeID: string, parentSessionID: string) {
     if (await ready(scopeID, parentSessionID)) return
     if (Storage.inTransaction())
-      throw new SessionPreparingError({ sessionID: parentSessionID, message: "Prepare Cortex task metadata before reading its pages" })
+      throw new SessionPreparingError({
+        sessionID: parentSessionID,
+        message: "Prepare Cortex task metadata before reading its pages",
+      })
     const { prepareSessionMigrations } = await import("../migration")
     await prepareSessionMigrations({ scopeID, sessionID: parentSessionID })
     if (!(await ready(scopeID, parentSessionID)))
@@ -129,16 +132,16 @@ export namespace SessionCortexIndex {
     }
   }
 
-  export async function page(
-    scopeID: string,
-    parentSessionID: string,
-    value: { limit?: number; cursor?: string },
-  ) {
-    const input = z.strictObject({
-      limit: z.number().int().min(1).max(64).default(32),
-      cursor: z.string().min(1).max(8192).optional(),
-    }).parse(value)
-    const cursor = input.cursor ? Cursor.parse(JSON.parse(Buffer.from(input.cursor, "base64url").toString())) : undefined
+  export async function page(scopeID: string, parentSessionID: string, value: { limit?: number; cursor?: string }) {
+    const input = z
+      .strictObject({
+        limit: z.number().int().min(1).max(64).default(32),
+        cursor: z.string().min(1).max(8192).optional(),
+      })
+      .parse(value)
+    const cursor = input.cursor
+      ? Cursor.parse(JSON.parse(Buffer.from(input.cursor, "base64url").toString()))
+      : undefined
     if (cursor && (cursor.scopeID !== scopeID || cursor.parentSessionID !== parentSessionID))
       throw new StorageIntegrityError("Cortex cursor belongs to another native parent")
     return Storage.snapshot(async () => {
@@ -146,7 +149,11 @@ export namespace SessionCortexIndex {
       if (!current?.ready)
         throw new SessionPreparingError({ sessionID: parentSessionID, message: "Cortex task metadata is preparing" })
       const prefix = items(scopeID, parentSessionID)
-      const rows = await Storage.query({ prefix, after: cursor ? [...prefix, cursor.after] : undefined, limit: input.limit + 1 })
+      const rows = await Storage.query({
+        prefix,
+        after: cursor ? [...prefix, cursor.after] : undefined,
+        limit: input.limit + 1,
+      })
       const page = rows.slice(0, input.limit).map((row) => {
         const task = Item.parse(row.value)
         if (row.key.length !== 5 || row.key[4] !== task.sessionID || task.parentSessionID !== parentSessionID)
@@ -157,9 +164,12 @@ export namespace SessionCortexIndex {
       return {
         items: page,
         total: current.total,
-        cursor: rows.length > input.limit && last
-          ? Buffer.from(JSON.stringify({ version: 1, scopeID, parentSessionID, after: last.sessionID })).toString("base64url")
-          : undefined,
+        cursor:
+          rows.length > input.limit && last
+            ? Buffer.from(JSON.stringify({ version: 1, scopeID, parentSessionID, after: last.sessionID })).toString(
+                "base64url",
+              )
+            : undefined,
       }
     })
   }

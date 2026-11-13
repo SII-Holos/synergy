@@ -99,8 +99,10 @@ export namespace ExecutionHost {
             if (!input.executor.releaseSandbox)
               return Response.json({ error: "Sandbox cleanup unavailable" }, { status: 404 })
             const operationID = url.searchParams.get("operationID")
-            await input.executor.releaseSandbox(z.string().uuid().parse(url.pathname.slice("/v1/sandbox/".length)),
-              operationID === null ? undefined : ExecutionProtocol.ID.parse(operationID))
+            await input.executor.releaseSandbox(
+              z.string().uuid().parse(url.pathname.slice("/v1/sandbox/".length)),
+              operationID === null ? undefined : ExecutionProtocol.ID.parse(operationID),
+            )
             return Response.json(true)
           }
           if (url.pathname === "/v1/workspaces" && request.method === "POST") {
@@ -386,9 +388,11 @@ export namespace ExecutionHost {
         },
         "/v1/sandbox": action("Prepare target sandbox containment", ExecutionProtocol.SandboxInput),
         "/v1/sandbox/{id}": {
-          delete: { summary: "Release target sandbox preparation",
+          delete: {
+            summary: "Release target sandbox preparation",
             parameters: [{ name: "operationID", in: "query", required: false, schema: { type: "string" } }],
-            responses: { "200": { description: "Released" } } },
+            responses: { "200": { description: "Released" } },
+          },
         },
         "/v1/workspaces": action(
           "Manage Workspace mounts, file operations and retained checkpoints",

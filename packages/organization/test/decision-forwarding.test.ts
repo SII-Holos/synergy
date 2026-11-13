@@ -126,7 +126,16 @@ test("the generated decision API forwards once, preserves winner attribution and
   const altered = await client.orgSessionInteractions.reply(
     {
       sessionID: f.sessionID,
-      orgCommandDecisionRequest: { ...input, decision: { operation: "decision", kind: "question", requestID: input.decision.requestID, reply: "answer", answers: [["changed-value"]] } },
+      orgCommandDecisionRequest: {
+        ...input,
+        decision: {
+          operation: "decision",
+          kind: "question",
+          requestID: input.decision.requestID,
+          reply: "answer",
+          answers: [["changed-value"]],
+        },
+      },
     },
     { headers: f.apiHeaders() },
   )

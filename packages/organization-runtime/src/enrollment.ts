@@ -102,10 +102,14 @@ export async function enrollRuntime(input: {
   )
 }
 
-export async function enrollMemberRuntime(input: Omit<Parameters<typeof enrollRuntime>[0], "identity"> & { identity: MemberIdentity }) {
+export async function enrollMemberRuntime(
+  input: Omit<Parameters<typeof enrollRuntime>[0], "identity"> & { identity: MemberIdentity },
+) {
   return Protocol.MemberRegistrationRecord.parse(await enrollRuntime(input))
 }
 
-export async function enrollHostedRuntime(input: Omit<Parameters<typeof enrollRuntime>[0], "identity"> & { identity: HostedIdentity }) {
+export async function enrollHostedRuntime(
+  input: Omit<Parameters<typeof enrollRuntime>[0], "identity"> & { identity: HostedIdentity },
+) {
   return Protocol.HostedRegistrationRecord.parse(await enrollRuntime(input))
 }

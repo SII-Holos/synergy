@@ -15,7 +15,12 @@ export function registrationRoutes(registrations: () => RuntimeRegistrations, pu
   return new Hono()
     .post(
       "/runtimes/hosted",
-      operation("orgRuntime.registerHosted", "Issue an organization-hosted Runtime registration ticket", Runtime.Ticket, true),
+      operation(
+        "orgRuntime.registerHosted",
+        "Issue an organization-hosted Runtime registration ticket",
+        Runtime.Ticket,
+        true,
+      ),
       validator("json", Runtime.HostedRegistration, validation),
       async (c) => c.json(await registrations().hosted(credentials(c), c.req.valid("json"))),
     )

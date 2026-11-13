@@ -23,76 +23,102 @@ const actor = {
 }
 
 test("native maintenance admits turn finalizers before draining their detached writes and never replays them on release", async () => {
-  await using runtime = await testRuntime({ register() { RuntimeMaintenance.configure({ required: ["sessions"] }) } })
-  await runtime.run(() => ScopeContext.provide({ scope: Scope.home(), async fn() {
-    const session = await Session.create()
-    const entered = Promise.withResolvers<void>()
-    const started = Promise.withResolvers<void>()
-    const finish = Promise.withResolvers<void>()
-    const type = "maintenance-native-tail"
-    let executions = 0
-    let cancelled = false
-    LoopJob.register({
-      type, phase: "post", blocking: false, detached: true,
-      collect: () => [], capture: (_context, instance) => instance,
-      async execute(_payload, signal) {
-        executions++
-        started.resolve()
-        await finish.promise
-        cancelled = signal.aborted
-        await Storage.write(["maintenance-native-tail", "saved"], { executions })
-        return "pass"
+  await using runtime = await testRuntime({
+    register() {
+      RuntimeMaintenance.configure({ required: ["sessions"] })
+    },
+  })
+  await runtime.run(() =>
+    ScopeContext.provide({
+      scope: Scope.home(),
+      async fn() {
+        const session = await Session.create()
+        const entered = Promise.withResolvers<void>()
+        const started = Promise.withResolvers<void>()
+        const finish = Promise.withResolvers<void>()
+        const type = "maintenance-native-tail"
+        let executions = 0
+        let cancelled = false
+        LoopJob.register({
+          type,
+          phase: "post",
+          blocking: false,
+          detached: true,
+          collect: () => [],
+          capture: (_context, instance) => instance,
+          async execute(_payload, signal) {
+            executions++
+            started.resolve()
+            await finish.promise
+            cancelled = signal.aborted
+            await Storage.write(["maintenance-native-tail", "saved"], { executions })
+            return "pass"
+          },
+        })
+        const turn = SessionManager.run(session.id, async (lease) => {
+          entered.resolve()
+          await new Promise<void>((resolve) => {
+            if (lease.signal.aborted) resolve()
+            else lease.signal.addEventListener("abort", () => resolve(), { once: true })
+          })
+          expect(LoopJob.scheduleDetached({ type, sessionID: session.id, rootID: "original-root" })).toBe(true)
+        })
+        await entered.promise
+        const lease = await RuntimeMaintenance.begin({
+          purpose: "organization-backup",
+          requestID: actor.requestID,
+          actor,
+        })
+        const cancellation = new AbortController()
+        let draining = RuntimeMaintenance.drain(lease, { signal: cancellation.signal })
+        try {
+          await started.promise
+          expect(await Promise.race([draining.then(() => "drained"), Bun.sleep(30).then(() => "pending")])).toBe(
+            "pending",
+          )
+          expect(LoopJob.activeBackgroundCount(session.id)).toBe(1)
+          const reason = new Error("Stop waiting without cancelling the native save")
+          cancellation.abort(reason)
+          await expect(draining).rejects.toBe(reason)
+          expect(LoopJob.activeBackgroundCount(session.id)).toBe(1)
+          draining = RuntimeMaintenance.drain(lease)
+        } finally {
+          finish.resolve()
+          await turn
+        }
+        const receipt = await draining
+        expect(LoopJob.scheduleDetached({ type, sessionID: session.id, rootID: "late-root" })).toBe(false)
+        await RuntimeMaintenance.freeze(lease, receipt)
+        expect(await Storage.read(["maintenance-native-tail", "saved"])).toEqual({ executions: 1 })
+        expect(cancelled).toBe(false)
+        expect(LoopJob.activeBackgroundCount()).toBe(0)
+        await RuntimeMaintenance.release(lease)
+        expect(executions).toBe(1)
+        expect(LoopJob.scheduleDetached({ type, sessionID: session.id, rootID: "new-root" })).toBe(true)
+        await LoopJob.settleDetached(session.id)
+        expect(executions).toBe(2)
       },
-    })
-    const turn = SessionManager.run(session.id, async (lease) => {
-      entered.resolve()
-      await new Promise<void>((resolve) => {
-        if (lease.signal.aborted) resolve()
-        else lease.signal.addEventListener("abort", () => resolve(), { once: true })
-      })
-      expect(LoopJob.scheduleDetached({ type, sessionID: session.id, rootID: "original-root" })).toBe(true)
-    })
-    await entered.promise
-    const lease = await RuntimeMaintenance.begin({ purpose: "organization-backup", requestID: actor.requestID, actor })
-    const cancellation = new AbortController()
-    let draining = RuntimeMaintenance.drain(lease, { signal: cancellation.signal })
-    try {
-      await started.promise
-      expect(await Promise.race([draining.then(() => "drained"), Bun.sleep(30).then(() => "pending")])).toBe("pending")
-      expect(LoopJob.activeBackgroundCount(session.id)).toBe(1)
-      const reason = new Error("Stop waiting without cancelling the native save")
-      cancellation.abort(reason)
-      await expect(draining).rejects.toBe(reason)
-      expect(LoopJob.activeBackgroundCount(session.id)).toBe(1)
-      draining = RuntimeMaintenance.drain(lease)
-    } finally {
-      finish.resolve()
-      await turn
-    }
-    const receipt = await draining
-    expect(LoopJob.scheduleDetached({ type, sessionID: session.id, rootID: "late-root" })).toBe(false)
-    await RuntimeMaintenance.freeze(lease, receipt)
-    expect(await Storage.read(["maintenance-native-tail", "saved"])).toEqual({ executions: 1 })
-    expect(cancelled).toBe(false)
-    expect(LoopJob.activeBackgroundCount()).toBe(0)
-    await RuntimeMaintenance.release(lease)
-    expect(executions).toBe(1)
-    expect(LoopJob.scheduleDetached({ type, sessionID: session.id, rootID: "new-root" })).toBe(true)
-    await LoopJob.settleDetached(session.id)
-    expect(executions).toBe(2)
-  } }))
+    }),
+  )
 }, 15_000)
 
 test("a fresh Runtime context cannot execute a detached native effect through a retained frozen namespace", async () => {
   const directory = await fs.mkdtemp(path.join(process.env.SYNERGY_TEST_ROOT!, "loop-job-frozen-"))
-  const store = await TransactionalStore.open(storageTestOptions({ namespace: crypto.randomUUID(), filename: path.join(directory, "authority.sqlite") }))
+  const store = await TransactionalStore.open(
+    storageTestOptions({ namespace: crypto.randomUUID(), filename: path.join(directory, "authority.sqlite") }),
+  )
   let runtime = await storageTestRuntime()
-  const run = <T>(body: () => Promise<T>) => runtime.run(() => Storage.provide({ store, artifactDirectory: path.join(directory, "content") }, body))
+  const run = <T>(body: () => Promise<T>) =>
+    runtime.run(() => Storage.provide({ store, artifactDirectory: path.join(directory, "content") }, body))
   try {
     await run(async () => {
       RuntimeMaintenance.configure({ required: ["loop-jobs"] })
       LoopJob.registerMaintenanceOwner()
-      const lease = await RuntimeMaintenance.begin({ purpose: "organization-backup", requestID: actor.requestID, actor })
+      const lease = await RuntimeMaintenance.begin({
+        purpose: "organization-backup",
+        requestID: actor.requestID,
+        actor,
+      })
       await RuntimeMaintenance.freeze(lease, await RuntimeMaintenance.drain(lease))
     })
     await runtime.close()
@@ -103,9 +129,16 @@ test("a fresh Runtime context cannot execute a detached native effect through a 
       const type = "maintenance-cold-native-effect"
       let executions = 0
       LoopJob.register({
-        type, phase: "post", blocking: false, detached: true,
-        collect: () => [], capture: (_context, instance) => instance,
-        async execute() { executions++; return "pass" },
+        type,
+        phase: "post",
+        blocking: false,
+        detached: true,
+        collect: () => [],
+        capture: (_context, instance) => instance,
+        async execute() {
+          executions++
+          return "pass"
+        },
       })
       LoopJob.scheduleDetached({ type, sessionID: "cold-session", rootID: "cold-root" })
       await LoopJob.settleDetached("cold-session")
@@ -123,21 +156,38 @@ test("a fresh Runtime context cannot execute a detached native effect through a 
 test("native background admission stays closed while other owners are still releasing", async () => {
   const releasing = Promise.withResolvers<void>()
   const finish = Promise.withResolvers<void>()
-  await using runtime = await testRuntime({ register() {
-    RuntimeMaintenance.configure({ required: ["sessions", "release-barrier"] })
-    RuntimeMaintenance.register("release-barrier", {
-      version: 1, order: 0,
-      async suspend() {}, async drain() {}, async inspect() { return [] },
-      async release() { releasing.resolve(); await finish.promise },
-    })
-  } })
+  await using runtime = await testRuntime({
+    register() {
+      RuntimeMaintenance.configure({ required: ["sessions", "release-barrier"] })
+      RuntimeMaintenance.register("release-barrier", {
+        version: 1,
+        order: 0,
+        async suspend() {},
+        async drain() {},
+        async inspect() {
+          return []
+        },
+        async release() {
+          releasing.resolve()
+          await finish.promise
+        },
+      })
+    },
+  })
   await runtime.run(async () => {
     let executions = 0
     const type = "maintenance-release-admission"
     LoopJob.register({
-      type, phase: "post", blocking: false, detached: true,
-      collect: () => [], capture: (_context, instance) => instance,
-      async execute() { executions++; return "pass" },
+      type,
+      phase: "post",
+      blocking: false,
+      detached: true,
+      collect: () => [],
+      capture: (_context, instance) => instance,
+      async execute() {
+        executions++
+        return "pass"
+      },
     })
     const lease = await RuntimeMaintenance.begin({ purpose: "organization-backup", requestID: actor.requestID, actor })
     await RuntimeMaintenance.freeze(lease, await RuntimeMaintenance.drain(lease))
@@ -159,15 +209,23 @@ test("native background admission stays closed while other owners are still rele
 }, 15_000)
 
 test("maintenance keeps detached recording failures blocking even after ordinary turn settlement consumes its error", async () => {
-  await using runtime = await testRuntime({ register() { RuntimeMaintenance.configure({ required: ["sessions"] }) } })
+  await using runtime = await testRuntime({
+    register() {
+      RuntimeMaintenance.configure({ required: ["sessions"] })
+    },
+  })
   await runtime.run(async () => {
     const started = Promise.withResolvers<void>()
     const fail = Promise.withResolvers<void>()
     const type = "maintenance-recording-failure"
     const error = new RolloutRecordingError({ message: "The detached native receipt could not be saved" })
     LoopJob.register({
-      type, phase: "post", blocking: false, detached: true,
-      collect: () => [], capture: (_context, instance) => instance,
+      type,
+      phase: "post",
+      blocking: false,
+      detached: true,
+      collect: () => [],
+      capture: (_context, instance) => instance,
       async execute() {
         started.resolve()
         await fail.promise

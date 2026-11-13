@@ -4,11 +4,7 @@ import path from "node:path"
 import { RuntimeMaintenance } from "../../src/storage/runtime-maintenance"
 import { MaintenanceRetirementRecords } from "../../src/storage/maintenance-retirement-records"
 import { Storage } from "../../src/storage/storage"
-import {
-  TransactionalStore,
-  StoreTransaction,
-  type TransactionOptions,
-} from "../../src/storage/transactional-store"
+import { TransactionalStore, StoreTransaction, type TransactionOptions } from "../../src/storage/transactional-store"
 import { StorageCommitUnknownError } from "../../src/storage/errors"
 import { storageTestRuntime } from "../support/storage-runtime"
 import { storageTestOptions } from "../support/storage-backends"

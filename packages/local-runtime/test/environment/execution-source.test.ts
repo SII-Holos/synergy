@@ -19,8 +19,8 @@ async function fixture(
     prepared?(value: ExecutionProtocol.PreparedInputs): Promise<void>
     releaseStarted?(value: Promise<void>): void
     read?(operation: "retained-inspect" | "live-inspect" | "live-output"): void
-  selected?: NonNullable<Source.Port["selected"]>
-  opening?(): void
+    selected?: NonNullable<Source.Port["selected"]>
+    opening?(): void
   } = {},
 ) {
   const releases: Array<() => Promise<void>> = []
@@ -29,9 +29,9 @@ async function fixture(
     {
       register() {
         Source.register("native-fixture", {
-        selected: hooks.selected,
+          selected: hooks.selected,
           async open(input) {
-          hooks.opening?.()
+            hooks.opening?.()
             const scopeID = input.selection.scopeID
             const environmentID = input.selection.environmentID
             if (!environmentID) return
@@ -417,14 +417,18 @@ test("a readonly actual primary permits retained inspection but cannot enter an 
 })
 
 test("native-only selection inspects its registered source without opening or allocating its Native provider", async () => {
-  let remote = true, opened = 0, inspected = 0
+  let remote = true,
+    opened = 0,
+    inspected = 0
   await using context = await fixture({
     async selected(selection) {
       inspected++
       expect(Object.isFrozen(selection)).toBe(true)
       return remote
     },
-    opening() { opened++ },
+    opening() {
+      opened++
+    },
   })
   await context.run(async (input, environment) => {
     expect(await Environment.selectNative(input.selection)).toBeUndefined()

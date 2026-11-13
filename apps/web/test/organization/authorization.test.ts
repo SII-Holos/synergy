@@ -249,21 +249,25 @@ test("callback parsing clears the URL before delivery and rejects callback and i
   expect(() => read(client.redirectUri + fragment + "&code=duplicate")).toThrow()
 })
 
-
 test("unreachable organization discovery reports connection failure without claiming identity replacement", async () => {
   for (const failure of ["network", "http"] as const) {
     const f = fixture()
-    const fetcher: typeof fetch = Object.assign(async () => {
-      if (failure === "network") throw new TypeError("Connection closed")
-      return Response.json({ code: "UNAVAILABLE" }, { status: 503 })
-    }, { preconnect() {} })
-    await expect(authorizeOrganization({
-      ...authority,
-      clientID: client.clientID,
-      redirectUri: client.redirectUri,
-      host: f.host,
-      fetch: fetcher,
-    })).rejects.toMatchObject({ code: "unavailable" })
+    const fetcher: typeof fetch = Object.assign(
+      async () => {
+        if (failure === "network") throw new TypeError("Connection closed")
+        return Response.json({ code: "UNAVAILABLE" }, { status: 503 })
+      },
+      { preconnect() {} },
+    )
+    await expect(
+      authorizeOrganization({
+        ...authority,
+        clientID: client.clientID,
+        redirectUri: client.redirectUri,
+        host: f.host,
+        fetch: fetcher,
+      }),
+    ).rejects.toMatchObject({ code: "unavailable" })
     expect(f.popup.closed).toBe(true)
     expect(f.listeners.size).toBe(0)
   }

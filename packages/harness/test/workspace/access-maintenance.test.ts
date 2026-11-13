@@ -15,7 +15,9 @@ const actor = {
   requestID: "workspace-claims-maintenance",
 }
 
-async function fixture(body: (input: { directory: string; claims: Set<string>; admissions: string[]; bindings: number[] }) => Promise<void>) {
+async function fixture(
+  body: (input: { directory: string; claims: Set<string>; admissions: string[]; bindings: number[] }) => Promise<void>,
+) {
   await using directory = await tmpdir()
   const runtime = await storageTestRuntime()
   const store = await TransactionalStore.open({
@@ -27,31 +29,37 @@ async function fixture(body: (input: { directory: string; claims: Set<string>; a
   const admissions: string[] = []
   const bindings: number[] = []
   try {
-    await runtime.run(() => Storage.provide({ store, artifactDirectory: path.join(directory.path, "data") }, async () => {
-      RuntimeMaintenance.configure({ required: ["controlled-host"] })
-      RuntimeMaintenance.register("controlled-host", {
-        version: 1,
-        async suspend() {},
-        async drain() {},
-        async inspect() { return [] },
-        async release() {},
-      })
-      WorkspaceAccess.register({
-        async acquire(input) {
-          admissions.push(input.kind)
-          claims.add(input.id)
-          return {
-            id: input.id,
-            async release(beforeRelease) {
-              await beforeRelease?.()
-              claims.delete(input.id)
-            },
-            async bindProcess(processID) { bindings.push(processID) },
-          }
-        },
-      })
-      await body({ directory: directory.path, claims, admissions, bindings })
-    }))
+    await runtime.run(() =>
+      Storage.provide({ store, artifactDirectory: path.join(directory.path, "data") }, async () => {
+        RuntimeMaintenance.configure({ required: ["controlled-host"] })
+        RuntimeMaintenance.register("controlled-host", {
+          version: 1,
+          async suspend() {},
+          async drain() {},
+          async inspect() {
+            return []
+          },
+          async release() {},
+        })
+        WorkspaceAccess.register({
+          async acquire(input) {
+            admissions.push(input.kind)
+            claims.add(input.id)
+            return {
+              id: input.id,
+              async release(beforeRelease) {
+                await beforeRelease?.()
+                claims.delete(input.id)
+              },
+              async bindProcess(processID) {
+                bindings.push(processID)
+              },
+            }
+          },
+        })
+        await body({ directory: directory.path, claims, admissions, bindings })
+      }),
+    )
   } finally {
     await store.close()
     await runtime.close()
@@ -61,19 +69,37 @@ async function fixture(body: (input: { directory: string; claims: Set<string>; a
 for (const operation of ["write", "metadata", "process", "hostClaim", "exclusive", "retire"] as const) {
   test(`maintenance denies a new physical Workspace ${operation} before host admission or file effects`, async () => {
     await fixture(async ({ directory, claims, admissions }) => {
-      const lease = await RuntimeMaintenance.begin({ purpose: "organization-backup", requestID: actor.requestID, actor })
+      const lease = await RuntimeMaintenance.begin({
+        purpose: "organization-backup",
+        requestID: actor.requestID,
+        actor,
+      })
       for (const phase of ["draining", "frozen"] as const) {
         const file = path.join(directory, `${operation}-${phase}`)
         const effect = () => Bun.write(file, "unexpected mutation")
-        await expect((async () => {
-          if (operation === "process") {
-            const claim = await WorkspaceAccess.process([directory])
-            try { await effect() } finally { await claim.release() }
-          } else if (operation === "hostClaim") {
-            const claim = await WorkspaceAccess.hostClaim({ id: "direct-host-claim", kind: "task", roots: [directory] })
-            try { await effect() } finally { await claim.release() }
-          } else await WorkspaceAccess[operation]([directory], effect)
-        })()).rejects.toThrow("maintenance")
+        await expect(
+          (async () => {
+            if (operation === "process") {
+              const claim = await WorkspaceAccess.process([directory])
+              try {
+                await effect()
+              } finally {
+                await claim.release()
+              }
+            } else if (operation === "hostClaim") {
+              const claim = await WorkspaceAccess.hostClaim({
+                id: "direct-host-claim",
+                kind: "task",
+                roots: [directory],
+              })
+              try {
+                await effect()
+              } finally {
+                await claim.release()
+              }
+            } else await WorkspaceAccess[operation]([directory], effect)
+          })(),
+        ).rejects.toThrow("maintenance")
         expect(await Bun.file(file).exists()).toBe(false)
         expect(admissions).toHaveLength(0)
         expect(claims.size).toBe(0)
@@ -93,18 +119,33 @@ test("maintenance waits through the accepted write and its real after-release fi
     const afterRelease = Promise.withResolvers<void>()
     const finishAfterRelease = Promise.withResolvers<void>()
     const file = path.join(directory, "accepted-tail")
-    const writer = WorkspaceAccess.observeWrites(async () => ({
-      async finish() {
-        await WorkspaceAccess.metadata([directory], () => Bun.write(file, "accepted final save"))
-      },
-      async afterRelease() { afterRelease.resolve(); await finishAfterRelease.promise },
-    }), () => WorkspaceAccess.write([directory], async () => { entered.resolve(); await finishWrite.promise }))
+    const writer = WorkspaceAccess.observeWrites(
+      async () => ({
+        async finish() {
+          await WorkspaceAccess.metadata([directory], () => Bun.write(file, "accepted final save"))
+        },
+        async afterRelease() {
+          afterRelease.resolve()
+          await finishAfterRelease.promise
+        },
+      }),
+      () =>
+        WorkspaceAccess.write([directory], async () => {
+          entered.resolve()
+          await finishWrite.promise
+        }),
+    )
     await entered.promise
     const lease = await RuntimeMaintenance.begin({ purpose: "organization-backup", requestID: actor.requestID, actor })
     const cancellation = new AbortController()
     const draining = RuntimeMaintenance.drain(lease, { signal: cancellation.signal })
     let drained = false
-    void draining.then(() => { drained = true }, () => {})
+    void draining.then(
+      () => {
+        drained = true
+      },
+      () => {},
+    )
     try {
       await Bun.sleep(20)
       expect(drained).toBe(false)
@@ -115,7 +156,12 @@ test("maintenance waits through the accepted write and its real after-release fi
       await afterRelease.promise
       expect(claims.size).toBe(0)
       const retry = RuntimeMaintenance.drain(lease)
-      void retry.then(() => { drained = true }, () => {})
+      void retry.then(
+        () => {
+          drained = true
+        },
+        () => {},
+      )
       await Bun.sleep(20)
       expect(drained).toBe(false)
       finishAfterRelease.resolve()
@@ -135,18 +181,30 @@ test("a process claim outlives its Workspace task and remains a real maintenance
   await fixture(async ({ directory, claims }) => {
     const file = path.join(directory, "process-tail")
     let finalizations = 0
-    const process = await WorkspaceAccess.observeWrites(async () => ({
-      async finish() {},
-      async afterRelease() { finalizations++ },
-    }), () => WorkspaceAccess.task({ workspace: null }, () => WorkspaceAccess.process([directory])))
+    const process = await WorkspaceAccess.observeWrites(
+      async () => ({
+        async finish() {},
+        async afterRelease() {
+          finalizations++
+        },
+      }),
+      () => WorkspaceAccess.task({ workspace: null }, () => WorkspaceAccess.process([directory])),
+    )
     const lease = await RuntimeMaintenance.begin({ purpose: "organization-backup", requestID: actor.requestID, actor })
     const draining = RuntimeMaintenance.drain(lease)
     let drained = false
-    void draining.then(() => { drained = true }, () => {})
+    void draining.then(
+      () => {
+        drained = true
+      },
+      () => {},
+    )
     try {
       await Bun.sleep(20)
       expect(drained).toBe(false)
-      await process.release(async () => { await Bun.write(file, "original final output") })
+      await process.release(async () => {
+        await Bun.write(file, "original final output")
+      })
       await process.release()
       await RuntimeMaintenance.freeze(lease, await draining)
       expect(claims.size).toBe(0)
@@ -163,13 +221,18 @@ test("an escaped asynchronous finalizer cannot reuse a completed Workspace claim
     const resume = Promise.withResolvers<void>()
     const file = path.join(directory, "escaped-tail")
     let escaped: Promise<unknown> | undefined
-    await WorkspaceAccess.observeWrites(async () => ({
-      async finish() {},
-      async afterRelease() {
-        escaped = resume.promise.then(() => WorkspaceAccess.metadata([directory], () => Bun.write(file, "unexpected")))
-        void escaped.catch(() => {})
-      },
-    }), () => WorkspaceAccess.write([directory], async () => {}))
+    await WorkspaceAccess.observeWrites(
+      async () => ({
+        async finish() {},
+        async afterRelease() {
+          escaped = resume.promise.then(() =>
+            WorkspaceAccess.metadata([directory], () => Bun.write(file, "unexpected")),
+          )
+          void escaped.catch(() => {})
+        },
+      }),
+      () => WorkspaceAccess.write([directory], async () => {}),
+    )
     const lease = await RuntimeMaintenance.begin({ purpose: "organization-backup", requestID: actor.requestID, actor })
     await RuntimeMaintenance.freeze(lease, await RuntimeMaintenance.drain(lease))
     resume.resolve()
@@ -184,14 +247,21 @@ test("a failed finalizer retains reconciliation without granting its escaped cal
     const file = path.join(directory, "escaped-exclusive")
     const failure = new Error("The original final save failed")
     let escaped: Promise<unknown> | undefined
-    await expect(WorkspaceAccess.observeWrites(async () => ({
-      async finish() {},
-      async afterRelease() {
-        escaped = resume.promise.then(() => WorkspaceAccess.exclusive([directory], () => Bun.write(file, "unexpected")))
-        void escaped.catch(() => {})
-        throw failure
-      },
-    }), () => WorkspaceAccess.write([directory], async () => {}))).rejects.toBe(failure)
+    await expect(
+      WorkspaceAccess.observeWrites(
+        async () => ({
+          async finish() {},
+          async afterRelease() {
+            escaped = resume.promise.then(() =>
+              WorkspaceAccess.exclusive([directory], () => Bun.write(file, "unexpected")),
+            )
+            void escaped.catch(() => {})
+            throw failure
+          },
+        }),
+        () => WorkspaceAccess.write([directory], async () => {}),
+      ),
+    ).rejects.toBe(failure)
     const lease = await RuntimeMaintenance.begin({ purpose: "organization-backup", requestID: actor.requestID, actor })
     await expect(RuntimeMaintenance.drain(lease)).rejects.toBeInstanceOf(RuntimeMaintenance.Blocked)
     resume.resolve()
@@ -204,13 +274,21 @@ test("an opaque process lease binds only in its actual Runtime and Store while r
   await fixture(async ({ directory, bindings }) => {
     const claim = await WorkspaceAccess.task({ workspace: null }, () => WorkspaceAccess.process([directory]))
     const current = Storage.current()
-    const foreignStore = await TransactionalStore.open({ backend: "sqlite", filename: path.join(directory, "foreign.sqlite"), namespace: "foreign" })
+    const foreignStore = await TransactionalStore.open({
+      backend: "sqlite",
+      filename: path.join(directory, "foreign.sqlite"),
+      namespace: "foreign",
+    })
     const foreignRuntime = await storageTestRuntime()
     try {
       await claim.bindProcess(123)
       expect(bindings).toEqual([123])
-      await Storage.provide({ ...current, store: foreignStore }, () => expect(claim.bindProcess(456)).rejects.toThrow("Runtime or namespace"))
-      await foreignRuntime.run(() => Storage.provide(current, () => expect(claim.bindProcess(789)).rejects.toThrow("Runtime or namespace")))
+      await Storage.provide({ ...current, store: foreignStore }, () =>
+        expect(claim.bindProcess(456)).rejects.toThrow("Runtime or namespace"),
+      )
+      await foreignRuntime.run(() =>
+        Storage.provide(current, () => expect(claim.bindProcess(789)).rejects.toThrow("Runtime or namespace")),
+      )
       expect(bindings).toEqual([123])
     } finally {
       await claim.release()

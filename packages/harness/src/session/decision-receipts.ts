@@ -49,7 +49,8 @@ export namespace SessionDecisionReceipts {
   }
 
   export async function record(input: Omit<Receipt, "schemaVersion" | "scopeID" | "decidedAt">) {
-    if (!Storage.inTransaction()) throw new StorageConflictError("Native decision receipts require the owning write transaction")
+    if (!Storage.inTransaction())
+      throw new StorageConflictError("Native decision receipts require the owning write transaction")
     const target = { ...input, kind: input.outcome.kind }
     if (await read(target)) throw new StorageConflictError("Native decision is already resolved")
     const receipt = Receipt.parse({

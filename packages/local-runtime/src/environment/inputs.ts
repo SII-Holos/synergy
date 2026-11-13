@@ -68,7 +68,9 @@ export class ExecutionInputs {
     if (!(await receipt.exists())) return
     const prepared = ExecutionProtocol.PreparedInputs.parse(await receipt.json())
     const files: Array<{ name: string; data: string }> = []
-    for (const [name, filename] of Object.entries(prepared.paths).toSorted(([left], [right]) => left.localeCompare(right))) {
+    for (const [name, filename] of Object.entries(prepared.paths).toSorted(([left], [right]) =>
+      left.localeCompare(right),
+    )) {
       ExecutionProtocol.Inputs.shape.files.element.shape.name.parse(name)
       if (filename !== path.join(this.directory(id), name) || !(await fs.lstat(filename)).isFile())
         throw new Error("Execution input has another original materialized path")

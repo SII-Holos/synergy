@@ -217,14 +217,14 @@ test.each(["write", "link"] as const)(
             ...common,
             entries: (async function* (): AsyncGenerator<Stream.Input> {
               started++
-            yield* []
+              yield* []
             })(),
           })
         : Stream.link({
             ...common,
             entries: (async function* (): AsyncGenerator<Stream.Reference> {
               started++
-            yield* []
+              yield* []
             })(),
           })
     await expect(result).rejects.toBe(reason)

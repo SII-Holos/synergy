@@ -396,8 +396,7 @@ export namespace Scope {
       throw new RequiredError({ message: "A local project binding requires explicit absolute roots" })
     return Storage.transaction(async () => {
       const current = await readPersisted(scopeID)
-      if (!current || scopeID === "home")
-        throw new NotFoundError({ message: "Project Scope not found", scopeID })
+      if (!current || scopeID === "home") throw new NotFoundError({ message: "Project Scope not found", scopeID })
       if (JSON.stringify(Local.nullable().parse(current.local)) !== JSON.stringify(expected))
         throw new LocalBindingChanged({ message: "The project local binding changed", scopeID })
       const next = Info.parse({ ...current, local: selected, time: { ...current.time, updated: Date.now() } })

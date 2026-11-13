@@ -89,12 +89,16 @@ test("Cortex metadata follows the native writer transaction, visibility, parent 
         const page = () => Index.page(parent.scope.id, parent.id, {})
         await expect(
           Storage.transaction(async () => {
-            await Session.update(task.id, (draft) => { draft.cortex!.visibility = "hidden" })
+            await Session.update(task.id, (draft) => {
+              draft.cortex!.visibility = "hidden"
+            })
             throw new Error("Rollback task mutation")
           }),
         ).rejects.toThrow("Rollback task mutation")
         expect((await page()).total).toBe(1)
-        await Session.update(task.id, (draft) => { draft.cortex!.visibility = "hidden" })
+        await Session.update(task.id, (draft) => {
+          draft.cortex!.visibility = "hidden"
+        })
         expect((await page()).total).toBe(0)
         await Session.update(task.id, (draft) => {
           draft.cortex!.visibility = "visible"
@@ -140,7 +144,9 @@ test("the registered owning upgrade builds retained task summaries without rewri
           total: 0,
         })
         await expect(Index.page(parent.scope.id, parent.id, {})).rejects.toThrow()
-        await expect(migration!.upSession!({ scopeID: parent.scope.id, sessionID: parent.id }, () => {})).rejects.toThrow()
+        await expect(
+          migration!.upSession!({ scopeID: parent.scope.id, sessionID: parent.id }, () => {}),
+        ).rejects.toThrow()
       },
     }),
   )
@@ -149,33 +155,46 @@ test("the registered owning upgrade builds retained task summaries without rewri
 test("Cortex pages and qualified output survive a cold Runtime without exposing hidden tasks or choosing an imported duplicate", async () => {
   await using home = await tmpdir()
   const first = await testRuntime({ home: home.path })
-  const stored = await first.run(() => ScopeContext.provide({
-    scope: Scope.home(),
-    workspace: null,
-    fn: async () => {
-      const parent = await Session.create({ workspace: null })
-      const visible = await child(parent)
-      await child(parent, "hidden")
-      return { parentID: parent.id, childID: visible.id, taskID: visible.cortex!.taskID, prompt: visible.cortex!.prompt }
-    },
-  }))
+  const stored = await first.run(() =>
+    ScopeContext.provide({
+      scope: Scope.home(),
+      workspace: null,
+      fn: async () => {
+        const parent = await Session.create({ workspace: null })
+        const visible = await child(parent)
+        await child(parent, "hidden")
+        return {
+          parentID: parent.id,
+          childID: visible.id,
+          taskID: visible.cortex!.taskID,
+          prompt: visible.cortex!.prompt,
+        }
+      },
+    }),
+  )
   await first.close()
   await using second = await testRuntime({ home: home.path })
-  await second.run(() => ScopeContext.provide({
-    scope: Scope.home(),
-    workspace: null,
-    fn: async () => {
-      const page = await Cortex.visibleSummaryPage(stored.parentID, { limit: 1 })
-      expect(page.total).toBe(1)
-      expect(page.items[0]).toMatchObject({ id: stored.taskID, sessionID: stored.childID })
-      expect(JSON.stringify(page)).not.toContain("private task")
-      const task = await Cortex.getVisibleTaskForOutput(stored.parentID, stored.taskID)
-      expect(task?.prompt).toBe(stored.prompt)
-      expect(task?.output).toEqual({ mode: "summary", value: "private task output" })
-      const duplicate = await child(await Session.get(stored.parentID))
-      await Session.update(duplicate.id, (draft) => { draft.cortex!.taskID = stored.taskID })
-      expect(await Cortex.getVisibleTaskForOutput(stored.parentID, stored.taskID)).toBeUndefined()
-      expect((await Cortex.getVisibleTaskForOutput(stored.parentID, stored.taskID, stored.childID))?.sessionID).toBe(stored.childID)
-    },
-  }))
+  await second.run(() =>
+    ScopeContext.provide({
+      scope: Scope.home(),
+      workspace: null,
+      fn: async () => {
+        const page = await Cortex.visibleSummaryPage(stored.parentID, { limit: 1 })
+        expect(page.total).toBe(1)
+        expect(page.items[0]).toMatchObject({ id: stored.taskID, sessionID: stored.childID })
+        expect(JSON.stringify(page)).not.toContain("private task")
+        const task = await Cortex.getVisibleTaskForOutput(stored.parentID, stored.taskID)
+        expect(task?.prompt).toBe(stored.prompt)
+        expect(task?.output).toEqual({ mode: "summary", value: "private task output" })
+        const duplicate = await child(await Session.get(stored.parentID))
+        await Session.update(duplicate.id, (draft) => {
+          draft.cortex!.taskID = stored.taskID
+        })
+        expect(await Cortex.getVisibleTaskForOutput(stored.parentID, stored.taskID)).toBeUndefined()
+        expect((await Cortex.getVisibleTaskForOutput(stored.parentID, stored.taskID, stored.childID))?.sessionID).toBe(
+          stored.childID,
+        )
+      },
+    }),
+  )
 }, 15_000)

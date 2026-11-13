@@ -50,7 +50,11 @@ test("native restoration publishes a retained frozen maintenance cohort without 
         })
         await Storage.write(["canonical", "future"], { nested: { preserved: true } })
         await Storage.writeBinary(["evidence", "one"], Buffer.from("immutable backup bytes"))
-        const lease = await RuntimeMaintenance.begin({ purpose: "organization-backup", requestID: actor.requestID, actor })
+        const lease = await RuntimeMaintenance.begin({
+          purpose: "organization-backup",
+          requestID: actor.requestID,
+          actor,
+        })
         await RuntimeMaintenance.freeze(lease, await RuntimeMaintenance.drain(lease))
         await StorageCheckpoint.exportArchive({
           directory: path.join(root, "archive"),

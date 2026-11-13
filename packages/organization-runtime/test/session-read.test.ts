@@ -28,34 +28,67 @@ const identity = { orgID: binding.orgID, accountID: binding.creatorID, deviceID:
 test("private task reading pages only native visible children through the same creator and source authority", async () => {
   await using runtime = await testRuntime({ register: () => registerSessionSchema(binding) })
   await runtime.run(async () => {
-    const scope = await Scope.registerProject({ type: "project", id: binding.projectID, local: null, time: { created: 1, updated: 1 } })
-    await ScopeContext.provide({ scope, workspace: null, fn: async () => {
-      const root = await Session.create({ organization: binding, workspaceID: null })
-      const other = await Session.create({ organization: binding, workspaceID: null })
-      const expected: string[] = []
-      for (let index = 0; index < 4; index++) {
-        const child = await Session.create({ parentID: root.id, workspaceID: null, cortex: {
-          taskID: Identifier.short("cortex"), parentSessionID: root.id, parentMessageID: Identifier.ascending("message"),
-          description: `Visible task ${index}`, prompt: "Never expose the private task prompt", agent: "general",
-          status: "completed", startedAt: index + 1, visibility: index === 3 ? "hidden" : "visible",
-          output: { mode: "summary", value: "Never expose the private task result" },
-        } })
-        if (index !== 3) expected.push(child.id)
-      }
-      const reader = createSessionReader({ identity, runtimeID: binding.driverRuntimeID, content: async () => { throw new Error("Task metadata cannot read message contents") } })
-      const first = await reader.local({ operation: "tasks", rootSessionID: root.id, limit: 2 })
-      if (first.operation !== "tasks") throw new Error("Expected a task page")
-      expect(first.total).toBe(3)
-      expect(first.items).toHaveLength(2)
-      expect(JSON.stringify(first)).not.toContain("Never expose")
-      const last = await reader.local({ operation: "tasks", rootSessionID: root.id, limit: 2, cursor: first.cursor })
-      if (last.operation !== "tasks") throw new Error("Expected a task page")
-      expect([...first.items, ...last.items].map((item) => item.sessionID)).toEqual(expected.sort())
-      expect(last.cursor).toBeUndefined()
-      await expect(reader.local({ operation: "tasks", rootSessionID: other.id, cursor: first.cursor })).rejects.toThrow()
-      const stranger = createSessionReader({ identity: { ...identity, accountID: "another-account" }, runtimeID: binding.driverRuntimeID, content: readNativeContent })
-      await expect(stranger.local({ operation: "tasks", rootSessionID: root.id })).rejects.toMatchObject({ data: { code: "PERMISSION_DENIED" } })
-    } })
+    const scope = await Scope.registerProject({
+      type: "project",
+      id: binding.projectID,
+      local: null,
+      time: { created: 1, updated: 1 },
+    })
+    await ScopeContext.provide({
+      scope,
+      workspace: null,
+      fn: async () => {
+        const root = await Session.create({ organization: binding, workspaceID: null })
+        const other = await Session.create({ organization: binding, workspaceID: null })
+        const expected: string[] = []
+        for (let index = 0; index < 4; index++) {
+          const child = await Session.create({
+            parentID: root.id,
+            workspaceID: null,
+            cortex: {
+              taskID: Identifier.short("cortex"),
+              parentSessionID: root.id,
+              parentMessageID: Identifier.ascending("message"),
+              description: `Visible task ${index}`,
+              prompt: "Never expose the private task prompt",
+              agent: "general",
+              status: "completed",
+              startedAt: index + 1,
+              visibility: index === 3 ? "hidden" : "visible",
+              output: { mode: "summary", value: "Never expose the private task result" },
+            },
+          })
+          if (index !== 3) expected.push(child.id)
+        }
+        const reader = createSessionReader({
+          identity,
+          runtimeID: binding.driverRuntimeID,
+          content: async () => {
+            throw new Error("Task metadata cannot read message contents")
+          },
+        })
+        const first = await reader.local({ operation: "tasks", rootSessionID: root.id, limit: 2 })
+        if (first.operation !== "tasks") throw new Error("Expected a task page")
+        expect(first.total).toBe(3)
+        expect(first.items).toHaveLength(2)
+        expect(JSON.stringify(first)).not.toContain("Never expose")
+        const last = await reader.local({ operation: "tasks", rootSessionID: root.id, limit: 2, cursor: first.cursor })
+        if (last.operation !== "tasks") throw new Error("Expected a task page")
+        expect([...first.items, ...last.items].map((item) => item.sessionID)).toEqual(expected.sort())
+        expect(last.cursor).toBeUndefined()
+        await expect(
+          reader.local({ operation: "tasks", rootSessionID: other.id, cursor: first.cursor }),
+        ).rejects.toThrow()
+        const stranger = createSessionReader({
+          identity: { ...identity, accountID: "another-account" },
+          runtimeID: binding.driverRuntimeID,
+          content: readNativeContent,
+        })
+        await expect(stranger.local({ operation: "tasks", rootSessionID: root.id })).rejects.toMatchObject({
+          data: { code: "PERMISSION_DENIED" },
+        })
+      },
+    })
   })
 }, 15_000)
 

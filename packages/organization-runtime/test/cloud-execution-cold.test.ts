@@ -244,14 +244,18 @@ test.skipIf(process.platform === "win32")(
         blocked = 0,
         preparationReply: number | undefined
       let cleanupFailure:
-        | { path: string; status: number; code?: string; message?: string; outcome?: string }
-        | undefined
+        { path: string; status: number; code?: string; message?: string; outcome?: string } | undefined
       f.service.interceptHTTP(async (request) => {
         const pathname = new URL(request.url).pathname
         if (pathname.startsWith("/runtime/v1/environments/cleanups")) {
           const response = await f.service.service.fetch(request)
           if (response.status >= 400) {
-            const error = OrganizationProtocol.Error.safeParse(await response.clone().json().catch(() => undefined))
+            const error = OrganizationProtocol.Error.safeParse(
+              await response
+                .clone()
+                .json()
+                .catch(() => undefined),
+            )
             cleanupFailure = {
               path: pathname,
               status: response.status,
@@ -265,9 +269,10 @@ test.skipIf(process.platform === "win32")(
           return response
         }
         if (!pathname.startsWith("/runtime/v1/environments/execution")) return
-        const signed = pathname === "/runtime/v1/environments/execution"
-          ? CloudExecution.Request.parse(await request.clone().json())
-          : undefined
+        const signed =
+          pathname === "/runtime/v1/environments/execution"
+            ? CloudExecution.Request.parse(await request.clone().json())
+            : undefined
         if (!blocking && signed?.proof.operation.action === "prepare-sandbox") {
           try {
             const response = await f.service.service.fetch(request)
@@ -280,28 +285,45 @@ test.skipIf(process.platform === "win32")(
         if (!blocking) return
         blocked++
         return Response.json(
-          { code: "SERVICE_UNAVAILABLE", message: "Original preparation transport is unavailable", outcome: "unknown", retryable: false },
+          {
+            code: "SERVICE_UNAVAILABLE",
+            message: "Original preparation transport is unavailable",
+            outcome: "unknown",
+            retryable: false,
+          },
           { status: 503 },
         )
       })
       let toolFailure: unknown
       pending = member.bash("touch cold-command-must-not-start.txt", controller.signal).then(
         () => {},
-        (error) => { toolFailure = error },
+        (error) => {
+          toolFailure = error
+        },
       )
       const held = await Promise.race([
         gate.entered,
-        pending.then(() => { throw new Error("Ordinary tool ended before its actual native preparation barrier", { cause: toolFailure }) }),
+        pending.then(() => {
+          throw new Error("Ordinary tool ended before its actual native preparation barrier", { cause: toolFailure })
+        }),
       ])
       expect(held.sandboxed).toBe(true)
-      const inventory = () => f.service.service.maintenance.run(async () => {
-        const executions: string[] = []
-        for await (const info of EnvironmentExecution.entries()) executions.push(info.id)
-        return { executions, uses: await Environment.uses(held.target.environmentID) }
-      })
+      const inventory = () =>
+        f.service.service.maintenance.run(async () => {
+          const executions: string[] = []
+          for await (const info of EnvironmentExecution.entries()) executions.push(info.id)
+          return { executions, uses: await Environment.uses(held.target.environmentID) }
+        })
       const original = await inventory()
       expect(original.executions).toEqual([])
-      expect(original.uses.some((use) => use.kind === "operation" && use.ownership.kind === "execution-preparation" && use.ownership.operationID === held.operationID)).toBe(true)
+      expect(
+        original.uses.some(
+          (use) =>
+            use.kind === "operation" &&
+            use.ownership.kind === "execution-preparation" &&
+            use.ownership.operationID === held.operationID,
+        ),
+      ).toBe(true)
       const receipt = await f.preparation(held.target, held.operationID)
       expect(receipt.state).toBe("prepared")
       expect(receipt.sandboxes.some((sandbox) => !sandbox.released)).toBe(true)
@@ -332,23 +354,30 @@ test.skipIf(process.platform === "win32")(
           signal.throwIfAborted()
           const actual = await inventory()
           const receipt = await f.preparation(held.target, held.operationID)
-          if (receipt.state === "released" && !actual.uses.some((use) => use.ownership.kind === "execution-preparation" && use.ownership.operationID === held.operationID)) break
+          if (
+            receipt.state === "released" &&
+            !actual.uses.some(
+              (use) => use.ownership.kind === "execution-preparation" && use.ownership.operationID === held.operationID,
+            )
+          )
+            break
           await Bun.sleep(10)
         }
       } catch (error) {
         const actual = await inventory(),
           receipt = await f.preparation(held.target, held.operationID)
         throw new Error(
-          "Original cold preparation cleanup failed: " + JSON.stringify({
-            originalRuntime: originalRuntime.status,
-            reopened: reopened.status,
-            preparationState: receipt.state,
-            retainedSandboxes: receipt.sandboxes.filter((sandbox) => !sandbox.released).length,
-            preparationUses: actual.uses.filter((use) => use.ownership.kind === "execution-preparation").length,
-            executions: actual.executions.length,
-            nativeStarts: f.nativeStarts(),
-            cleanupFailure,
-          }),
+          "Original cold preparation cleanup failed: " +
+            JSON.stringify({
+              originalRuntime: originalRuntime.status,
+              reopened: reopened.status,
+              preparationState: receipt.state,
+              retainedSandboxes: receipt.sandboxes.filter((sandbox) => !sandbox.released).length,
+              preparationUses: actual.uses.filter((use) => use.ownership.kind === "execution-preparation").length,
+              executions: actual.executions.length,
+              nativeStarts: f.nativeStarts(),
+              cleanupFailure,
+            }),
           { cause: error },
         )
       }
@@ -363,7 +392,11 @@ test.skipIf(process.platform === "win32")(
       await pending
       f.service.interceptHTTP(undefined)
     }
-    try { await f[Symbol.asyncDispose]() } catch (error) { failures.push(error) }
+    try {
+      await f[Symbol.asyncDispose]()
+    } catch (error) {
+      failures.push(error)
+    }
     if (failures.length === 1) throw failures[0]
     if (failures.length) throw new AggregateError(failures, "Cold preparation and original native cleanup failed")
   },

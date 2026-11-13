@@ -26,7 +26,9 @@ export class RemoteExecutor implements Executor {
     return ExecutionProtocol.Description.parse(await this.request("GET", "/v1/runtime"))
   }
   async inspectPreparation(id: string) {
-    return ExecutionProtocol.Preparation.parse(await this.request("GET", `/v1/preparations/${encodeURIComponent(ExecutionProtocol.ID.parse(id))}`))
+    return ExecutionProtocol.Preparation.parse(
+      await this.request("GET", `/v1/preparations/${encodeURIComponent(ExecutionProtocol.ID.parse(id))}`),
+    )
   }
   async releasePreparation(id: string) {
     await this.required("DELETE", `/v1/preparations/${encodeURIComponent(ExecutionProtocol.ID.parse(id))}`)
@@ -41,7 +43,8 @@ export class RemoteExecutor implements Executor {
     return ExecutionProtocol.Sandbox.parse(await this.request("POST", "/v1/sandbox", input))
   }
   async releaseSandbox(id: string, operationID?: string) {
-    const query = operationID === undefined ? "" : `?operationID=${encodeURIComponent(ExecutionProtocol.ID.parse(operationID))}`
+    const query =
+      operationID === undefined ? "" : `?operationID=${encodeURIComponent(ExecutionProtocol.ID.parse(operationID))}`
     await this.required("DELETE", `/v1/sandbox/${encodeURIComponent(id)}${query}`)
   }
   async status(id: string) {

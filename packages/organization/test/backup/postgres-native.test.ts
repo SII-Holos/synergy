@@ -198,8 +198,12 @@ postgres(
         await expect(HomeRestoration.begin(request)).rejects.toThrow("different restoration request")
       })
       await substituted.close()
-      await expect(openOrganizationService({ home: source.service.home, database })).rejects.toBeInstanceOf(HomeOwnershipFile.Error)
-      expect(await Bun.file(path.join(source.service.home, ".synergy", "home-ownership.json")).json()).toMatchObject({ schemaVersion: 4 })
+      await expect(openOrganizationService({ home: source.service.home, database })).rejects.toBeInstanceOf(
+        HomeOwnershipFile.Error,
+      )
+      expect(await Bun.file(path.join(source.service.home, ".synergy", "home-ownership.json")).json()).toMatchObject({
+        schemaVersion: 4,
+      })
       await expect(openOrganizationService({ home, database: targetDatabase })).rejects.toThrow("restoration")
       const namespace = {
         directory: path.join(h1, "records"),
@@ -210,14 +214,18 @@ postgres(
         expected: StorageCheckpoint.Manifest.parse(await Bun.file(path.join(h1, "native", "manifest.json")).json()),
       }
       const foreignNamespace = "unopened_" + crypto.randomUUID().replaceAll("-", "")
-      await expect(openOrganizationSourceRetirement({
-        home: source.service.home,
-        database: { ...database, namespace: foreignNamespace },
-        reference: original.reference,
-      })).rejects.toThrow("original primary Store configuration")
+      await expect(
+        openOrganizationSourceRetirement({
+          home: source.service.home,
+          database: { ...database, namespace: foreignNamespace },
+          reference: original.reference,
+        }),
+      ).rejects.toThrow("original primary Store configuration")
       const inspector = new SQL(database.url)
       try {
-        expect(await inspector`SELECT namespace FROM storage_namespaces WHERE namespace = ${foreignNamespace}`).toEqual([])
+        expect(await inspector`SELECT namespace FROM storage_namespaces WHERE namespace = ${foreignNamespace}`).toEqual(
+          [],
+        )
       } finally {
         await inspector.close()
       }
@@ -258,11 +266,13 @@ postgres(
         publicOrigin: "https://postgres-recovered.example",
       })
       expect((await normal.fetch(new Request("https://postgres-recovered.example/org/v1/ready"))).status).toBe(200)
-      await expect(openOrganizationService({
-        home,
-        database: targetDatabase,
-        cloud: { environmentProfiles: { future: { provider: "not-admitted-by-this-reader", spec: {} } } },
-      })).rejects.toBeInstanceOf(HomeOwnershipFile.Error)
+      await expect(
+        openOrganizationService({
+          home,
+          database: targetDatabase,
+          cloud: { environmentProfiles: { future: { provider: "not-admitted-by-this-reader", spec: {} } } },
+        }),
+      ).rejects.toBeInstanceOf(HomeOwnershipFile.Error)
       expect(
         (
           await normal.fetch(

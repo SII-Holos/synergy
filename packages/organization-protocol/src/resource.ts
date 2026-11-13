@@ -46,7 +46,13 @@ export namespace OrganizationResourceProtocol {
   })
   const WorkspaceDefinition = z.strictObject({ protocol: z.literal("workspace-storage") })
   const EnvironmentDefinition = z.strictObject({ protocol: z.literal("environment") })
-  export const Definition = z.discriminatedUnion("protocol", [ModelDefinition, MCPDefinition, HTTPDefinition, WorkspaceDefinition, EnvironmentDefinition])
+  export const Definition = z.discriminatedUnion("protocol", [
+    ModelDefinition,
+    MCPDefinition,
+    HTTPDefinition,
+    WorkspaceDefinition,
+    EnvironmentDefinition,
+  ])
   export type Definition = z.infer<typeof Definition>
   export function kind(definition: Definition) {
     if (definition.protocol === "workspace-storage") return "workspace" as const
@@ -77,13 +83,15 @@ export namespace OrganizationResourceProtocol {
   ])
   export type Configuration = z.infer<typeof Configuration>
   export function definition(configuration: Configuration): Definition {
-    return Definition.parse(configuration.protocol === "workspace-storage" || configuration.protocol === "environment"
-      ? { protocol: configuration.protocol }
-      : "model" in configuration
-        ? { protocol: configuration.protocol, model: configuration.model }
-        : configuration.protocol === "fixed-http"
-          ? { protocol: configuration.protocol, method: configuration.method }
-          : { protocol: configuration.protocol })
+    return Definition.parse(
+      configuration.protocol === "workspace-storage" || configuration.protocol === "environment"
+        ? { protocol: configuration.protocol }
+        : "model" in configuration
+          ? { protocol: configuration.protocol, model: configuration.model }
+          : configuration.protocol === "fixed-http"
+            ? { protocol: configuration.protocol, method: configuration.method }
+            : { protocol: configuration.protocol },
+    )
   }
   const Header = z
     .string()

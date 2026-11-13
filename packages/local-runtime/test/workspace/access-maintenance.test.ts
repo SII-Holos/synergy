@@ -8,17 +8,22 @@ import { registerWorkspace } from "../../src/register-workspace"
 import { WorkspaceCoordinator } from "../../src/workspace/coordinator"
 
 const actor = {
-  kind: "system" as const, subjectID: "host-operator", displayName: "Host operator",
-  clientKind: "system" as const, requestID: "workspace-native-admission",
+  kind: "system" as const,
+  subjectID: "host-operator",
+  displayName: "Host operator",
+  clientKind: "system" as const,
+  requestID: "workspace-native-admission",
 }
 
 test("a real physical claim acquired across maintenance admission is released before its first file effect", async () => {
   await using directory = await tmpdir()
   const coordinator = new WorkspaceCoordinator({ directory: path.join(directory.path, "claims") })
-  await using runtime = await testRuntime({ register() {
-    RuntimeMaintenance.configure({ required: ["workspace-access"] })
-    registerWorkspace(coordinator)
-  } })
+  await using runtime = await testRuntime({
+    register() {
+      RuntimeMaintenance.configure({ required: ["workspace-access"] })
+      registerWorkspace(coordinator)
+    },
+  })
   await runtime.run(async () => {
     const entered = Promise.withResolvers<void>()
     const resume = Promise.withResolvers<void>()
@@ -57,10 +62,12 @@ test("a real physical claim acquired across maintenance admission is released be
 test("an unacknowledged native claim release stays held until the same physical lease actually completes", async () => {
   await using directory = await tmpdir()
   const coordinator = new WorkspaceCoordinator({ directory: path.join(directory.path, "claims") })
-  await using runtime = await testRuntime({ register() {
-    RuntimeMaintenance.configure({ required: ["workspace-access"] })
-    registerWorkspace(coordinator)
-  } })
+  await using runtime = await testRuntime({
+    register() {
+      RuntimeMaintenance.configure({ required: ["workspace-access"] })
+      registerWorkspace(coordinator)
+    },
+  })
   await runtime.run(async () => {
     const lost = new Error("Original native claim release acknowledgement is unavailable")
     const retryEntered = Promise.withResolvers<void>()
@@ -89,7 +96,12 @@ test("an unacknowledged native claim release stays held until the same physical 
     await retryEntered.promise
     const draining = RuntimeMaintenance.drain(lease)
     let drained = false
-    void draining.then(() => { drained = true }, () => {})
+    void draining.then(
+      () => {
+        drained = true
+      },
+      () => {},
+    )
     try {
       await Bun.sleep(20)
       expect(drained).toBe(false)
@@ -109,19 +121,29 @@ test("an unacknowledged native claim release stays held until the same physical 
 test("a resolved release while the native process lives remains pending and its original finalizer can retry after exit", async () => {
   await using directory = await tmpdir()
   const coordinator = new WorkspaceCoordinator({ directory: path.join(directory.path, "claims") })
-  await using runtime = await testRuntime({ register() {
-    RuntimeMaintenance.configure({ required: ["workspace-access"] })
-    registerWorkspace(coordinator)
-  } })
+  await using runtime = await testRuntime({
+    register() {
+      RuntimeMaintenance.configure({ required: ["workspace-access"] })
+      registerWorkspace(coordinator)
+    },
+  })
   await runtime.run(async () => {
-    const child = Bun.spawn([process.execPath, "-e", "process.stdout.write('ready'); for await (const chunk of process.stdin) {}"], { stdin: "pipe", stdout: "pipe", stderr: "pipe" })
+    const child = Bun.spawn(
+      [process.execPath, "-e", "process.stdout.write('ready'); for await (const chunk of process.stdin) {}"],
+      { stdin: "pipe", stdout: "pipe", stderr: "pipe" },
+    )
     const output = child.stdout.getReader()
     await output.read()
     output.releaseLock()
     let finalizations = 0
-    const claim = await WorkspaceAccess.observeWrites(async () => ({
-      async finish() { finalizations++ },
-    }), () => WorkspaceAccess.process([directory.path], undefined, { durable: true, retainAfterExit: true }))
+    const claim = await WorkspaceAccess.observeWrites(
+      async () => ({
+        async finish() {
+          finalizations++
+        },
+      }),
+      () => WorkspaceAccess.process([directory.path], undefined, { durable: true, retainAfterExit: true }),
+    )
     try {
       await claim.bindProcess(child.pid)
       await claim.release()
@@ -134,7 +156,11 @@ test("a resolved release while the native process lives remains pending and its 
       expect(await claim.isReleased!()).toBe(true)
       await claim.release()
       expect(finalizations).toBe(1)
-      const lease = await RuntimeMaintenance.begin({ purpose: "organization-backup", requestID: actor.requestID, actor })
+      const lease = await RuntimeMaintenance.begin({
+        purpose: "organization-backup",
+        requestID: actor.requestID,
+        actor,
+      })
       await RuntimeMaintenance.freeze(lease, await RuntimeMaintenance.drain(lease))
       await RuntimeMaintenance.release(lease)
     } finally {

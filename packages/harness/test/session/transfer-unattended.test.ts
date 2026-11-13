@@ -28,9 +28,16 @@ function register() {
     async publish() {},
   })
   Owners.register("session-core", {
-    version: 1, reads: [1], applies: () => true,
-    async inspect() { return { requirements: [], children: (async function* () {})() } },
-    async freeze() {}, async *export() {}, async validate() {}, async publish() {},
+    version: 1,
+    reads: [1],
+    applies: () => true,
+    async inspect() {
+      return { requirements: [], children: (async function* () {})() }
+    },
+    async freeze() {},
+    async *export() {},
+    async validate() {},
+    async publish() {},
   })
 }
 
@@ -213,30 +220,65 @@ test("an interrupted owner preparation has a durable cancellation proof before f
 
 test("archived child history transfers under the root without fabricating a pause or continuation", async () => {
   await using source = await testRuntime({ register })
-  const aggregate = await source.run(() => ScopeContext.provide({ scope: Scope.home(), workspace: null, fn: async () => {
-    const root = await Session.create({ workspace: null })
-    const child = await Session.create({ parentID: root.id, workspace: null })
-    const archived = await Session.update(child.id, draft => { draft.time.archived = Date.now() })
-    await SessionLifecycle.pause({ sessionID: root.id, reason: "interrupted" })
-    const binding = { sessionID: child.id, rootSessionID: root.id, scopeID: "home", handoffID: "archived", sourceID: "A", targetID: "B", fromEpoch: 1, toEpoch: 2 }
-    await Epochs.beginSource(binding)
-    const receipt = await Owners.freeze({ session: archived, rootSessionID: root.id, handoffID: binding.handoffID, signal: new AbortController().signal }, ["session-core"])
-    await Epochs.freeze(binding, { owner: receipt })
-    expect((await Session.get(child.id)).paused).toBeUndefined()
-    return { root, child: archived, binding }
-  } }))
+  const aggregate = await source.run(() =>
+    ScopeContext.provide({
+      scope: Scope.home(),
+      workspace: null,
+      fn: async () => {
+        const root = await Session.create({ workspace: null })
+        const child = await Session.create({ parentID: root.id, workspace: null })
+        const archived = await Session.update(child.id, (draft) => {
+          draft.time.archived = Date.now()
+        })
+        await SessionLifecycle.pause({ sessionID: root.id, reason: "interrupted" })
+        const binding = {
+          sessionID: child.id,
+          rootSessionID: root.id,
+          scopeID: "home",
+          handoffID: "archived",
+          sourceID: "A",
+          targetID: "B",
+          fromEpoch: 1,
+          toEpoch: 2,
+        }
+        await Epochs.beginSource(binding)
+        const receipt = await Owners.freeze(
+          {
+            session: archived,
+            rootSessionID: root.id,
+            handoffID: binding.handoffID,
+            signal: new AbortController().signal,
+          },
+          ["session-core"],
+        )
+        await Epochs.freeze(binding, { owner: receipt })
+        expect((await Session.get(child.id)).paused).toBeUndefined()
+        return { root, child: archived, binding }
+      },
+    }),
+  )
   await using target = await testRuntime({ register })
-  await target.run(() => ScopeContext.provide({ scope: Scope.home(), workspace: null, fn: async () => {
-    const root = await Session.create({ id: aggregate.root.id, workspace: null })
-    await SessionLifecycle.pause({ sessionID: root.id, reason: "interrupted" })
-    await Epochs.reserve(aggregate.binding, "a".repeat(64))
-    await Epochs.activate(aggregate.binding, "a".repeat(64), async () => {
-      await Session.create({ id: aggregate.child.id, parentID: root.id, workspace: null })
-      await Session.update(aggregate.child.id, draft => { draft.time.archived = aggregate.child.time.archived })
-    })
-    expect((await Session.get(aggregate.child.id)).time.archived).toBe(aggregate.child.time.archived)
-    expect((await Session.get(aggregate.child.id)).paused).toBeUndefined()
-    await SessionLifecycle.clear(root.id)
-    await expect(Epochs.assertOwnerResume({ sessionID: aggregate.child.id, rootSessionID: root.id, handoffID: "archived" })).rejects.toThrow("archived")
-  } }))
+  await target.run(() =>
+    ScopeContext.provide({
+      scope: Scope.home(),
+      workspace: null,
+      fn: async () => {
+        const root = await Session.create({ id: aggregate.root.id, workspace: null })
+        await SessionLifecycle.pause({ sessionID: root.id, reason: "interrupted" })
+        await Epochs.reserve(aggregate.binding, "a".repeat(64))
+        await Epochs.activate(aggregate.binding, "a".repeat(64), async () => {
+          await Session.create({ id: aggregate.child.id, parentID: root.id, workspace: null })
+          await Session.update(aggregate.child.id, (draft) => {
+            draft.time.archived = aggregate.child.time.archived
+          })
+        })
+        expect((await Session.get(aggregate.child.id)).time.archived).toBe(aggregate.child.time.archived)
+        expect((await Session.get(aggregate.child.id)).paused).toBeUndefined()
+        await SessionLifecycle.clear(root.id)
+        await expect(
+          Epochs.assertOwnerResume({ sessionID: aggregate.child.id, rootSessionID: root.id, handoffID: "archived" }),
+        ).rejects.toThrow("archived")
+      },
+    }),
+  )
 })

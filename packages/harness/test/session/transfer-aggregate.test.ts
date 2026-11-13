@@ -10,11 +10,13 @@ import { Storage } from "../../src/storage/storage"
 import { StorageMutationGuard } from "../../src/storage/mutation-guard"
 
 test("aggregate activation publishes every reserved child in one paused transaction or publishes none", async () => {
-  await using runtime = await testRuntime({ register() {
-    StorageMutationGuard.register("fixture-leaf", async (_transaction, keys) => {
-      for (const key of keys) if (key[0] === "fixture-leaf") await Epochs.assertOwnerMutation(key[1])
-    })
-  } })
+  await using runtime = await testRuntime({
+    register() {
+      StorageMutationGuard.register("fixture-leaf", async (_transaction, keys) => {
+        for (const key of keys) if (key[0] === "fixture-leaf") await Epochs.assertOwnerMutation(key[1])
+      })
+    },
+  })
   await runtime.run(() =>
     ScopeContext.provide({
       scope: Scope.home(),

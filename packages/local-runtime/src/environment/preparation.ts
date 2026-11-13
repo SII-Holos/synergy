@@ -34,13 +34,15 @@ type Receipt = z.infer<typeof Receipt>
 const hash = (value: string) => createHash("sha256").update(value).digest("hex")
 
 export class NativeExecutionPreparation {
-  constructor(private readonly options: {
-    target: EnvironmentSchema.Target
-    directory: string
-    inputs: ExecutionInputs
-    sandbox?: SandboxHost.Host
-    guard(id: string, phase: "prepare" | "release"): Promise<void>
-  }) {}
+  constructor(
+    private readonly options: {
+      target: EnvironmentSchema.Target
+      directory: string
+      inputs: ExecutionInputs
+      sandbox?: SandboxHost.Host
+      guard(id: string, phase: "prepare" | "release"): Promise<void>
+    },
+  ) {}
 
   private filename(id: string) {
     return path.join(this.options.directory, hash(ExecutionProtocol.ID.parse(id)), "preparation.json")
@@ -59,7 +61,8 @@ export class NativeExecutionPreparation {
   }
   private async write(receipt: Receipt) {
     await AtomicFile.writeJsonAtomic(this.filename(receipt.id), JSON.stringify(Receipt.parse(receipt)), {
-      private: true, durable: true,
+      private: true,
+      durable: true,
     })
   }
   private empty(id: string): Receipt {
@@ -100,7 +103,9 @@ export class NativeExecutionPreparation {
     if (!input.operationID) throw new Error("Durable sandbox preparation requires its original operation")
     const operationID = input.operationID
     const digest = hash(JSON.stringify(input))
-    const encoded = hash(JSON.stringify([this.options.target, operationID, digest])).slice(0, 32).split("")
+    const encoded = hash(JSON.stringify([this.options.target, operationID, digest]))
+      .slice(0, 32)
+      .split("")
     encoded[12] = "5"
     encoded[16] = ((parseInt(encoded[16], 16) & 3) | 8).toString(16)
     const uuid = encoded.join("")
@@ -120,9 +125,14 @@ export class NativeExecutionPreparation {
       const sandbox: z.infer<typeof Sandbox> = { id, digest, state: "preparing" }
       receipt.sandboxes.push(sandbox)
       await this.write(receipt)
-      const wrapper = Wrapper.parse(this.options.sandbox?.prepareWrapper(input) ?? {
-        command: input.command, args: input.args, sandboxed: false, skipReason: "Target sandbox is unavailable",
-      })
+      const wrapper = Wrapper.parse(
+        this.options.sandbox?.prepareWrapper(input) ?? {
+          command: input.command,
+          args: input.args,
+          sandboxed: false,
+          skipReason: "Target sandbox is unavailable",
+        },
+      )
       sandbox.wrapper = Wrapper.parse(wrapper)
       if (wrapper.tempPath) {
         const before = await fs.lstat(wrapper.tempPath)
@@ -131,7 +141,10 @@ export class NativeExecutionPreparation {
         const after = await fs.lstat(wrapper.tempPath)
         if (before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size)
           throw new Error("Native sandbox policy changed while its receipt was captured")
-        sandbox.policy = { hash: createHash("sha256").update(bytes).digest("hex"), identity: `${after.dev}:${after.ino}` }
+        sandbox.policy = {
+          hash: createHash("sha256").update(bytes).digest("hex"),
+          identity: `${after.dev}:${after.ino}`,
+        }
       }
       sandbox.state = "prepared"
       await this.write(receipt)
@@ -143,8 +156,14 @@ export class NativeExecutionPreparation {
     const filename = sandbox.wrapper?.tempPath
     if (!filename) return
     const info = await fs.lstat(filename)
-    if (!sandbox.policy || !info.isFile() || `${info.dev}:${info.ino}` !== sandbox.policy.identity ||
-      createHash("sha256").update(await fs.readFile(filename)).digest("hex") !== sandbox.policy.hash)
+    if (
+      !sandbox.policy ||
+      !info.isFile() ||
+      `${info.dev}:${info.ino}` !== sandbox.policy.identity ||
+      createHash("sha256")
+        .update(await fs.readFile(filename))
+        .digest("hex") !== sandbox.policy.hash
+    )
       throw new Error("Native sandbox policy differs from its original physical preparation")
   }
 
@@ -152,23 +171,37 @@ export class NativeExecutionPreparation {
     return this.lock(id, async () => {
       const receipt = await this.read(id)
       if (!receipt) return { version: 1, id, target: this.options.target, state: "absent", inputs: null, sandboxes: [] }
-      let pending = receipt.inputs?.state === "preparing" || receipt.sandboxes.some((entry) => entry.state === "preparing")
+      let pending =
+        receipt.inputs?.state === "preparing" || receipt.sandboxes.some((entry) => entry.state === "preparing")
       let inputs: ExecutionProtocol.PreparedInputs | null = null
       if (receipt.inputs?.state === "prepared") {
-        try { inputs = (await this.options.inputs.inspect(id)) ?? null } catch { pending = true }
+        try {
+          inputs = (await this.options.inputs.inspect(id)) ?? null
+        } catch {
+          pending = true
+        }
         if (!inputs || inputs.digest !== receipt.inputs.digest) pending = true
       }
       for (const sandbox of receipt.sandboxes)
         if (sandbox.state === "prepared" && sandbox.wrapper)
-          try { await this.verifyWrapper(sandbox) } catch { pending = true }
-      const released = receipt.closed && (!receipt.inputs || receipt.inputs.state === "released") &&
+          try {
+            await this.verifyWrapper(sandbox)
+          } catch {
+            pending = true
+          }
+      const released =
+        receipt.closed &&
+        (!receipt.inputs || receipt.inputs.state === "released") &&
         receipt.sandboxes.every((sandbox) => sandbox.state === "released")
       return ExecutionProtocol.Preparation.parse({
-        version: 1, id, target: this.options.target,
-        state: pending ? "preparing" : released ? "released" : "prepared", inputs,
-        sandboxes: receipt.sandboxes.flatMap((entry) => entry.wrapper
-          ? [{ ...entry.wrapper, id: entry.id, released: entry.state === "released" }]
-          : []),
+        version: 1,
+        id,
+        target: this.options.target,
+        state: pending ? "preparing" : released ? "released" : "prepared",
+        inputs,
+        sandboxes: receipt.sandboxes.flatMap((entry) =>
+          entry.wrapper ? [{ ...entry.wrapper, id: entry.id, released: entry.state === "released" }] : [],
+        ),
       })
     })
   }
@@ -178,8 +211,10 @@ export class NativeExecutionPreparation {
       const receipt = (await this.read(id)) ?? this.empty(id)
       if (receipt.closed) return
       await this.options.guard(id, "release")
-      if ((receipt.inputs && receipt.inputs.state !== "released") ||
-        receipt.sandboxes.some((sandbox) => sandbox.state !== "released"))
+      if (
+        (receipt.inputs && receipt.inputs.state !== "released") ||
+        receipt.sandboxes.some((sandbox) => sandbox.state !== "released")
+      )
         throw new Error("Native preparation still retains original materialized inputs or sandbox policies")
       receipt.closed = true
       await this.write(receipt)
@@ -195,7 +230,8 @@ export class NativeExecutionPreparation {
       if (sandbox.state !== "prepared" || !sandbox.wrapper)
         throw new Error("Native sandbox preparation remains unknown")
       await this.options.guard(operationID, "release")
-      if (sandbox.wrapper.tempPath && await Bun.file(sandbox.wrapper.tempPath).exists()) await this.verifyWrapper(sandbox)
+      if (sandbox.wrapper.tempPath && (await Bun.file(sandbox.wrapper.tempPath).exists()))
+        await this.verifyWrapper(sandbox)
       this.options.sandbox?.cleanupWrapper(sandbox.wrapper)
       sandbox.state = "released"
       await this.write(receipt)
@@ -207,7 +243,8 @@ export class NativeExecutionPreparation {
       if (!receipt?.inputs || receipt.inputs.state === "released") return
       if (receipt.inputs.state !== "prepared") {
         const actual = await this.options.inputs.inspect(id)
-        if (!actual || actual.digest !== receipt.inputs.digest) throw new Error("Native input preparation remains unknown")
+        if (!actual || actual.digest !== receipt.inputs.digest)
+          throw new Error("Native input preparation remains unknown")
       }
       await this.options.guard(id, "release")
       await this.options.inputs.discard(id, () => this.options.guard(id, "release"))

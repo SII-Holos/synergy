@@ -43,7 +43,10 @@ export namespace OrganizationRecoveryDatabase {
     if (Storage.current().store !== handle.store) fail("requires the actual target primary Store")
     assertOptions(value, handle.store.options)
   }
-  export function assertOptions(value: Descriptor | undefined, options: Pick<StoreOptions, "backend" | "namespace" | "readonly">) {
+  export function assertOptions(
+    value: Descriptor | undefined,
+    options: Pick<StoreOptions, "backend" | "namespace" | "readonly">,
+  ) {
     const selected = value && Descriptor.parse(value)
     Descriptor.shape.namespace.parse(options.namespace)
     if (options.readonly) fail("target requires writable storage")

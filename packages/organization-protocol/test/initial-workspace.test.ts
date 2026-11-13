@@ -16,7 +16,7 @@ test("an initial whole Workspace Locator retains its root provenance without bor
     rootID: "message",
     grantID: "grant",
     selectionRevision: 1,
-  }
+  } satisfies Cloud.FileLocator
   expect(Cloud.FileLocator.parse(input)).toEqual(input)
   for (const extra of [
     { path: "subtree" },

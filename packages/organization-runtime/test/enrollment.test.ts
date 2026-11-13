@@ -66,7 +66,10 @@ test("registration refuses foreign identity and untrusted TLS before publishing 
     enrollMemberRuntime({
       ...options,
       ca: f.ca,
-      ticket: { ...ticket, runtime: { ...Protocol.MemberRegistrationRecord.parse(ticket.runtime), accountID: "other" } },
+      ticket: {
+        ...ticket,
+        runtime: { ...Protocol.MemberRegistrationRecord.parse(ticket.runtime), accountID: "other" },
+      },
     }),
   ).rejects.toThrow("identity")
   expect(f.requests).toHaveLength(0)

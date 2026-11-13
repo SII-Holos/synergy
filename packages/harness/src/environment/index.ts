@@ -236,8 +236,11 @@ export namespace Environment {
       signal?: AbortSignal
     },
   ) {
-    input = { ...input, capabilities: [...input.capabilities],
-      ...(input.expectedTarget && { expectedTarget: Target.parse(input.expectedTarget) }) }
+    input = {
+      ...input,
+      capabilities: [...input.capabilities],
+      ...(input.expectedTarget && { expectedTarget: Target.parse(input.expectedTarget) }),
+    }
     if (input.expectedTarget && input.expectedTarget.environmentID !== id)
       throw new Stale({ environmentID: id, message: "Environment admission has another expected allocation" })
     if (input.kind !== undefined && input.kind !== "admission")
@@ -714,12 +717,23 @@ export namespace Environment {
 
   export async function retireRecoveredAdmission(value: EnvironmentSchema.Use, scopeID: string) {
     const previous = EnvironmentSchema.Use.parse(structuredClone(value))
-    const runtime = RuntimeContext.current(), primary = runtime.storage, current = Storage.current()
-    if (!primary || current.store !== primary.store || current.artifactDirectory !== primary.artifactDirectory ||
-      current.artifactObjects !== primary.artifactObjects || current.store.options.readonly ||
-      previous.kind !== "admission" || previous.ownership.kind === "legacy-unknown" || previous.ownerEpoch === epoch())
-      throw new Unavailable({ environmentID: previous.target.environmentID,
-        message: "Recovered admission requires its actual old native Use and writable primary" })
+    const runtime = RuntimeContext.current(),
+      primary = runtime.storage,
+      current = Storage.current()
+    if (
+      !primary ||
+      current.store !== primary.store ||
+      current.artifactDirectory !== primary.artifactDirectory ||
+      current.artifactObjects !== primary.artifactObjects ||
+      current.store.options.readonly ||
+      previous.kind !== "admission" ||
+      previous.ownership.kind === "legacy-unknown" ||
+      previous.ownerEpoch === epoch()
+    )
+      throw new Unavailable({
+        environmentID: previous.target.environmentID,
+        message: "Recovered admission requires its actual old native Use and writable primary",
+      })
     return releaseRecoveredAdmission(previous, scopeID)
   }
 

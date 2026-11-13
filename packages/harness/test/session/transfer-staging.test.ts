@@ -237,7 +237,7 @@ test("staged aggregate partitions each owner's records by Session and requires e
           for await (const record of context.staged.records()) records.push(record)
           expect(records).toEqual([{ key: ["portable-fixture", session.id], value: { sessionID: session.id } }])
           expect(await context.staged.record(["portable-fixture", session.id])).toEqual(records[0])
-          const foreign = sessions.find(other => other.id !== session.id)!
+          const foreign = sessions.find((other) => other.id !== session.id)!
           expect(await context.staged.record(["portable-fixture", foreign.id])).toBeUndefined()
           contexts.push({ ownerID: "fixture", context })
           const binding = {
