@@ -8,6 +8,8 @@ Public Session bindings and Note run metadata require a selected loop source. De
 
 Gate loop access and execution by the Runtime-registered source owner. Raw loop access is reserved for migration and non-destructive recovery accounting. Preserve absent-source records and project their Session/Note bindings only with proven source metadata; verify partial removal and reinstall while Blueprint remains selected.
 
+Terminal Note cleanup previews through the owning canonical predicate and publishes through the expected-loop metadata CAS. Never infer absence from a hidden public projection or clear a replacement loop.
+
 Supervisor permissions and prompts must not assume optional evidence tools. Media, Code Tools and Browser supply their own grants after selection; explicit user denials remain authoritative. Agenda stop guidance and guards belong to agenda-blueprint.
 
 Expose selection through `./component`; imports are inert. Keep factory requirements, published `synergy` metadata, worker roles and production dependencies aligned. Register owner schemas, events, tools and HTTP features before Runtime composition closes.

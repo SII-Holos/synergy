@@ -17,7 +17,14 @@ export namespace SessionNoteAccess {
     getBlueprintNote(scopeID: string, noteID: string): Promise<BlueprintNote | undefined>
     /** All blueprint-note projections in the scope, archived included. */
     listBlueprintNotes(scopeID: string): Promise<BlueprintNote[]>
-    setBlueprintActiveLoop(scopeID: string, noteID: string, activeLoopID: string | null, source?: string): Promise<void>
+    hasBlueprintActiveLoop(scopeID: string, noteID: string, loopID: string): Promise<boolean>
+    setBlueprintActiveLoop(
+      scopeID: string,
+      noteID: string,
+      activeLoopID: string | null,
+      source?: string,
+      expectedActiveLoopID?: string,
+    ): Promise<boolean>
   }
 
   const runtimeState = RuntimeContext.state(() => ({
@@ -48,14 +55,27 @@ export namespace SessionNoteAccess {
     return instanceState.provider?.listBlueprintNotes(scopeID).catch(() => []) ?? []
   }
 
+  export async function hasBlueprintActiveLoop(scopeID: string, noteID: string, loopID: string): Promise<boolean> {
+    return (await runtimeState().provider?.hasBlueprintActiveLoop(scopeID, noteID, loopID)) ?? false
+  }
+
   export async function setBlueprintActiveLoop(
     scopeID: string,
     noteID: string,
     activeLoopID: string | null,
     source?: string,
-  ): Promise<void> {
+    expectedActiveLoopID?: string,
+  ): Promise<boolean> {
     const instanceState = runtimeState()
 
-    await instanceState.provider?.setBlueprintActiveLoop(scopeID, noteID, activeLoopID, source)
+    return (
+      (await instanceState.provider?.setBlueprintActiveLoop(
+        scopeID,
+        noteID,
+        activeLoopID,
+        source,
+        expectedActiveLoopID,
+      )) ?? false
+    )
   }
 }

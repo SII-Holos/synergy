@@ -218,6 +218,14 @@ describe("NoteStore", () => {
         fn: async () => {
           const note = await NoteStore.getAny(activeScope.id, noteID)
           expect(note.title).toBe("Archived source note")
+          const original = await NoteStore.snapshotForTransfer(sourceScope.id, noteID)
+          expect(
+            await NoteStore.inspectMetadataAny(activeScope.id, noteID, (current) => {
+              current.time.updated = 0
+              return { id: current.id, title: current.title }
+            }),
+          ).toEqual({ id: noteID, title: original.title })
+          expect(await NoteStore.snapshotForTransfer(sourceScope.id, noteID)).toEqual(original)
         },
       })
     }))

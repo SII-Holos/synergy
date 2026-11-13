@@ -13,6 +13,8 @@ description: Add or modify Synergy durable state, JSON storage keys, SQLite tabl
 
 ## Implement the Current Model
 
+Maintenance previews inspect canonical metadata through its owning readonly reader when display projections intentionally hide unavailable fields. Keep Scope resolution and owner availability, supply a cloned snapshot, and verify preview performs no writes. Apply the same planned change through an independent exact metadata comparison in the original writer; test a newer replacement and retained immutable versions.
+
 When retaining exact document versions, distinguish a complete persisted row from opaque legacy data whose kind owner is absent. Capture only provable bytes and preserve incomplete unavailable-owner rows unchanged, with missing history still missing. Malformed available-owner data remains an error. Test immutable versions through the owner metadata writer; overwriting a sealed version in a fixture defeats the invariant being exercised.
 
 For incremental native restoration on an already held Target, bind the actual original import receipt and authenticated archive namespace through `RuntimeMaintenance.withRestorationArtifacts`. Prepare binaries outside SQL/checkpoint gates, then publish through the original restoration transaction. Require exact streamed native-location witnesses, mandatory alias completion and a final guard over the full staging namespace; caught failures must still reject COMMIT. Verify unknown outcomes with garbage collection and cold reuse. Native evidence does not grant domain append policy or recovery readiness.

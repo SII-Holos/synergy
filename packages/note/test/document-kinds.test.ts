@@ -57,6 +57,14 @@ test("Note hides documents whose kind owner is absent without changing their sto
         expect(searched.output).not.toContain(hidden.id)
         await expect(NoteStore.get("home", hidden.id)).rejects.toBeInstanceOf(Storage.NotFoundError)
         await expect(NoteStore.getAny("home", hidden.id)).rejects.toBeInstanceOf(Storage.NotFoundError)
+        let inspected = false
+        await expect(
+          NoteStore.inspectMetadataAny("home", hidden.id, () => {
+            inspected = true
+            return true
+          }),
+        ).rejects.toBeInstanceOf(Storage.NotFoundError)
+        expect(inspected).toBe(false)
         for (const route of [`/${hidden.id}`, `/export/${hidden.id}`])
           expect((await NoteRoute().request(route)).status).toBe(404)
         await expect(NoteStore.update("home", hidden.id, { title: "Changed" })).rejects.toBeInstanceOf(

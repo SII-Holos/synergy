@@ -723,6 +723,21 @@ export namespace NoteStore {
     return update(resolved, noteID, patch)
   }
 
+  export async function inspectMetadataAny<T>(
+    scopeID: string,
+    noteID: string,
+    inspect: (document: Readonly<z.infer<typeof NoteTypes.Info>>) => T,
+  ): Promise<T> {
+    return Storage.snapshot(async () => {
+      const { scopeID: resolved } = await resolveScope(scopeID, noteID)
+      const current = await Storage.read<z.infer<typeof NoteTypes.Info>>(
+        StoragePath.note(Identifier.asScopeID(resolved), noteID),
+      )
+      NoteDocumentKinds.require(current)
+      return inspect(normalize(structuredClone(current)))
+    })
+  }
+
   export async function mutateMetadataAny(
     scopeID: string,
     noteID: string,

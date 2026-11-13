@@ -4,6 +4,7 @@ Note documents, content rules, backend service, tools, routes and migrations. Ex
 
 - Keep domain tools, routes, configuration and migrations with their implementation.
 - Owner public projection hooks receive a copy of their declared fields; never persist their output over canonical metadata. Lifecycle owners use `mutateMetadata` or `mutateMetadataAny` for derived fields that are absent from authoring input schemas.
+- Maintenance reads use `inspectMetadataAny` for a cloned canonical snapshot with original Scope resolution and kind availability. Public reads retain their projections; mutation uses the original metadata writer and exact comparison.
 - Import other packages only through declared public exports; preserve cancellation, permissions and persisted data.
 - Tests live under test/ and use isolated homes through the testing support package.
 
