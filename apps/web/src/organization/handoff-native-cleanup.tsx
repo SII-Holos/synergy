@@ -13,7 +13,7 @@ export function OrganizationNativeCleanup(props: {
   disabled: boolean
   current: () => boolean
   read: (requestID: string) => Promise<Handoff.MachineResult>
-  complete: () => void
+  complete?: () => void
   failed: (error: unknown) => void
 }) {
   const { _ } = useLingui()
@@ -35,7 +35,7 @@ export function OrganizationNativeCleanup(props: {
       if (!current(original) || props.handle !== handle) return
       const value = organizationNativeCleanupResult(handle, requestID, result)
       setReleased(value.complete)
-      if (value.complete) props.complete()
+      if (value.complete) props.complete?.()
     } catch (error) {
       if (current(original)) {
         setError(error)

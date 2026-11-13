@@ -13617,6 +13617,86 @@ msgid "organization.auth.working"
 msgstr "正在连接…"
 
 #. js-lingui-explicit-id
+msgid "organization.devices.active"
+msgstr "已注册"
+
+#. js-lingui-explicit-id
+msgid "organization.devices.details"
+msgstr "原迁移详情"
+
+#. js-lingui-explicit-id
+msgid "organization.devices.empty"
+msgstr "本页没有属于当前账号的电脑。"
+
+#. js-lingui-explicit-id
+msgid "organization.devices.find"
+msgstr "查找已取消的迁移"
+
+#. js-lingui-explicit-id
+msgid "organization.devices.first"
+msgstr "返回电脑列表首页"
+
+#. js-lingui-explicit-id
+msgid "organization.devices.firstMoves"
+msgstr "返回迁移列表首页"
+
+#. js-lingui-explicit-id
+msgid "organization.devices.handoff"
+msgstr "迁移标识"
+
+#. js-lingui-explicit-id
+msgid "organization.devices.hint"
+msgstr "检查注册到当前账号的电脑上，已取消迁移留下的目标端准备。这些检查不会打开对话或启动工作。"
+
+#. js-lingui-explicit-id
+msgid "organization.devices.inspect"
+msgstr "检查准备状态"
+
+#. js-lingui-explicit-id
+msgid "organization.devices.move"
+msgstr "迁移 {reference}"
+
+#. js-lingui-explicit-id
+msgid "organization.devices.moves"
+msgstr "已取消的迁移"
+
+#. js-lingui-explicit-id
+msgid "organization.devices.next"
+msgstr "下一页电脑"
+
+#. js-lingui-explicit-id
+msgid "organization.devices.nextMoves"
+msgstr "下一页迁移"
+
+#. js-lingui-explicit-id
+msgid "organization.devices.noMoves"
+msgstr "本页没有已取消的迁移。"
+
+#. js-lingui-explicit-id
+msgid "organization.devices.pending"
+msgstr "等待完成注册"
+
+#. js-lingui-explicit-id
+msgid "organization.devices.recovery"
+msgstr "只能由这台电脑上原有的 Synergy 实例完成已取消迁移的清理。"
+
+#. js-lingui-explicit-id
+msgid "organization.devices.refresh"
+msgstr "刷新电脑列表"
+
+#. js-lingui-explicit-id
+msgid "organization.devices.revoked"
+msgstr "访问已撤销"
+
+#. js-lingui-explicit-id
+msgid "organization.devices.session"
+msgstr "对话标识"
+
+#. js-lingui-explicit-id
+msgid "organization.devices.title"
+msgstr "我的电脑"
+
+#. js-lingui-explicit-id
 msgid "organization.handoff.accept"
 msgstr "接受此次迁移"
 
@@ -13699,6 +13779,14 @@ msgstr "准备好恢复工作时，关闭此窗口并在对话中选择继续。
 #. js-lingui-explicit-id
 msgid "organization.handoff.destination"
 msgstr "目标运行时"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.directory.hint"
+msgstr "确认使用目标端版本前，需要先核验原目标目录。不能用电脑当前的默认目录替代。"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.directory.unavailable"
+msgstr "尚未在此核验原先选定的目录名称。"
 
 #. js-lingui-explicit-id
 msgid "organization.handoff.finishCancel"

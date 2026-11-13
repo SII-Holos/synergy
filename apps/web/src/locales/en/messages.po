@@ -13617,6 +13617,86 @@ msgid "organization.auth.working"
 msgstr "Connecting…"
 
 #. js-lingui-explicit-id
+msgid "organization.devices.active"
+msgstr "Registered"
+
+#. js-lingui-explicit-id
+msgid "organization.devices.details"
+msgstr "Original move details"
+
+#. js-lingui-explicit-id
+msgid "organization.devices.empty"
+msgstr "No computers belonging to this account on this page."
+
+#. js-lingui-explicit-id
+msgid "organization.devices.find"
+msgstr "Find cancelled moves"
+
+#. js-lingui-explicit-id
+msgid "organization.devices.first"
+msgstr "First computers"
+
+#. js-lingui-explicit-id
+msgid "organization.devices.firstMoves"
+msgstr "First moves"
+
+#. js-lingui-explicit-id
+msgid "organization.devices.handoff"
+msgstr "Move reference"
+
+#. js-lingui-explicit-id
+msgid "organization.devices.hint"
+msgstr "Inspect preparation left by cancelled moves on computers registered to your account. These checks do not open conversations or start work."
+
+#. js-lingui-explicit-id
+msgid "organization.devices.inspect"
+msgstr "Inspect preparation"
+
+#. js-lingui-explicit-id
+msgid "organization.devices.move"
+msgstr "Move {reference}"
+
+#. js-lingui-explicit-id
+msgid "organization.devices.moves"
+msgstr "Cancelled moves"
+
+#. js-lingui-explicit-id
+msgid "organization.devices.next"
+msgstr "Next computers"
+
+#. js-lingui-explicit-id
+msgid "organization.devices.nextMoves"
+msgstr "Next moves"
+
+#. js-lingui-explicit-id
+msgid "organization.devices.noMoves"
+msgstr "No cancelled moves on this page."
+
+#. js-lingui-explicit-id
+msgid "organization.devices.pending"
+msgstr "Registration pending"
+
+#. js-lingui-explicit-id
+msgid "organization.devices.recovery"
+msgstr "Only the original Synergy installation on this computer can finish cleaning up its cancelled moves."
+
+#. js-lingui-explicit-id
+msgid "organization.devices.refresh"
+msgstr "Refresh computers"
+
+#. js-lingui-explicit-id
+msgid "organization.devices.revoked"
+msgstr "Access revoked"
+
+#. js-lingui-explicit-id
+msgid "organization.devices.session"
+msgstr "Conversation reference"
+
+#. js-lingui-explicit-id
+msgid "organization.devices.title"
+msgstr "My computers"
+
+#. js-lingui-explicit-id
 msgid "organization.handoff.accept"
 msgstr "Accept this move"
 
@@ -13699,6 +13779,14 @@ msgstr "Close this window and use Continue in the conversation when you are read
 #. js-lingui-explicit-id
 msgid "organization.handoff.destination"
 msgstr "Destination"
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.directory.hint"
+msgstr "The original destination directory must be identified before its versions can be accepted. Your computer's current default folder cannot replace it."
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.directory.unavailable"
+msgstr "The name of the originally selected directory has not been verified here."
 
 #. js-lingui-explicit-id
 msgid "organization.handoff.finishCancel"

@@ -25,6 +25,8 @@ import { organizationHandoffMessages as messages } from "./handoff-messages"
 import { organizationNativeHandoffMessages as nativeMessages } from "./handoff-native-messages"
 import { OrganizationNativeDifference } from "./handoff-native"
 import { organizationNativeHandoffMapping } from "./handoff-native-state"
+import { organizationDirectoryFromOptions, organizationDirectoryLabel } from "./handoff-directory-state"
+import { organizationDirectoryMessages } from "./account-device-messages"
 import { OrganizationNativeCleanup } from "./handoff-native-cleanup"
 import { organizationNativeCleanupHandle, type OrganizationNativeCleanupHandle } from "./handoff-native-cleanup-state"
 import { organizationWorkspaceMessages as common } from "./workspace-messages"
@@ -219,7 +221,11 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
   function retain(id: string, action?: OrganizationHandoffAction) {
     try {
       const previous = saved()?.handoffID ?? state.view?.handoffID
-      const value = recovery.save(id, action)
+      const directory =
+        action?.kind === "prepare" && state.preview
+          ? organizationDirectoryFromOptions({ plan: action.body, options: state.preview, sessionID, projectID })
+          : undefined
+      const value = recovery.save(id, action, directory)
       if (previous !== id) {
         handoffRevision++
         setState("machine", undefined)
@@ -723,20 +729,7 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
     }
   }
   function nativeDirectoryLabel(view: Handoff.View) {
-    const mapping = view.workspaceMapping
-    const original = state.preview
-    const native = original?.native
-    if (
-      mapping.kind === "organization-native" &&
-      original?.targetRuntimeID === view.targetRuntimeID &&
-      native &&
-      native.reference.workspaceID === mapping.target.workspaceID &&
-      native.reference.generation === mapping.target.generation &&
-      native.reference.revision === mapping.target.expectedRevision &&
-      native.projectRevision === mapping.target.projectRevision
-    )
-      return native.label
-    return _(nativeMessages.selected)
+    return organizationDirectoryLabel(saved()?.nativeDirectory, view)
   }
   async function readDifference(summary: Handoff.Difference, cursor?: string) {
     const view = state.view
@@ -799,7 +792,9 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
     )
       return
     const consent = Handoff.DifferenceConsent.parse(value)
+    const directory = nativeDirectoryLabel(captured)
     if (
+      !directory ||
       JSON.stringify(consent) !== JSON.stringify(Handoff.DifferenceConsent.strip().parse(captured.workspaceDifference))
     )
       return
@@ -808,7 +803,7 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
     first?.focus({ preventScroll: true })
     confirm.show({
       title: nativeMessages.accept,
-      description: { ...nativeMessages.acceptHint, values: { directory: nativeDirectoryLabel(captured) } },
+      description: { ...nativeMessages.acceptHint, values: { directory } },
       confirmLabel: nativeMessages.accept,
       tone: "warning",
       async onConfirm() {
@@ -821,6 +816,7 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
           currentView.mappingPlanRevision !== captured.mappingPlanRevision ||
           !currentView.workspaceDifference ||
           currentView.cancelRequested ||
+          nativeDirectoryLabel(currentView) !== directory ||
           JSON.stringify(Handoff.DifferenceConsent.strip().parse(currentView.workspaceDifference)) !==
             JSON.stringify(consent)
         )
@@ -1335,6 +1331,12 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
                     )}
                   </dd>
                 </div>
+                <Show when={view().workspaceMapping.kind === "organization-native"}>
+                  <div>
+                    <dt>{_(nativeMessages.directory)}</dt>
+                    <dd>{nativeDirectoryLabel(view()) ?? _(organizationDirectoryMessages.unavailable)}</dd>
+                  </div>
+                </Show>
                 <Show when={remoteWorkspace()}>
                   {(workspace) => (
                     <>
@@ -1360,6 +1362,9 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
                   )}
                 </Show>
               </dl>
+              <Show when={view().workspaceMapping.kind === "organization-native" && !nativeDirectoryLabel(view())}>
+                <p role="status">{_(organizationDirectoryMessages.hint)}</p>
+              </Show>
               <Show when={!terminal(view()) && requirements().length}>
                 <ul class="organization-handoff-requirements">
                   <For each={requirements()}>
@@ -1418,6 +1423,7 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
                     revision={nativeRevision()}
                     disabled={!allowed()}
                     pending={!!pending()}
+                    consentAvailable={!!nativeDirectoryLabel(view())}
                     read={readDifference}
                     preview={() => void drive("preview-target")}
                     accept={acceptDifference}
@@ -1432,7 +1438,10 @@ export function OrganizationHandoffDialog(props: { session: Session.View; change
                     <Show when={view().canAccept && !view().targetAccepted && !view().cancelRequested}>
                       <Button
                         variant="primary"
-                        disabled={!allowed()}
+                        disabled={
+                          !allowed() ||
+                          (view().workspaceMapping.kind === "organization-native" && !nativeDirectoryLabel(view()))
+                        }
                         onClick={() =>
                           void perform({
                             kind: "accept",

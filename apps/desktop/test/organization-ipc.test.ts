@@ -57,6 +57,73 @@ function bridge(
   return { trusted, ipc }
 }
 
+test("handoff and self cleanup IPC admits only the fixed authenticated product routes", async () => {
+  await using f = await organizationFixture()
+  const connection = await authorized(f)
+  const calls: Array<{ method: string; path: string }> = []
+  const { trusted, ipc } = bridge(f, (async (input) => {
+    const request = new Request(input)
+    expect(request.headers.get("authorization")).toStartWith("Bearer ")
+    const url = new URL(request.url)
+    calls.push({ method: request.method, path: url.pathname + url.search })
+    return Response.json({ inspected: true })
+  }) as typeof fetch)
+  const paths = [
+    ["GET", "/org/v1/runtimes?limit=50"],
+    ["GET", "/org/v1/runtimes/runtime-one"],
+    ["GET", "/org/v1/runtimes/runtime-one/connection"],
+    ["GET", "/org/v1/runtimes/runtime-one/handoff-cleanups?limit=50&cursor=original-next"],
+    ["GET", "/org/v1/sessions/session-one/handoff-options?requestID=inspection&targetRuntimeID=runtime-one"],
+    ["GET", "/org/v1/sessions/session-one/handoffs?limit=50"],
+    ["POST", "/org/v1/sessions/session-one/handoffs"],
+    ["GET", "/org/v1/handoffs/handoff-one"],
+    ["POST", "/org/v1/handoffs/handoff-one/accept"],
+    ["POST", "/org/v1/handoffs/handoff-one/cancel"],
+    ["POST", "/org/v1/handoffs/handoff-one/commit"],
+    ["POST", "/org/v1/handoffs/handoff-one/permit"],
+    ["POST", "/org/v1/handoffs/handoff-one/drive"],
+    ["GET", "/org/v1/projects/project-one/resources?limit=50"],
+    ["GET", "/org/v1/projects/project-one/cloud/workspaces?resourceID=storage&limit=50"],
+  ] as const
+  try {
+    for (const [method, path] of paths)
+      expect(
+        await ipc.handle(trusted, "request", {
+          requestID: randomUUID(),
+          connectionID: connection.id,
+          method,
+          path,
+          ...(method === "POST" ? { body: "{}" } : {}),
+        }),
+      ).toMatchObject({ ok: true, value: { status: 200, body: '{"inspected":true}' } })
+    expect(calls).toEqual(paths.map(([method, path]) => ({ method, path })))
+    for (const [method, path] of [
+      ["POST", "/org/v1/runtimes/runtime-one/handoff-cleanups"],
+      ["GET", "/org/v1/runtimes/runtime-one/handoff-cleanups/foreign"],
+      ["PUT", "/org/v1/sessions/session-one/handoffs"],
+      ["DELETE", "/org/v1/handoffs/handoff-one"],
+      ["GET", "/org/v1/handoffs/handoff-one/permit"],
+      ["POST", "/org/v1/handoffs/handoff-one/unknown"],
+      ["POST", "/runtime/v1/handoffs/recovery"],
+      ["POST", "/runtime/v1/handoffs/object"],
+      ["POST", "/runtime/v1/handoffs/proof"],
+      ["POST", "/org/v1/cloud/environments"],
+    ])
+      expect(
+        await ipc.handle(trusted, "request", {
+          requestID: randomUUID(),
+          connectionID: connection.id,
+          method,
+          path,
+          ...(method === "POST" ? { body: "{}" } : {}),
+        }),
+      ).toMatchObject({ ok: false, error: { code: "invalid_request" } })
+    expect(calls).toHaveLength(paths.length)
+  } finally {
+    ipc.dispose()
+  }
+})
+
 test("publication receipt IPC admits only the two fixed authenticated POST routes", async () => {
   await using f = await organizationFixture()
   const connection = await authorized(f)

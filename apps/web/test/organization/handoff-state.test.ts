@@ -255,3 +255,33 @@ test("source cancellation alone cannot acknowledge an unknown native target prev
     ),
   ).toBe(false)
 })
+
+test("an authorized native directory label survives reload only with its original handoff plan", () => {
+  const values = new Map<string, string>()
+  const input = {
+    storage: {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => void values.set(key, value),
+      removeItem: (key: string) => void values.delete(key),
+    },
+    owner: '["organization","org","account","inc"]',
+    projectID: "project",
+    sessionID: "session",
+  }
+  const original = Handoff.CurrentPrepare.parse({ ...prepare, workspaceMapping: existing })
+  const action = { kind: "prepare" as const, body: original }
+  const directory = { plan: original, label: "Selected team folder" }
+  const state = createOrganizationHandoffState(input)
+  state.save(original.handoffID, action, directory)
+  state.confirmed(original.handoffID)
+  expect(createOrganizationHandoffState(input).read()?.nativeDirectory).toEqual(directory)
+  expect(
+    createOrganizationHandoffState({ ...input, owner: '["organization","org","another-account","inc"]' }).read(),
+  ).toBeUndefined()
+  expect(() =>
+    state.save(original.handoffID, action, {
+      ...directory,
+      plan: { ...original, targetRuntimeID: "another-runtime" },
+    }),
+  ).toThrow("original")
+})

@@ -1582,6 +1582,7 @@ async function chooseExisting(f: Awaited<ReturnType<typeof open>>) {
   await f.dialog.getByRole("button", { name: await f.copy("begin"), exact: true }).click()
   await f.dialog.getByRole("button", { name: await f.nativeCopy("acceptDirectory"), exact: true }).click()
   await f.dialog.getByRole("button", { name: await f.copy("prepareSource"), exact: true }).click()
+  await f.dialog.getByRole("button", { name: await f.nativeCopy("preview"), exact: true }).click({ trial: true })
 }
 
 test("existing native directory adoption reviews real paged hashes and requires a distinct destination-version consent", async () => {
@@ -1652,6 +1653,78 @@ test("existing native directory adoption reviews real paged hashes and requires 
     await f.close()
   }
 }, 45_000)
+
+test("a restored native move names only its saved originally inspected directory without another preflight", async () => {
+  const f = await open({ native: true })
+  try {
+    await chooseExisting(f)
+    const inspections = () => f.requests.filter((request) => request.path.includes("handoff-options")).length
+    expect(
+      await f.page.evaluate(() => {
+        const entry = Object.entries(localStorage).find(([key]) => key.includes("organization-handoff"))
+        return entry ? JSON.parse(entry[1]).pending : undefined
+      }),
+    ).toBeUndefined()
+    const before = inspections()
+    await f.page.reload()
+    await f.page.getByRole("button", { name: "Move conversation", exact: true }).click()
+    await f.dialog.getByText("Existing destination project folder", { exact: true }).waitFor()
+    await f.dialog.getByRole("button", { name: await f.nativeCopy("preview"), exact: true }).click()
+    const reader = f.dialog.getByRole("region", { name: await f.nativeCopy("differences"), exact: true })
+    await reader.getByText(".git/index", { exact: true }).waitFor()
+    const review = reader.getByRole("checkbox", { name: await f.nativeCopy("reviewed"), exact: true })
+    await review.focus()
+    await review.press("Space")
+    await reader.getByRole("button", { name: await f.nativeCopy("accept"), exact: true }).click()
+    const confirmation = f.page.getByRole("dialog", { name: await f.nativeCopy("accept"), exact: true })
+    await confirmation.getByText(/Use the files already in Existing destination project folder/).waitFor()
+    expect(inspections()).toBe(before)
+    expect(f.errors).toEqual([])
+  } finally {
+    await f.close()
+  }
+}, 30_000)
+
+test("legacy or unavailable native directory captions cannot turn a current default into original consent", async () => {
+  const f = await open({ native: true })
+  try {
+    await chooseExisting(f)
+    const before = f.requests.filter((request) => request.path.includes("handoff-options")).length
+    expect(
+      await f.page.evaluate(() => {
+        const entry = Object.entries(localStorage).find(([key]) => key.includes("organization-handoff"))
+        return entry ? JSON.parse(entry[1]).pending : undefined
+      }),
+    ).toBeUndefined()
+    await f.page.evaluate(() => {
+      const entry = Object.entries(localStorage).find(([key]) => key.includes("organization-handoff"))
+      if (!entry) throw new Error("The original saved handoff is missing")
+      const saved = JSON.parse(entry[1])
+      delete saved.nativeDirectory
+      localStorage.setItem(entry[0], JSON.stringify(saved))
+    })
+    await f.page.reload()
+    await f.page.getByRole("button", { name: "Move conversation", exact: true }).click()
+    await f.dialog
+      .getByText("The name of the originally selected directory has not been verified here.", { exact: true })
+      .waitFor()
+    expect(await f.dialog.getByText("Existing destination project folder", { exact: true }).count()).toBe(0)
+    await f.dialog.getByRole("button", { name: await f.nativeCopy("preview"), exact: true }).click()
+    const reader = f.dialog.getByRole("region", { name: await f.nativeCopy("differences"), exact: true })
+    await reader.getByText(".git/index", { exact: true }).waitFor()
+    expect(await reader.getByRole("checkbox", { name: await f.nativeCopy("reviewed"), exact: true }).isDisabled()).toBe(
+      true,
+    )
+    expect(await reader.getByRole("button", { name: await f.nativeCopy("accept"), exact: true }).isDisabled()).toBe(
+      true,
+    )
+    expect(f.requests.filter((request) => request.path.includes("handoff-options"))).toHaveLength(before)
+    expect(f.requests.filter((request) => request.path.endsWith("/accept"))).toHaveLength(1)
+    expect(f.errors).toEqual([])
+  } finally {
+    await f.close()
+  }
+}, 30_000)
 
 test("unknown native preview survives source cancellation and cleanup checks never refresh a revoked Session", async () => {
   const f = await open({ native: true, dropPreview: true, viewport: { width: 375, height: 667 }, colorScheme: "dark" })

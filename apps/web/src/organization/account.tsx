@@ -10,6 +10,8 @@ import { organizationMemberMessages as messages } from "./member-messages"
 import { organizationWorkspaceMessages as workspace } from "./workspace-messages"
 import "./account.css"
 import { OrganizationApiTokens, organizationApiTokenMessages } from "./api-tokens"
+import { OrganizationAccountDevices } from "./account-devices"
+import { organizationDeviceMessages } from "./account-device-messages"
 
 const invitationStates = {
   open: messages.invitationOpen,
@@ -33,6 +35,7 @@ export function OrganizationAccount() {
   const [busy, setBusy] = createSignal(false)
   const [error, setError] = createSignal<unknown>()
   const [tokensOpened, setTokensOpened] = createSignal(false)
+  const [devicesOpened, setDevicesOpened] = createSignal(false)
   const current = () => !view.signal.aborted
   async function load(more = false) {
     if (loading()) return
@@ -159,6 +162,14 @@ export function OrganizationAccount() {
           </Button>
         </Show>
       </section>
+      <details class="organization-device-disclosure" onToggle={(event) => setDevicesOpened(event.currentTarget.open)}>
+        <summary>
+          <h3>{_(organizationDeviceMessages.title)}</h3>
+        </summary>
+        <Show when={devicesOpened()}>
+          <OrganizationAccountDevices />
+        </Show>
+      </details>
       <details
         class="organization-api-token-disclosure"
         onToggle={(event) => {

@@ -16,7 +16,7 @@ bun dev app --open
 
 Vite handles hot module replacement, so changes appear in the browser immediately. Organization connection recovery keeps revision-bound logout metadata across reload without retaining credentials; see [logout recovery](../../docs/decisions/implemented/bug-fix/2026-11-12-recover-native-logout-before-renderer-reload.md).
 
-Conversation actions provide an account-bound Move conversation flow using the existing service and native handoff owners. It preserves original pending requests across reload, keeps source files, and leaves the destination paused. Unsupported difference-dependent directory adoption remains unavailable. See [conversation moves](../../docs/decisions/implemented/feature/2026-11-13-move-organization-conversations-through-existing-handoff-owners.md).
+Conversation actions preserve original requests across reload and leave the destination paused. Existing native destinations require review and acceptance of their exact frozen directory versions. See [conversation moves](../../docs/decisions/implemented/feature/2026-11-13-move-organization-conversations-through-existing-handoff-owners.md) and [native version review](../../docs/decisions/implemented/feature/2026-11-13-review-native-directory-versions-before-handoff.md).
 
 Private organization tool files open through finite metadata pages and share the transcript's verified preview and streaming save actions. They use the captured Session reader; an empty visible page may still have another page. See [organization file transfers](../../docs/decisions/implemented/architecture/2026-11-11-bound-organization-desktop-file-transfers.md).
 
@@ -43,3 +43,5 @@ See the [main repository](https://github.com/SII-Holos/synergy) for setup instru
 ## License
 
 MIT
+
+Account’s My computers section discovers the current account’s original cancelled-move preparations without opening a conversation. See [device cleanup discovery](../../docs/decisions/implemented/feature/2026-11-13-discover-owned-runtime-cleanup-without-session-access.md).

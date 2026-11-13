@@ -3,6 +3,7 @@ import { OrganizationHandoffProtocol as Handoff } from "@ericsanchezok/synergy-o
 import { Persist } from "@/utils/persist"
 import { generateSecureUUID } from "@ericsanchezok/synergy-util/uuid"
 import { OrganizationNativeCleanupHandle } from "./handoff-native-cleanup-state"
+import { OrganizationNativeDirectory } from "./handoff-directory-state"
 
 export const OrganizationHandoffAction = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("prepare"), body: Handoff.CurrentPrepare }),
@@ -31,6 +32,7 @@ const Saved = z
     cancellation: Cancellation.optional(),
     cancellationNonce: z.uuid().optional(),
     nativeCleanup: OrganizationNativeCleanupHandle.optional(),
+    nativeDirectory: OrganizationNativeDirectory.optional(),
   })
   .refine(
     (value) => value.pending?.kind !== "prepare" || value.pending.body.handoffID === value.handoffID,
@@ -42,6 +44,10 @@ const Saved = z
       (value.nativeCleanup.binding.handoffID === value.handoffID &&
         value.nativeCleanup.binding.sessionID === value.sessionID),
     "Native cleanup must retain its original conversation",
+  )
+  .refine(
+    (value) => !value.nativeDirectory || value.nativeDirectory.plan.handoffID === value.handoffID,
+    "Native directory labels must retain their original handoff",
   )
 export type OrganizationHandoffSaved = z.infer<typeof Saved>
 
@@ -64,9 +70,15 @@ export function createOrganizationHandoffState(input: {
   }
   return {
     read,
-    save(handoffID: string, pending?: OrganizationHandoffAction) {
+    save(handoffID: string, pending?: OrganizationHandoffAction, directory?: OrganizationNativeDirectory) {
       const previous = read()
+      const original = directory ? OrganizationNativeDirectory.parse(directory) : undefined
       if (
+        (original &&
+          (pending?.kind !== "prepare" ||
+            original.plan.handoffID !== handoffID ||
+            JSON.stringify(original.plan) !== JSON.stringify(pending.body) ||
+            (previous?.nativeDirectory && JSON.stringify(original) !== JSON.stringify(previous.nativeDirectory)))) ||
         (previous?.cancellation && previous.handoffID !== handoffID) ||
         (previous?.pending &&
           (previous.handoffID !== handoffID || JSON.stringify(previous.pending) !== JSON.stringify(pending)))
@@ -81,6 +93,7 @@ export function createOrganizationHandoffState(input: {
         cancellation: previous?.cancellation,
         cancellationNonce: previous?.cancellationNonce,
         nativeCleanup: previous?.handoffID === handoffID ? previous.nativeCleanup : undefined,
+        nativeDirectory: previous?.handoffID === handoffID ? (previous.nativeDirectory ?? original) : original,
       })
       storage.setItem(key, JSON.stringify(saved))
       return saved

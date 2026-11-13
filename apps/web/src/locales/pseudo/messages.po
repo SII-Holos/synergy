@@ -13617,6 +13617,86 @@ msgid "organization.auth.working"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "organization.devices.active"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.devices.details"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.devices.empty"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.devices.find"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.devices.first"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.devices.firstMoves"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.devices.handoff"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.devices.hint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.devices.inspect"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.devices.move"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.devices.moves"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.devices.next"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.devices.nextMoves"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.devices.noMoves"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.devices.pending"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.devices.recovery"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.devices.refresh"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.devices.revoked"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.devices.session"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.devices.title"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "organization.handoff.accept"
 msgstr ""
 
@@ -13698,6 +13778,14 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "organization.handoff.destination"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.directory.hint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "organization.handoff.directory.unavailable"
 msgstr ""
 
 #. js-lingui-explicit-id

@@ -13,6 +13,7 @@ export function OrganizationNativeDifference(props: {
   revision: number
   disabled: boolean
   pending: boolean
+  consentAvailable: boolean
   read: (summary: Handoff.Difference, cursor?: string) => Promise<Handoff.MachineResult>
   preview: () => void
   accept: (consent: Handoff.DifferenceConsent) => void
@@ -236,14 +237,27 @@ export function OrganizationNativeDifference(props: {
                   <Checkbox
                     checked={reviewed()}
                     onChange={setReviewed}
-                    disabled={props.disabled || props.pending || loading() || !state.current || !!error()}
+                    disabled={
+                      props.disabled ||
+                      props.pending ||
+                      !props.consentAvailable ||
+                      loading() ||
+                      !state.current ||
+                      !!error()
+                    }
                   >
                     {_(messages.reviewed)}
                   </Checkbox>
                   <Button
                     variant="primary"
                     disabled={
-                      props.disabled || props.pending || loading() || !state.current || !reviewed() || !!error()
+                      props.disabled ||
+                      props.pending ||
+                      !props.consentAvailable ||
+                      loading() ||
+                      !state.current ||
+                      !reviewed() ||
+                      !!error()
                     }
                     onClick={() => reader && props.accept(reader.consent())}
                   >
