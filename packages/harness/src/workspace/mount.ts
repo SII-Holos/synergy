@@ -177,13 +177,13 @@ export namespace WorkspaceMounts {
             ? await RuntimeMaintenance.operation(context.maintenanceID)
             : undefined
         if (held?.version === 2 && held.phase === "released") {
-          await reconcileHomeUpgrade(context, "released")
+          await reconcileNativeOperation(context, "released")
           return []
         }
         return inspectMaintenance(context.signal)
       },
-      reconcileFrozen: (context) => reconcileHomeUpgrade(context, "frozen"),
-      reconcileReleasing: (context) => reconcileHomeUpgrade(context, "releasing"),
+      reconcileFrozen: (context) => reconcileNativeOperation(context, "frozen"),
+      reconcileReleasing: (context) => reconcileNativeOperation(context, "releasing"),
       async release(context) {
         await RuntimeMaintenance.assertReleasing(context.lease)
       },
@@ -203,7 +203,7 @@ export namespace WorkspaceMounts {
   }
   async function inspectMaintenance(
     signal: AbortSignal,
-    homeUpgrade = false,
+    completeInventory = false,
   ): Promise<RuntimeMaintenance.Requirement[]> {
     const requirements = new Map<string, RuntimeMaintenance.Requirement>()
     const add = (code: string, label: string) =>
@@ -219,10 +219,10 @@ export namespace WorkspaceMounts {
       if (row.key.length !== 2 || row.key[1] !== info.id)
         throw new Error("Workspace mount maintenance found an invalid canonical catalog identity")
       if (!info.activeMount) continue
-      if (homeUpgrade)
+      if (completeInventory)
         add(
           "workspace_mount_retained",
-          "Release the original native Workspace mount before recovering this Home upgrade",
+          "Release the original native Workspace mount before recovering this native operation",
         )
       const [scopeID] = await Storage.readMany([
         StoragePath.workspaceEnvironment(info.activeMount.target.environmentID, info.id),
@@ -232,17 +232,11 @@ export namespace WorkspaceMounts {
     }
     return [...requirements.values()]
   }
-  async function reconcileHomeUpgrade(context: RuntimeMaintenance.Context, phase: "frozen" | "releasing" | "released") {
-    const held =
-      phase === "released"
-        ? await RuntimeMaintenance.assertReleased(context.lease)
-        : phase === "releasing"
-          ? await RuntimeMaintenance.assertReleasing(context.lease)
-          : await RuntimeMaintenance.assertHeld(context.lease)
-    if (held.version !== 2 || held.purpose !== "organization-home-upgrade" || held.phase !== phase)
-      throw new RuntimeMaintenance.Blocked({
-        message: "Cold Workspace mount inspection requires its original Home upgrade phase",
-      })
+  async function reconcileNativeOperation(
+    context: RuntimeMaintenance.Context,
+    phase: "frozen" | "releasing" | "released",
+  ) {
+    const held = await RuntimeMaintenance.assertNativeReconciliation(context.lease, phase)
     let requirements: RuntimeMaintenance.Requirement[]
     try {
       requirements = await inspectMaintenance(context.signal, true)
@@ -270,15 +264,10 @@ export namespace WorkspaceMounts {
         message: "Original Workspace mounts still require native settlement",
         requirements,
       })
-    const after =
-      phase === "released"
-        ? await RuntimeMaintenance.assertReleased(context.lease)
-        : phase === "releasing"
-          ? await RuntimeMaintenance.assertReleasing(context.lease)
-          : await RuntimeMaintenance.assertHeld(context.lease)
+    const after = await RuntimeMaintenance.assertNativeReconciliation(context.lease, phase)
     if (JSON.stringify(after) !== JSON.stringify(held))
       throw new RuntimeMaintenance.Blocked({
-        message: "Cold Workspace mount inspection changed its original Home operation",
+        message: "Cold Workspace mount inspection changed its original native operation",
       })
   }
 

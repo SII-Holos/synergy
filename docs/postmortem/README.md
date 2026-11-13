@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0187](0187-cold-inventory-assumed-home-upgrade-purpose.md)
+
 - [0186](0186-portable-index-loaded-sqlite-before-its-owner.md)
 
 - [0185](0185-recovery-source-disposed-before-returned-work-settled.md)

@@ -52,17 +52,11 @@ async function inspect(signal: AbortSignal, final = true) {
   return [...requirements.values()]
 }
 
-async function reconcileHomeUpgrade(context: RuntimeMaintenance.Context, phase: "frozen" | "releasing" | "released") {
-  const held =
-    phase === "released"
-      ? await RuntimeMaintenance.assertReleased(context.lease)
-      : phase === "releasing"
-        ? await RuntimeMaintenance.assertReleasing(context.lease)
-        : await RuntimeMaintenance.assertHeld(context.lease)
-  if (held.version !== 2 || held.purpose !== "organization-home-upgrade" || held.phase !== phase)
-    throw new RuntimeMaintenance.Blocked({
-      message: "Cold Environment inspection requires its original Home upgrade phase",
-    })
+async function reconcileNativeOperation(
+  context: RuntimeMaintenance.Context,
+  phase: "frozen" | "releasing" | "released",
+) {
+  const held = await RuntimeMaintenance.assertNativeReconciliation(context.lease, phase)
   const requirements = new Map<string, RuntimeMaintenance.Requirement>()
   const add = (code: string, label: string) => requirements.set(code, requirement(code, label))
   try {
@@ -72,7 +66,10 @@ async function reconcileHomeUpgrade(context: RuntimeMaintenance.Context, phase: 
     for await (const environment of Environment.entries()) {
       context.signal.throwIfAborted()
       if (environment.state !== "idle" || environment.allocation !== undefined)
-        add("environment_allocation_retained", "Reconcile the original allocation before recovering this Home upgrade")
+        add(
+          "environment_allocation_retained",
+          "Reconcile the original allocation before recovering this native operation",
+        )
     }
     for await (const use of Environment.useEntries()) {
       context.signal.throwIfAborted()
@@ -125,17 +122,14 @@ async function reconcileHomeUpgrade(context: RuntimeMaintenance.Context, phase: 
   if (requirements.size)
     throw new RuntimeMaintenance.Blocked({
       maintenanceID: held.maintenanceID,
-      message: "Native Environment ownership still blocks this Home upgrade",
+      message: "Native Environment ownership still blocks this native operation",
       requirements: [...requirements.values()],
     })
-  const after =
-    phase === "released"
-      ? await RuntimeMaintenance.assertReleased(context.lease)
-      : phase === "releasing"
-        ? await RuntimeMaintenance.assertReleasing(context.lease)
-        : await RuntimeMaintenance.assertHeld(context.lease)
+  const after = await RuntimeMaintenance.assertNativeReconciliation(context.lease, phase)
   if (JSON.stringify(after) !== JSON.stringify(held))
-    throw new RuntimeMaintenance.Blocked({ message: "Cold Environment inspection changed its original Home operation" })
+    throw new RuntimeMaintenance.Blocked({
+      message: "Cold Environment inspection changed its original native operation",
+    })
 }
 
 export function registerEnvironmentMaintenanceOwner() {
@@ -174,13 +168,13 @@ export function registerEnvironmentMaintenanceOwner() {
           ? await RuntimeMaintenance.operation(context.maintenanceID)
           : undefined
       if (held?.version === 2 && held.phase === "released") {
-        await reconcileHomeUpgrade(context, "released")
+        await reconcileNativeOperation(context, "released")
         return []
       }
       return inspect(context.signal)
     },
-    reconcileFrozen: (context) => reconcileHomeUpgrade(context, "frozen"),
-    reconcileReleasing: (context) => reconcileHomeUpgrade(context, "releasing"),
+    reconcileFrozen: (context) => reconcileNativeOperation(context, "frozen"),
+    reconcileReleasing: (context) => reconcileNativeOperation(context, "releasing"),
     async release(context) {
       context.signal.throwIfAborted()
     },

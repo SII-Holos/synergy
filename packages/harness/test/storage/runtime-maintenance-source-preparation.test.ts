@@ -134,7 +134,7 @@ async function sourceOwner(home: string, target: Awaited<ReturnType<typeof targe
           return []
         },
         async reconcileFrozen(context) {
-          expect((await RuntimeMaintenance.assertHeld(context.lease)).phase).toBe("frozen")
+          expect((await RuntimeMaintenance.assertNativeReconciliation(context.lease, "frozen")).phase).toBe("frozen")
           source.assert()
           reconciled++
         },
@@ -208,6 +208,14 @@ test("the original Source preparation cold cap preserves its real native operati
     RuntimeMaintenance.withSourcePreparationRecovery({ requestID: actor.requestID }, async (lease) => {
       expired = lease
       expect(await RuntimeMaintenance.assertHeld(lease)).toEqual(frozen)
+      expect(await RuntimeMaintenance.assertNativeReconciliation(lease, "frozen")).toEqual(frozen)
+      for (const phase of ["releasing", "released"] as const)
+        await expect(RuntimeMaintenance.assertNativeReconciliation(lease, phase)).rejects.toBeInstanceOf(
+          RuntimeMaintenance.Blocked,
+        )
+      await expect(RuntimeMaintenance.assertNativeReconciliation({ ...lease }, "frozen")).rejects.toBeInstanceOf(
+        RuntimeMaintenance.Blocked,
+      )
       expect(frozen.sourceRuntimeID).not.toBe(cold.context.id)
       await RuntimeMaintenance.withFrozen(lease, async () => {
         expect(await Storage.read(identityKey)).toMatchObject({ orgID: "original-organization" })
@@ -225,6 +233,9 @@ test("the original Source preparation cold cap preserves its real native operati
   await expect(cold.run(() => RuntimeMaintenance.assertHeld(expired!))).rejects.toBeInstanceOf(
     RuntimeMaintenance.Blocked,
   )
+  await expect(
+    cold.run(() => RuntimeMaintenance.assertNativeReconciliation(expired!, "frozen")),
+  ).rejects.toBeInstanceOf(RuntimeMaintenance.Blocked)
 })
 
 test("an existing legacy backup hold cannot acquire a new Source preparation witness", async () => {
@@ -240,7 +251,11 @@ test("an existing legacy backup hold cannot acquire a new Source preparation wit
         requestID: actor.requestID,
         actor,
       })
-      return RuntimeMaintenance.freeze(lease, await RuntimeMaintenance.drain(lease))
+      const frozen = await RuntimeMaintenance.freeze(lease, await RuntimeMaintenance.drain(lease))
+      await expect(RuntimeMaintenance.assertNativeReconciliation(lease, "frozen")).rejects.toBeInstanceOf(
+        RuntimeMaintenance.Blocked,
+      )
+      return frozen
     })
     expect(original.version).toBe(1)
   } finally {

@@ -120,13 +120,13 @@ async function native(home: string, version = 1, nativeOwners = false) {
         },
         inspect,
         async reconcileFrozen(current) {
-          if ((await RuntimeMaintenance.assertHeld(current.lease)).phase !== "frozen")
+          if ((await RuntimeMaintenance.assertNativeReconciliation(current.lease, "frozen")).phase !== "frozen")
             throw new Error("Cold native inspection requires the original frozen operation")
           if ((await inspect()).length) throw new Error("The native writer is still active")
           reconciled++
         },
         async reconcileReleasing(current) {
-          await RuntimeMaintenance.assertReleasing(current.lease)
+          await RuntimeMaintenance.assertNativeReconciliation(current.lease, "releasing")
           if ((await inspect()).length) throw new Error("The original releasing writer is still active")
           reconciled++
         },

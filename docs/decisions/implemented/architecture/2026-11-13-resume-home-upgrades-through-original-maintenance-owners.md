@@ -14,6 +14,8 @@ Cold recovery accepts a request identifier only as a locator. The Kernel reads t
 
 The recovered lease retains the complete expected operation. Only the Kernel's own exact compare-and-swap transitions can advance that expectation. A lost commit acknowledgement accepts only the original or exactly intended row. Another row, changed cohort, replaced primary, missing original drainage or retired source remains blocked. The lease expires when its callback ends.
 
+Workspace operations, mounts and Environment inventories share the Kernel's original native reconciliation assertion. It accepts the actual Home-upgrade binding in its exact phase, an actual version-three Source-preparation binding only while frozen, or the original frozen retirement-source capability issued from its verified durable Reference. It grants no release or retirement authority to Source preparation. Complete canonical inventories and the post-inspection operation check remain mandatory; an ordinary backup lease or copied metadata cannot select this path. See the [cold inventory postmortem](../../../postmortem/0187-cold-inventory-assumed-home-upgrade-purpose.md).
+
 ## Alternatives considered
 
 **Create another operation or replace the source Runtime identity.** This loses the continuity of the original maintenance decision and can strand its holds.

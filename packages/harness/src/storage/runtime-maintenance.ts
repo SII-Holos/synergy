@@ -1317,6 +1317,24 @@ export namespace RuntimeMaintenance {
       throw new Blocked({ message: "Native owner inspection requires its current retained operation" })
     return info
   }
+  export async function assertNativeReconciliation(lease: Lease, phase: "frozen" | "releasing" | "released") {
+    const held = identity(lease)
+    const info = await Storage.snapshot((tx) => requireCurrent(tx, lease))
+    const retirement = held.resumed && info.purpose === "organization-backup" && phase === "frozen"
+    const native =
+      info.version === 2 && info.purpose === "organization-home-upgrade"
+        ? held.homeUpgrade?.native
+        : info.version === 3 && info.purpose === "organization-backup" && phase === "frozen"
+          ? held.sourcePreparation?.native
+          : undefined
+    if (
+      info.phase !== phase ||
+      (!retirement && (info.version === 1 || !native || digest(info.native) !== digest(native))) ||
+      identity(lease) !== held
+    )
+      throw new Blocked({ message: "Native reconciliation requires its original operation and exact phase" })
+    return info
+  }
   export async function assertSourcePreparationFrozen(lease: Lease): Promise<() => void> {
     if (Storage.inTransaction())
       throw new Blocked({ message: "Source preparation capture requires its native boundary" })

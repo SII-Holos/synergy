@@ -219,13 +219,13 @@ export namespace WorkspaceOperations {
             ? await RuntimeMaintenance.operation(context.maintenanceID)
             : undefined
         if (held?.version === 2 && held.phase === "released") {
-          await reconcileHomeUpgrade(context, "released")
+          await reconcileNativeOperation(context, "released")
           return []
         }
         return inspectMaintenance(context.signal)
       },
-      reconcileFrozen: (context) => reconcileHomeUpgrade(context, "frozen"),
-      reconcileReleasing: (context) => reconcileHomeUpgrade(context, "releasing"),
+      reconcileFrozen: (context) => reconcileNativeOperation(context, "frozen"),
+      reconcileReleasing: (context) => reconcileNativeOperation(context, "releasing"),
       async release(context) {
         context.signal.throwIfAborted()
       },
@@ -243,7 +243,7 @@ export namespace WorkspaceOperations {
 
   async function inspectMaintenance(
     signal: AbortSignal,
-    homeUpgrade = false,
+    completeInventory = false,
   ): Promise<RuntimeMaintenance.Requirement[]> {
     signal.throwIfAborted()
     const requirements = new Map<string, RuntimeMaintenance.Requirement>()
@@ -256,7 +256,7 @@ export namespace WorkspaceOperations {
       if (info.state !== "completed" && info.state !== "failed")
         add("workspace_save_unsettled", "Confirm the original Workspace mutation receipt, checkpoint and use release")
     }
-    if (homeUpgrade) {
+    if (completeInventory) {
       for await (const row of Storage.records({ prefix: ["workspace_operation"], limit: 128 })) {
         signal.throwIfAborted()
         const info = Info.parse(row.value)
@@ -268,17 +268,11 @@ export namespace WorkspaceOperations {
     }
     return [...requirements.values()]
   }
-  async function reconcileHomeUpgrade(context: RuntimeMaintenance.Context, phase: "frozen" | "releasing" | "released") {
-    const held =
-      phase === "released"
-        ? await RuntimeMaintenance.assertReleased(context.lease)
-        : phase === "releasing"
-          ? await RuntimeMaintenance.assertReleasing(context.lease)
-          : await RuntimeMaintenance.assertHeld(context.lease)
-    if (held.version !== 2 || held.purpose !== "organization-home-upgrade" || held.phase !== phase)
-      throw new RuntimeMaintenance.Blocked({
-        message: "Cold Workspace inspection requires its original Home upgrade phase",
-      })
+  async function reconcileNativeOperation(
+    context: RuntimeMaintenance.Context,
+    phase: "frozen" | "releasing" | "released",
+  ) {
+    const held = await RuntimeMaintenance.assertNativeReconciliation(context.lease, phase)
     let requirements: RuntimeMaintenance.Requirement[]
     try {
       requirements = await inspectMaintenance(context.signal, true)
@@ -306,14 +300,11 @@ export namespace WorkspaceOperations {
         message: "Original Workspace operations still require native settlement",
         requirements,
       })
-    const after =
-      phase === "released"
-        ? await RuntimeMaintenance.assertReleased(context.lease)
-        : phase === "releasing"
-          ? await RuntimeMaintenance.assertReleasing(context.lease)
-          : await RuntimeMaintenance.assertHeld(context.lease)
+    const after = await RuntimeMaintenance.assertNativeReconciliation(context.lease, phase)
     if (JSON.stringify(after) !== JSON.stringify(held))
-      throw new RuntimeMaintenance.Blocked({ message: "Cold Workspace inspection changed its original Home operation" })
+      throw new RuntimeMaintenance.Blocked({
+        message: "Cold Workspace inspection changed its original native operation",
+      })
   }
 
   export async function get(id: string, scopeID: string): Promise<Info> {
