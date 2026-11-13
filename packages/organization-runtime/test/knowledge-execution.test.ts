@@ -2,6 +2,7 @@ import { expect, test } from "bun:test"
 import { createHash } from "node:crypto"
 import { z } from "zod"
 import { Session } from "@ericsanchezok/synergy-harness/session"
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { SessionContextContributions } from "@ericsanchezok/synergy-harness/session/context-contributions"
 import type { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
@@ -45,7 +46,7 @@ test("signed machine knowledge reads selected versions and fences removed select
         const ctx: Tool.Context = {
           sessionID: f.sessionID,
           messageID: "tool-message",
-          agent: "atlas",
+          agent: PrimaryAgentIdentity.names.general,
           abort: new AbortController().signal,
           metadata() {},
           async ask() {},
@@ -171,7 +172,7 @@ test("an applied Skill update preserves the authorized load awaiting permission 
         const ctx: Tool.Context = {
           sessionID: f.sessionID,
           messageID: "knowledge-boundary-tool",
-          agent: "atlas",
+          agent: PrimaryAgentIdentity.names.general,
           abort: new AbortController().signal,
           metadata() {},
           async ask() {
