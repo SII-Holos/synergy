@@ -1,3 +1,4 @@
+import { ProcessRegistry } from "@ericsanchezok/synergy-harness/process/registry"
 import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { expect, spyOn, test } from "bun:test"
 import { testRuntime } from "../support/runtime"
@@ -247,3 +248,70 @@ test("a submitted native operation cannot first start after its Session pauses d
     })
   })
 }, 15_000)
+
+test.skipIf(process.platform === "win32")(
+  "explicit background Bash returns its native process before stdin completes",
+  async () => {
+    await using runtime = await testRuntime()
+    await runtime.run(async () => {
+      await using directory = await tmpdir()
+      await ScopeContext.provide({
+        scope: await directory.scope(),
+        workspace: null,
+        fn: async () => {
+          const session = await Session.create({ workspace: null, controlProfile: "full_access" })
+          const controller = new AbortController()
+          const command = "printf BACKGROUND_READY; read original_input; printf '%s' \"$original_input\""
+          let process: ReturnType<typeof ProcessRegistry.get>
+          const pending = withBashOrigin(session, "explicit-background", async (messageID) =>
+            (await BashTool.init()).execute(
+              { command, background: true },
+              {
+                sessionID: session.id,
+                messageID,
+                callID: "explicit-background",
+                agent: PrimaryAgentIdentity.names.general,
+                abort: controller.signal,
+                environmentID: session.environmentID,
+                extra: { shellAuthorizationResolved: true, shellBypassSandbox: true, controlProfile: "full_access" },
+                metadata() {},
+                async ask() {
+                  throw new Error("Unexpected permission request for the owned background fixture")
+                },
+              },
+            ),
+          )
+          const settled = pending.then((result) => ({ kind: "returned" as const, result }))
+          try {
+            const deadline = Date.now() + 4000
+            for (;;) {
+              for (const entry of ProcessRegistry.listActive()) {
+                if (entry.command === command) process = ProcessRegistry.get(entry.id)
+              }
+              if (process?.output.includes("BACKGROUND_READY")) break
+              if (Date.now() >= deadline) throw new Error("The actual background child did not reach its stdin barrier")
+              await Bun.sleep(5)
+            }
+            const timeout = Promise.withResolvers<{ kind: "still_waiting" }>()
+            const timer = setTimeout(() => timeout.resolve({ kind: "still_waiting" }), 200)
+            const outcome = await Promise.race([settled, timeout.promise]).finally(() => clearTimeout(timer))
+            expect(outcome.kind).toBe("returned")
+            if (outcome.kind !== "returned") throw new Error("The public background option still waited for stdin")
+            expect(outcome.result.metadata).toMatchObject({ background: true, processId: process!.id })
+            expect(process!.exited).toBe(false)
+            const operations = await Storage.list(["environment_execution", session.scope.id])
+            expect(operations).toHaveLength(1)
+            expect(await EnvironmentExecution.get(operations[0][2], session.scope.id)).toMatchObject({
+              state: "running",
+            })
+          } finally {
+            controller.abort(new Error("Owned background behavior test finished"))
+            if (process && !process.exited) await ProcessRegistry.terminate(process)
+            await pending
+          }
+        },
+      })
+    })
+  },
+  15_000,
+)

@@ -883,6 +883,10 @@ export namespace LocalBashBackend {
     ctx.abort.addEventListener("abort", abortHandler, { once: true })
 
     const autoBackground = new Promise<"background">((resolve) => {
+      if (params.background) {
+        resolve("background")
+        return
+      }
       if (yieldSeconds <= 0) return
       autoBackgroundTimer = setTimeout(() => {
         if (!exited) resolve("background")
@@ -901,7 +905,7 @@ export namespace LocalBashBackend {
         owned?.detachSignal()
         ProcessRegistry.markBackgrounded(regProc)
         return {
-          title: `[Auto-Background] ${ctx.workBrief?.trim() || params.command}`,
+          title: `[${params.background ? "Background" : "Auto-Background"}] ${ctx.workBrief?.trim() || params.command}`,
           metadata: {
             output: truncateMetadataOutput(regProc.output),
             description: ctx.workBrief?.trim() || params.command,
@@ -909,7 +913,9 @@ export namespace LocalBashBackend {
             background: true,
           },
           output: warnOutput(
-            `Command auto-backgrounded after ${yieldSeconds}s.\n\n` +
+            (params.background
+              ? "Command started in background.\n\n"
+              : `Command auto-backgrounded after ${yieldSeconds}s.\n\n`) +
               `Process ID: ${regProc.id}\n` +
               `Command: ${params.command}\n` +
               `Status: running\n\n` +
