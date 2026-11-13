@@ -33,7 +33,7 @@ Expose composition through `./component`; registration remains side-effect free 
 
 Native release preparation uploads each built PTY target with its verified receipt. Build identity includes builder, native sources and libc target; CI transfers full PTY output and watcher assets.
 
-Use `file/view`; Formatter advances observations. SessionReadSource gates native Session history before lookup.
+Use `file/view`; Formatter advances observations. SessionReadSource/ProcessAccessSource gate reads before lookup.
 
 Trusted transfers use `workspace-file/service`: imports accept stable operation IDs; `serveFile` accepts byte limits. Streams retain Runtime/resources after request return until read completion, cancellation or Workspace disposal. Run SQLite/PG `managed-transfer.test.ts` and native lifetime verification.
 

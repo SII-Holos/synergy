@@ -190,6 +190,7 @@
     "./session/recovery": "./src/session/recovery.ts",
     "./session/rollout/query": "./src/session/rollout/query.ts",
     "./process/registry": "./src/process/registry.ts",
+    "./process/access-source": "./src/process/access-source.ts",
     "./global/standalone-installation": "./src/global/standalone-installation.ts",
     "./config/markdown": "./src/config/markdown.ts",
     "./instruction/source-provider": "./src/instruction/source-provider.ts",

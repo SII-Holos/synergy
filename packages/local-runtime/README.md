@@ -2,6 +2,8 @@
 
 `@ericsanchezok/synergy-local-runtime` composes the harness with local filesystem/process tools, workspace handling, skills, commands and interactive questions. It does not import the HTTP server or desktop product modules.
 
+Registered `ProcessAccessSource` compositions authorize Process enumeration, output and controls through the same finite callback. Native recording supplies original producer metadata; the source owns current caller access. Unregistered personal use retains existing behavior, and uncertain dispatched controls report structured unknown outcome. Verify `test/tools/process-ownership.test.ts`; see [composition-owned controls](../../docs/decisions/implemented/architecture/2026-11-13-resolve-process-controls-through-composition-owned-access.md).
+
 `openLocalRuntime({ mode: "oneshot" })` registers local capabilities and acquires the harness lifecycle handle. Await `close()` or use `await using` to drain sessions, worker pools, child processes and telemetry before releasing the isolated home. Lifecycle implementation belongs to `@ericsanchezok/synergy-harness/lifecycle`.
 
 `createLocalClient(handle, { scopeID })` (or an explicit directory selector) provides the session, event, permission and question operations used by the CLI. The client enters its supplied Runtime and resolves its Scope for each operation. HTTP routes delegate session creation, input and command submission to the same `session-api` functions; remote CLI calls continue to use the SDK.

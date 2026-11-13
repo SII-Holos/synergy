@@ -6,6 +6,8 @@ The public `storage/queue` scope propagates an operation's original cancellation
 
 Process sampling preserves an existing tracked close completion after physical child exit. The original close owner records terminal status after output and recording tails; stale-PID recovery applies only without that owner. Verify `test/process/registry.test.ts`; see [tracked completion](../../docs/decisions/implemented/bug-fix/2026-11-13-preserve-tracked-process-close-ownership-during-sampling.md).
 
+`process/access-source` gives a composition finite Process access from its actual Session Rollout. Registry ownership is detached original recording metadata; the source must verify canonical caller and producer facts and current authority. Personal compositions preserve existing behavior. Verify `test/process/access-source.test.ts`; see [composition-owned controls](../../docs/decisions/implemented/architecture/2026-11-13-resolve-process-controls-through-composition-owned-access.md).
+
 Run `bun run typecheck`, `bun run test`, and `bun run build` from this package.
 
 Model SDK implementations belong to `local-runtime`. Research hosts register `ProviderSdkSource` with synchronous and asynchronous factory loaders; SDK access before registration fails explicitly. The `ai` engine remains a harness dependency and itself includes the Gateway adapter transitively.
