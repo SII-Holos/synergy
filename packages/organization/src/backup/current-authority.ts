@@ -1,4 +1,5 @@
 import path from "node:path"
+import fs from "node:fs/promises"
 import { createHash } from "node:crypto"
 import { z } from "zod"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
@@ -206,15 +207,40 @@ export namespace OrganizationCurrentAuthority {
         assertOwner()
         return SnapshotMaintenance.withCapture(
           async (capture) => {
-            const archive = await capture.exportArchive({
-              directory: path.join(directory, "records"),
-              archiveID: crypto.randomUUID(),
-              namespaceID,
-              buildVersion,
-              keys,
-              protect: () => true,
-              signal,
-            })
+            const recordsDirectory = path.join(directory, "records")
+            const nativeDirectory = path.join(directory, "native")
+            const present = async (directory: string) =>
+              fs.lstat(directory).catch((error: NodeJS.ErrnoException) => {
+                if (error.code !== "ENOENT") throw error
+              })
+            const records = await present(recordsDirectory)
+            const nativeFacet = await present(nativeDirectory)
+            if (records || nativeFacet) {
+              await RuntimeMaintenance.assertSourcePreparationFrozen(lease)
+              const parent = await fs.lstat(directory)
+              if (
+                !parent.isDirectory() ||
+                parent.isSymbolicLink() ||
+                (await fs.realpath(directory)) !== directory ||
+                (records && (!records.isDirectory() || records.isSymbolicLink())) ||
+                (nativeFacet && (!nativeFacet.isDirectory() || nativeFacet.isSymbolicLink())) ||
+                !records
+              )
+                fail("incomplete native facets require their original preparation owner")
+            }
+            const archive = records
+              ? await capture.reopenSourcePreparationArchive({ lease, directory: recordsDirectory, keys, signal })
+              : await capture.exportArchive({
+                  directory: path.join(directory, "records"),
+                  archiveID: crypto.randomUUID(),
+                  namespaceID,
+                  buildVersion,
+                  keys,
+                  protect: () => true,
+                  signal,
+                })
+            if (archive.namespace.namespaceID !== namespaceID)
+              fail("captured namespace has another native service identity")
             const evidence = await capture.validateArchive(archive, { signal })
             const native = await Native.capture({
               archive: evidence,

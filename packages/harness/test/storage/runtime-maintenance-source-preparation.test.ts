@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test"
+import fs from "node:fs/promises"
 import path from "node:path"
 import { createHash } from "node:crypto"
 import { RuntimeContext } from "../../src/lifecycle/context"
@@ -6,6 +7,8 @@ import { HomeOwnership } from "../../src/lifecycle/home-ownership"
 import { HomeOwnershipFile } from "../../src/lifecycle/home-ownership-file"
 import { NativeNamespaceIdentity } from "../../src/lifecycle/namespace-identity"
 import { RuntimeMaintenance } from "../../src/storage/runtime-maintenance"
+import { StorageCheckpoint } from "../../src/storage/checkpoint"
+import { SnapshotMaintenance } from "../../src/session/snapshot-maintenance"
 import { Storage } from "../../src/storage/storage"
 import { TransactionalStore } from "../../src/storage/transactional-store"
 import { ServerProcessLock } from "../../src/util/server-process-lock"
@@ -27,6 +30,15 @@ const actor = {
   displayName: "Native operator",
   clientKind: "system" as const,
   requestID: "original-source-preparation",
+}
+const archiveKeys = {
+  async current() {
+    return { version: "source-preparation", key: Buffer.alloc(32, 73) }
+  },
+  async resolve(version: string) {
+    if (version !== "source-preparation") throw new Error("Unexpected test recovery key version")
+    return Buffer.alloc(32, 73)
+  },
 }
 
 async function primary(home: string, namespace: string) {
@@ -293,4 +305,122 @@ test("a live Source preparation capability rejects a rebound canonical actor wit
     expect({ admitted, rejected }).toEqual({ admitted: false, rejected: true })
     expect(await RuntimeMaintenance.status()).toEqual(rebound)
   })
+})
+
+test("only the original cold Source preparation can reopen its unchanged archive and its evidence expires with that frame", async () => {
+  await using directory = await runtimeHome()
+  const sourceHome = path.join(directory.host.home, "source")
+  const targetHome = path.join(directory.host.home, "target")
+  await using target = await targetOwner(targetHome)
+  const source = await sourceOwner(sourceHome, target)
+  let original: { directory: string; namespace: Readonly<StorageCheckpoint.Manifest> }
+  try {
+    original = await source.run(async () => {
+      const lease = await RuntimeMaintenance.beginSourcePreparation({ requestID: actor.requestID, actor })
+      await RuntimeMaintenance.freeze(lease, await RuntimeMaintenance.drain(lease))
+      return RuntimeMaintenance.withFrozen(lease, () =>
+        SnapshotMaintenance.withCapture(async (capture) =>
+          capture.exportArchive({
+            directory: path.join(await fs.realpath(directory.host.home), "records"),
+            archiveID: "original-source-records",
+            namespaceID: "source-preparation-records",
+            buildVersion: "fixture",
+            keys: archiveKeys,
+            protect: () => true,
+          }),
+        ),
+      )
+    })
+  } finally {
+    await source.close()
+    await target.close()
+  }
+  const before = await Bun.file(path.join(original.directory, "records.ndjson")).bytes()
+  await using reopenedTarget = await targetOwner(targetHome)
+  await using cold = await sourceOwner(sourceHome, reopenedTarget)
+  let expired: SnapshotMaintenance.ArchiveEvidence | undefined
+  let escaped: (() => void) | undefined
+  await cold.run(() =>
+    RuntimeMaintenance.withSourcePreparationRecovery({ requestID: actor.requestID }, (lease) =>
+      SnapshotMaintenance.withCapture(async (capture) => {
+        let reopened: { directory: string; namespace: Readonly<StorageCheckpoint.Manifest> } | undefined
+        await RuntimeMaintenance.withFrozen(lease, async () => {
+          escaped = await RuntimeMaintenance.assertSourcePreparationFrozen(lease)
+          await reopenedTarget.run(async () => {
+            expect(escaped).toThrow(RuntimeMaintenance.Blocked)
+          })
+          await expect(
+            capture.reopenSourcePreparationArchive({
+              lease: { ...lease },
+              directory: original.directory,
+              keys: archiveKeys,
+            }),
+          ).rejects.toBeInstanceOf(RuntimeMaintenance.Blocked)
+          const archive = await capture.reopenSourcePreparationArchive({
+            lease,
+            directory: original.directory,
+            keys: archiveKeys,
+          })
+          reopened = archive
+          expect(archive.namespace).toEqual(original.namespace)
+          await expect(
+            capture.validateArchive({ directory: archive.directory, namespace: archive.namespace }),
+          ).rejects.toThrow("own exported archive")
+          const evidence = await capture.validateArchive(archive)
+          expired = evidence
+          expect(SnapshotMaintenance.assertArchive(evidence).namespace.archiveID).toBe("original-source-records")
+        })
+        if (!expired || !reopened) throw new Error("The original Source frame did not provide its real archive")
+        expect(() => SnapshotMaintenance.assertArchive(expired!)).toThrow(RuntimeMaintenance.Blocked)
+        await expect(capture.validateArchive(reopened)).rejects.toBeInstanceOf(RuntimeMaintenance.Blocked)
+      }),
+    ),
+  )
+  if (!expired || !escaped) throw new Error("The actual Source did not provide its original capture evidence")
+  await cold.run(async () => {
+    expect(escaped).toThrow(RuntimeMaintenance.Blocked)
+    expect(() => SnapshotMaintenance.assertArchive(expired!)).toThrow()
+  })
+  expect(await Bun.file(path.join(original.directory, "records.ndjson")).bytes()).toEqual(before)
+})
+
+test("Source archive reopening rejects a real legacy frozen lease and a changed current namespace", async () => {
+  await using directory = await runtimeHome()
+  await using target = await targetOwner(path.join(directory.host.home, "target"))
+  for (const legacy of [false, true]) {
+    await using source = await sourceOwner(path.join(directory.host.home, legacy ? "legacy" : "source"), target)
+    await source.run(async () => {
+      await Storage.write(["source-archive", "body"], "original source body")
+      const lease = legacy
+        ? await RuntimeMaintenance.begin({ purpose: "organization-backup", requestID: actor.requestID, actor })
+        : await RuntimeMaintenance.beginSourcePreparation({ requestID: actor.requestID, actor })
+      await RuntimeMaintenance.freeze(lease, await RuntimeMaintenance.drain(lease))
+      await RuntimeMaintenance.withFrozen(lease, () =>
+        SnapshotMaintenance.withCapture(async (capture) => {
+          const archive = await capture.exportArchive({
+            directory: path.join(await fs.realpath(directory.host.home), legacy ? "legacy-records" : "records"),
+            archiveID: "original-source-records",
+            namespaceID: "source-preparation-records",
+            buildVersion: "fixture",
+            keys: archiveKeys,
+            protect: () => true,
+          })
+          const before = await Bun.file(path.join(archive.directory, "records.ndjson")).bytes()
+          if (legacy) {
+            await expect(
+              capture.reopenSourcePreparationArchive({ lease, directory: archive.directory, keys: archiveKeys }),
+            ).rejects.toBeInstanceOf(RuntimeMaintenance.Blocked)
+          } else {
+            await source.store.transaction((tx) =>
+              tx.write(["source-archive", "body"], "changed actual current source"),
+            )
+            await expect(
+              capture.reopenSourcePreparationArchive({ lease, directory: archive.directory, keys: archiveKeys }),
+            ).rejects.toThrow("actual source facts differ")
+          }
+          expect(await Bun.file(path.join(archive.directory, "records.ndjson")).bytes()).toEqual(before)
+        }),
+      )
+    })
+  }
 })

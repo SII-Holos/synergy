@@ -1,13 +1,10 @@
-import fs from "node:fs/promises"
-import os from "node:os"
-import path from "node:path"
 import { createHash } from "node:crypto"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { HomeRestoration } from "@ericsanchezok/synergy-harness/lifecycle/home-restoration"
 import { RuntimeMaintenance } from "@ericsanchezok/synergy-harness/storage/runtime-maintenance"
 import { AuthorityJournal } from "@ericsanchezok/synergy-harness/storage/authority-journal"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
-import { StoragePortable } from "@ericsanchezok/synergy-harness/storage/portable"
+import { SnapshotMaintenance } from "@ericsanchezok/synergy-harness/session/snapshot-maintenance"
 import { StorageCheckpoint } from "@ericsanchezok/synergy-harness/storage/checkpoint"
 import type { VaultKeyProvider } from "@ericsanchezok/synergy-harness/secrets/encrypted-store"
 import { OrganizationServiceNative as Native } from "./service-native"
@@ -268,24 +265,11 @@ export namespace OrganizationPendingSource {
     assert: () => void,
     signal?: AbortSignal,
   ) {
-    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "source-h1-comparison-"))
     try {
-      const filename = path.join(directory, "current.ndjson")
-      await Storage.withArtifactCheckpoint((checkpoint) => checkpoint.exportPortable(filename), { signal })
-      const current = StoragePortable.entries(filename)
-      try {
-        for await (const entry of StorageCheckpoint.entries({ ...namespace, keys, signal })) {
-          assert()
-          const next = await current.next()
-          if (next.done || hash(next.value) !== hash(entry)) fail("actual source facts differ from fixed H1")
-        }
-        if (!(await current.next()).done) fail("actual source has additional facts after fixed H1")
-        assert()
-      } finally {
-        await current.return(undefined)
-      }
-    } finally {
-      await fs.rm(directory, { recursive: true, force: true })
+      await SnapshotMaintenance.compareNamespace(namespace, keys, assert, signal)
+    } catch (error) {
+      if (error instanceof SnapshotMaintenance.NamespaceMismatch) fail(error.message)
+      throw error
     }
   }
 }

@@ -1207,6 +1207,34 @@ export namespace RuntimeMaintenance {
       throw new Blocked({ message: "Native owner inspection requires its current retained operation" })
     return info
   }
+  export async function assertSourcePreparationFrozen(lease: Lease): Promise<() => void> {
+    if (Storage.inTransaction())
+      throw new Blocked({ message: "Source preparation capture requires its native boundary" })
+    const held = identity(lease)
+    const source = held.sourcePreparation
+    const frame = frozenWork.getStore()
+    const assert = () => {
+      if (
+        !source ||
+        identity(lease) !== held ||
+        held.sourcePreparation !== source ||
+        !frame?.open ||
+        frozenWork.getStore() !== frame ||
+        frame.lease !== lease ||
+        frame.runtime !== RuntimeContext.current() ||
+        frame.store !== Storage.current().store
+      )
+        throw new Blocked({ message: "Source preparation capture requires its original open frozen callback" })
+      frame.signal.throwIfAborted()
+    }
+    assert()
+    await verifyNativeOperation(lease)
+    const info = await Storage.snapshot((tx) => requireCurrent(tx, lease))
+    if (info.version !== 3 || info.purpose !== "organization-backup" || info.phase !== "frozen")
+      throw new Blocked({ message: "Source preparation capture requires its original frozen operation" })
+    assert()
+    return assert
+  }
   export async function assertReleasing(lease: Lease) {
     const info = await Storage.snapshot((tx) => requireCurrent(tx, lease))
     const upgrade = info.version === 2 && info.purpose === "organization-home-upgrade" && identity(lease).homeUpgrade

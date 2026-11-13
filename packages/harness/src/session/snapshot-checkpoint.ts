@@ -1,10 +1,16 @@
 import fs from "node:fs/promises"
+import { constants, fstatSync, lstatSync, realpathSync } from "node:fs"
+import os from "node:os"
+import { createHash } from "node:crypto"
 import path from "node:path"
 import { Database } from "bun:sqlite"
 import { Global } from "../global"
 import { RuntimeContext } from "../lifecycle/context"
 import { Storage } from "../storage/storage"
 import { StorageCheckpoint } from "../storage/checkpoint"
+import { StoragePortable } from "../storage/portable"
+import { RuntimeMaintenance } from "../storage/runtime-maintenance"
+import type { VaultKeyProvider } from "../secrets/encrypted-store"
 import { initializeSqliteEngine } from "../storage/sqlite-engine"
 import { upgradeImportedRecord } from "../migration/import"
 import { SnapshotStore } from "./snapshot-store"
@@ -16,6 +22,7 @@ import { SnapshotSegment } from "./snapshot-segment"
 import { SnapshotCaptureAuthority as Authority } from "./snapshot-capture-authority"
 
 export namespace SnapshotCheckpoint {
+  export class NamespaceMismatch extends Error {}
   export type Owner = Authority.Owner
   export interface Archive {
     readonly directory: string
@@ -34,6 +41,12 @@ export namespace SnapshotCheckpoint {
   export interface Capture {
     exportArchive(input: Parameters<typeof StorageCheckpoint.exportArchive>[0]): Promise<Archive>
     validateArchive(archive: Archive, options?: { signal?: AbortSignal }): Promise<ArchiveEvidence>
+    reopenSourcePreparationArchive(input: {
+      lease: RuntimeMaintenance.Lease
+      directory: string
+      keys: VaultKeyProvider
+      signal?: AbortSignal
+    }): Promise<Archive>
     exportSnapshots(input: {
       archive: Archive
       directory: string
@@ -100,6 +113,35 @@ export namespace SnapshotCheckpoint {
     await Promise.allSettled(current.pending)
   }
 
+  export async function compareNamespace(
+    namespace: { directory: string; expected: StorageCheckpoint.Manifest },
+    keys: VaultKeyProvider,
+    assert: () => void,
+    signal?: AbortSignal,
+  ) {
+    const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex")
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "source-h1-comparison-"))
+    try {
+      const filename = path.join(directory, "current.ndjson")
+      await Storage.withArtifactCheckpoint((checkpoint) => checkpoint.exportPortable(filename), { signal })
+      const current = StoragePortable.entries(filename)
+      try {
+        for await (const entry of StorageCheckpoint.entries({ ...namespace, keys, signal })) {
+          assert()
+          const next = await current.next()
+          if (next.done || digest(next.value) !== digest(entry))
+            throw new NamespaceMismatch("actual source facts differ from fixed H1")
+        }
+        if (!(await current.next()).done)
+          throw new NamespaceMismatch("actual source has additional facts after fixed H1")
+        assert()
+      } finally {
+        await current.return(undefined)
+      }
+    } finally {
+      await fs.rm(directory, { recursive: true, force: true })
+    }
+  }
   async function capture<T>(body: (capture: Capture) => Promise<T>, signal: AbortSignal): Promise<T> {
     if (Storage.inTransaction()) fail("Snapshot capture must begin outside a storage transaction")
     const runtime = RuntimeContext.current()
@@ -117,6 +159,8 @@ export namespace SnapshotCheckpoint {
     const readers = new Set<{ close?: () => Promise<void> }>()
     const archives = new WeakMap<Archive, Database>()
     const archiveKeys = new WeakMap<Archive, Parameters<typeof StorageCheckpoint.exportArchive>[0]["keys"]>()
+    const archiveGuards = new WeakMap<Archive, () => void>()
+    const directories: Array<Awaited<ReturnType<typeof fs.open>>> = []
     const indexes: { database: Database; directory: string }[] = []
     function assertCurrent() {
       if (
@@ -170,6 +214,7 @@ export namespace SnapshotCheckpoint {
       sessionID: string,
       owner: SnapshotStore.Owner,
       signal: AbortSignal,
+      guard: () => void = assertCurrent,
     ) {
       const source = layout(database, scopeID, owner)
       if (source === "stored")
@@ -178,9 +223,9 @@ export namespace SnapshotCheckpoint {
             "SELECT root FROM roots WHERE scope=? AND id=? ORDER BY root",
           )
           for (const value of roots.iterate(scopeID, owner.retentionID)) {
-            assertCurrent()
+            guard()
             yield value.root
-            assertCurrent()
+            guard()
           }
         }
       if (source === "legacy")
@@ -190,7 +235,7 @@ export namespace SnapshotCheckpoint {
             ["cat-file", "--batch-all-objects", "--batch-check=%(objectname) %(objecttype)"],
             { signal },
           )) {
-            assertCurrent()
+            guard()
             const [root, type] = line.split(" ")
             if (!SnapshotStore.OID.test(root)) fail("Captured legacy Snapshot object identity is invalid")
             if (type === "tree") yield root
@@ -210,6 +255,14 @@ export namespace SnapshotCheckpoint {
       const exportSignal = input.signal ? AbortSignal.any([scopeSignal, input.signal]) : scopeSignal
       const namespace = await StorageCheckpoint.exportArchive({ ...input, signal: exportSignal })
       assertCurrent()
+      return indexed({ directory: input.directory, keys: input.keys, signal: exportSignal }, namespace)
+    }
+    async function indexed(
+      input: { directory: string; keys: VaultKeyProvider; signal: AbortSignal },
+      namespace: StorageCheckpoint.Manifest,
+      guard: () => void = assertCurrent,
+    ) {
+      const exportSignal = input.signal
       const namespaceProof = Object.freeze({ ...namespace, records: Object.freeze({ ...namespace.records }) })
       const root = path.join(Global.Path.cache, "snapshot-checkpoints")
       await fs.mkdir(root, { recursive: true, mode: 0o700 })
@@ -233,7 +286,7 @@ export namespace SnapshotCheckpoint {
         expected: namespace,
         signal: exportSignal,
       })) {
-        assertCurrent()
+        guard()
         if (entry.type !== "record") continue
         const key = entry.key
         const header = Content.headerIdentity(key)
@@ -256,7 +309,7 @@ export namespace SnapshotCheckpoint {
         } else if (key.length === 7 && key[0] === "sessions" && key[3] === "messages" && key[5] === "parts")
           for (const root of SnapshotRecords.partRoots(entry.value)) partInsert.run(key[1], key[2], root)
       }
-      assertCurrent()
+      guard()
       database.exec(
         "DELETE FROM roots WHERE canonical=0 AND EXISTS(SELECT 1 FROM fences f WHERE f.scope=roots.scope AND f.id=roots.id AND (f.root='all' OR f.root=roots.root))",
       )
@@ -272,8 +325,8 @@ export namespace SnapshotCheckpoint {
           owner,
           layout: layout(database, row.scope, owner),
           namespace: namespaceProof,
-          assertCurrent,
-          roots: physicalRoots(database, row.scope, row.id, owner, exportSignal),
+          assertCurrent: guard,
+          roots: physicalRoots(database, row.scope, row.id, owner, exportSignal, guard),
         })
         for await (const root of SnapshotStore.capturedRoots(proof, exportSignal)) observed.run(row.scope, row.id, root)
       }
@@ -281,7 +334,7 @@ export namespace SnapshotCheckpoint {
         "SELECT p.root FROM parts p LEFT JOIN owners o ON o.scope=p.scope AND o.id=p.id LEFT JOIN observed r ON r.scope=p.scope AND r.id=p.id AND r.root=p.root WHERE o.id IS NULL OR (o.backend<>'deleted' AND r.root IS NULL) LIMIT 1",
       )
       if (missing.get()) fail("Captured Snapshot history has a missing or unowned root")
-      assertCurrent()
+      guard()
       const archive = Object.freeze({
         directory: input.directory,
         namespace: namespaceProof,
@@ -290,7 +343,67 @@ export namespace SnapshotCheckpoint {
       archiveKeys.set(archive, input.keys)
       return archive
     }
+    async function reopened(input: {
+      lease: RuntimeMaintenance.Lease
+      directory: string
+      keys: VaultKeyProvider
+      signal?: AbortSignal
+    }): Promise<Archive> {
+      assertCurrent()
+      const assertSource = await RuntimeMaintenance.assertSourcePreparationFrozen(input.lease)
+      const signal = input.signal ? AbortSignal.any([scopeSignal, input.signal]) : scopeSignal
+      const directory = input.directory
+      if (!path.isAbsolute(directory) || (await fs.realpath(directory)) !== directory)
+        fail("Source archive requires its original canonical directory")
+      const before = await fs.lstat(directory, { bigint: true })
+      if (!before.isDirectory() || before.isSymbolicLink())
+        fail("Source archive requires its original native directory")
+      const held = await fs.open(directory, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW)
+      directories.push(held)
+      const assert = () => {
+        assertCurrent()
+        assertSource()
+        signal.throwIfAborted()
+        const physical = fstatSync(held.fd, { bigint: true })
+        const actual = lstatSync(directory, { bigint: true })
+        if (
+          !physical.isDirectory() ||
+          !actual.isDirectory() ||
+          actual.isSymbolicLink() ||
+          physical.dev !== before.dev ||
+          physical.ino !== before.ino ||
+          actual.dev !== before.dev ||
+          actual.ino !== before.ino ||
+          realpathSync(directory) !== directory
+        )
+          fail("Source archive lost its original native directory")
+      }
+      assert()
+      const keys = Object.freeze({
+        current: input.keys.current.bind(input.keys),
+        resolve: input.keys.resolve.bind(input.keys),
+      })
+      const namespace = await StorageCheckpoint.verifyArchive({ directory, keys, signal })
+      assert()
+      await compareNamespace({ directory, expected: namespace }, keys, assert, signal)
+      const archive = await indexed({ directory, keys, signal }, namespace, assert)
+      await compareNamespace({ directory, expected: namespace }, keys, assert, signal)
+      await RuntimeMaintenance.assertSourcePreparationFrozen(input.lease)
+      assert()
+      archiveGuards.set(archive, assert)
+      return archive
+    }
     const port: Capture = {
+      reopenSourcePreparationArchive(input) {
+        assertCurrent()
+        const task = reopened(input)
+        pending.add(task)
+        void task.then(
+          () => pending.delete(task),
+          () => pending.delete(task),
+        )
+        return task
+      },
       validateArchive(archive, options = {}) {
         const originalSignal = options.signal
         const signal = originalSignal ? AbortSignal.any([scopeSignal, originalSignal]) : scopeSignal
@@ -299,12 +412,14 @@ export namespace SnapshotCheckpoint {
           signal.throwIfAborted()
           const keys = archiveKeys.get(archive)
           if (!archives.has(archive) || !keys) fail("Namespace capture requires its own exported archive")
+          archiveGuards.get(archive)?.()
           await StorageCheckpoint.verifyArchive({
             directory: archive.directory,
             keys,
             expected: archive.namespace,
             signal,
           })
+          archiveGuards.get(archive)?.()
           assertCurrent()
           signal.throwIfAborted()
           const proof = Object.freeze({ kind: "snapshot-checkpoint-archive" as const })
@@ -312,6 +427,7 @@ export namespace SnapshotCheckpoint {
             archive,
             assertCurrent() {
               assertCurrent()
+              archiveGuards.get(archive)?.()
               signal.throwIfAborted()
             },
           })
@@ -336,6 +452,7 @@ export namespace SnapshotCheckpoint {
       },
       exportSnapshots(input) {
         assertCurrent()
+        archiveGuards.get(input.archive)?.()
         const keys = archiveKeys.get(input.archive)
         if (!archives.has(input.archive) || !keys) fail("Snapshot segment requires its own exported namespace archive")
         const signal = input.signal ? AbortSignal.any([scopeSignal, input.signal]) : scopeSignal
@@ -346,6 +463,7 @@ export namespace SnapshotCheckpoint {
             signal,
             assertCurrent() {
               assertCurrent()
+              archiveGuards.get(input.archive)?.()
               signal.throwIfAborted()
             },
             owners: () => port.owners(input.archive),
@@ -363,13 +481,18 @@ export namespace SnapshotCheckpoint {
       },
       owners(archive) {
         return read(async function* () {
+          const assertArchive = () => {
+            assertCurrent()
+            archiveGuards.get(archive)?.()
+          }
+          assertArchive()
           const database = archives.get(archive)
           if (!database) fail("Snapshot capture requires its own exported namespace archive")
           using statement = database.prepare<{ scope: string; id: string; owner: string }, []>(
             "SELECT scope,id,owner FROM owners ORDER BY scope,id",
           )
           for (const row of statement.iterate()) {
-            assertCurrent()
+            assertArchive()
             const owner = SnapshotStore.Owner.parse(JSON.parse(row.owner))
             yield Authority.issue({
               scopeID: row.scope,
@@ -377,19 +500,19 @@ export namespace SnapshotCheckpoint {
               owner,
               layout: layout(database, row.scope, owner),
               namespace: archive.namespace,
-              assertCurrent,
+              assertCurrent: assertArchive,
               roots: async function* () {
                 using roots = database.prepare<{ root: string }, [string, string]>(
                   "SELECT root FROM observed WHERE scope=? AND id=? ORDER BY root",
                 )
                 for (const value of roots.iterate(row.scope, row.id)) {
-                  assertCurrent()
+                  assertArchive()
                   yield value.root
-                  assertCurrent()
+                  assertArchive()
                 }
               },
             })
-            assertCurrent()
+            assertArchive()
           }
         })
       },
@@ -417,6 +540,7 @@ export namespace SnapshotCheckpoint {
       controller.abort(new SnapshotStore.StorageError("Snapshot capture is closed"))
       await Promise.allSettled([...readers].map((reader) => reader.close?.()))
       await Promise.allSettled(pending)
+      await Promise.all(directories.map((directory) => directory.close()))
       for (const { database, directory } of indexes) {
         database.close(true)
         await fs.rm(directory, { recursive: true, force: true })

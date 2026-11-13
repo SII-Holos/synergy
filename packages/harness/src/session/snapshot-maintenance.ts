@@ -23,6 +23,8 @@ export namespace SnapshotMaintenance {
   export type ArchiveEvidence = SnapshotCheckpoint.ArchiveEvidence
   export const withCapture = SnapshotCheckpoint.withCapture
   export const assertArchive = SnapshotCheckpoint.assertArchive
+  export const compareNamespace = SnapshotCheckpoint.compareNamespace
+  export const NamespaceMismatch = SnapshotCheckpoint.NamespaceMismatch
   export const withRestoredSegment = SnapshotCheckpoint.withRestoredSegment
   export const withInstalledSegment = SnapshotRestoration.withInstalled
   export const assertInstalledSegment = SnapshotRestoration.assertInstalled

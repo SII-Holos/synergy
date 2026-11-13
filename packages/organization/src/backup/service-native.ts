@@ -1,4 +1,5 @@
 import fs from "node:fs/promises"
+import { constants, fstatSync, lstatSync, realpathSync } from "node:fs"
 import path from "node:path"
 import { createHash } from "node:crypto"
 import { z } from "zod"
@@ -154,63 +155,111 @@ export namespace OrganizationServiceNative {
     const root = runtime.host.root
     if (root !== path.join(runtime.host.home, ".synergy")) fail("requires its canonical native Home")
     const configuration = await readOrganizationConfigurationSnapshot(runtime.host.home, { signal })
-    assert()
-    const manifest = Manifest.parse({
-      format: "synergy-organization-service-native",
-      version: 1,
-      source: source.namespace,
-      identity: Identity.parse({
-        orgID: identity.identity.orgID,
-        deploymentIncarnation: identity.identity.deploymentIncarnation,
-      }),
-      owner,
-      configuration: {
-        present: configuration.present,
-        settings: configuration.settings,
-        ...(configuration.present
-          ? { raw: { bytes: configuration.bytes.byteLength, sha256: hash(configuration.bytes) } }
-          : {}),
-      },
-      startup,
-    })
-    const parent = path.join(Global.Path.cache, "service-native-segments")
-    await fs.mkdir(parent, { recursive: true, mode: 0o700 })
-    const temporary = await fs.mkdtemp(path.join(parent, "capture-"))
-    let store: TransactionalStore | undefined
-    let complete = false
-    let published = false
     try {
-      store = await TransactionalStore.open({
-        backend: "sqlite",
-        namespace: "service-native",
-        filename: path.join(temporary, "segment.sqlite"),
-      })
       assert()
-      const handle = { store, artifactDirectory: path.join(temporary, "artifacts") }
-      if (configuration.present)
-        await Storage.provide(handle, () => Storage.writeBinary(configurationKey, configuration.bytes))
-      await Storage.provide(handle, () => Storage.write(key, manifest))
-      assert()
-      const namespace = await Storage.provide(handle, () =>
-        StorageCheckpoint.exportArchive({
-          directory,
-          archiveID: "service-native",
-          namespaceID: source.namespace.namespaceID,
-          buildVersion: source.namespace.buildVersion,
-          keys,
-          protect: () => true,
-          signal,
+      const manifest = Manifest.parse({
+        format: "synergy-organization-service-native",
+        version: 1,
+        source: source.namespace,
+        identity: Identity.parse({
+          orgID: identity.identity.orgID,
+          deploymentIncarnation: identity.identity.deploymentIncarnation,
         }),
-      )
-      published = true
-      await NativeNamespaceIdentity.verify(proof)
-      await frozen()
-      complete = true
-      return { directory, namespace }
+        owner,
+        configuration: {
+          present: configuration.present,
+          settings: configuration.settings,
+          ...(configuration.present
+            ? { raw: { bytes: configuration.bytes.byteLength, sha256: hash(configuration.bytes) } }
+            : {}),
+        },
+        startup,
+      })
+      const existing = await fs.lstat(directory, { bigint: true }).catch((error: NodeJS.ErrnoException) => {
+        if (error.code !== "ENOENT") throw error
+      })
+      if (existing) {
+        const assertSource = await RuntimeMaintenance.assertSourcePreparationFrozen(lease)
+        if (!existing.isDirectory() || existing.isSymbolicLink() || (await fs.realpath(directory)) !== directory)
+          fail("existing native capture requires its original canonical directory")
+        const held = await fs.open(directory, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW)
+        const assertExisting = () => {
+          assert()
+          assertSource()
+          const physical = fstatSync(held.fd, { bigint: true })
+          const actual = lstatSync(directory, { bigint: true })
+          if (
+            !physical.isDirectory() ||
+            !actual.isDirectory() ||
+            actual.isSymbolicLink() ||
+            physical.dev !== existing.dev ||
+            physical.ino !== existing.ino ||
+            actual.dev !== existing.dev ||
+            actual.ino !== existing.ino ||
+            realpathSync(directory) !== directory
+          )
+            fail("existing native capture lost its original directory")
+        }
+        try {
+          assertExisting()
+          const namespace = await StorageCheckpoint.verifyArchive({ directory, keys, signal })
+          const fixed = await verify({ directory, expected: namespace, source: source.namespace, keys, signal })
+          try {
+            const { rawConfiguration: _, ...fixedManifest } = fixed
+            if (JSON.stringify(Manifest.parse(fixedManifest)) !== JSON.stringify(manifest))
+              fail("existing native capture differs from its actual original settings or namespace")
+            await NativeNamespaceIdentity.verify(proof)
+            await RuntimeMaintenance.assertSourcePreparationFrozen(lease)
+            assertExisting()
+            return { directory, namespace }
+          } finally {
+            fixed.rawConfiguration?.fill(0)
+          }
+        } finally {
+          await held.close()
+        }
+      }
+      const parent = path.join(Global.Path.cache, "service-native-segments")
+      await fs.mkdir(parent, { recursive: true, mode: 0o700 })
+      const temporary = await fs.mkdtemp(path.join(parent, "capture-"))
+      let store: TransactionalStore | undefined
+      let complete = false
+      let published = false
+      try {
+        store = await TransactionalStore.open({
+          backend: "sqlite",
+          namespace: "service-native",
+          filename: path.join(temporary, "segment.sqlite"),
+        })
+        assert()
+        const handle = { store, artifactDirectory: path.join(temporary, "artifacts") }
+        if (configuration.present)
+          await Storage.provide(handle, () => Storage.writeBinary(configurationKey, configuration.bytes))
+        await Storage.provide(handle, () => Storage.write(key, manifest))
+        assert()
+        const namespace = await Storage.provide(handle, () =>
+          StorageCheckpoint.exportArchive({
+            directory,
+            archiveID: "service-native",
+            namespaceID: source.namespace.namespaceID,
+            buildVersion: source.namespace.buildVersion,
+            keys,
+            protect: () => true,
+            signal,
+          }),
+        )
+        published = true
+        await NativeNamespaceIdentity.verify(proof)
+        await frozen()
+        complete = true
+        return { directory, namespace }
+      } finally {
+        await store?.close()
+        await fs.rm(temporary, { recursive: true, force: true })
+        if (published && !complete) await fs.rm(directory, { recursive: true, force: true })
+      }
     } finally {
-      await store?.close()
-      await fs.rm(temporary, { recursive: true, force: true })
-      if (published && !complete) await fs.rm(directory, { recursive: true, force: true })
+      configuration.bytes.fill(0)
     }
   }
   export async function verify(input: {
