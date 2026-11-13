@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0195](0195-portable-index-rebuild-used-the-ambient-writer.md)
+
 - [0194](0194-organization-controls-overrode-shared-keyboard-focus.md)
 
 - [0193](0193-complete-cloud-handoff-crossed-owner-lifetimes.md)

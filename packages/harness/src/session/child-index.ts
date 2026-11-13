@@ -1,6 +1,6 @@
 import { z } from "zod"
 import { Storage } from "../storage/storage"
-import type { StoreTransaction } from "../storage/transactional-store"
+import type { StoreTransaction, TransactionalStore } from "../storage/transactional-store"
 import { StorageIntegrityError, SessionPreparingError } from "../storage/errors"
 import { upgradeChildIndex } from "./child-index-migration"
 import { SessionTransferGate } from "./transfer-gate"
@@ -90,22 +90,38 @@ export namespace SessionChildIndex {
     await tx.write(key(scopeID, parentID), Header.parse(current))
     return current
   }
+  async function upsertWith(tx: StoreTransaction, scopeID: string, parentID: string, entry: Entry) {
+    const current = await state(tx, scopeID, parentID)
+    const [raw] = await tx.readMany([itemKey(scopeID, parentID, entry.id)])
+    const previous = raw === undefined ? undefined : Entry.parse(raw)
+    if (previous) await removeOrder(tx, scopeID, parentID, previous)
+    await put(tx, scopeID, parentID, entry)
+    current.total += previous ? 0 : 1
+    current.active += Number(!entry.archived) - Number(previous !== undefined && !previous.archived)
+    current.updatedAt = Date.now()
+    await tx.write(key(scopeID, parentID), Header.parse(current))
+  }
+
   export async function upsert(scopeID: string, parentID: string, value: Entry, transaction?: StoreTransaction) {
     const entry = Entry.parse(value)
     const apply = async (tx: StoreTransaction) => {
       await SessionTransferGate.assertOwnerMutation(parentID)
-      const current = await state(tx, scopeID, parentID)
-      const [raw] = await tx.readMany([itemKey(scopeID, parentID, entry.id)])
-      const previous = raw === undefined ? undefined : Entry.parse(raw)
-      if (previous) await removeOrder(tx, scopeID, parentID, previous)
-      await put(tx, scopeID, parentID, entry)
-      current.total += previous ? 0 : 1
-      current.active += Number(!entry.archived) - Number(previous !== undefined && !previous.archived)
-      current.updatedAt = Date.now()
-      await tx.write(key(scopeID, parentID), Header.parse(current))
+      return upsertWith(tx, scopeID, parentID, entry)
     }
     return transaction ? apply(transaction) : Storage.transaction(apply)
   }
+
+  export async function rebuildItem(
+    store: TransactionalStore,
+    transaction: StoreTransaction,
+    scopeID: string,
+    parentID: string,
+    value: Entry,
+  ) {
+    store.assertWriteTransaction(transaction)
+    return upsertWith(transaction, scopeID, parentID, Entry.parse(value))
+  }
+
   export async function remove(scopeID: string, parentID: string, id: string) {
     return Storage.transaction(async (tx) => {
       await SessionTransferGate.assertOwnerMutation(parentID)

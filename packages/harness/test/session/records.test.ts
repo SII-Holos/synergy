@@ -45,7 +45,7 @@ async function withRecords(
               await Storage.write(["workspace", record.workspaceID], { ...workspace, id: record.workspaceID })
             await Storage.write(["sessions", scope.id, record.id, "info"], record)
           }
-          await Session.rebuildStorageIndexes(tx)
+          await Session.rebuildStorageIndexes(Storage.current().store, tx)
         })
         await fn({ seed, workspace, records, scopeID: scope.id, directory: files.path })
       },

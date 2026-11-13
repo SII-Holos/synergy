@@ -1,9 +1,11 @@
 import { z } from "zod"
 import { Storage } from "../storage/storage"
+import type { StoreTransaction, TransactionalStore } from "../storage/transactional-store"
 import { SessionPreparingError, StorageConflictError, StorageIntegrityError } from "../storage/errors"
 import { CortexDelegationSummary, type Info } from "./types"
 
 export namespace SessionCortexIndex {
+  type Writer = Pick<StoreTransaction, "readMany" | "write" | "remove" | "query">
   const ID = z.string().min(1)
   const Header = z.strictObject({
     version: z.literal(1),
@@ -30,8 +32,8 @@ export namespace SessionCortexIndex {
       throw new StorageConflictError("Cortex metadata must join its native Session writer")
   }
 
-  async function header(scopeID: string, parentSessionID: string) {
-    const [value] = await Storage.readMany([key(scopeID, parentSessionID)])
+  async function header(scopeID: string, parentSessionID: string, store: Pick<Writer, "readMany"> = Storage) {
+    const [value] = await store.readMany([key(scopeID, parentSessionID)])
     if (value === undefined) return
     const current = Header.parse(value)
     if (current.scopeID !== scopeID || current.parentSessionID !== parentSessionID)
@@ -39,13 +41,17 @@ export namespace SessionCortexIndex {
     return current
   }
 
-  export async function initialize(scopeID: string, parentSessionID: string, ready: boolean) {
-    writing()
-    const current = await header(scopeID, parentSessionID)
+  async function initializeWith(store: Writer, scopeID: string, parentSessionID: string, ready: boolean) {
+    const current = await header(scopeID, parentSessionID, store)
     if (current) return current
     const value = Header.parse({ version: 1, scopeID, parentSessionID, ready, total: 0 })
-    await Storage.write(key(scopeID, parentSessionID), value)
+    await store.write(key(scopeID, parentSessionID), value)
     return value
+  }
+
+  export async function initialize(scopeID: string, parentSessionID: string, ready: boolean) {
+    writing()
+    return initializeWith(Storage, scopeID, parentSessionID, ready)
   }
 
   export async function ready(scopeID: string, parentSessionID: string) {
@@ -73,36 +79,43 @@ export namespace SessionCortexIndex {
     return Item.parse({ ...cortex, sessionID: session.id, description: cortex.description.slice(0, 512) })
   }
 
-  async function removeItem(scopeID: string, parentSessionID: string, sessionID: string) {
-    const current = await header(scopeID, parentSessionID)
+  async function removeItem(store: Writer, scopeID: string, parentSessionID: string, sessionID: string) {
+    const current = await header(scopeID, parentSessionID, store)
     if (!current) return
     const destination = itemKey(scopeID, parentSessionID, sessionID)
-    const [previous] = await Storage.readMany([destination])
+    const [previous] = await store.readMany([destination])
     if (previous === undefined) return
-    await Storage.remove(destination)
-    await Storage.write(key(scopeID, parentSessionID), Header.parse({ ...current, total: current.total - 1 }))
+    await store.remove(destination)
+    await store.write(key(scopeID, parentSessionID), Header.parse({ ...current, total: current.total - 1 }))
+  }
+
+  async function syncWith(store: Writer, session: Info, previous?: Info) {
+    const value = project(session)
+    if (previous?.parentID && (previous.parentID !== session.parentID || !value))
+      await removeItem(store, previous.scope.id, previous.parentID, previous.id)
+    if (!value || !session.parentID) return
+    const current = await initializeWith(store, session.scope.id, session.parentID, false)
+    const destination = itemKey(session.scope.id, session.parentID, session.id)
+    const [existing] = await store.readMany([destination])
+    await store.write(destination, value)
+    if (existing === undefined)
+      await store.write(key(session.scope.id, session.parentID), Header.parse({ ...current, total: current.total + 1 }))
   }
 
   export async function sync(session: Info, previous?: Info) {
     writing()
-    const value = project(session)
-    if (previous?.parentID && (previous.parentID !== session.parentID || !value))
-      await removeItem(previous.scope.id, previous.parentID, previous.id)
-    if (!value || !session.parentID) return
-    const current = await initialize(session.scope.id, session.parentID, false)
-    const destination = itemKey(session.scope.id, session.parentID, session.id)
-    const [existing] = await Storage.readMany([destination])
-    await Storage.write(destination, value)
-    if (existing === undefined)
-      await Storage.write(
-        key(session.scope.id, session.parentID),
-        Header.parse({ ...current, total: current.total + 1 }),
-      )
+    return syncWith(Storage, session, previous)
+  }
+
+  export async function rebuildItem(store: TransactionalStore, transaction: StoreTransaction, session: Info) {
+    store.assertWriteTransaction(transaction)
+    await initializeWith(transaction, session.scope.id, session.id, false)
+    await syncWith(transaction, session)
   }
 
   export async function remove(session: Info) {
     writing()
-    if (session.parentID) await removeItem(session.scope.id, session.parentID, session.id)
+    if (session.parentID) await removeItem(Storage, session.scope.id, session.parentID, session.id)
     await Storage.removeTree(key(session.scope.id, session.id))
   }
 
@@ -121,15 +134,30 @@ export namespace SessionCortexIndex {
     await Storage.write(key(scopeID, parentSessionID), { ...current, ready: true })
   }
 
+  async function completeWith(store: Writer, scopeID: string) {
+    let after: string[] | undefined
+    for (;;) {
+      const rows = await store.query<unknown>({ prefix: ["session_cortex_index", scopeID], after, limit: 128 })
+      if (!rows.length) return
+      for (const row of rows) {
+        if (row.key.length !== 3) continue
+        const current = Header.parse(row.value)
+        if (current.scopeID !== scopeID || current.parentSessionID !== row.key[2])
+          throw new StorageIntegrityError("Cortex metadata header changed identity")
+        await store.write(row.key, { ...current, ready: true })
+      }
+      after = rows.at(-1)!.key
+    }
+  }
+
   export async function completeScope(scopeID: string) {
     writing()
-    for await (const row of Storage.records({ prefix: ["session_cortex_index", scopeID], limit: 128 })) {
-      if (row.key.length !== 3) continue
-      const current = Header.parse(row.value)
-      if (current.scopeID !== scopeID || current.parentSessionID !== row.key[2])
-        throw new StorageIntegrityError("Cortex metadata header changed identity")
-      await Storage.write(row.key, { ...current, ready: true })
-    }
+    return completeWith(Storage, scopeID)
+  }
+
+  export async function completeRebuild(store: TransactionalStore, transaction: StoreTransaction, scopeID: string) {
+    store.assertWriteTransaction(transaction)
+    return completeWith(transaction, scopeID)
   }
 
   export async function page(scopeID: string, parentSessionID: string, value: { limit?: number; cursor?: string }) {

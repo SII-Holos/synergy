@@ -12,7 +12,7 @@ import { SessionRecords } from "./records"
 import { ModelSelection } from "./model-selection-schema"
 import { WorkspaceAccess } from "../workspace/access"
 import { RuntimeContext } from "../lifecycle/context"
-import type { StoreTransaction } from "../storage/transactional-store"
+import type { StoreTransaction, TransactionalStore } from "../storage/transactional-store"
 import { StorageIntegrityError } from "../storage/errors"
 import { SessionStaging } from "./staging"
 import { RolloutAttachment } from "./rollout/attachment"
@@ -187,7 +187,8 @@ export namespace Session {
     })
   }
 
-  export async function rebuildStorageIndexes(tx: StoreTransaction) {
+  export async function rebuildStorageIndexes(store: TransactionalStore, tx: StoreTransaction) {
+    store.assertWriteTransaction(tx)
     for (const root of [
       "session_index",
       "endpoint_session",
@@ -217,8 +218,7 @@ export namespace Session {
           if (index.scopeID !== scopeID || session.id !== record.key[2])
             throw new Error("Session identity does not match its storage owner")
           await tx.write(["session_index", session.id], index)
-          await SessionCortexIndex.initialize(scopeID, session.id, false)
-          await SessionCortexIndex.sync(session)
+          await SessionCortexIndex.rebuildItem(store, tx, session)
           if (session.endpoint)
             await tx.write(
               StoragePath.endpointSession(SessionEndpoint.toKey(session.endpoint), asSessionID(session.id)),
@@ -227,7 +227,7 @@ export namespace Session {
           page.entries.push(toPageIndexEntry(session))
           nav.push(toNavEntry(session))
           if (session.parentID)
-            await SessionChildIndex.upsert(scopeID, session.parentID, toChildIndexEntry(session), tx)
+            await SessionChildIndex.rebuildItem(store, tx, scopeID, session.parentID, toChildIndexEntry(session))
         }
         after = batch.at(-1)!.key
       }
@@ -241,7 +241,7 @@ export namespace Session {
         updatedAt: Date.now(),
         entries: nav,
       })
-      await SessionCortexIndex.completeScope(scopeID)
+      await SessionCortexIndex.completeRebuild(store, tx, scopeID)
     }
     await tx.remove(StoragePath.rolloutRecoveryPending())
   }

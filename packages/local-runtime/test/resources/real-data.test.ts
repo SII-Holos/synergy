@@ -59,7 +59,7 @@ test.skipIf(!fixture)(
             if (batch.length >= 128) await flush()
           }
           await flush()
-          await Storage.transaction((tx) => Session.rebuildStorageIndexes(tx))
+          await Storage.transaction((tx) => Session.rebuildStorageIndexes(Storage.current().store, tx))
           const timings: Array<{ messages: number; parts: number; modelMessages: number; milliseconds: number }> = []
           for (const sessionID of sessions) {
             const signal = AbortSignal.timeout(30_000)

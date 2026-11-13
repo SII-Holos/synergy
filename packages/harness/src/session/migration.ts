@@ -2575,7 +2575,7 @@ export const migrations: Migration[] = [
     async up(progress) {
       const { Session } = await import(".")
       progress?.(0, 1)
-      await Storage.transaction((tx) => Session.rebuildStorageIndexes(tx))
+      await Storage.transaction((tx) => Session.rebuildStorageIndexes(Storage.current().store, tx))
       progress?.(1, 1)
     },
   },

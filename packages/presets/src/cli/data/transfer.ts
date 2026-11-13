@@ -201,7 +201,8 @@ export namespace DataTransfer {
         acceptArtifact,
         options.trusted ? { sourceRoot, targetRoot } : undefined,
       )
-      const result = await StoragePortable.importFile(target.store, path.join(backup, "data", "agent-records.ndjson"), {
+      const targetStore = target.store
+      const result = await StoragePortable.importFile(targetStore, path.join(backup, "data", "agent-records.ndjson"), {
         operationID: id,
         accept: async (entry, tx) => {
           if (entry.type === "event") return false
@@ -239,7 +240,7 @@ export namespace DataTransfer {
         },
         afterImport: async (tx) => {
           await workspaces?.publish(tx)
-          await Session.rebuildStorageIndexes(tx)
+          await Session.rebuildStorageIndexes(targetStore, tx)
           await NoteStore.invalidateStorageIndexes(tx)
           await Usage.reconcileTransfer(tx)
           await tx.write(["storage_transfer", id], {
