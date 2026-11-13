@@ -9,7 +9,7 @@ import { Environment } from "."
 import { EnvironmentExecution } from "./execution"
 import { ExecutionProtocol } from "./executor"
 import { WorkspaceErrors } from "../workspace/errors"
-import type { EnvironmentResources } from "./resources"
+import { EnvironmentResources } from "./resources"
 import { RuntimeContext } from "../lifecycle/context"
 
 export namespace EnvironmentProcess {
@@ -90,6 +90,7 @@ export namespace EnvironmentProcess {
     let activation: Promise<void> | undefined
     let submission: Promise<EnvironmentExecution.Info> | undefined
     let stopping: Promise<void> | undefined
+    let releasePreparation: (() => Promise<void>) | undefined
     let finished = false
     let physicalExit = false
     let active = false
@@ -191,6 +192,7 @@ export namespace EnvironmentProcess {
         if (terminal && cursor >= info.status!.cursor) {
           stage = "saving"
           const result = await EnvironmentExecution.complete(input.id, input.scopeID)
+          await releasePreparation?.()
           if (info.status!.error)
             throw info.status!.failure
               ? WorkspaceErrors.restore(info.status!.failure)
@@ -250,7 +252,8 @@ export namespace EnvironmentProcess {
             workspaces,
             signal: input.signal,
           })
-          await submission
+          const submitted = await submission
+          releasePreparation = await EnvironmentResources.retainExecution(input.resources, submitted)
           void stream().catch(fail)
           if (!(await running.promise)) {
             const info = await EnvironmentExecution.get(input.id, input.scopeID)

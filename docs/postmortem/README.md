@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0192](0192-background-bash-released-native-preparation-too-early.md)
+
 - [0191](0191-native-handoff-required-an-unowned-resource-contract.md)
 
 - [0190](0190-verified-organization-names-were-missing-from-the-switcher.md)

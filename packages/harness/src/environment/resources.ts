@@ -75,6 +75,10 @@ export namespace EnvironmentResources {
   export type Cleanup = Readonly<{ release(): Promise<void> }>
   const preparations = new WeakMap<Resolved, Promise<EnvironmentExecution.Preparation>>()
   const signals = new WeakMap<Resolved, AbortSignal>()
+  const lifetimes = new WeakMap<
+    Resolved,
+    { assertOpen(): void; retain(completed: () => Promise<boolean>): () => Promise<void> }
+  >()
 
   async function releaseAfterFailure(release: () => Promise<void>, error: unknown): Promise<never> {
     try {
@@ -90,7 +94,28 @@ export namespace EnvironmentResources {
     release: () => Promise<void> = async () => {},
   ): Resolved {
     const resources: Resolved = { ...value, release: close, [Symbol.asyncDispose]: close }
+    let requested = false,
+      released = false
+    let pending: Promise<void> | undefined
+    let completed: (() => Promise<boolean>) | undefined
     async function close() {
+      requested = true
+      if (completed && !(await completed())) return
+      return releaseOwned()
+    }
+    function releaseOwned() {
+      if (released) return Promise.resolve()
+      if (pending) return pending
+      const work = releaseResources()
+      pending = work
+      void work
+        .finally(() => {
+          if (pending === work) pending = undefined
+        })
+        .catch(() => {})
+      return work
+    }
+    async function releaseResources() {
       const errors: unknown[] = []
       const preparation = preparations.get(resources)
       if (preparation) {
@@ -106,11 +131,71 @@ export namespace EnvironmentResources {
         errors.push(error)
       }
       if (errors.length) throw new AggregateError(errors, "Environment preparation and resource cleanup failed")
+      released = true
     }
+    lifetimes.set(resources, {
+      assertOpen() {
+        if (requested || released) throw new Error("Environment resources are closing and cannot admit new preparation")
+      },
+      retain(inspect) {
+        if (requested || released || completed)
+          throw new Error("Environment resources already have their original owner")
+        completed = inspect
+        return async () => {
+          if (!(await inspect())) throw new Error("Original process resources require completed native saving")
+          requested = true
+          await releaseOwned()
+        }
+      },
+    })
     return resources
   }
 
+  export async function retainExecution(resources: Resolved, submitted: EnvironmentExecution.Info) {
+    const lifetime = lifetimes.get(resources)
+    if (!lifetime) throw new Error("Execution retention requires its original admitted Environment resources")
+    const original = preparations.get(resources)
+    if (!original || resources.source) return
+    const origin = resources.origin
+    if (!origin || !resources.selection || !resources.runtime)
+      throw new Error("Original process preparation requires its actual resolved resources")
+    lifetime.assertOpen()
+    origin.assertCurrent()
+    const preparation = await original
+    const info = EnvironmentExecution.Info.parse(submitted)
+    if (
+      info.source ||
+      info.id !== preparation.id ||
+      info.scopeID !== resources.selection.scopeID ||
+      !Environment.sameTarget(info.target, resources.runtime.target) ||
+      !Environment.sameTarget(info.target, preparation.target) ||
+      JSON.stringify(info.origin) !== JSON.stringify(origin.value) ||
+      JSON.stringify(info.origin) !== JSON.stringify(preparation.origin)
+    )
+      throw new Error("Original process preparation has another submitted native identity")
+    const completed = async () => {
+      origin.assertCurrent()
+      const current = await EnvironmentExecution.get(info.id, info.scopeID)
+      origin.assertCurrent()
+      if (
+        current.source ||
+        current.digest !== info.digest ||
+        !Environment.sameTarget(current.target, info.target) ||
+        JSON.stringify(current.origin) !== JSON.stringify(info.origin)
+      )
+        throw new Error("Original process preparation changed its committed native identity")
+      return current.state === "completed"
+    }
+    await completed()
+    origin.assertCurrent()
+    lifetime.assertOpen()
+    return lifetime.retain(completed)
+  }
+
   async function preparationFor(resources: Resolved, operationID?: string) {
+    const lifetime = lifetimes.get(resources)
+    if (!lifetime) throw new Error("Preparation requires its original admitted Environment resources")
+    lifetime.assertOpen()
     if (!resources.origin || !resources.runtime || !resources.selection)
       throw new Error("Preparation requires its actual admitted native resources")
     const origin = resources.origin.value
@@ -175,7 +260,16 @@ export namespace EnvironmentResources {
     return {
       ...wrapper,
       intentDigest,
-      cleanup: () => (preparation ? preparation.releaseSandbox(wrapper.id) : executor.releaseSandbox!(wrapper.id)),
+      cleanup: async () => {
+        if (!preparation) return executor.releaseSandbox!(wrapper.id)
+        const observed = await preparation.inspect()
+        if (
+          observed.state === "released" &&
+          observed.sandboxes.some((sandbox) => sandbox.id === wrapper.id && sandbox.released)
+        )
+          return
+        return preparation.releaseSandbox(wrapper.id)
+      },
     }
   }
 
