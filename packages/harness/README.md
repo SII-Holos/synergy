@@ -4,6 +4,8 @@ This package owns Synergy's generic execution runtime. Application hosts use the
 
 The public `storage/queue` scope propagates an operation's original cancellation and admission options into existing Storage waits. It uses the canonical queue and does not authorize access to a Store or artifact backend.
 
+Process sampling preserves an existing tracked close completion after physical child exit. The original close owner records terminal status after output and recording tails; stale-PID recovery applies only without that owner. Verify `test/process/registry.test.ts`; see [tracked completion](../../docs/decisions/implemented/bug-fix/2026-11-13-preserve-tracked-process-close-ownership-during-sampling.md).
+
 Run `bun run typecheck`, `bun run test`, and `bun run build` from this package.
 
 Model SDK implementations belong to `local-runtime`. Research hosts register `ProviderSdkSource` with synchronous and asynchronous factory loaders; SDK access before registration fails explicitly. The `ai` engine remains a harness dependency and itself includes the Gateway adapter transitively.

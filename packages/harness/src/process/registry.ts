@@ -586,7 +586,8 @@ export namespace ProcessRegistry {
         generation === instanceState.samplingGeneration &&
         opts.settleStale &&
         proc.pid !== undefined &&
-        inspection.alive === false
+        inspection.alive === false &&
+        !instanceState.closing.has(proc)
       ) {
         markStale(proc)
         continue
