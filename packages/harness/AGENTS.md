@@ -9,7 +9,7 @@ Own lifecycle, features and `./host/identity`; `context` owns attribution and `a
 - Unsealed fixtures; settle Rollouts last. `Core.storedInfo`/`Source.retainedReceipt`: read-only.
 
 - Hosts select `ProviderSdkSource`, `AttachmentImageInput`, `InstructionSource` and `ConfigSource`. `ProjectConfig` reads allowed project fields. Verify absence and `test/attachment/model-input.test.ts`.
-- Instruction consumers forward Session IDs for per-Session catalogs; omitted IDs preserve personal behavior. Domains own provenance/authorization.
+- Instruction consumers forward Session IDs; omission preserves personal catalogs. SessionReadSource precedes native history. Domains own provenance/authorization.
 - Local Runtime owns native PTYs, watchers and OS sandboxes. `workspace/observation` qualifies invalidations; Session owns live comparisons. Harness owns permission policy and `SandboxHost`; missing host registration must fail closed for sandboxed execution.
 
 - Expose public domain operations; `session/prompt-budgeter` measures native model messages. Host adapters may use declared contract leaves; never export processor, resolver, scheduler or journal implementations to production. Published manifests omit `test/` exports. Use relative imports internally.
