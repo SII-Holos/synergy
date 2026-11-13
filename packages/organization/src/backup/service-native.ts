@@ -269,6 +269,10 @@ export namespace OrganizationServiceNative {
   export function sourceHash(value: StorageCheckpoint.Manifest) {
     return hash(Buffer.from(JSON.stringify(StorageCheckpoint.Manifest.parse(value))))
   }
+  export function serviceNamespaceID(value: z.infer<typeof Identity>) {
+    const identity = Identity.parse({ orgID: value.orgID, deploymentIncarnation: value.deploymentIncarnation })
+    return hash(Buffer.from(JSON.stringify({ kind: "service", ...identity })))
+  }
   const CohortMapping = z.strictObject({
     archiveID: OrganizationIdentity.ID,
     pagesHash: OrganizationProtocol.Digest,
@@ -280,7 +284,7 @@ export namespace OrganizationServiceNative {
     native: StorageCheckpoint.Manifest,
     cohort: z.infer<typeof CohortMapping>,
   ) {
-    const namespaceID = hash(Buffer.from(JSON.stringify({ kind: "service", ...cohort.source })))
+    const namespaceID = serviceNamespaceID(cohort.source)
     if (
       source.archiveID !== hash(Buffer.from(cohort.archiveID + ":" + cohort.ordinal)) ||
       source.namespaceID !== namespaceID ||

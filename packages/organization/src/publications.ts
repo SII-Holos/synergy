@@ -214,6 +214,7 @@ async function verifyManifest(
 export namespace OrganizationPublications {
   export interface HistoricalSource extends OrganizationRecord.HistoricalReader {
     accept(key: string[]): void
+    append?(key: string[]): void
     first(group: string[], value: unknown): boolean
     binary(key: string[], maximum: number): Promise<Uint8Array>
   }
@@ -242,6 +243,7 @@ export namespace OrganizationPublications {
       )
         fail("PROTOCOL_MISMATCH", "Historical publication requires its original closed create request")
       reader.accept(row.key)
+      reader.append?.(row.key)
     }
   }
   export function* historicalFiles(reader: HistoricalSource, uploadID: string) {
@@ -254,17 +256,20 @@ export namespace OrganizationPublications {
       )
         fail("PROTOCOL_MISMATCH", "Historical publication file has another identity or incomplete bytes")
       reader.accept(row.key)
+      reader.append?.(row.key)
       const canonical = portable(file.path)
       reader.first(["publication-path-kind", uploadID, canonical], { kind: "file", fileID: file.fileID })
       const index = keys.path(uploadID, hash(canonical))
       if (reader.read(z.strictObject({ fileID: z.string() }), index).fileID !== file.fileID)
         fail("PROTOCOL_MISMATCH", "Historical publication path index changed")
       reader.accept(index)
+      reader.append?.(index)
       for (const parent of parentPaths(canonical)) {
         reader.first(["publication-path-kind", uploadID, parent], { kind: "directory" })
         const directory = keys.directory(uploadID, hash(parent))
         reader.read(z.strictObject({ schemaVersion: z.literal(1) }), directory)
         reader.accept(directory)
+        reader.append?.(directory)
       }
       yield publicFile(file)
     }
@@ -311,6 +316,7 @@ export namespace OrganizationPublications {
       if (chunk.bytes !== bytes.length || chunk.sha256 !== hash(bytes))
         fail("PROTOCOL_MISMATCH", "Historical publication chunk changed")
       reader.accept(key)
+      reader.append?.(key)
       return bytes
     })
     if (
@@ -320,6 +326,7 @@ export namespace OrganizationPublications {
     )
       fail("PROTOCOL_MISMATCH", "Historical publication manifest is incomplete")
     reader.accept(keys.upload(upload.uploadID))
+    reader.append?.(keys.upload(upload.uploadID))
   }
   export function historicalRange(reader: HistoricalSource, uploadID: string) {
     let retained: { key: string; bytes: Uint8Array } | undefined

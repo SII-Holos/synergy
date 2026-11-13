@@ -309,7 +309,10 @@ export namespace OrganizationBackupCohort {
             if (!same(identity, source.identity)) throw new CohortError("Backup participant identity changed")
             await coverage()
             const base = path.join(temporary, "namespaces", String(ordinal).padStart(16, "0"))
-            const namespaceID = hash(JSON.stringify(identity))
+            const namespaceID =
+              identity.kind === "service"
+                ? OrganizationServiceNative.serviceNamespaceID(identity)
+                : hash(JSON.stringify(identity))
             const inventory = await SnapshotMaintenance.withCapture(
               async (capture) => {
                 const namespace = await capture.exportArchive({

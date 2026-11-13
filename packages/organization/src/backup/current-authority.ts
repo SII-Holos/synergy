@@ -8,6 +8,7 @@ import { RuntimeMaintenance } from "@ericsanchezok/synergy-harness/storage/runti
 import { SnapshotMaintenance } from "@ericsanchezok/synergy-harness/session/snapshot-maintenance"
 import { StorageCheckpoint } from "@ericsanchezok/synergy-harness/storage/checkpoint"
 import { ServerProcessLock } from "@ericsanchezok/synergy-harness/util/server-process-lock"
+import { NativeNamespaceIdentity } from "@ericsanchezok/synergy-harness/lifecycle/namespace-identity"
 import type { VaultKeyProvider } from "@ericsanchezok/synergy-harness/secrets/encrypted-store"
 import { OrganizationServiceNative as Native } from "./service-native"
 import { OrganizationCurrentAuthorityInfo as Info } from "./current-authority-schema"
@@ -190,12 +191,25 @@ export namespace OrganizationCurrentAuthority {
         assertOwner()
         if (!current.covered || !current.head) fail("requires complete live policy coverage")
         const checkpoint = current.head
+        const proof = await NativeNamespaceIdentity.capture()
+        const descriptor = NativeNamespaceIdentity.inspect(proof)
+        if (descriptor.owner !== "organization" || descriptor.identity.kind !== "service")
+          fail("requires its actual native service namespace")
+        const identity = Native.Manifest.shape.identity.parse({
+          orgID: descriptor.identity.orgID,
+          deploymentIncarnation: descriptor.identity.deploymentIncarnation,
+        })
+        if (identity.orgID !== checkpoint.namespaceID)
+          fail("native service identity differs from its logical authority")
+        const namespaceID = Native.serviceNamespaceID(identity)
+        await NativeNamespaceIdentity.verify(proof)
+        assertOwner()
         return SnapshotMaintenance.withCapture(
           async (capture) => {
             const archive = await capture.exportArchive({
               directory: path.join(directory, "records"),
               archiveID: crypto.randomUUID(),
-              namespaceID: checkpoint.namespaceID,
+              namespaceID,
               buildVersion,
               keys,
               protect: () => true,
@@ -209,6 +223,8 @@ export namespace OrganizationCurrentAuthority {
               keys,
               signal,
             })
+            await NativeNamespaceIdentity.verify(proof)
+            assertOwner()
             let open = true
             let accepting = true
             const accepted = new Set<Promise<Retirement.Receipt>>()
@@ -243,7 +259,12 @@ export namespace OrganizationCurrentAuthority {
               })
               try {
                 assert()
-                if (fixed.identity.orgID !== checkpoint.namespaceID) fail("native settings belong to another namespace")
+                if (
+                  fixed.identity.orgID !== checkpoint.namespaceID ||
+                  hash(fixed.identity) !== hash(identity) ||
+                  Native.serviceNamespaceID(fixed.identity) !== archive.namespace.namespaceID
+                )
+                  fail("native settings belong to another namespace")
                 return hash(fixed.startup.settings.clientAuthentication.clients)
               } finally {
                 fixed.rawConfiguration?.fill(0)
@@ -251,6 +272,8 @@ export namespace OrganizationCurrentAuthority {
             }
             try {
               const clientDefinitionsHash = await verify()
+              await NativeNamespaceIdentity.verify(proof)
+              assertOwner()
               const source: Source = Object.freeze({ kind: "organization-current-authority" })
               sources.set(source, {
                 info: Info.parse({

@@ -250,6 +250,7 @@ async function setup(
                           permit,
                           request,
                           target: reference,
+                          base: namespace,
                           namespace: { directory: path.join(directory, "service"), expected: namespace },
                           keys,
                           sources: [inspection],

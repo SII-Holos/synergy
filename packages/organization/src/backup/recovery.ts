@@ -29,6 +29,7 @@ type TargetBinding = {
   permit: HomeRestoration.InstallPermit
   reference: z.infer<typeof OrganizationInstallationReference>
   checkpoint: AuthorityJournal.Checkpoint
+  base: StorageCheckpoint.Manifest
   prepared: Authority.Prepared
 }
 
@@ -162,6 +163,7 @@ export namespace OrganizationRecovery {
         request,
         reference,
         checkpoint: info.checkpoint,
+        base: StorageCheckpoint.Manifest.parse(native.manifest.source),
         prepared,
       })
       const result = await body(target)
@@ -202,6 +204,7 @@ export namespace OrganizationRecovery {
             permit: target.permit,
             request: target.request,
             target: target.reference,
+            base: target.base,
             namespace: captured.namespace,
             keys: captured.keys,
             signal: cancellation,
@@ -257,6 +260,7 @@ export namespace OrganizationRecovery {
           permit: target.permit,
           request: target.request,
           target: target.reference,
+          base: target.base,
           namespace: captured.namespace,
           keys: captured.keys,
           signal: cancellation,
@@ -362,6 +366,7 @@ export namespace OrganizationRecovery {
                     permit: target.permit,
                     request: target.request,
                     target: target.reference,
+                    base: target.base,
                     sources: writers,
                     namespace,
                     keys,
@@ -376,6 +381,7 @@ export namespace OrganizationRecovery {
                   permit: target.permit,
                   request: target.request,
                   target: target.reference,
+                  base: target.base,
                   namespace,
                   keys,
                   signal,
@@ -451,6 +457,7 @@ export namespace OrganizationRecovery {
               permit: target.permit,
               request: target.request,
               target: target.reference,
+              base: target.base,
               namespace,
               keys,
               signal,

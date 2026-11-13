@@ -44,6 +44,7 @@ type Inventory = {
   assertTarget(): void
   assert(): void
   checkpoint?: Storage.ArtifactCheckpoint
+  prepared?: StorageCheckpoint.PreparedArtifacts
   historyComplete?: boolean
 }
 type HistoryIndex = Pick<Inventory, "database" | "assertTarget" | "historyComplete">
@@ -359,7 +360,7 @@ function historicalReader(selected: HistoryIndex): Record.HistoricalReader {
 function inventoryDatabase(filename: string) {
   const database = new Database(filename)
   database.exec(
-    "PRAGMA journal_mode=OFF; PRAGMA temp_store=FILE; PRAGMA cache_size=-2048; CREATE TABLE records(key TEXT PRIMARY KEY,value TEXT NOT NULL,mode TEXT NOT NULL); CREATE TABLE artifacts(key TEXT PRIMARY KEY,sha256 TEXT NOT NULL,size INTEGER NOT NULL,location TEXT NOT NULL); CREATE TABLE blobs(sha256 TEXT PRIMARY KEY,size INTEGER NOT NULL); CREATE TABLE verified(key TEXT PRIMARY KEY,location TEXT NOT NULL,pack TEXT NOT NULL); CREATE TABLE target_blobs(location TEXT PRIMARY KEY); CREATE TABLE history(key TEXT PRIMARY KEY); CREATE TABLE history_groups(key TEXT PRIMARY KEY,digest TEXT NOT NULL); CREATE TABLE history_artifacts(key TEXT PRIMARY KEY); CREATE TABLE history_appends(key TEXT PRIMARY KEY)",
+    "PRAGMA journal_mode=OFF; PRAGMA temp_store=FILE; PRAGMA cache_size=-2048; CREATE TABLE records(key TEXT PRIMARY KEY,value TEXT NOT NULL,mode TEXT NOT NULL); CREATE TABLE artifacts(key TEXT PRIMARY KEY,sha256 TEXT NOT NULL,size INTEGER NOT NULL,location TEXT NOT NULL); CREATE TABLE blobs(sha256 TEXT PRIMARY KEY,size INTEGER NOT NULL); CREATE TABLE verified(key TEXT PRIMARY KEY,location TEXT NOT NULL,pack TEXT NOT NULL); CREATE TABLE target_blobs(location TEXT PRIMARY KEY); CREATE TABLE history(key TEXT PRIMARY KEY); CREATE TABLE history_groups(key TEXT PRIMARY KEY,digest TEXT NOT NULL); CREATE TABLE history_artifacts(key TEXT PRIMARY KEY); CREATE TABLE history_appends(key TEXT PRIMARY KEY); CREATE TABLE present_artifacts(key TEXT PRIMARY KEY); CREATE TABLE missing_artifacts(key TEXT PRIMARY KEY)",
   )
   return database
 }
@@ -385,6 +386,11 @@ async function validatePublishedHistory(selected: HistoryIndex, stream: (key: st
       selected.assertTarget()
       if (!sourceRow(selected, key)) blocked("missing original historical owner row")
       accept.run(JSON.stringify(key))
+    },
+    append(key) {
+      selected.assertTarget()
+      if (!sourceRow(selected, key)) blocked("missing original immutable publication row")
+      appended.run(JSON.stringify(key))
     },
     first(key, value) {
       selected.assertTarget()
@@ -548,6 +554,7 @@ export namespace OrganizationRecoveryWriters {
     permit: HomeRestoration.InstallPermit
     request: HomeRestoration.Request
     target: Reference
+    base: StorageCheckpoint.Manifest
     sources: readonly NamespaceRetirement.Inspection[]
     namespace: { directory: string; expected: StorageCheckpoint.Manifest }
     keys: VaultKeyProvider
@@ -566,7 +573,7 @@ export namespace OrganizationRecoveryWriters {
   }
   export function withPreflight<T>(input: Omit<Input, "sources">, body: () => Promise<T>) {
     return withInventory({ ...input, sources: [] }, "preflight", async (selected) => {
-      await assertInventoryMatches(selected, { allowMissingKnowledge: true })
+      await assertInventoryMatches(selected, { allowMissingKnowledge: true, allowMissingArtifacts: true })
       return preflights.run(selected, body)
     })
   }
@@ -591,7 +598,8 @@ export namespace OrganizationRecoveryWriters {
     const { selected, seal } = await preflightTransaction(tx)
     try {
       if (seal.sealed) blocked("knowledge publication after final preflight")
-      await assertInventoryMatches(selected, { allowMissingKnowledge: true })
+      await assertInventoryMatches(selected, { allowMissingKnowledge: true, allowMissingArtifacts: true })
+      if (selected.prepared) await StorageCheckpoint.publishPreparedArtifacts(selected.prepared, tx)
       using rows = selected.database.query<{ key: string; value: string }, [string]>(
         "SELECT records.key,records.value FROM history_appends JOIN records USING(key) WHERE key>? ORDER BY key LIMIT 128",
       )
@@ -620,6 +628,7 @@ export namespace OrganizationRecoveryWriters {
   }
   export async function sealPreflight(tx: StoreTransaction) {
     const { selected, seal } = await preflightTransaction(tx)
+    if (selected.prepared) await StorageCheckpoint.publishPreparedArtifacts(selected.prepared, tx)
     if (!seal.sealed) {
       seal.sealed = true
       tx.addMutationGuard(() => {
@@ -639,6 +648,7 @@ export namespace OrganizationRecoveryWriters {
     const permit = input.permit
     const request = HomeRestoration.Request.parse(structuredClone(input.request))
     const target = OrganizationInstallationReference.parse(structuredClone(input.target))
+    const base = StorageCheckpoint.Manifest.parse(structuredClone(input.base))
     const namespace = {
       directory: input.namespace.directory,
       expected: StorageCheckpoint.Manifest.parse(input.namespace.expected),
@@ -688,6 +698,7 @@ export namespace OrganizationRecoveryWriters {
         info.restoreID !== target.restoreID ||
         info.requestHash !== target.requestHash ||
         info.sourceHash !== target.sourceHash ||
+        hash(base) !== target.sourceHash ||
         z.object({ nativeHash: z.string() }).parse(request.payload).nativeHash !== target.nativeHash
       )
         blocked("another native target")
@@ -776,15 +787,47 @@ export namespace OrganizationRecoveryWriters {
         assertTarget()
         update.run(await classify(selected, JSON.parse(row.key), JSON.parse(row.value)), row.key)
       }
-      return await Storage.withArtifactCheckpoint(
-        async (checkpoint) => {
-          selected.checkpoint = checkpoint
-          await verifyTargetArtifacts(selected, checkpoint)
-          const result = await body(selected)
+      await assertInventoryMatches(selected, { allowMissingKnowledge: true, recordsOnly: true })
+      using present = database.query("INSERT OR IGNORE INTO present_artifacts VALUES(?)")
+      await Storage.snapshot(async (tx) => {
+        for await (const entry of tx.artifacts()) {
           assert()
-          return result
+          present.run(JSON.stringify(entry.key))
+        }
+      })
+      database.exec(
+        "INSERT INTO missing_artifacts SELECT history_artifacts.key FROM history_artifacts LEFT JOIN present_artifacts USING(key) WHERE present_artifacts.key IS NULL",
+      )
+      const references = async function* () {
+        using page = database.query<{ key: string }, [string]>(
+          "SELECT key FROM missing_artifacts WHERE key>? ORDER BY key LIMIT 128",
+        )
+        let after = ""
+        for (;;) {
+          assert()
+          const rows = page.all(after)
+          if (!rows.length) return
+          for (const row of rows) {
+            yield z.array(z.string()).parse(JSON.parse(row.key))
+            after = row.key
+          }
+        }
+      }
+      return await RuntimeMaintenance.withRestorationArtifacts(
+        { permit, request, base, namespace, keys, references: references(), signal },
+        (prepared) => {
+          selected.prepared = prepared
+          return Storage.withArtifactCheckpoint(
+            async (checkpoint) => {
+              selected.checkpoint = checkpoint
+              await verifyTargetArtifacts(selected, checkpoint)
+              const result = await body(selected)
+              assert()
+              return result
+            },
+            { signal },
+          )
         },
-        { signal },
       )
     } finally {
       open = false
@@ -841,14 +884,34 @@ export namespace OrganizationRecoveryWriters {
       }
     }
   }
-  async function assertInventoryMatches(selected: Frame, options: { allowMissingKnowledge?: boolean } = {}) {
+  function missingArtifacts(selected: Frame) {
+    using query = selected.database.query<{ count: number }, []>(
+      "SELECT COUNT(*) AS count FROM missing_artifacts LEFT JOIN present_artifacts USING(key) WHERE present_artifacts.key IS NULL",
+    )
+    const row = query.get()
+    if (!row) blocked("missing immutable artifact inventory")
+    return row.count
+  }
+  async function assertInventoryMatches(
+    selected: Frame,
+    options: { allowMissingKnowledge?: boolean; allowMissingArtifacts?: boolean; recordsOnly?: boolean } = {},
+  ) {
     return Storage.snapshot(async (tx) => {
+      selected.database.exec("DELETE FROM present_artifacts")
+      using present = selected.database.query("INSERT OR IGNORE INTO present_artifacts VALUES(?)")
       using wantedArtifact = selected.database.query<{ sha256: string; size: number }, [string]>(
         "SELECT sha256,size FROM artifacts WHERE key=?",
       )
       using verifiedArtifact = selected.database.query<{ location: string }, [string]>(
         "SELECT location FROM verified WHERE key=?",
       )
+      using verifiedBlob = selected.database.query<{ location: string }, [string]>(
+        "SELECT location FROM target_blobs WHERE location=?",
+      )
+      using eligible = selected.database.query<{ key: string }, [string]>(
+        "SELECT key FROM missing_artifacts WHERE key=?",
+      )
+      using remember = selected.database.query("INSERT INTO verified VALUES(?,?,?)")
       using artifactCount = selected.database.query<{ count: number }, []>("SELECT COUNT(*) AS count FROM artifacts")
       let count = 0
       let artifacts = 0
@@ -874,16 +937,30 @@ export namespace OrganizationRecoveryWriters {
             if (mode === "runtime") found.add(Record.RuntimeRegistration.parse(entry.value).runtimeID)
           }
         } else if (entry.type === "artifact") {
-          const wanted = wantedArtifact.get(JSON.stringify(entry.key))
-          const verified = verifiedArtifact.get(JSON.stringify(entry.key))
+          if (options.recordsOnly) continue
+          const location = hash(entry.location)
+          if (
+            selected.prepared &&
+            StorageCheckpoint.acceptsStagedArtifact(selected.prepared, entry.key, entry.location)
+          ) {
+            if (!options.allowMissingArtifacts || !verifiedBlob.get(location))
+              blocked("unpublished native artifact preparations")
+            continue
+          }
+          const key = JSON.stringify(entry.key)
+          const wanted = wantedArtifact.get(key)
+          const verified = verifiedArtifact.get(key)
           if (
             !wanted ||
             wanted.sha256 !== entry.location.sha256 ||
             wanted.size !== entry.location.size ||
-            !verified ||
-            verified.location !== hash(entry.location)
+            (verified
+              ? verified.location !== location
+              : !selected.prepared || !eligible.get(key) || !verifiedBlob.get(location))
           )
             blocked("H0 artifact differs from the actual H1 owner")
+          if (!verified) remember.run(key, location, entry.location.pack)
+          present.run(key)
           artifacts++
         } else if (entry.type === "event") blocked("unreconciled historical events")
         else if (
@@ -904,14 +981,16 @@ export namespace OrganizationRecoveryWriters {
         selected.kind === "preflight" && options.allowMissingKnowledge === true,
       )
       const expectedArtifacts = artifactCount.get()?.count
+      if (expectedArtifacts === undefined) blocked("missing H1 artifact inventory")
       if (
         count !== expected ||
-        artifacts !== expectedArtifacts ||
+        (!options.recordsOnly &&
+          artifacts !== expectedArtifacts - (options.allowMissingArtifacts ? missingArtifacts(selected) : 0)) ||
         (selected.kind === "publication" &&
           (found.size !== selected.sources.size || [...selected.sources.keys()].some((id) => !found.has(id))))
       )
         blocked("incomplete H1 canonical roster or owner facts")
-      if (Storage.inWriteTransaction()) {
+      if (!options.recordsOnly && Storage.inWriteTransaction()) {
         const checkpoint = selected.checkpoint
         if (!checkpoint) blocked("missing actual artifact checkpoint")
         using packs = selected.database.query<{ key: string }, []>("SELECT MIN(key) AS key FROM verified GROUP BY pack")
@@ -926,7 +1005,10 @@ export namespace OrganizationRecoveryWriters {
   }
   async function verifyTargetArtifacts(selected: Frame, checkpoint: Storage.ArtifactCheckpoint) {
     return Storage.snapshot(async (tx) => {
+      selected.database.exec("DELETE FROM present_artifacts")
+      using present = selected.database.query("INSERT OR IGNORE INTO present_artifacts VALUES(?)")
       let count = 0
+      let staged = 0
       using wanted = selected.database.query<{ sha256: string; size: number }, [string]>(
         "SELECT sha256,size FROM artifacts WHERE key=?",
       )
@@ -938,8 +1020,10 @@ export namespace OrganizationRecoveryWriters {
       using artifactCount = selected.database.query<{ count: number }, []>("SELECT COUNT(*) AS count FROM artifacts")
       for await (const entry of tx.artifacts()) {
         selected.assert()
+        const preparation =
+          selected.prepared && StorageCheckpoint.acceptsStagedArtifact(selected.prepared, entry.key, entry.location)
         const source = wanted.get(JSON.stringify(entry.key))
-        if (!source || source.sha256 !== entry.location.sha256 || source.size !== entry.location.size)
+        if (!preparation && (!source || source.sha256 !== entry.location.sha256 || source.size !== entry.location.size))
           blocked("H0 artifact differs from the actual H1 owner")
         const location = hash(entry.location)
         if (!blob.get(location)) {
@@ -948,18 +1032,24 @@ export namespace OrganizationRecoveryWriters {
           for await (const bytes of checkpoint.stream(entry.location)) {
             selected.assert()
             size += bytes.byteLength
-            if (size > source.size) blocked("target artifact bytes exceed their H1 identity")
+            if (size > entry.location.size) blocked("target artifact bytes exceed their H1 identity")
             digest.update(bytes)
           }
-          if (size !== source.size || digest.digest("hex") !== source.sha256)
+          if (size !== entry.location.size || digest.digest("hex") !== entry.location.sha256)
             blocked("target artifact bytes differ from H1")
           verifiedBlob.run(location)
         }
-        verified.run(JSON.stringify(entry.key), location, entry.location.pack)
-        count++
+        if (preparation) staged++
+        else {
+          const key = JSON.stringify(entry.key)
+          verified.run(key, location, entry.location.pack)
+          present.run(key)
+          count++
+        }
       }
       const expected = artifactCount.get()?.count
-      if (count !== expected) blocked("incomplete H1 artifact inventory")
+      const missing = missingArtifacts(selected)
+      if (count + missing !== expected || staged !== missing) blocked("incomplete H1 artifact inventory")
     })
   }
   export async function publish(evidence: Inspection, tx: StoreTransaction) {
@@ -968,6 +1058,7 @@ export namespace OrganizationRecoveryWriters {
       blocked("another publication transaction")
     return Storage.transaction(
       async () => {
+        if (selected.prepared) await StorageCheckpoint.publishPreparedArtifacts(selected.prepared, tx)
         await assertReconciled(evidence)
         const previous = sealed.get(tx)
         if (previous && (previous.frame !== selected || previous.failed)) blocked("changed publication reconciliation")
