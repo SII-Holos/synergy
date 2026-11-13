@@ -2,6 +2,7 @@ import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import {
   OrganizationExecutionProtocol as Execution,
   OrganizationIdentity as Identity,
+  OrganizationResourceProtocol as Resource,
 } from "@ericsanchezok/synergy-organization-protocol"
 import type { Credentials } from "./auth/session"
 import { authorize } from "./authorization"
@@ -12,6 +13,37 @@ import { OrganizationAuthorityHistory as History } from "./authority-history"
 import { OrganizationCloud as Cloud } from "./cloud"
 
 export namespace OrganizationSessionResources {
+  function validateContract(session: Record.SessionDirectory, contract: Record.SessionResources) {
+    if (
+      contract.orgID !== session.orgID ||
+      contract.sessionID !== session.sessionID ||
+      !contract.selection ||
+      JSON.stringify(Execution.resourceIDs(contract.selection)) !== JSON.stringify(session.resourceIDs)
+    )
+      fail("SERVICE_UNAVAILABLE", "Session resource contract is inconsistent")
+    return contract
+  }
+  export function historical(source: Record.HistoricalReader, session: Record.SessionDirectory) {
+    const contract = validateContract(
+      session,
+      source.read(Record.SessionResources, Keys.sessionResources(session.sessionID)),
+    )
+    const selection = contract.selection
+    if (!selection || selection.infrastructure.workspace || selection.infrastructure.environment)
+      fail("RESOURCE_UNAVAILABLE", "Historical Session infrastructure requires its original physical owner")
+    for (const role of Execution.resourceRoles(selection)) {
+      const resource = source.read(Record.Resource, Keys.resource(session.orgID, role.resourceID))
+      if (
+        resource.orgID !== session.orgID ||
+        resource.resourceID !== role.resourceID ||
+        resource.kind !== role.kind ||
+        Resource.kind(resource.configuration) !== role.kind ||
+        (resource.scope.kind === "project" && resource.scope.projectID !== session.projectID)
+      )
+        fail("PROTOCOL_MISMATCH", "Historical Session resource selection has another canonical owner")
+    }
+    return contract
+  }
   export function mappedWorkspace(
     contract: Record.SessionResources,
     target: { resourceID: string; workspaceID: string } | null,
@@ -49,14 +81,7 @@ export namespace OrganizationSessionResources {
       if (session.resourceIDs.length) fail("SERVICE_UNAVAILABLE", "Session resource contract is missing")
       return
     }
-    if (
-      contract.orgID !== session.orgID ||
-      contract.sessionID !== session.sessionID ||
-      !contract.selection ||
-      JSON.stringify(Execution.resourceIDs(contract.selection)) !== JSON.stringify(session.resourceIDs)
-    )
-      fail("SERVICE_UNAVAILABLE", "Session resource contract is inconsistent")
-    return contract
+    return validateContract(session, contract)
   }
   export async function get(credentials: Credentials, sessionID: string): Promise<Execution.Contract> {
     credentials = { ...credentials }

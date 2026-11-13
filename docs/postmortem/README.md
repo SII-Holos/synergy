@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0185](0185-recovery-source-disposed-before-returned-work-settled.md)
+
 - [0184](0184-observer-cancellation-reached-accepted-native-retirement.md)
 
 - [0183](0183-service-path-alias-changed-native-recovery-identity.md)

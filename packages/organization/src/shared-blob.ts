@@ -89,6 +89,96 @@ async function verify(manifest: Record.SharedBlob, active: Authority) {
 }
 
 export namespace OrganizationSharedBlobs {
+  export function historicalArtifact(key: string[]) {
+    return key[0] === "organization" && key[1] === "shared-blobs"
+  }
+  export function historicalReference(
+    source: Record.HistoricalReader,
+    reference: Pick<Record.SharedBlob, "sessionID" | "shareGeneration" | "hash" | "bytes">,
+  ) {
+    const manifest = source.read(
+      Record.SharedBlob,
+      Keys.sharedBlob(reference.sessionID, reference.shareGeneration, reference.hash),
+    )
+    if (
+      !manifest.complete ||
+      manifest.sessionID !== reference.sessionID ||
+      manifest.shareGeneration !== reference.shareGeneration ||
+      manifest.hash !== reference.hash ||
+      manifest.bytes !== reference.bytes
+    )
+      fail("PROTOCOL_MISMATCH", "Historical shared content references an unavailable original upload")
+  }
+  export async function history(
+    source: Record.HistoricalReader & {
+      accept(key: string[]): void
+      first(group: string[], value: unknown): boolean
+      binary(key: string[], maximum: number): Promise<Uint8Array>
+    },
+  ) {
+    const equal = (left: unknown, right: unknown) => JSON.stringify(left) === JSON.stringify(right)
+    function invalid(): never {
+      return fail("PROTOCOL_MISMATCH", "Historical uploaded blob has an incomplete or changed native byte closure")
+    }
+    for (const row of source.entries(["organization", "shared-blobs"])) {
+      const sessionID = row.key[2],
+        rawGeneration = row.key[3],
+        hash = row.key[4]
+      if (!sessionID || rawGeneration === undefined || !hash || row.key.length < 5) invalid()
+      const generation = Identity.Revision.parse(Number(rawGeneration))
+      if (String(generation) !== rawGeneration) invalid()
+      const key = Keys.sharedBlob(sessionID, generation, Protocol.Digest.parse(hash))
+      const manifest = source.read(Record.SharedBlob, key)
+      const state = source.read(Record.SharedState, Keys.sharedState(sessionID))
+      if (
+        manifest.sessionID !== sessionID ||
+        manifest.shareGeneration !== generation ||
+        manifest.hash !== hash ||
+        !manifest.complete ||
+        manifest.nextOffset !== manifest.bytes ||
+        manifest.receivedBytes !== manifest.bytes ||
+        state.sessionID !== sessionID ||
+        state.shareGeneration !== generation ||
+        state.syncState !== "synced"
+      )
+        invalid()
+      if (!source.first(["shared-blob", ...key], manifest)) continue
+      let bytes = 0,
+        count = 0
+      const digest = createHash("sha256")
+      for (const receipt of source.entries(receiptRoot(sessionID, generation, hash))) {
+        const chunk = Chunk.parse(receipt.value)
+        if (
+          !equal(receipt.key, receiptKey(sessionID, generation, hash, bytes)) ||
+          chunk.offset !== bytes ||
+          chunk.bytes !== Math.min(chunkBytes, manifest.bytes - bytes)
+        )
+          invalid()
+        const content = await source.binary(Keys.sharedBlobChunk(sessionID, generation, hash, bytes), chunkBytes)
+        if (content.byteLength !== chunk.bytes) invalid()
+        digest.update(content)
+        bytes += content.byteLength
+        count++
+        source.accept(receipt.key)
+      }
+      if (bytes !== manifest.bytes || count !== manifest.receivedChunks || digest.digest("hex") !== manifest.hash)
+        invalid()
+      for (const owned of source.entries(key)) {
+        if (equal(owned.key, key)) {
+          if (!equal(owned.value, manifest)) invalid()
+          continue
+        }
+        const chunk = Chunk.parse(owned.value)
+        if (
+          chunk.offset >= manifest.bytes ||
+          !equal(owned.key, receiptKey(sessionID, generation, hash, chunk.offset)) ||
+          chunk.offset % chunkBytes !== 0
+        )
+          invalid()
+      }
+      source.accept(key)
+    }
+  }
   export function status(manifest: Record.SharedBlob) {
     return Sync.BlobStatus.parse({
       sessionID: manifest.sessionID,

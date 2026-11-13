@@ -24,6 +24,10 @@ import { OrganizationGatewayHistory } from "../gateway-calls"
 import { OrganizationKnowledge } from "../knowledge"
 import { OrganizationPublications } from "../publications"
 import { OrganizationArtifacts } from "../artifacts"
+import { OrganizationSharing } from "../sharing"
+import { OrganizationRuntimeHistory } from "../runtime-history"
+import { OrganizationSessionResources } from "../session-resources"
+import { OrganizationInviteHistory } from "../auth/invite-history"
 import {
   OrganizationProtocol,
   OrganizationExecutionProtocol as Execution,
@@ -46,6 +50,7 @@ type Inventory = {
   checkpoint?: Storage.ArtifactCheckpoint
   prepared?: StorageCheckpoint.PreparedArtifacts
   historyComplete?: boolean
+  publicationIncarnation?: string
 }
 type HistoryIndex = Pick<Inventory, "database" | "assertTarget" | "historyComplete">
 type Frame = Inventory & { target: Reference; namespaceHash: string }
@@ -82,6 +87,7 @@ function sourceValue<T>(selected: Pick<Inventory, "database">, schema: z.ZodType
 }
 function sourceRuntime(selected: Inventory, id: string) {
   const runtime = sourceValue(selected, Record.RuntimeRegistration, Keys.runtime(id))
+  if (runtime.runtimeKind === "member") return OrganizationRuntimeHistory.member(historicalReader(selected), id)
   const deployment = sourceValue(selected, OrganizationProtocol.Deployment, Keys.deployment())
   const source = selected.sources.get(id)
   if (source && hash(NamespaceRetirement.inspect(source.proof)) !== hash(source.reference))
@@ -111,6 +117,7 @@ function sourceSession(selected: Inventory, id: string) {
     session.retainedExecutionGrants !== 0
   )
     blocked("unreconciled Session binding or retained execution")
+  if (session.resourceIDs.length) OrganizationSessionResources.historical(historicalReader(selected), session)
   return session
 }
 function sourceResource(selected: Inventory, orgID: string, id: string) {
@@ -132,9 +139,16 @@ function selection(selected: Inventory, orgID: string, value: Execution.Selectio
       blocked("resource selection owner")
 }
 async function classify(selected: Inventory, key: string[], value: unknown): Promise<Mode> {
+  if (key[0] === "organization" && key[1] === "runtimes" && selected.publicationIncarnation) {
+    const runtime = Record.RuntimeRegistration.parse(value)
+    if (runtime.runtimeKind === "member" && runtime.deploymentIncarnation === selected.publicationIncarnation)
+      blocked("Member metadata cannot adopt the fresh publication authority")
+  }
+  if (historyMatches(selected, key, value)) return "exact"
+  if (OrganizationRuntimeHistory.validate(historicalReader(selected), key, value)) return "exact"
+  if (OrganizationInviteHistory.validate(historicalReader(selected), key, value)) return "exact"
   const [root, kind] = key
   if (root !== "organization") {
-    if (historyMatches(selected, key, value)) return "exact"
     if (OrganizationKnowledge.emptyHistory(historicalReader(selected), key, value)) {
       const sessionID = key[2]
       if (!sessionID) blocked("knowledge Session owner")
@@ -226,6 +240,8 @@ async function classify(selected: Inventory, key: string[], value: unknown): Pro
       !resources.selection
     )
       blocked("Session resource owner")
+    if (hash(resources) !== hash(OrganizationSessionResources.historical(historicalReader(selected), session)))
+      blocked("Session resource contract changed outside its original owner")
     selection(selected, resources.orgID, resources.selection)
     return "exact"
   }
@@ -278,7 +294,10 @@ async function classify(selected: Inventory, key: string[], value: unknown): Pro
     return "exact"
   }
   const history = historicalReader(selected)
-  if (await OrganizationCommandHistory.validate(history, key, value)) {
+  if (
+    (await OrganizationCommandHistory.retainedMember(history, key, value)) ||
+    (await OrganizationCommandHistory.validate(history, key, value))
+  ) {
     const sessionID =
       kind === "command-states"
         ? key[2]
@@ -366,7 +385,7 @@ function inventoryDatabase(filename: string) {
 }
 const historicalRoots = new Set(["organization-knowledge", "organization-publications", "organization-artifacts"])
 function historyMatches(selected: HistoryIndex, key: string[], value: unknown) {
-  if (!selected.historyComplete || !historicalRoots.has(key[0])) return false
+  if (!selected.historyComplete) return false
   using known = selected.database.query<{ key: string }, [string]>("SELECT key FROM history WHERE key=?")
   return !!known.get(JSON.stringify(key)) && hash(sourceRow(selected, key)?.value) === hash(value)
 }
@@ -430,13 +449,15 @@ async function validatePublishedHistory(selected: HistoryIndex, stream: (key: st
     appended.run(JSON.stringify(key))
   })
   await OrganizationArtifacts.history(history)
+  await OrganizationSharing.history(history)
   using artifacts = selected.database.query<{ key: string }, []>("SELECT key FROM artifacts ORDER BY key")
   using known = selected.database.query<{ key: string }, [string]>("SELECT key FROM history_artifacts WHERE key=?")
   for (const row of artifacts.iterate()) {
     selected.assertTarget()
     const key: unknown = JSON.parse(row.key)
     const parsed = z.array(z.string()).parse(key)
-    if (historicalRoots.has(parsed[0]) && !known.get(row.key)) blocked("unreconciled historical publication bytes")
+    if ((historicalRoots.has(parsed[0]) || OrganizationSharing.historicalArtifact(parsed)) && !known.get(row.key))
+      blocked("unreconciled historical publication bytes")
   }
   selected.historyComplete = true
 }
@@ -504,6 +525,20 @@ async function withCurrentHistory<T>(body: (selected: HistoryIndex) => Promise<T
             yield* checkpoint.stream(entry.location)
           })(),
         )
+        const metadata: Inventory = {
+          ...selected,
+          kind: "preflight",
+          sources: new Map(),
+          assert,
+        }
+        using rows = database.query<{ key: string; value: string }, []>("SELECT key,value FROM records ORDER BY key")
+        using accept = database.query("INSERT OR IGNORE INTO history VALUES(?)")
+        for (const row of rows.iterate()) {
+          assert()
+          const mode = await classify(metadata, JSON.parse(row.key), JSON.parse(row.value))
+          if (mode === "runtime") blocked("unproved Hosted writer")
+          if (mode === "exact") accept.run(row.key)
+        }
         return body(selected)
       },
       { signal },
@@ -533,9 +568,6 @@ const serviceRecords = new Set([
   "client-grants",
   "client-access",
   "client-refresh",
-  "invites",
-  "invite-catalog",
-  "invite-receipts",
   "resets",
   "bootstrap",
   "projects",
@@ -730,6 +762,7 @@ export namespace OrganizationRecoveryWriters {
       database,
       target,
       namespaceHash: hash(namespace.expected),
+      publicationIncarnation: HomeRestoration.describe(permit).incarnation,
       sources,
       assertTarget,
       assert,
@@ -783,9 +816,12 @@ export namespace OrganizationRecoveryWriters {
       )
       using rows = database.query<{ key: string; value: string }, []>("SELECT key,value FROM records ORDER BY key")
       using update = database.query("UPDATE records SET mode=? WHERE key=?")
+      using accepted = database.query("INSERT OR IGNORE INTO history VALUES(?)")
       for (const row of rows.iterate()) {
         assertTarget()
-        update.run(await classify(selected, JSON.parse(row.key), JSON.parse(row.value)), row.key)
+        const mode = await classify(selected, JSON.parse(row.key), JSON.parse(row.value))
+        update.run(mode, row.key)
+        if (mode === "exact") accepted.run(row.key)
       }
       await assertInventoryMatches(selected, { allowMissingKnowledge: true, recordsOnly: true })
       using present = database.query("INSERT OR IGNORE INTO present_artifacts VALUES(?)")
@@ -1162,7 +1198,8 @@ export namespace OrganizationRecoveryWriters {
       async (tx) =>
         (await tx.queryKeys({ prefix: ["organization-knowledge"], limit: 1 })).length ||
         (await tx.queryKeys({ prefix: ["organization-publications"], limit: 1 })).length ||
-        (await tx.queryKeys({ prefix: ["organization-artifacts"], limit: 1 })).length,
+        (await tx.queryKeys({ prefix: ["organization-artifacts"], limit: 1 })).length ||
+        (await tx.queryKeys({ prefix: ["organization", "shared-state"], limit: 1 })).length,
     )
     if (present) return withCurrentHistory((selected) => scanServiceOnly(selected, signal), signal)
     return scanServiceOnly(undefined, signal)
@@ -1183,7 +1220,10 @@ export namespace OrganizationRecoveryWriters {
           continue
         }
         if (entry.type === "event") blocked("unreconciled historical events")
-        if (entry.type === "artifact") continue
+        if (entry.type === "artifact") {
+          if (!history && OrganizationSharing.historicalArtifact(entry.key)) blocked("unreconciled shared artifact")
+          continue
+        }
         if (history && historyMatches(history, entry.key, entry.value)) {
           accepted++
           continue

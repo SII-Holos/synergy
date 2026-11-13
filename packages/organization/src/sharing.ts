@@ -1,4 +1,5 @@
 import { OrganizationSharedBlobs } from "./shared-blob"
+import { OrganizationSharedHistory } from "./shared-history"
 import { createHash } from "node:crypto"
 import {
   OrganizationIdentity as Identity,
@@ -514,6 +515,8 @@ async function commitBatch(session: Record.SessionDirectory, batch: Sync.Batch) 
 }
 
 export namespace OrganizationSharing {
+  export const history = OrganizationSharedHistory.history
+  export const historicalArtifact = OrganizationSharedBlobs.historicalArtifact
   export const describe = view
   export async function readForExecution(input: {
     query: SessionTool.ReadQuery

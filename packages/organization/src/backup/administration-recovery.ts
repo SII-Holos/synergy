@@ -222,7 +222,7 @@ export namespace OrganizationRecoveryAdministration {
                     publicOrigin: selected.sourceOrigin,
                     preparation,
                   })
-                  return source.run(() =>
+                  return await source.run(() =>
                     Preparation.withLease(preparation, { existingWork: !!existing, signal }, async (lease, retain) => {
                       await Writers.assertServiceOnly({ signal })
                       return Current.withSource(
