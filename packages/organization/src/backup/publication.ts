@@ -150,6 +150,7 @@ export namespace OrganizationRecoveryPublication {
     const info = Authority.inspectActivation(activation)
     const reference = OrganizationSourceRetirement.inspect(source)
     const settings = Native.inspectPublicationSettings(native)
+    Native.assertReconstruction(native)
     const reconciled = writers && Writers.inspect(writers)
     if (
       hash(info.reference) !== hash(reference.target) ||
@@ -157,7 +158,6 @@ export namespace OrganizationRecoveryPublication {
       Native.sourceHash(settings.manifest.source) !== reference.current.namespaceHash ||
       hash(settings.manifest.startup.settings.clientAuthentication.clients) !==
         reference.current.clientDefinitionsHash ||
-      settings.manifest.startup.requirements.length ||
       settings.manifest.startup.webRequired
     )
       fail("requires the original verified source settings, target and prepared key")

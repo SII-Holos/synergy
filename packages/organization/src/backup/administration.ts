@@ -15,6 +15,9 @@ import { OrganizationServiceNative as Native } from "./service-native"
 import { OrganizationRecoveryAuthority as Authority } from "./authority"
 import { OrganizationRecovery as Recovery } from "./recovery"
 import { OrganizationServiceHome } from "../service-home"
+import { OrganizationResourceNative as Resources } from "./resources"
+import { OrganizationRecoveryDatabase as Database } from "./database"
+import { captureOrganizationTargetInfrastructure, type OrganizationTargetInfrastructure } from "./target-infrastructure"
 import { readOrganizationConfiguration } from "../configuration"
 import { loadOrganizationInfrastructure } from "../infrastructure"
 import { openOrganizationRecovery, openOrganizationService } from "../service"
@@ -27,6 +30,60 @@ async function directoryEntries(directory: string, expected: string[]) {
     if (!pending.delete(entry.name)) throw new Error("Restore contains an unrecognized namespace or facet")
   if (pending.size) throw new Error("Restore is missing a required namespace or facet")
 }
+async function preflightTarget(
+  input: { base: string; inventory: Cohort.NamespaceInventory; keys: VaultKeyProvider; signal?: AbortSignal },
+  infrastructure: OrganizationTargetInfrastructure,
+) {
+  let manifest: Native.Manifest | undefined
+  for await (const entry of StorageCheckpoint.entries({
+    directory: path.join(input.base, "native"),
+    expected: input.inventory.native!,
+    keys: input.keys,
+    signal: input.signal,
+  })) {
+    if (
+      entry.type === "record" &&
+      JSON.stringify(entry.key) === JSON.stringify(["service-native", "manifest"]) &&
+      !manifest
+    )
+      manifest = Native.Manifest.parse(entry.value)
+    else if (
+      entry.type !== "artifact" ||
+      JSON.stringify(entry.key) !== JSON.stringify(["service-native", "configuration"])
+    )
+      throw new Error("Restore contains an unrecognized native service record")
+  }
+  if (
+    !manifest ||
+    Native.sourceHash(manifest.source) !== Native.sourceHash(input.inventory.namespace) ||
+    !!manifest.resources !== !!input.inventory.resources ||
+    (manifest.resources &&
+      input.inventory.resources &&
+      Native.sourceHash(manifest.resources) !== Native.sourceHash(input.inventory.resources))
+  )
+    throw new Error("Restore native facets do not match their original namespace")
+  Database.verify(manifest.startup.database, manifest.startup.requirements)
+  Database.assertOptions(
+    manifest.startup.database,
+    infrastructure.database ?? { backend: "sqlite", namespace: "organization" },
+  )
+  if (manifest.resources) {
+    await Resources.preflightComposition(
+      {
+        directory: path.join(input.base, "resources"),
+        expected: manifest.resources,
+        source: input.inventory.namespace,
+        keys: input.keys,
+        signal: input.signal,
+      },
+      infrastructure.cloud,
+    )
+  } else if (
+    infrastructure.cloud &&
+    Object.values(infrastructure.cloud).some((value) => value && Object.keys(value).length)
+  )
+    throw new Error("Restore target declares a resource composition absent from its original native archive")
+}
 
 export namespace OrganizationBackupAdministration {
   type OriginalTarget = Parameters<typeof Recovery.withTarget>[0]
@@ -37,6 +94,7 @@ export namespace OrganizationBackupAdministration {
       restoreID: string
       keys: VaultKeyProvider
       signal?: AbortSignal
+      targetInfrastructure?: OrganizationTargetInfrastructure
     },
     body: (context: {
       info: Pick<HomeRestoration.Info, "installationID" | "incarnation" | "restoreID" | "sourceHash" | "requestHash">
@@ -45,6 +103,7 @@ export namespace OrganizationBackupAdministration {
     }) => Promise<T>,
   ) {
     const { home: providedHome, directory, restoreID, signal } = input
+    const infrastructure = captureOrganizationTargetInfrastructure(input.targetInfrastructure)
     const keys = Object.freeze({
       current: input.keys.current.bind(input.keys),
       resolve: input.keys.resolve.bind(input.keys),
@@ -53,7 +112,8 @@ export namespace OrganizationBackupAdministration {
     return withServiceArchive(
       { directory, restoreID, keys, signal },
       async ({ base, inventory, expectedNative, request }) => {
-        await using runtime = await openOrganizationRecovery({ home })
+        await preflightTarget({ base, inventory, keys, signal }, infrastructure)
+        await using runtime = await openOrganizationRecovery({ ...infrastructure, home })
         return await runtime.run(async () => {
           const owner = HomeOwnershipFile.RestorationInfo.parse(await HomeOwnership.assert({ required: true }))
           const retained = await RuntimeMaintenance.restoration(owner.installationID)
@@ -87,6 +147,11 @@ export namespace OrganizationBackupAdministration {
                     {
                       directory: path.join(base, "native"),
                       expected: expectedNative,
+                      resources: inventory.resources && {
+                        directory: path.join(base, "resources"),
+                        expected: inventory.resources,
+                        namespaceDirectory: path.join(base, "records"),
+                      },
                       source: inventory.namespace,
                       keys,
                       permit,
@@ -126,13 +191,9 @@ export namespace OrganizationBackupAdministration {
     signal?.throwIfAborted()
     if (!path.isAbsolute(home) || !path.isAbsolute(directory)) throw new Error("Backup requires absolute native paths")
     const owner = await HomeOwnershipFile.open({ root: path.join(home, ".synergy"), env: process.env }).read()
-    if (
-      !owner ||
-      owner.owner !== "organization" ||
-      (owner.schemaVersion !== 2 && owner.schemaVersion !== 3) ||
-      owner.readerContract !== OrganizationServiceHome.readerContract
-    )
+    if (!owner || owner.owner !== "organization" || owner.schemaVersion !== 2)
       throw new Error("Backup requires an existing ordinary organization Home")
+    OrganizationServiceHome.archivedOwner(owner)
     const existing = await fs.lstat(directory).then(
       () => true,
       (error: unknown) => {
@@ -200,8 +261,14 @@ export namespace OrganizationBackupAdministration {
         throw new Error("Restore requires every archived namespace's original installation owner")
       await directoryEntries(path.join(opened, "namespaces"), ["0000000000000000"])
       const base = path.join(opened, "namespaces", "0000000000000000")
-      await directoryEntries(base, ["namespace.json", "native", "records", "snapshots"])
       const inventory = Cohort.NamespaceInventory.parse(await Bun.file(path.join(base, "namespace.json")).json())
+      await directoryEntries(base, [
+        "namespace.json",
+        "native",
+        "records",
+        "snapshots",
+        ...(inventory.resources ? ["resources"] : []),
+      ])
       if (
         inventory.ordinal !== 0 ||
         inventory.identity.kind !== "service" ||
@@ -216,6 +283,7 @@ export namespace OrganizationBackupAdministration {
         source: inventory.namespace,
         expected: inventory.native,
         snapshot: inventory.segment.namespace,
+        resources: inventory.resources,
         cohort: {
           archiveID: report.archiveID,
           pagesHash: report.pagesHash,
@@ -234,8 +302,14 @@ export namespace OrganizationBackupAdministration {
     restoreID: string
     keys: VaultKeyProvider
     signal?: AbortSignal
+    targetInfrastructure?: OrganizationTargetInfrastructure
   }) {
-    const { home, directory, restoreID, keys, signal } = input
+    const { home, directory, restoreID, signal } = input
+    const keys = Object.freeze({
+      current: input.keys.current.bind(input.keys),
+      resolve: input.keys.resolve.bind(input.keys),
+    })
+    const infrastructure = captureOrganizationTargetInfrastructure(input.targetInfrastructure)
     signal?.throwIfAborted()
     if (!path.isAbsolute(home) || !path.isAbsolute(directory)) throw new Error("Restore requires absolute native paths")
     z.uuid().parse(restoreID)
@@ -243,8 +317,9 @@ export namespace OrganizationBackupAdministration {
     return withServiceArchive(
       { directory, restoreID, keys, signal },
       async ({ base, inventory, expectedNative, request }) => {
+        await preflightTarget({ base, inventory, keys, signal }, infrastructure)
         await fs.mkdir(home, { recursive: true, mode: 0o700 })
-        await using runtime = await openOrganizationRecovery({ home: await fs.realpath(home) })
+        await using runtime = await openOrganizationRecovery({ ...infrastructure, home: await fs.realpath(home) })
         const receipt = await runtime.run(async () => {
           const selected = await HomeRestoration.begin(request, { signal })
           return HomeRestoration.withTarget(
@@ -254,6 +329,11 @@ export namespace OrganizationBackupAdministration {
                 {
                   directory: path.join(base, "native"),
                   expected: expectedNative,
+                  resources: inventory.resources && {
+                    directory: path.join(base, "resources"),
+                    expected: inventory.resources,
+                    namespaceDirectory: path.join(base, "records"),
+                  },
                   source: inventory.namespace,
                   keys,
                   permit,

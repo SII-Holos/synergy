@@ -29,6 +29,8 @@ import { createRuntimeHandoff } from "./handoff-runtime"
 import { OrganizationHandoffWorkspaceTarget } from "./handoff-workspace-target"
 import { OrganizationHandoffWorkspaceSource } from "./handoff-workspace-source"
 import { OrganizationWorkspaceFileSource } from "./workspace-file-source"
+import { OrganizationEnvironmentExecutionSource } from "./environment-execution-source"
+import { EnvironmentExecutionSource } from "@ericsanchezok/synergy-harness/environment/execution-source"
 import {
   SessionTransferCore,
   SessionTransferEvidence,
@@ -86,6 +88,7 @@ async function openOrganizationRuntime(input: MemberRuntimeOptions) {
     throw new MemberHomeError("Member Runtime must be enrolled before startup")
   let bridge: ReturnType<typeof startMemberBridge> | undefined
   let handoff: ReturnType<typeof createRuntimeHandoff> | undefined
+  let bridgeLifetime = new AbortController()
   let restartBridge: (() => Promise<void>) | undefined
   let bridgeDrained = false
   const components = [
@@ -135,6 +138,7 @@ async function openOrganizationRuntime(input: MemberRuntimeOptions) {
           },
         })
         OrganizationWorkspaceFileSource.register(member.identity)
+        OrganizationEnvironmentExecutionSource.register(member.identity, registration.runtimeID)
         OrganizationLocalProjects.register(member.identity)
         OrganizationSessionReads.register(member.identity, registration.runtimeID)
         SessionTransferCore.register()
@@ -166,6 +170,7 @@ async function openOrganizationRuntime(input: MemberRuntimeOptions) {
       services() {
         const start = async () => {
           const context = RuntimeContext.current()
+          bridgeLifetime = new AbortController()
           handoff = input.handoff
             ? createRuntimeHandoff({
                 identity: member.identity,
@@ -179,7 +184,7 @@ async function openOrganizationRuntime(input: MemberRuntimeOptions) {
             identity: member.identity,
             buildVersion: version,
             ca: input.ca,
-            signal: input.signal,
+            signal: bridgeLifetime.signal,
             commands: context.bind((connection, signal, resources) => {
               const intake = createCommandIntake({
                 identity: connection.signingIdentity,
@@ -236,9 +241,16 @@ async function openOrganizationRuntime(input: MemberRuntimeOptions) {
               await start()
             },
             async stop() {
-              await bridge?.close()
-              bridgeDrained = true
-              await handoff?.close()
+              const failures: unknown[] = []
+              for (const stop of [
+                () => EnvironmentExecutionSource.close(),
+                async () => { await bridge?.close(); bridgeDrained = true },
+                () => handoff?.close(),
+              ]) {
+                try { await stop() } catch (error) { failures.push(error) }
+              }
+              bridgeLifetime.abort(new Error("Organization Runtime resident stopped"))
+              if (failures.length) throw new AggregateError(failures, "Organization execution and bridge did not close")
             },
           },
         }

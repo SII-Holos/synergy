@@ -4,6 +4,8 @@ import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context
 import { HomeOwnership } from "@ericsanchezok/synergy-harness/lifecycle/home-ownership"
 import { HomeRestoration } from "@ericsanchezok/synergy-harness/lifecycle/home-restoration"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { Environment } from "@ericsanchezok/synergy-harness/environment"
+import { EnvironmentProviders } from "@ericsanchezok/synergy-harness/environment/provider"
 import { RuntimeMaintenance } from "@ericsanchezok/synergy-harness/storage/runtime-maintenance"
 import { TransactionalStore, type StoreOptions } from "@ericsanchezok/synergy-harness/storage/transactional-store"
 import { MigrationRegistry } from "@ericsanchezok/synergy-harness/migration/registry"
@@ -47,6 +49,7 @@ import { createSessionReadForwarder } from "./session-read"
 import { OrganizationServiceMaintenance } from "./service-maintenance"
 import { OrganizationServiceHome } from "./service-home"
 import { OrganizationServiceNative } from "./backup/service-native"
+import { OrganizationResourceNative } from "./backup/resources"
 import { OrganizationSourceRetirement } from "./backup/source-retirement"
 import { OrganizationCurrentAuthority } from "./backup/current-authority"
 import { OrganizationSourcePreparation } from "./backup/source-preparation"
@@ -54,6 +57,12 @@ import { OrganizationRecoveryPublication } from "./backup/publication"
 import { readOrganizationConfiguration } from "./configuration"
 import { OrganizationHealth } from "./health"
 import { OrganizationRetention } from "./retention"
+import {
+  createOrganizationCloudEnvironments,
+  registerOrganizationCloudEnvironments,
+  type OrganizationCloudEnvironments,
+} from "./cloud-environments"
+import { fail } from "./error"
 
 export interface OrganizationServiceOptions {
   home: string
@@ -83,7 +92,9 @@ export async function openOrganizationServiceHomeUpgrade(
   return upgrade
 }
 
-export async function openOrganizationRecovery(options: Pick<OrganizationServiceOptions, "home" | "database">) {
+export async function openOrganizationRecovery(
+  options: Pick<OrganizationServiceOptions, "home" | "database" | "cloud">,
+) {
   const entry = await openOrganizationNamespace(options, "recovery")
   if (entry.mode !== "recovery") throw new Error("Organization recovery startup selected another native mode")
   const { mode: _, ...recovery } = entry
@@ -103,7 +114,9 @@ export async function openOrganizationSourceRetirement(
 }
 
 export async function openOrganizationPendingRetirement(
-  options: Pick<OrganizationServiceOptions, "home"> & { reference: OrganizationSourceRetirement.Reference },
+  options: Pick<OrganizationServiceOptions, "home" | "database" | "cloud"> & {
+    reference: OrganizationSourceRetirement.Reference
+  },
 ) {
   const reference = OrganizationSourceRetirement.Reference.parse(structuredClone(options.reference))
   const entry = await openOrganizationNamespace(options, "pending-retirement", reference)
@@ -134,6 +147,9 @@ async function openOrganizationNamespace(
   const webOptions = options.web ? { ...options.web } : undefined
   const database = options.database ? { ...options.database } : undefined
   const cloud = options.cloud
+  const environmentsRequested = Boolean(
+    cloud?.environmentProviders?.length || Object.keys(cloud?.environmentProfiles ?? {}).length,
+  )
   let settings = OrganizationSettings.parse({
     authentication: options.authentication,
     clientAuthentication: options.clientAuthentication,
@@ -176,6 +192,9 @@ async function openOrganizationNamespace(
     let notifications: OrganizationNotifications | undefined
     let modelGateway: ModelGateway | undefined
     let connectionGateway: ConnectionGateway | undefined
+    let environments: OrganizationCloudEnvironments | undefined
+    let environmentOwner: ReturnType<typeof registerOrganizationCloudEnvironments> | undefined
+    let environmentExecution = false
     const active = new Set<Promise<unknown>>()
     async function run<T>(body: () => T | Promise<T>): Promise<T> {
       if (!ready) throw new Error("Organization service is closed")
@@ -190,8 +209,11 @@ async function openOrganizationNamespace(
     function close() {
       if (closing) return closing
       ready = false
-      closing = context.run(async () => {
+      let nativeDrained = false
+      const pending = context.run(async () => {
         RuntimeContext.setReady(false)
+        await environments?.close()
+        nativeDrained = true
         notifications?.close()
         connections?.close()
         await modelGateway?.close()
@@ -231,6 +253,10 @@ async function openOrganizationNamespace(
         context.dispose()
         if (errors.length) throw new AggregateError(errors, "Organization service cleanup failed")
       })
+      closing = pending
+      void pending.catch(() => {
+        if (!nativeDrained && closing === pending) closing = undefined
+      })
       return closing
     }
     try {
@@ -239,12 +265,13 @@ async function openOrganizationNamespace(
       OrganizationRecoveryPublication.register()
       RuntimeMaintenance.registerProtection()
       if (mode === "source-preparation") await OrganizationSourcePreparation.selectOwner()
-      else if (mode === "upgrade") await OrganizationServiceHome.selectForUpgrade()
+      else if (mode === "upgrade")
+        await OrganizationServiceHome.selectForUpgrade({ environments: environmentsRequested })
       else if (mode === "recovery") await OrganizationServiceHome.selectForRecovery()
       else if (mode === "retirement" || mode === "pending-retirement") {
         if (!retirement) throw new Error("Source retirement requires its original reference")
         await OrganizationServiceHome.selectForRetirement(OrganizationSourceRetirement.marker(retirement))
-      } else restored = await OrganizationServiceHome.selectForStartup()
+      } else restored = await OrganizationServiceHome.selectForStartup({ environments: environmentsRequested })
       ownership = await ServerProcessLock.acquire()
       if (mode !== "recovery" && mode !== "retirement" && mode !== "pending-retirement" && !restored)
         await HomeRestoration.assertOrdinaryStartup()
@@ -254,16 +281,16 @@ async function openOrganizationNamespace(
         if (error.code === "ENOENT") return []
         throw error
       })
-      if (!owned && entries.length && !entries.includes("organization.sqlite"))
+      if (!owned && !retirement && entries.length && !entries.includes("organization.sqlite"))
         throw new Error("Organization service requires a dedicated Home without personal Runtime data")
       await fs.mkdir(path.join(root, "data"), { recursive: true, mode: 0o700 })
-      store = await TransactionalStore.open(
-        database ?? {
-          backend: "sqlite",
-          namespace: "organization",
-          filename: path.join(root, "data", "organization.sqlite"),
-        },
-      )
+      const selectedDatabase: StoreOptions = database ?? {
+        backend: "sqlite",
+        namespace: "organization",
+        filename: path.join(root, "data", "organization.sqlite"),
+      }
+      if (retirement) OrganizationSourceRetirement.assertStoreOptions(retirement, selectedDatabase)
+      store = await TransactionalStore.open(selectedDatabase)
       context.storage = { store, artifactDirectory: path.join(root, "data", "artifacts") }
       OrganizationAuthorityHistory.register()
       registerHandoffAuthorityHistory()
@@ -281,24 +308,42 @@ async function openOrganizationNamespace(
           ...Object.fromEntries(Object.entries(settings).filter(([, value]) => value !== undefined)),
         })
       }
-      if (mode !== "recovery" && mode !== "retirement" && mode !== "pending-retirement") {
-        await OrganizationServiceHome.assertStartupOwner()
-        OrganizationServiceMaintenance.register()
-        OrganizationServiceHome.registerNamespaceIdentity()
+      if (mode === "recovery") {
         OrganizationCloud.register(cloud)
+        OrganizationResourceNative.register(cloud)
+      }
+      if (mode !== "recovery" && mode !== "retirement") {
+        if (mode !== "pending-retirement") await OrganizationServiceHome.assertStartupOwner()
+        OrganizationServiceMaintenance.register()
+        if (mode !== "pending-retirement") OrganizationServiceHome.registerNamespaceIdentity()
+        OrganizationCloud.register(cloud)
+        environmentExecution = environmentsRequested
+        if (!environmentExecution) {
+          for await (const _ of OrganizationCloud.environmentEntries()) {
+            environmentExecution = true
+            break
+          }
+        }
+        environmentExecution ||= await Environment.hasState()
+        if (environmentExecution) {
+          environmentOwner = registerOrganizationCloudEnvironments()
+          for await (const environment of Environment.entries()) EnvironmentProviders.get(environment.provider)
+        }
+        if (mode === "upgrade") OrganizationServiceHome.registerUpgradeOwner()
         if (mode === "serve" || mode === "source-preparation")
           OrganizationServiceNative.register({ ...settings, publicOrigin, web: webOptions, database, cloud })
+        if (mode === "pending-retirement") OrganizationResourceNative.register(cloud)
         if (mode === "source-preparation") {
           if (!preparation) throw new Error("Source preparation requires its original Target and work capability")
           OrganizationSourcePreparation.register(preparation)
         }
-        OrganizationSessionDirectory.registerRuntimeStatus(async (runtimeID) => {
-          if (!connections) throw new Error("Organization Runtime presence is unavailable")
-          return connections.availability(runtimeID)
-        })
+        if (mode !== "pending-retirement")
+          OrganizationSessionDirectory.registerRuntimeStatus(async (runtimeID) => {
+            if (!connections) throw new Error("Organization Runtime presence is unavailable")
+            return connections.availability(runtimeID)
+          })
       }
       if (mode === "pending-retirement") {
-        OrganizationServiceMaintenance.register()
         OrganizationCurrentAuthority.registerPendingSource()
       }
       MigrationRegistry.lock()
@@ -391,6 +436,12 @@ async function openOrganizationNamespace(
       }
       await ensureMigrations({ output: "silent" })
       await HomeOwnership.assert({ required: true })
+      if (mode === "upgrade") await OrganizationServiceHome.assertEnvironmentUpgradeIdle()
+      if (mode === "serve" && environmentExecution) await OrganizationServiceHome.assertEnvironmentReader()
+      if (environmentOwner && mode === "serve") {
+        const installed = environmentOwner
+        await OrganizationServiceMaintenance.run(() => installed.recover())
+      }
       const deployment = OrganizationProtocol.Deployment.parse(await Storage.read(OrganizationStoragePath.deployment()))
       const signing = await loadSigningAuthority(deployment)
       await OrganizationAuthorityHistory.attach(deployment)
@@ -442,8 +493,22 @@ async function openOrganizationNamespace(
         assertResourcesDrained(grantID) {
           modelGateway!.assertDrained(grantID)
           connectionGateway!.assertDrained(grantID)
+          environments?.assertDrained(grantID)
         },
+        ...(environmentExecution
+          ? {
+              async prepareResourcesDrained(grantID: string) {
+                if (!environments)
+                  fail("RESOURCE_UNAVAILABLE", "Selected Environment has no installed native execution owner")
+                await environments.prepareDrained(grantID)
+              },
+            }
+          : {}),
       })
+      if (environmentExecution) {
+        environments = createOrganizationCloudEnvironments({ grants: execution })
+        await OrganizationServiceMaintenance.run(() => environments!.ready())
+      }
       const authentication = await createAuthentication(settings.authentication, connections.removeAccount)
       const clientAuthentication = createClientAuthentication(settings.clientAuthentication, publicOrigin)
       const registrations = createRuntimeRegistrations(settings.registration, connections.revoke)
@@ -460,6 +525,7 @@ async function openOrganizationNamespace(
         handoffs,
         reads,
         notifications,
+        environments,
       )
       if (web) app.route("/", web)
       ready = true

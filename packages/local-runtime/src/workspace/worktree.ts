@@ -1023,9 +1023,14 @@ export namespace Worktree {
 
   async function nativeSession(sessionID: string) {
     const session = await Session.get(sessionID)
-    const environment = session.environmentID
-      ? await Environment.get(session.environmentID, session.scope.id)
-      : undefined
+    const environment = await Environment.selectNative({
+      scopeID: session.scope.id,
+      ownerID: session.id,
+      environmentID: session.environmentID ?? null,
+      workspaceID: session.workspaceID,
+      workspaceGeneration: session.workspace?.generation,
+      signal: WorkspaceAccess.signal(),
+    })
     if (session.scope.id !== ScopeContext.current.scope.id || environment?.provider !== "native")
       throw new Environment.Unavailable({
         environmentID: session.environmentID ?? "",

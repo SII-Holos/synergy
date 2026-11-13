@@ -7,6 +7,7 @@ import { Storage } from "../storage/storage"
 import { RuntimeContext } from "../lifecycle/context"
 import fs from "node:fs/promises"
 import path from "node:path"
+import os from "node:os"
 import { Database } from "bun:sqlite"
 import { WorkspacePortableTree as Portable } from "./portable-tree"
 import { initializeSqliteEngine } from "../storage/sqlite-engine"
@@ -242,12 +243,14 @@ export namespace WorkspaceArchive {
     snapshot: Pick<Saved, "tree" | "store">,
     assert: () => void,
     signal?: AbortSignal,
+    verificationDirectory?: string,
   ): AsyncGenerator<ArchiveRecord> {
     assert()
     signal?.throwIfAborted()
     if (!("entries" in snapshot.tree)) {
       const tree = snapshot.tree
-      const directory = path.join(RuntimeContext.current().host.root, "cache", "workspace-archives")
+      const directory =
+        verificationDirectory ?? path.join(RuntimeContext.current().host.root, "cache", "workspace-archives")
       await fs.mkdir(directory, { recursive: true, mode: 0o700 })
       assert()
       await using reader = await Portable.open({ root: tree, store: snapshot.store, directory, signal })
@@ -317,6 +320,51 @@ export namespace WorkspaceArchive {
     const copied = await copyGraph({ tree, store: source }, assert, { put }, signal)
     if (copied !== manifest) throw new Invalid("Raw Workspace graph descriptor changed")
     return copied
+  }
+
+  export async function verifyManifest(input: {
+    manifest: string
+    source: Pick<BlobStore, "get">
+    signal?: AbortSignal
+  }) {
+    const manifest = WorkspaceTree.Hash.parse(input.manifest),
+      get = input.source.get.bind(input.source),
+      signal = input.signal
+    let open = true,
+      directory: string | undefined
+    const assert = () => {
+      if (!open) throw new Invalid("Workspace verification callback has ended")
+      signal?.throwIfAborted()
+    }
+    const store: BlobStore = {
+      async put() {
+        throw new Invalid("Workspace verification is read-only")
+      },
+      async get(hash, maximum) {
+        assert()
+        const bytes = await get(hash, maximum)
+        assert()
+        return bytes
+      },
+    }
+    try {
+      const tree = WorkspaceContent.decode(manifest, await store.get(manifest, WorkspaceTree.manifestBytes))
+      assert()
+      if (!("entries" in tree)) {
+        directory = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-workspace-verification-"))
+        assert()
+      }
+      let completed: string | undefined
+      for await (const record of graphRecords({ tree, store }, assert, signal, directory)) {
+        assert()
+        if (record.kind === "end") completed = record.manifest
+      }
+      if (completed !== manifest) throw new Invalid("Workspace verification descriptor changed")
+      assert()
+    } finally {
+      open = false
+      if (directory) await fs.rm(directory, { recursive: true, force: true })
+    }
   }
 
   async function copyGraph(

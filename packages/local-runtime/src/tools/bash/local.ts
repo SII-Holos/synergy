@@ -29,6 +29,7 @@ import { ObservabilityRedaction } from "@ericsanchezok/synergy-harness/observabi
 import { ChildProcessClose } from "@ericsanchezok/synergy-harness/process/child-process-close"
 import path from "node:path"
 import { EnvironmentProcess } from "@ericsanchezok/synergy-harness/environment/process"
+import { EnvironmentExecution } from "@ericsanchezok/synergy-harness/environment/execution"
 import { EnvironmentResources } from "@ericsanchezok/synergy-harness/environment/resources"
 import type { EnvironmentOrigin } from "@ericsanchezok/synergy-harness/environment/origin"
 import { createHash, randomUUID } from "node:crypto"
@@ -261,11 +262,15 @@ export namespace LocalBashBackend {
     ctx: BashContext,
     resources: EnvironmentResources.Resolved,
   ): Promise<BashResult> {
+    const runtime = RuntimeContext.current()
     const shell = resources.runtime!.shell
     const platform = resources.runtime!.platform
-    const executionID = createHash("sha256")
-      .update(JSON.stringify([ScopeContext.current.scope.id, ctx.sessionID, ctx.messageID, ctx.callID || randomUUID()]))
-      .digest("hex")
+    const executionID = EnvironmentExecution.operationID({
+      scopeID: ScopeContext.current.scope.id,
+      sessionID: ctx.sessionID,
+      messageID: ctx.messageID,
+      callID: ctx.callID || randomUUID(),
+    })
     log.info("bash tool using shell", { shell })
 
     const cwd = params.workdir || resources.directory!
@@ -676,6 +681,7 @@ export namespace LocalBashBackend {
     }
 
     const kill = () => ProcessRegistry.terminate(regProc)
+    const onAbort = runtime.bind(abortHandler)
 
     let hardCeilingTimer: ReturnType<typeof setTimeout> | undefined
     let autoBackgroundTimer: ReturnType<typeof setTimeout> | undefined
@@ -685,7 +691,7 @@ export namespace LocalBashBackend {
         clearTimeout(autoBackgroundTimer)
         autoBackgroundTimer = undefined
       }
-      ctx.abort.removeEventListener("abort", abortHandler)
+      ctx.abort.removeEventListener("abort", onAbort)
     }
 
     const cleanupAllTimers = () => {
@@ -872,15 +878,18 @@ export namespace LocalBashBackend {
       aborted = true
       cleanupAllTimers()
       void kill()
-      setTimeout(() => {
-        if (!exited && regProc) {
-          regProc.exited = true
-          ProcessRegistry.markExited(regProc, -1, "SIGKILL")
-        }
-      }, 30_000)
+      setTimeout(
+        runtime.bind(() => {
+          if (!exited && regProc) {
+            regProc.exited = true
+            ProcessRegistry.markExited(regProc, -1, "SIGKILL")
+          }
+        }),
+        30_000,
+      )
     }
 
-    ctx.abort.addEventListener("abort", abortHandler, { once: true })
+    ctx.abort.addEventListener("abort", onAbort, { once: true })
 
     const autoBackground = new Promise<"background">((resolve) => {
       if (params.background) {

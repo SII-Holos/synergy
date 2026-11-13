@@ -18,6 +18,8 @@ export namespace Environment {
   export type Info = EnvironmentSchema.Info
   export const Target = EnvironmentSchema.Target
   export type Target = EnvironmentSchema.Target
+  export const Use = EnvironmentSchema.Use
+  export type Use = EnvironmentSchema.Use
   export const Unavailable = EnvironmentSchema.Unavailable
   export const Stale = EnvironmentSchema.Stale
   export const Busy = EnvironmentSchema.Busy
@@ -133,6 +135,23 @@ export namespace Environment {
     return sharedOwner ? share(environment.id, input) : environment
   }
 
+  export async function selectNative(input: {
+    scopeID: string
+    ownerID: string
+    environmentID?: string | null
+    workspaceID?: string | null
+    workspaceGeneration?: number
+    signal?: AbortSignal
+  }) {
+    const { signal, ...selection } = { ...input }
+    const { EnvironmentExecutionSource } = await import("./execution-source")
+    if (await EnvironmentExecutionSource.selected(selection, signal)) return
+    if (!selection.environmentID) return
+    const environment = await get(selection.environmentID, selection.scopeID)
+    signal?.throwIfAborted()
+    return environment.provider === "native" ? environment : undefined
+  }
+
   export async function bind(input: {
     scopeID: string
     ownerID: string
@@ -213,10 +232,14 @@ export namespace Environment {
       capabilities: string[]
       ownership: EnvironmentUseOwnership.Admission
       kind?: "admission"
+      expectedTarget?: Target
       signal?: AbortSignal
     },
   ) {
-    input = { ...input, capabilities: [...input.capabilities] }
+    input = { ...input, capabilities: [...input.capabilities],
+      ...(input.expectedTarget && { expectedTarget: Target.parse(input.expectedTarget) }) }
+    if (input.expectedTarget && input.expectedTarget.environmentID !== id)
+      throw new Stale({ environmentID: id, message: "Environment admission has another expected allocation" })
     if (input.kind !== undefined && input.kind !== "admission")
       throw new Busy({ environmentID: id, message: "Physical Environment Uses require their canonical owner" })
     input.signal?.throwIfAborted()
@@ -247,6 +270,7 @@ export namespace Environment {
       useID: string
       capabilities: string[]
       ownership: EnvironmentUseOwnership.Admission
+      expectedTarget?: Target
       signal?: AbortSignal
     },
   ) {
@@ -260,7 +284,9 @@ export namespace Environment {
       await EnvironmentUseOwnership.authorize(input.ownership, "admission", selector)
       input.signal?.throwIfAborted()
     }
-    const info = await ensure(id, input.scopeID, admission)
+    const info = input.expectedTarget
+      ? await assertTarget(input.expectedTarget, input.scopeID)
+      : await ensure(id, input.scopeID, admission)
     input.signal?.throwIfAborted()
     const target = targetOf(info)
     if (input.capabilities.some((capability) => !info.allocation?.capabilities.includes(capability)))
@@ -309,6 +335,7 @@ export namespace Environment {
     )
     return {
       target,
+      use: acquired.use,
       release: async () => {
         EnvironmentUseOwnership.assertCurrent(input.ownership)
         if (acquired.revision === undefined) return
@@ -432,7 +459,7 @@ export namespace Environment {
         const use = await readUse(target.environmentID, useID)
         if (!use || !sameTarget(use.target, target))
           throw new Stale({ environmentID: target.environmentID, message: "Environment admission is unavailable" })
-        if (use.kind === "operation" && JSON.stringify(use.ownership) !== JSON.stringify(ownership))
+        if (use.kind === "operation" && !EnvironmentUseOwnership.transition(use.ownership, ownership))
           throw new Stale({
             environmentID: target.environmentID,
             message: "Retained Environment Use cannot change its owner",

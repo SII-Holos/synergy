@@ -2076,6 +2076,46 @@ export type OrgCloudEnvironmentCreate = {
   name: string
 }
 
+export type Schema0 =
+  | string
+  | number
+  | boolean
+  | null
+  | Array<Schema0>
+  | {
+      [key: string]: Schema0
+    }
+
+export type Schema1 =
+  | string
+  | number
+  | boolean
+  | null
+  | Array<Schema1>
+  | {
+      [key: string]: Schema1
+    }
+
+export type Schema2 =
+  | string
+  | number
+  | boolean
+  | null
+  | Array<Schema2>
+  | {
+      [key: string]: Schema2
+    }
+
+export type Schema3 =
+  | string
+  | number
+  | boolean
+  | null
+  | Array<Schema3>
+  | {
+      [key: string]: Schema3
+    }
+
 export type OrgCloudFileReference = {
   orgID: string
   projectID: string
@@ -2086,108 +2126,80 @@ export type OrgCloudFileReference = {
   rootPath?: string
 }
 
-export type OrgCloudFileResult = {
-  reference: OrgCloudFileReference
-  result:
-    | {
-        action: "describe"
-      }
-    | {
-        action: "canonical"
-        path: string | ""
-      }
-    | {
-        action: "stat"
-        item?: {
-          path: string | ""
-          entryVersion: string
-          identity?: string
-          ctime: number
-          mtime: number
-          kind: "file" | "directory" | "symlink" | "unknown"
-          size: number
-          mode: number
-        }
-      }
-    | {
-        action: "list"
-        items: Array<{
-          path: string | ""
-          entryVersion: string
-          identity?: string
-          ctime: number
-          mtime: number
-          kind: "file" | "directory" | "symlink" | "unknown"
-          size: number
-          mode: number
-        }>
-        cursor?: string
-        revision: number
-      }
-    | {
-        action: "read"
-        data: string
-        version: string
-        size: number
-        mode: number
-      }
-    | {
-        action: "write"
-        checkpoint: {
-          id: string
-          mount: {
-            id: string
-            workspaceID: string
-            generation: number
-          }
-          manifest: string | null
-          beforeManifest?: string
-          isolated?: boolean
-        }
-      }
-    | {
-        action: "mutate"
-        checkpoint: {
-          id: string
-          mount: {
-            id: string
-            workspaceID: string
-            generation: number
-          }
-          manifest: string | null
-          beforeManifest?: string
-          isolated?: boolean
-        }
-      }
-    | {
-        action: "receipt"
-        status?: {
-          id: string
-          mount: {
-            id: string
-            workspaceID: string
-            generation: number
-          }
-          state: "pending" | "failed" | "saved" | "released"
-          checkpoint?: {
-            id: string
-            mount: {
-              id: string
-              workspaceID: string
-              generation: number
-            }
-            manifest: string | null
-            beforeManifest?: string
-            isolated?: boolean
-          }
-          error?: string
-        }
-      }
-    | {
-        action: "acknowledge"
-        id: string
-      }
+export type OrgCloudExecutionReference = {
+  version: 2
+  nativeOperationID: string
+  preparationVersion: 1
+  orgID: string
+  deploymentIncarnation: string
+  projectID: string
+  runtimeID: string
+  sessionID: string
+  rootID: string
+  bindingEpoch: number
+  grantID: string
+  retentionGeneration: number
+  selectionRevision: number
+  resourceID: string
+  environmentID: string
+  serviceScopeID: string
+  hostOwner: "organization-environment"
+  leaseID: string
+  target: Schema0
+  workspace: OrgCloudFileReference
+  mount: Schema1
+  directory: string
 }
+
+export type OrgCloudExecutionResult = {
+  reference: OrgCloudExecutionReference
+  action:
+    | "resolve"
+    | "release-admission"
+    | "prepare-inputs"
+    | "discard-inputs"
+    | "prepare-sandbox"
+    | "release-sandbox"
+    | "start"
+    | "status"
+    | "output"
+    | "stdin"
+    | "resize"
+    | "cancel"
+    | "complete"
+  value: Schema2
+  runtime?: Schema3
+}
+
+export type Schema4 =
+  | string
+  | number
+  | boolean
+  | null
+  | Array<Schema4>
+  | {
+      [key: string]: Schema4
+    }
+
+export type Schema5 =
+  | string
+  | number
+  | boolean
+  | null
+  | Array<Schema5>
+  | {
+      [key: string]: Schema5
+    }
+
+export type Schema6 =
+  | string
+  | number
+  | boolean
+  | null
+  | Array<Schema6>
+  | {
+      [key: string]: Schema6
+    }
 
 export type OrgCommandPermit = {
   schemaVersion: 1
@@ -2380,98 +2392,112 @@ export type OrgExecutionBindingRequest = {
   signature: string
 }
 
-export type OrgCloudFileRequest = {
-  proof: {
-    purpose: "organization-workspace-file"
-    authority: OrgExecutionBindingRequest
-    reference?: OrgCloudFileReference
-    operation:
-      | {
-          action: "describe"
-        }
-      | {
-          action: "canonical"
-          path: string | ""
-          follow: boolean
-        }
-      | {
-          action: "stat"
-          path: string | ""
-          follow?: boolean
-        }
-      | {
-          action: "list"
-          path: string | ""
-          cursor?: string
-          revision?: number
-          limit?: number
-        }
-      | {
-          action: "read"
-          path: string
-          offset?: number
-          maximumBytes?: number
-          expectedVersion?: string
-        }
-      | {
-          action: "write"
-          id: string
-          path: string
-          data: string
-          expectedVersion: string | null
-          expectedEntryVersion?: string | null
-          protectSensitive?: boolean
-          mode?: number
-        }
-      | {
-          action: "mutate"
-          id: string
-          change:
-            | {
-                kind: "replace"
-                path: string
-                data: string
-                mode: "100644" | "100755" | "120000"
-                expectedVersion: string | null
-                expectedContentVersion?: string
-              }
-            | {
-                kind: "mkdir"
-                path: string
-                createParents?: boolean
-                mode?: number
-              }
-            | {
-                kind: "remove"
-                path: string
-                expectedVersion: string
-                recursive?: boolean
-              }
-            | {
-                kind: "move"
-                from: string
-                to: string
-                expectedVersion: string
-              }
-            | {
-                kind: "copy"
-                from: string
-                to: string
-                expectedVersion: string
-              }
-          protectSensitive?: boolean
-        }
-      | {
-          action: "receipt"
-          id: string
-        }
-      | {
-          action: "acknowledge"
-          id: string
-        }
-  }
+export type OrgCloudExecutionOperation =
+  | {
+      action: "resolve"
+      nativeOperationID: string
+      capability: "exec" | "pty"
+      origin: Schema0
+      workspace: OrgCloudFileReference
+    }
+  | {
+      reference: OrgCloudExecutionReference
+      action: "release-admission"
+    }
+  | {
+      reference: OrgCloudExecutionReference
+      id: string
+      action: "prepare-inputs"
+      input: Schema3
+    }
+  | {
+      reference: OrgCloudExecutionReference
+      id: string
+      action: "discard-inputs"
+    }
+  | {
+      reference: OrgCloudExecutionReference
+      id: string
+      action: "prepare-sandbox"
+      input: Schema4
+    }
+  | {
+      reference: OrgCloudExecutionReference
+      id: string
+      action: "release-sandbox"
+    }
+  | {
+      reference: OrgCloudExecutionReference
+      id: string
+      action: "start"
+      request: Schema5
+      origin: Schema6
+      intentDigest?: string
+    }
+  | {
+      reference: OrgCloudExecutionReference
+      id: string
+      action: "status"
+    }
+  | {
+      reference: OrgCloudExecutionReference
+      id: string
+      action: "output"
+      after: number
+      limit: number
+    }
+  | {
+      reference: OrgCloudExecutionReference
+      id: string
+      action: "stdin"
+      data: string
+      end: boolean
+    }
+  | {
+      reference: OrgCloudExecutionReference
+      id: string
+      action: "resize"
+      cols: number
+      rows: number
+    }
+  | {
+      reference: OrgCloudExecutionReference
+      id: string
+      action: "cancel"
+      digest: string
+    }
+  | {
+      reference: OrgCloudExecutionReference
+      id: string
+      action: "complete"
+      digest: string
+    }
+
+export type OrgCloudExecutionProof = {
+  version: 2
+  purpose: "organization-environment-operation"
+  authority: OrgExecutionBindingRequest
+  operation: OrgCloudExecutionOperation
+}
+
+export type OrgCloudExecutionRequest = {
+  proof: OrgCloudExecutionProof
   signature: string
 }
+
+export type OrgCloudExecutionRetirementResult =
+  | {
+      kind: "admission"
+      reference: OrgCloudExecutionReference
+      released: boolean
+    }
+  | {
+      kind: "execution"
+      reference: OrgCloudExecutionReference
+      id: string
+      digest: string
+      execution: Schema2 | null
+    }
 
 export type OrgExecutionInspectionProof = {
   schemaVersion: 1
@@ -2584,6 +2610,296 @@ export type OrgExecutionInspectionProof = {
 
 export type OrgExecutionInspectionRequest = {
   proof: OrgExecutionInspectionProof
+  signature: string
+}
+
+export type OrgCloudExecutionRetirementProof =
+  | {
+      kind: "admission"
+      reference: OrgCloudExecutionReference
+      origin: Schema2
+      version: 2
+      purpose: "organization-environment-retirement"
+      authority: OrgExecutionInspectionRequest
+    }
+  | {
+      kind: "execution"
+      reference: OrgCloudExecutionReference
+      origin: Schema2
+      id: string
+      digest: string
+      version: 2
+      purpose: "organization-environment-retirement"
+      authority: OrgExecutionInspectionRequest
+    }
+
+export type OrgCloudExecutionRetirementRequest = {
+  proof: OrgCloudExecutionRetirementProof
+  signature: string
+}
+
+export type OrgCloudExecutionRetirementInspectionProof =
+  | {
+      kind: "admission"
+      reference: OrgCloudExecutionReference
+      origin: Schema2
+      version: 2
+      purpose: "organization-environment-retirement-inspection"
+      authority: OrgExecutionInspectionRequest
+    }
+  | {
+      kind: "execution"
+      reference: OrgCloudExecutionReference
+      origin: Schema2
+      id: string
+      digest: string
+      version: 2
+      purpose: "organization-environment-retirement-inspection"
+      authority: OrgExecutionInspectionRequest
+    }
+
+export type OrgCloudExecutionRetirementInspectionRequest = {
+  proof: OrgCloudExecutionRetirementInspectionProof
+  signature: string
+}
+
+export type OrgCloudExecutionInspectionResult =
+  | {
+      kind: "execution"
+      reference: OrgCloudExecutionReference
+      id: string
+      digest: string
+      execution: Schema2 | null
+      output: Array<Schema3>
+    }
+  | {
+      kind: "preparation"
+      reference: OrgCloudExecutionReference
+      id: string
+      preparation: Schema4 | null
+    }
+
+export type OrgCloudExecutionInspectionProof =
+  | {
+      reference: OrgCloudExecutionReference
+      id: string
+      origin: Schema2
+      kind: "execution"
+      digest: string
+      after: number
+      limit: number
+      version: 2
+      purpose: "organization-environment-inspection"
+      authority: OrgExecutionInspectionRequest
+    }
+  | {
+      reference: OrgCloudExecutionReference
+      id: string
+      origin: Schema2
+      kind: "preparation"
+      version: 2
+      purpose: "organization-environment-inspection"
+      authority: OrgExecutionInspectionRequest
+    }
+
+export type OrgCloudExecutionInspectionRequest = {
+  proof: OrgCloudExecutionInspectionProof
+  signature: string
+}
+
+export type OrgCloudFileResult = {
+  reference: OrgCloudFileReference
+  result:
+    | {
+        action: "describe"
+      }
+    | {
+        action: "canonical"
+        path: string | ""
+      }
+    | {
+        action: "stat"
+        item?: {
+          path: string | ""
+          entryVersion: string
+          identity?: string
+          ctime: number
+          mtime: number
+          kind: "file" | "directory" | "symlink" | "unknown"
+          size: number
+          mode: number
+        }
+      }
+    | {
+        action: "list"
+        items: Array<{
+          path: string | ""
+          entryVersion: string
+          identity?: string
+          ctime: number
+          mtime: number
+          kind: "file" | "directory" | "symlink" | "unknown"
+          size: number
+          mode: number
+        }>
+        cursor?: string
+        revision: number
+      }
+    | {
+        action: "read"
+        data: string
+        version: string
+        size: number
+        mode: number
+      }
+    | {
+        action: "write"
+        checkpoint: {
+          id: string
+          mount: {
+            id: string
+            workspaceID: string
+            generation: number
+          }
+          manifest: string | null
+          beforeManifest?: string
+          isolated?: boolean
+        }
+      }
+    | {
+        action: "mutate"
+        checkpoint: {
+          id: string
+          mount: {
+            id: string
+            workspaceID: string
+            generation: number
+          }
+          manifest: string | null
+          beforeManifest?: string
+          isolated?: boolean
+        }
+      }
+    | {
+        action: "receipt"
+        status?: {
+          id: string
+          mount: {
+            id: string
+            workspaceID: string
+            generation: number
+          }
+          state: "pending" | "failed" | "saved" | "released"
+          checkpoint?: {
+            id: string
+            mount: {
+              id: string
+              workspaceID: string
+              generation: number
+            }
+            manifest: string | null
+            beforeManifest?: string
+            isolated?: boolean
+          }
+          error?: string
+        }
+      }
+    | {
+        action: "acknowledge"
+        id: string
+      }
+}
+
+export type OrgCloudFileRequest = {
+  proof: {
+    purpose: "organization-workspace-file"
+    authority: OrgExecutionBindingRequest
+    reference?: OrgCloudFileReference
+    operation:
+      | {
+          action: "describe"
+        }
+      | {
+          action: "canonical"
+          path: string | ""
+          follow: boolean
+        }
+      | {
+          action: "stat"
+          path: string | ""
+          follow?: boolean
+        }
+      | {
+          action: "list"
+          path: string | ""
+          cursor?: string
+          revision?: number
+          limit?: number
+        }
+      | {
+          action: "read"
+          path: string
+          offset?: number
+          maximumBytes?: number
+          expectedVersion?: string
+        }
+      | {
+          action: "write"
+          id: string
+          path: string
+          data: string
+          expectedVersion: string | null
+          expectedEntryVersion?: string | null
+          protectSensitive?: boolean
+          mode?: number
+        }
+      | {
+          action: "mutate"
+          id: string
+          change:
+            | {
+                kind: "replace"
+                path: string
+                data: string
+                mode: "100644" | "100755" | "120000"
+                expectedVersion: string | null
+                expectedContentVersion?: string
+              }
+            | {
+                kind: "mkdir"
+                path: string
+                createParents?: boolean
+                mode?: number
+              }
+            | {
+                kind: "remove"
+                path: string
+                expectedVersion: string
+                recursive?: boolean
+              }
+            | {
+                kind: "move"
+                from: string
+                to: string
+                expectedVersion: string
+              }
+            | {
+                kind: "copy"
+                from: string
+                to: string
+                expectedVersion: string
+              }
+          protectSensitive?: boolean
+        }
+      | {
+          action: "receipt"
+          id: string
+        }
+      | {
+          action: "acknowledge"
+          id: string
+        }
+  }
   signature: string
 }
 
@@ -3536,56 +3852,6 @@ export type OrgHandoffFactAcknowledgement = {
     | "target-preview-released"
   factHash: string
 }
-
-export type Schema0 =
-  | string
-  | number
-  | boolean
-  | null
-  | Array<Schema0>
-  | {
-      [key: string]: Schema0
-    }
-
-export type Schema1 =
-  | string
-  | number
-  | boolean
-  | null
-  | Array<Schema1>
-  | {
-      [key: string]: Schema1
-    }
-
-export type Schema2 =
-  | string
-  | number
-  | boolean
-  | null
-  | Array<Schema2>
-  | {
-      [key: string]: Schema2
-    }
-
-export type Schema3 =
-  | string
-  | number
-  | boolean
-  | null
-  | Array<Schema3>
-  | {
-      [key: string]: Schema3
-    }
-
-export type Schema4 =
-  | string
-  | number
-  | boolean
-  | null
-  | Array<Schema4>
-  | {
-      [key: string]: Schema4
-    }
 
 export type OrgHandoffWorkspaceResult =
   | {
@@ -9660,6 +9926,190 @@ export type OrgCloudEnvironmentsGetResponses = {
 }
 
 export type OrgCloudEnvironmentsGetResponse = OrgCloudEnvironmentsGetResponses[keyof OrgCloudEnvironmentsGetResponses]
+
+export type OrgCloudExecutionRequestData = {
+  body: OrgCloudExecutionRequest
+  path?: never
+  query?: never
+  url: "/runtime/v1/environments/execution"
+}
+
+export type OrgCloudExecutionRequestErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgCloudExecutionRequestError = OrgCloudExecutionRequestErrors[keyof OrgCloudExecutionRequestErrors]
+
+export type OrgCloudExecutionRequestResponses = {
+  /**
+   * Success
+   */
+  200: OrgCloudExecutionResult
+}
+
+export type OrgCloudExecutionRequestResponse =
+  OrgCloudExecutionRequestResponses[keyof OrgCloudExecutionRequestResponses]
+
+export type OrgCloudExecutionRetireData = {
+  body: OrgCloudExecutionRetirementRequest
+  path?: never
+  query?: never
+  url: "/runtime/v1/environments/execution/retirement"
+}
+
+export type OrgCloudExecutionRetireErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgCloudExecutionRetireError = OrgCloudExecutionRetireErrors[keyof OrgCloudExecutionRetireErrors]
+
+export type OrgCloudExecutionRetireResponses = {
+  /**
+   * Success
+   */
+  200: OrgCloudExecutionRetirementResult
+}
+
+export type OrgCloudExecutionRetireResponse = OrgCloudExecutionRetireResponses[keyof OrgCloudExecutionRetireResponses]
+
+export type OrgCloudExecutionInspectRetirementData = {
+  body: OrgCloudExecutionRetirementInspectionRequest
+  path?: never
+  query?: never
+  url: "/runtime/v1/environments/execution/retirement/inspection"
+}
+
+export type OrgCloudExecutionInspectRetirementErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgCloudExecutionInspectRetirementError =
+  OrgCloudExecutionInspectRetirementErrors[keyof OrgCloudExecutionInspectRetirementErrors]
+
+export type OrgCloudExecutionInspectRetirementResponses = {
+  /**
+   * Success
+   */
+  200: OrgCloudExecutionRetirementResult
+}
+
+export type OrgCloudExecutionInspectRetirementResponse =
+  OrgCloudExecutionInspectRetirementResponses[keyof OrgCloudExecutionInspectRetirementResponses]
+
+export type OrgCloudExecutionInspectData = {
+  body: OrgCloudExecutionInspectionRequest
+  path?: never
+  query?: never
+  url: "/runtime/v1/environments/execution/inspection"
+}
+
+export type OrgCloudExecutionInspectErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgCloudExecutionInspectError = OrgCloudExecutionInspectErrors[keyof OrgCloudExecutionInspectErrors]
+
+export type OrgCloudExecutionInspectResponses = {
+  /**
+   * Success
+   */
+  200: OrgCloudExecutionInspectionResult
+}
+
+export type OrgCloudExecutionInspectResponse =
+  OrgCloudExecutionInspectResponses[keyof OrgCloudExecutionInspectResponses]
 
 export type OrgCloudFilesRequestData = {
   body: OrgCloudFileRequest

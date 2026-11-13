@@ -35,6 +35,7 @@
     "./environment/schema": "./src/environment/schema.ts",
     "./environment/executor": "./src/environment/executor.ts",
     "./environment/execution": "./src/environment/execution.ts",
+    "./environment/execution-origin-index": "./src/environment/execution-origin-index.ts",
     "./environment/execution-source": "./src/environment/execution-source.ts",
     "./environment/migration": "./src/environment/migration.ts",
     "./environment/resources": "./src/environment/resources.ts",

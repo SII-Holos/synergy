@@ -766,6 +766,14 @@ serve organization APIs without Agent execution; print JSON readiness
 | `--hostname` (string) | HTTP listening address behind the TLS reverse proxy |
 | `--web` (string) | absolute directory containing the built organization authorization page |
 
+## org upgrade
+
+explicitly advance an existing Service Home reader and release its native maintenance; print JSON metadata
+
+| Option | Description |
+| --- | --- |
+| `--request-id` (string) | stable identifier for this exact Home upgrade and its retries |
+
 ## org-runtime
 
 register, serve or clean up an independent organization Runtime

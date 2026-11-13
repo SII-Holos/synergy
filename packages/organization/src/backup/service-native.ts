@@ -29,6 +29,8 @@ import { readOrganizationConfigurationSnapshot, parseOrganizationConfiguration }
 import { OrganizationServiceHome } from "../service-home"
 import type { OrganizationServiceOptions } from "../service"
 import { FileAtomicWrite } from "@ericsanchezok/synergy-local-runtime/file/atomic-write"
+import { OrganizationRecoveryDatabase as Database } from "./database"
+import { OrganizationResourceNative as Resources } from "./resources"
 
 export namespace OrganizationServiceNative {
   const Settings = z.strictObject({
@@ -42,6 +44,7 @@ export namespace OrganizationServiceNative {
     publicOrigin: z.string().url().optional(),
     webRequired: z.boolean(),
     requirements: z.array(z.enum(["database-target", "cloud-composition"])),
+    database: Database.Descriptor.optional(),
   })
   const Identity = z.strictObject({ orgID: OrganizationIdentity.ID, deploymentIncarnation: OrganizationIdentity.ID })
   export const Manifest = z.strictObject({
@@ -67,6 +70,7 @@ export namespace OrganizationServiceNative {
       })
       .refine((value) => value.present === !!value.raw),
     startup: Startup,
+    resources: StorageCheckpoint.Manifest.optional(),
   })
   export type Manifest = z.infer<typeof Manifest>
   const state = RuntimeContext.state(() => ({ startup: undefined as z.infer<typeof Startup> | undefined }))
@@ -83,6 +87,8 @@ export namespace OrganizationServiceNative {
       const url = new URL(options.publicOrigin)
       if (url.protocol !== "https:" || url.origin !== options.publicOrigin) fail("startup origin is invalid")
     }
+    Resources.register(options.cloud)
+    const database = Database.capture(options.database)
     state().startup = Startup.parse({
       settings: {
         authentication: AuthenticationSettings.parse(options.authentication ?? {}),
@@ -93,11 +99,12 @@ export namespace OrganizationServiceNative {
       publicOrigin: options.publicOrigin,
       webRequired: !!options.web,
       requirements: [
-        ...(options.database ? ["database-target"] : []),
+        ...(database ? ["database-target"] : []),
         ...(options.cloud && Object.values(options.cloud).some((value) => value && Object.keys(value).length)
           ? ["cloud-composition"]
           : []),
       ],
+      database,
     })
   }
   interface CaptureInput {
@@ -129,7 +136,9 @@ export namespace OrganizationServiceNative {
     if (!path.isAbsolute(directory)) fail("destination must be absolute")
     const startup = state().startup
     if (!startup) fail("requires the actual composition's startup snapshot")
-    if (startup.requirements.length) fail("requires a target reconstruction owner for its external composition")
+    Database.verify(startup.database, startup.requirements)
+    if (startup.requirements.includes("cloud-composition") && !Resources.configured())
+      fail("requires a target reconstruction owner for its external composition")
     const runtime = RuntimeContext.current()
     const primary = runtime.storage
     const assert = () => {
@@ -137,6 +146,7 @@ export namespace OrganizationServiceNative {
       SnapshotMaintenance.assertArchive(archive)
       if (RuntimeContext.current() !== runtime || runtime.storage !== primary || state().startup !== startup)
         fail("requires its original startup and primary storage")
+      Database.assertSource(startup.database)
     }
     async function frozen() {
       assert()
@@ -150,13 +160,28 @@ export namespace OrganizationServiceNative {
     if (identity.owner !== "organization" || identity.identity.kind !== "service")
       fail("requires its actual service namespace")
     const owner = HomeOwnershipFile.FencedInfo.parse(await HomeOwnership.assert({ required: true }))
-    if (owner.owner !== "organization" || owner.readerContract !== OrganizationServiceHome.readerContract)
-      fail("requires the owning service Home reader")
+    if (owner.owner !== "organization") fail("requires the owning service Home reader")
+    OrganizationServiceHome.archivedOwner(owner)
     const root = runtime.host.root
     if (root !== path.join(runtime.host.home, ".synergy")) fail("requires its canonical native Home")
     const configuration = await readOrganizationConfigurationSnapshot(runtime.host.home, { signal })
     try {
       assert()
+      await using resource = Resources.required()
+        ? await Resources.capture({
+            archive,
+            lease,
+            directory: path.join(path.dirname(directory), "resources"),
+            keys,
+            signal,
+          })
+        : undefined
+      if (resource) Resources.assertCaptured(resource, archive)
+      const resourceInput = resource && {
+        directory: resource.directory,
+        expected: resource.namespace,
+        namespaceDirectory: source.directory,
+      }
       const manifest = Manifest.parse({
         format: "synergy-organization-service-native",
         version: 1,
@@ -174,6 +199,7 @@ export namespace OrganizationServiceNative {
             : {}),
         },
         startup,
+        resources: resource?.namespace,
       })
       const existing = await fs.lstat(directory, { bigint: true }).catch((error: NodeJS.ErrnoException) => {
         if (error.code !== "ENOENT") throw error
@@ -203,7 +229,14 @@ export namespace OrganizationServiceNative {
         try {
           assertExisting()
           const namespace = await StorageCheckpoint.verifyArchive({ directory, keys, signal })
-          const fixed = await verify({ directory, expected: namespace, source: source.namespace, keys, signal })
+          const fixed = await verify({
+            directory,
+            expected: namespace,
+            source: source.namespace,
+            keys,
+            signal,
+            resources: resourceInput,
+          })
           try {
             const { rawConfiguration: _, ...fixedManifest } = fixed
             if (JSON.stringify(Manifest.parse(fixedManifest)) !== JSON.stringify(manifest))
@@ -211,7 +244,7 @@ export namespace OrganizationServiceNative {
             await NativeNamespaceIdentity.verify(proof)
             await RuntimeMaintenance.assertSourcePreparationFrozen(lease)
             assertExisting()
-            return { directory, namespace }
+            return { directory, namespace, resources: resourceInput }
           } finally {
             fixed.rawConfiguration?.fill(0)
           }
@@ -252,7 +285,7 @@ export namespace OrganizationServiceNative {
         await NativeNamespaceIdentity.verify(proof)
         await frozen()
         complete = true
-        return { directory, namespace }
+        return { directory, namespace, resources: resourceInput }
       } finally {
         await store?.close()
         await fs.rm(temporary, { recursive: true, force: true })
@@ -268,11 +301,17 @@ export namespace OrganizationServiceNative {
     source: StorageCheckpoint.Manifest
     keys: VaultKeyProvider
     signal?: AbortSignal
+    resources?: { directory: string; expected: StorageCheckpoint.Manifest; namespaceDirectory: string }
   }): Promise<Manifest & { rawConfiguration?: Uint8Array }> {
     const directory = input.directory
     const expected = StorageCheckpoint.Manifest.parse(input.expected)
     const source = StorageCheckpoint.Manifest.parse(input.source)
     const signal = input.signal
+    const resources = input.resources && {
+      directory: input.resources.directory,
+      expected: StorageCheckpoint.Manifest.parse(input.resources.expected),
+      namespaceDirectory: input.resources.namespaceDirectory,
+    }
     const provider = input.keys
     const keys = Object.freeze({ current: provider.current.bind(provider), resolve: provider.resolve.bind(provider) })
     let manifest: Manifest | undefined
@@ -293,7 +332,17 @@ export namespace OrganizationServiceNative {
     if (!manifest || JSON.stringify(manifest.source) !== JSON.stringify(source))
       fail("segment belongs to another namespace checkpoint")
     OrganizationServiceHome.archivedOwner(manifest.owner)
-    if (manifest.startup.requirements.length) fail("segment requires its owning service composition")
+    Database.verify(manifest.startup.database, manifest.startup.requirements)
+    if (
+      manifest.startup.requirements.filter((value) => value === "cloud-composition").length !==
+      Number(!!manifest.resources)
+    )
+      fail("segment requires its owning service resource composition")
+    if (manifest.resources) {
+      if (!resources || sourceHash(resources.expected) !== sourceHash(manifest.resources))
+        fail("segment is missing its exact original native resource facet")
+      await Resources.verify({ ...resources, source, keys, signal })
+    } else if (resources) fail("segment contains an undeclared resource facet")
     if (manifest.configuration.present !== !!configuration) fail("configuration bytes are missing or undeclared")
     if (!configuration) return manifest
     if (
@@ -349,6 +398,7 @@ export namespace OrganizationServiceNative {
       nativeHash: OrganizationProtocol.Digest,
       snapshot: z.strictObject({ manifestHash: OrganizationProtocol.Digest }),
       cohort: CohortMapping,
+      resourcesHash: OrganizationProtocol.Digest.optional(),
     }),
   })
   export type InstallationRequest = z.infer<typeof InstallationRequest>
@@ -358,6 +408,7 @@ export namespace OrganizationServiceNative {
     expected: StorageCheckpoint.Manifest
     snapshot: StorageCheckpoint.Manifest
     cohort: z.infer<typeof CohortMapping>
+    resources?: StorageCheckpoint.Manifest
   }): InstallationRequest {
     const source = StorageCheckpoint.Manifest.parse(input.source)
     const native = StorageCheckpoint.Manifest.parse(input.expected)
@@ -378,6 +429,7 @@ export namespace OrganizationServiceNative {
         nativeHash: sourceHash(native),
         snapshot: { manifestHash: sourceHash(snapshot) },
         cohort,
+        ...(input.resources ? { resourcesHash: sourceHash(input.resources) } : {}),
       },
     })
   }
@@ -414,8 +466,20 @@ export namespace OrganizationServiceNative {
   }
   const publicationSettings = new WeakMap<
     PublicationSettings,
-    { manifest: Manifest; namespace: StorageCheckpoint.Manifest; assert(): void }
+    { manifest: Manifest; namespace: StorageCheckpoint.Manifest; resources?: Resources.Manifest; assert(): void }
   >()
+  export function assertReconstruction(value: PublicationSettings) {
+    const original = publicationSettings.get(value)
+    if (!original) fail("requires its actual verified native settings")
+    original.assert()
+    Database.verify(original.manifest.startup.database, original.manifest.startup.requirements)
+    Database.assertTarget(original.manifest.startup.database)
+    if (original.manifest.startup.requirements.includes("cloud-composition")) {
+      if (!original.resources) fail("requires its original verified resource reconstruction owner")
+      Resources.assertReconstruction(original.resources)
+    } else if (original.resources) fail("contains undeclared resource reconstruction")
+    original.assert()
+  }
   export function inspectPublicationSettings(value: PublicationSettings) {
     const original = publicationSettings.get(value)
     if (!original) fail("requires its actual verified native settings")
@@ -436,6 +500,11 @@ export namespace OrganizationServiceNative {
       keys: Object.freeze({ current: provider.current.bind(provider), resolve: provider.resolve.bind(provider) }),
       expected: StorageCheckpoint.Manifest.parse(input.expected),
       source: StorageCheckpoint.Manifest.parse(input.source),
+      resources: input.resources && {
+        directory: input.resources.directory,
+        expected: StorageCheckpoint.Manifest.parse(input.resources.expected),
+        namespaceDirectory: input.resources.namespaceDirectory,
+      },
     }
     const runtime = RuntimeContext.current()
     const primary = Storage.current()
@@ -445,6 +514,8 @@ export namespace OrganizationServiceNative {
     const ports = objects && { blobs: objects.blobs, writerID: objects.writerID, now: objects.now }
     const config = JSON.stringify(store.options)
     let open = true
+    let database: Database.Descriptor | undefined
+    let verifiedBackend = false
     const assert = () => {
       if (
         !open ||
@@ -463,13 +534,31 @@ export namespace OrganizationServiceNative {
       )
         fail("native settings require their original callback and primary Store")
       selected.signal?.throwIfAborted()
+      if (verifiedBackend) Database.assertTarget(database)
     }
     const verified = await verify(selected)
+    database = verified.startup.database
+    verifiedBackend = true
     try {
+      assert()
+      const resourceMaterial =
+        verified.resources && selected.resources
+          ? await Resources.verify({
+              ...selected.resources,
+              source: selected.source,
+              keys: selected.keys,
+              signal: selected.signal,
+            })
+          : undefined
       assert()
       const settings: PublicationSettings = Object.freeze({ kind: "organization-recovery-native-settings" })
       const { rawConfiguration: _, ...manifest } = verified
-      publicationSettings.set(settings, { manifest: Manifest.parse(manifest), namespace: selected.expected, assert })
+      publicationSettings.set(settings, {
+        manifest: Manifest.parse(manifest),
+        namespace: selected.expected,
+        resources: resourceMaterial,
+        assert,
+      })
       return await body(settings)
     } finally {
       open = false
@@ -547,6 +636,11 @@ export namespace OrganizationServiceNative {
     const expected = StorageCheckpoint.Manifest.parse(input.expected)
     const source = StorageCheckpoint.Manifest.parse(input.source)
     const signal = input.signal
+    const resources = input.resources && {
+      directory: input.resources.directory,
+      expected: StorageCheckpoint.Manifest.parse(input.resources.expected),
+      namespaceDirectory: input.resources.namespaceDirectory,
+    }
     const provider = input.keys
     const keys = Object.freeze({ current: provider.current.bind(provider), resolve: provider.resolve.bind(provider) })
     const request = InstallationRequest.parse(structuredClone(input.request))
@@ -560,6 +654,8 @@ export namespace OrganizationServiceNative {
     const runtime = RuntimeContext.current()
     const home = runtime.host.home
     let active = true
+    let database: Database.Descriptor | undefined
+    let verifiedBackend = false
     const assert = () => {
       if (!active) fail("installation callback is closed")
       signal?.throwIfAborted()
@@ -567,15 +663,25 @@ export namespace OrganizationServiceNative {
       HomeRestoration.assertRequest(permit, request)
       if (RuntimeContext.current() !== runtime || runtime.host.home !== home)
         fail("installation belongs to another Runtime")
+      if (verifiedBackend) Database.assertTarget(database)
     }
     try {
-      const verified = await verify({ directory, expected, source, keys, signal })
+      const verified = await verify({ directory, expected, source, keys, signal, resources })
       assert()
       const { rawConfiguration, ...metadata } = verified
       const manifest = Manifest.parse(metadata)
+      database = manifest.startup.database
+      verifiedBackend = true
+      Database.assertTarget(database)
+      if (
+        manifest.resources
+          ? request.payload.resourcesHash !== sourceHash(manifest.resources)
+          : request.payload.resourcesHash !== undefined
+      )
+        fail("installation requires its exact complete resource facet")
       if (JSON.stringify(manifest.identity) !== JSON.stringify(request.payload.cohort.source))
         fail("installation belongs to another original cohort participant")
-      const ownership = await OrganizationServiceHome.installOwner(permit)
+      const ownership = await OrganizationServiceHome.installOwner(permit, manifest.owner)
       assert()
       let current = await readOrganizationConfigurationSnapshot(home, { signal })
       assert()
@@ -611,21 +717,40 @@ export namespace OrganizationServiceNative {
         assert()
       }
       await validate()
-      const installed: Installed = Object.freeze({
-        manifest: Manifest.parse(manifest),
-        ownership: Object.freeze({ ...ownership }),
-        assertCurrent: assert,
-        verify: validate,
-      })
-      installations.set(installed, {
-        assert,
-        verify: validate,
-        manifest: Manifest.parse(manifest),
-        namespace: StorageCheckpoint.Manifest.parse(expected),
-      })
-      const result = await body(installed)
-      await validate()
-      return result
+      const finish = async (resource?: Resources.Installed) => {
+        const assertComplete = () => {
+          assert()
+          if (manifest.resources) {
+            if (!resource) fail("installation requires original prepared resource bytes")
+            Resources.assertInstalled(resource)
+          }
+        }
+        const validateComplete = async () => {
+          assertComplete()
+          await validate()
+          assertComplete()
+        }
+        const installed: Installed = Object.freeze({
+          manifest: Manifest.parse(manifest),
+          ownership: Object.freeze({ ...ownership }),
+          assertCurrent: assertComplete,
+          verify: validateComplete,
+        })
+        installations.set(installed, {
+          assert: assertComplete,
+          verify: validateComplete,
+          manifest: Manifest.parse(manifest),
+          namespace: StorageCheckpoint.Manifest.parse(expected),
+        })
+        const result = await body(installed)
+        await validateComplete()
+        return result
+      }
+      if (manifest.resources) {
+        if (!resources) fail("installation requires its original resource facet")
+        return await Resources.withInstalled({ ...resources, source, keys, signal, permit, request }, finish)
+      }
+      return await finish()
     } finally {
       active = false
     }

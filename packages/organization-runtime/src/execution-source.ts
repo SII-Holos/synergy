@@ -2,6 +2,7 @@ import {
   OrganizationCommandProtocol as Command,
   OrganizationExecutionProtocol as Execution,
   OrganizationGatewayProtocol as Gateway,
+  OrganizationCloudExecutionProtocol as CloudEnvironment,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { Provider } from "@ericsanchezok/synergy-harness/provider/provider"
@@ -25,6 +26,7 @@ import { EnvironmentOrigin } from "@ericsanchezok/synergy-harness/environment/or
 import { SessionTransferEpochs as Epochs } from "@ericsanchezok/synergy-harness/session/transfer"
 import { WorkspaceContent } from "@ericsanchezok/synergy-harness/workspace/content"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { EnvironmentExecutionSource } from "@ericsanchezok/synergy-harness/environment/execution-source"
 
 interface Connection {
   connection: MemberConnection["connected"]
@@ -110,8 +112,11 @@ function current() {
   return value
 }
 
-function assertNativeInfrastructure(selection: Execution.Selection) {
-  if (selection.infrastructure.workspace || selection.infrastructure.environment)
+function assertInfrastructureOwner(selection: Execution.Selection) {
+  if (
+    (selection.infrastructure.workspace || selection.infrastructure.environment) &&
+    !EnvironmentExecutionSource.has("organization")
+  )
     throw new OrganizationRuntimeError({
       code: "RESOURCE_UNAVAILABLE",
       message: "The selected organization infrastructure requires its execution mapping owner",
@@ -218,6 +223,94 @@ export async function withMemberFiles<T>(
   )
 }
 
+export async function withMemberEnvironment<T>(
+  input: { sessionID: string; scopeID: string; origin?: EnvironmentOrigin.Captured; signal?: AbortSignal },
+  fn: (
+    resolution: MemberExecutionResolution & {
+      assertConnection(): void
+      assertCaller(phase: "admission" | "mutation"): Promise<void>
+    },
+    signal: AbortSignal,
+  ) => Promise<T>,
+): Promise<T> {
+  if (Storage.inTransaction()) throw denied("Environment resolution must run outside a native transaction")
+  input = { ...input }
+  const identity = state().identity
+  if (!identity) throw denied("Organization Environment resolution is not registered")
+  const selectedIdentity = RuntimeIdentity.parse(identity),
+    owner = WorkspaceContent.captureOwner()
+  const captured = await withMemberResolution(
+    selectedIdentity,
+    input,
+    async (resolution, signal) => {
+      const origin = input.origin,
+        original = resolution.session
+      const native = origin?.value
+      if (
+        native &&
+        (native.kind !== "session" || native.sessionID !== original.id || native.scopeID !== original.scope.id)
+      )
+        throw denied("Environment requires its original native Session caller")
+      const snapshot = (session: typeof original) =>
+        JSON.stringify({
+          parentID: session.parentID,
+          organization: session.organization,
+          environmentID: session.environmentID,
+          workspaceID: session.workspaceID,
+          workspaceGeneration: session.workspace?.generation,
+          cortex: session.cortex && {
+            taskID: session.cortex.taskID,
+            parentSessionID: session.cortex.parentSessionID,
+            parentMessageID: session.cortex.parentMessageID,
+          },
+        })
+      const selected = snapshot(original),
+        lineage = JSON.stringify(resolution.lineage)
+      const accepted = { sessionID: resolution.accepted.sessionID, rootID: resolution.accepted.rootID }
+      const assertConnection = () => {
+        owner()
+        resolution.source.signal.throwIfAborted()
+        if (state().connection !== resolution.source) throw denied("Environment connection changed")
+        origin?.assertCurrent()
+      }
+      const assertCaller = async (phase: "admission" | "mutation") => {
+        assertConnection()
+        if (phase === "admission") input.signal?.throwIfAborted()
+        const verify = async () => {
+          assertConnection()
+          const currentSession = await sessionFor(original.id, selectedIdentity, resolution.source)
+          if (
+            snapshot(currentSession) !== selected ||
+            JSON.stringify(await executionLineage(currentSession, selectedIdentity, resolution.source)) !== lineage ||
+            (native?.kind === "session" &&
+              !lineage &&
+              (accepted.sessionID !== native.sessionID || accepted.rootID !== native.rootID))
+          )
+            throw denied("Environment cannot replace its original native selection or accepted lineage")
+          if (origin) {
+            if (phase === "admission")
+              await EnvironmentOrigin.assertAdmission(origin, {
+                scopeID: original.scope.id,
+                environmentID: original.environmentID ?? undefined,
+              })
+            else await EnvironmentOrigin.assertMutation(origin.value)
+          }
+          assertConnection()
+        }
+        if (phase === "mutation") await Storage.transaction(verify, { commitGuard: assertConnection })
+        else await verify()
+        assertConnection()
+        if (phase === "admission") input.signal?.throwIfAborted()
+      }
+      await assertCaller("admission")
+      return { resolution: { ...resolution, assertCaller, assertConnection }, signal }
+    },
+    false,
+  )
+  await captured.resolution.assertCaller("admission")
+  return fn(captured.resolution, captured.signal)
+}
+
 export async function inspectMemberFiles(
   authority: Leases.Authority,
   selector: { grantID: string; generation: number },
@@ -236,6 +329,116 @@ export async function inspectMemberFiles(
   cancellation.throwIfAborted()
   if (state().connection !== source) throw denied("Workspace inspection connection changed")
   return result
+}
+
+export async function inspectMemberEnvironment(
+  authority: Leases.Authority,
+  selector: { grantID: string; generation: number },
+  input: Parameters<MemberConnection["resources"]["inspectEnvironment"]>[1],
+  signal?: AbortSignal,
+) {
+  const original = Leases.Authority.parse(authority)
+  const retained = { grantID: selector.grantID, generation: selector.generation }
+  const query = CloudEnvironment.InspectionQuery.parse(input)
+  const source = current(),
+    owner = WorkspaceContent.captureOwner()
+  const cancellation = AbortSignal.any([source.signal, ...(signal ? [signal] : [])])
+  const proof = await source.intake.cleanupProof(original, retained)
+  cancellation.throwIfAborted()
+  owner()
+  if (state().connection !== source) throw denied("Environment inspection connection changed")
+  const result = await source.resources.inspectEnvironment(proof, query, cancellation)
+  cancellation.throwIfAborted()
+  owner()
+  if (state().connection !== source) throw denied("Environment inspection connection changed")
+  return result
+}
+
+async function environmentRetirement(
+  authority: Leases.Authority,
+  selector: { grantID: string; generation: number },
+  query: CloudEnvironment.RetirementQuery,
+  signal: AbortSignal | undefined,
+  method: "retireEnvironment" | "inspectEnvironmentRetirement",
+) {
+  if (Storage.inTransaction()) throw denied("Environment retirement must run outside a native transaction")
+  const original = Leases.Authority.parse(structuredClone(authority))
+  const selected = { grantID: selector.grantID, generation: selector.generation }
+  const input = CloudEnvironment.RetirementQuery.parse(structuredClone(query))
+  const source = current(),
+    runtime = RuntimeContext.current(),
+    primary = runtime.storage
+  const owner = WorkspaceContent.captureOwner(signal)
+  const assert = () => {
+    owner()
+    const actual = Storage.current()
+    if (
+      !primary ||
+      runtime.storage !== primary ||
+      actual.store !== primary.store ||
+      actual.artifactDirectory !== primary.artifactDirectory ||
+      actual.artifactObjects !== primary.artifactObjects ||
+      RuntimeContext.current() !== runtime ||
+      state().connection !== source ||
+      input.reference.orgID !== original.orgID ||
+      input.reference.runtimeID !== source.connection.runtimeID ||
+      (method === "retireEnvironment" && actual.store.options.readonly)
+    )
+      throw denied("Environment retirement lost its original Home, primary or enrolled connection")
+    source.signal.throwIfAborted()
+  }
+  assert()
+  const cancellation = AbortSignal.any([source.signal, ...(signal ? [signal] : [])])
+  const proof = await source.intake.cleanupProof(original, selected)
+  assert()
+  let result: CloudEnvironment.RetirementResult
+  try {
+    result = await source.resources[method](proof, input, cancellation)
+  } catch (error) {
+    if (error instanceof OrganizationRuntimeError) throw error
+    throw new OrganizationRuntimeError(
+      {
+        code: "SERVICE_UNAVAILABLE",
+        outcome: "unknown",
+        retryable: false,
+        message: "Original Environment retirement has no confirmed reply",
+      },
+      { cause: error },
+    )
+  }
+  try {
+    assert()
+    cancellation.throwIfAborted()
+  } catch (error) {
+    throw new OrganizationRuntimeError(
+      {
+        code: "SERVICE_UNAVAILABLE",
+        outcome: "unknown",
+        retryable: false,
+        message: "Original Environment retirement reply lost its original owner",
+      },
+      { cause: error },
+    )
+  }
+  return result
+}
+
+export function retireMemberEnvironment(
+  authority: Leases.Authority,
+  selector: { grantID: string; generation: number },
+  query: CloudEnvironment.RetirementQuery,
+  signal?: AbortSignal,
+) {
+  return environmentRetirement(authority, selector, query, signal, "retireEnvironment")
+}
+
+export function inspectMemberEnvironmentRetirement(
+  authority: Leases.Authority,
+  selector: { grantID: string; generation: number },
+  query: CloudEnvironment.RetirementQuery,
+  signal?: AbortSignal,
+) {
+  return environmentRetirement(authority, selector, query, signal, "inspectEnvironmentRetirement")
 }
 
 async function withMemberResolution<T>(
@@ -267,7 +470,7 @@ async function withMemberResolution<T>(
   if (accepted.permit.sessionID !== acceptedSessionID || accepted.effect.messageID !== acceptedRootID)
     throw denied("Member execution requires the receipt for its selected native task")
   const description = await source.resources.describe(descriptionProof, signal)
-  if (nativeOnly) assertNativeInfrastructure(description.grant.selection)
+  if (nativeOnly) assertInfrastructureOwner(description.grant.selection)
   const proof = await source.intake.bindingProof(lookup, acceptedRootID)
   const lineageAccepted = lineage ?? { sessionID: session.id, rootID: acceptedRootID, actor: lookup }
   return await fn({ source, session, lineage, descriptionProof, proof, description, accepted: lineageAccepted }, signal)
@@ -373,7 +576,7 @@ export function registerMemberExecution(identity: RuntimeIdentity) {
       if (accepted.permit.sessionID !== acceptedSessionID || accepted.effect.messageID !== acceptedRootID)
         throw denied("Member execution requires the receipt for its selected native task")
       const description = await source.resources.describe(proof, signal)
-      assertNativeInfrastructure(description.grant.selection)
+      assertInfrastructureOwner(description.grant.selection)
       const resource = description.resources.find(
         (resource) => resource.resourceID === description.grant.selection.modelResourceID,
       )!
@@ -419,7 +622,7 @@ export function registerMemberExecution(identity: RuntimeIdentity) {
       const accepted = lineage ?? { sessionID: session.id, rootID: root.id, actor: actor(root.actor, identity) }
       const proof = await source.intake.bindingProof(accepted.actor, accepted.rootID)
       const grant = await source.resources.bind(proof, signal)
-      assertNativeInfrastructure(grant.selection)
+      assertInfrastructureOwner(grant.selection)
       if (input.model.providerID !== `organization-${grant.selection.modelResourceID}`)
         throw denied("Organization model call differs from its accepted resource selection")
       const issuedAt = Date.now()

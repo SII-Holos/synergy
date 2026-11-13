@@ -62,6 +62,22 @@ export class ExecutionInputs {
     })
   }
 
+  async inspect(id: string) {
+    ExecutionProtocol.ID.parse(id)
+    const receipt = Bun.file(this.receipt(id))
+    if (!(await receipt.exists())) return
+    const prepared = ExecutionProtocol.PreparedInputs.parse(await receipt.json())
+    const files: Array<{ name: string; data: string }> = []
+    for (const [name, filename] of Object.entries(prepared.paths).toSorted(([left], [right]) => left.localeCompare(right))) {
+      ExecutionProtocol.Inputs.shape.files.element.shape.name.parse(name)
+      if (filename !== path.join(this.directory(id), name) || !(await fs.lstat(filename)).isFile())
+        throw new Error("Execution input has another original materialized path")
+      files.push({ name, data: Buffer.from(await fs.readFile(filename)).toString("base64") })
+    }
+    if (hash(JSON.stringify(files)) !== prepared.digest) throw new Error("Execution input bytes changed")
+    return prepared
+  }
+
   admit<T>(id: string, fn: () => Promise<T>) {
     return this.lock(id, fn)
   }

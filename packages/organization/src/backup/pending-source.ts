@@ -74,7 +74,11 @@ export namespace OrganizationPendingSource {
       prepared: Authority.Prepared
     }
     namespace: { directory: string; expected: StorageCheckpoint.Manifest }
-    native: { directory: string; expected: StorageCheckpoint.Manifest }
+    native: {
+      directory: string
+      expected: StorageCheckpoint.Manifest
+      resources?: Parameters<typeof Native.verify>[0]["resources"]
+    }
     keys: VaultKeyProvider
     signal?: AbortSignal
   }): Promise<Retirement.Receipt> {
@@ -92,6 +96,10 @@ export namespace OrganizationPendingSource {
     const native = {
       directory: input.native.directory,
       expected: StorageCheckpoint.Manifest.parse(input.native.expected),
+      resources: input.native.resources && {
+        ...input.native.resources,
+        expected: StorageCheckpoint.Manifest.parse(input.native.resources.expected),
+      },
     }
     const keys = Object.freeze({
       current: input.keys.current.bind(input.keys),

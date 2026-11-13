@@ -18,9 +18,14 @@ export async function withinBrowserOwner<T>(
     signal?.throwIfAborted()
     const session = owner.mode === "session" ? await Session.get(owner.sessionID!) : undefined
     if (session) {
-      const environment = session.environmentID
-        ? await Environment.get(session.environmentID, session.scope.id)
-        : undefined
+      const environment = await Environment.selectNative({
+        scopeID: session.scope.id,
+        ownerID: session.id,
+        environmentID: session.environmentID ?? null,
+        workspaceID: session.workspaceID,
+        workspaceGeneration: session.workspace?.generation,
+        signal,
+      })
       if (environment?.provider !== "native")
         throw new BrowserProtocolError({
           code: "browser_environment_unavailable",

@@ -379,6 +379,10 @@ export namespace OrganizationRecovery {
     const native = {
       directory: input.native.directory,
       expected: StorageCheckpoint.Manifest.parse(input.native.expected),
+      resources: input.native.resources && {
+        ...input.native.resources,
+        expected: StorageCheckpoint.Manifest.parse(input.native.resources.expected),
+      },
     }
     const provider = input.keys
     const keys = Object.freeze({ current: provider.current.bind(provider), resolve: provider.resolve.bind(provider) })
@@ -475,7 +479,11 @@ export namespace OrganizationRecovery {
     source: Retirement.Receipt
     target: Target
     namespace: { directory: string; expected: StorageCheckpoint.Manifest }
-    native: { directory: string; expected: StorageCheckpoint.Manifest }
+    native: {
+      directory: string
+      expected: StorageCheckpoint.Manifest
+      resources?: Parameters<typeof Native.verify>[0]["resources"]
+    }
     keys: VaultKeyProvider
     signal?: AbortSignal
   }) {
@@ -488,6 +496,10 @@ export namespace OrganizationRecovery {
     const native = {
       directory: input.native.directory,
       expected: StorageCheckpoint.Manifest.parse(input.native.expected),
+      resources: input.native.resources && {
+        ...input.native.resources,
+        expected: StorageCheckpoint.Manifest.parse(input.native.resources.expected),
+      },
     }
     const provider = input.keys
     const keys = Object.freeze({ current: provider.current.bind(provider), resolve: provider.resolve.bind(provider) })

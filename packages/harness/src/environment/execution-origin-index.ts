@@ -49,6 +49,63 @@ export namespace EnvironmentExecutionOriginIndex {
     info.id,
   ]
 
+  export interface HistoricalReader {
+    read<T>(schema: z.ZodType<T>, key: string[]): T
+    entries(prefix: string[]): Iterable<{ key: string[]; value: unknown }>
+  }
+  export function history(reader: HistoricalReader, accept: (key: string[]) => void) {
+    let covered = false
+    for (const entry of reader.entries(["environment_execution_origin_index"])) {
+      if (covered || JSON.stringify(entry.key) !== JSON.stringify(coverageKey))
+        throw new Error("Historical Environment execution index has another coverage record")
+      Coverage.parse(entry.value)
+      covered = true
+      accept(entry.key)
+    }
+    const coverage = () => {
+      if (!covered) throw new Error("Historical Environment execution index requires complete original coverage")
+    }
+    const matches = (locator: z.infer<typeof Locator>, info: EnvironmentExecutionSchema.Info) => {
+      if (locator.scopeID !== info.scopeID || locator.operationID !== info.id)
+        throw new Error("Historical Environment execution locator differs from its canonical record")
+    }
+    for (const entry of reader.entries(["environment_execution"])) {
+      coverage()
+      const info = EnvironmentExecutionSchema.Record.parse(entry.value).execution
+      if (JSON.stringify(entry.key) !== JSON.stringify(StoragePath.environmentExecution(info.scopeID, info.id)))
+        throw new Error("Historical Environment execution has another canonical address")
+      if (info.origin.kind === "session" && info.origin.scopeID !== info.scopeID)
+        throw new Error("Historical Environment execution origin belongs to another Scope")
+      const session = sessionKey(info)
+      if (session) matches(reader.read(Locator, session), info)
+      if (info.state !== "completed") matches(reader.read(Locator, environmentKey(info)), info)
+    }
+    for (const entry of reader.entries(["environment_execution_session"])) {
+      coverage()
+      const locator = Locator.parse(entry.value)
+      const info = reader.read(
+        EnvironmentExecutionSchema.Record,
+        StoragePath.environmentExecution(locator.scopeID, locator.operationID),
+      ).execution
+      matches(locator, info)
+      if (JSON.stringify(entry.key) !== JSON.stringify(sessionKey(info)))
+        throw new Error("Historical Environment Session index differs from its original execution")
+      accept(entry.key)
+    }
+    for (const entry of reader.entries(["environment_execution_environment"])) {
+      coverage()
+      const locator = Locator.parse(entry.value)
+      const info = reader.read(
+        EnvironmentExecutionSchema.Record,
+        StoragePath.environmentExecution(locator.scopeID, locator.operationID),
+      ).execution
+      matches(locator, info)
+      if (info.state === "completed" || JSON.stringify(entry.key) !== JSON.stringify(environmentKey(info)))
+        throw new Error("Historical Environment active index is completed or belongs to another execution")
+      accept(entry.key)
+    }
+  }
+
   export async function update(info: EnvironmentExecutionSchema.Info) {
     if (!Storage.inWriteTransaction())
       throw new Error("Environment execution indexes require the canonical write transaction")

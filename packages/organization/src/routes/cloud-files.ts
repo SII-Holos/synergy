@@ -6,7 +6,7 @@ import { OrganizationCloud } from "../cloud"
 import { fail } from "../error"
 import { operation, validation } from "./shared"
 
-export function cloudFileRoutes(grants: () => ExecutionGrants) {
+export function cloudFileRoutes(grants: () => ExecutionGrants, live?: OrganizationCloud.LiveFileOwner) {
   return new Hono()
     .post(
       "/workspaces/files",
@@ -23,7 +23,7 @@ export function cloudFileRoutes(grants: () => ExecutionGrants) {
         const request = c.req.valid("json")
         return c.json(
           await grants().withWorkspace(request, c.req.raw.signal, (authority) =>
-            OrganizationCloud.file(authority, c.req.raw.signal),
+            OrganizationCloud.file(authority, c.req.raw.signal, live),
           ),
         )
       },

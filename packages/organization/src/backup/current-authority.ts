@@ -41,7 +41,11 @@ export namespace OrganizationCurrentAuthority {
       lease: RuntimeMaintenance.Lease
       captured: {
         namespace: { directory: string; expected: StorageCheckpoint.Manifest }
-        native: { directory: string; expected: StorageCheckpoint.Manifest }
+        native: {
+          directory: string
+          expected: StorageCheckpoint.Manifest
+          resources?: Parameters<typeof Native.verify>[0]["resources"]
+        }
         keys: VaultKeyProvider
         signal?: AbortSignal
         assertLive(): void
@@ -66,7 +70,11 @@ export namespace OrganizationCurrentAuthority {
     source: Source,
     body: (captured: {
       namespace: { directory: string; expected: StorageCheckpoint.Manifest }
-      native: { directory: string; expected: StorageCheckpoint.Manifest }
+      native: {
+        directory: string
+        expected: StorageCheckpoint.Manifest
+        resources?: Parameters<typeof Native.verify>[0]["resources"]
+      }
       keys: VaultKeyProvider
       signal?: AbortSignal
       assertLive(): void
@@ -86,6 +94,10 @@ export namespace OrganizationCurrentAuthority {
         native: {
           directory: captured.native.directory,
           expected: StorageCheckpoint.Manifest.parse(captured.native.expected),
+          resources: captured.native.resources && {
+            ...captured.native.resources,
+            expected: StorageCheckpoint.Manifest.parse(captured.native.resources.expected),
+          },
         },
         keys: captured.keys,
         signal: captured.signal,
@@ -282,6 +294,7 @@ export namespace OrganizationCurrentAuthority {
                 source: archive.namespace,
                 keys,
                 signal,
+                resources: native.resources,
               })
               try {
                 assert()
@@ -314,7 +327,7 @@ export namespace OrganizationCurrentAuthority {
                 lease,
                 captured: {
                   namespace: { directory: archive.directory, expected: archive.namespace },
-                  native: { directory: native.directory, expected: native.namespace },
+                  native: { directory: native.directory, expected: native.namespace, resources: native.resources },
                   keys,
                   signal,
                   assertLive() {

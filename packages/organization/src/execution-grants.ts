@@ -6,6 +6,7 @@ import {
   OrganizationResourceProtocol as Resource,
   OrganizationHandoffProtocol as Handoff,
   OrganizationCloudProtocol as Cloud,
+  OrganizationCloudExecutionProtocol as CloudEnvironment,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { OrganizationSessionResources as Resources } from "./session-resources"
 import { assertRuntimeConnection, runtimeAuthority } from "./runtime-authority"
@@ -21,6 +22,7 @@ import { OrganizationAuthorityHistory as History } from "./authority-history"
 import { isDeepStrictEqual as same } from "node:util"
 import { OrganizationHandoffExecution } from "./handoff"
 import { OrganizationExecutionIndex as Index } from "./execution-index"
+import { assertApiExecutionActor } from "./auth/api-token-session"
 
 async function saveGrant(grant: Execution.Grant) {
   await Storage.write(Keys.executionGrant(grant.grantID), grant)
@@ -35,7 +37,62 @@ interface WorkspaceAuthorityFrame {
 }
 const workspaceAuthorities = new WeakMap<OrganizationExecutionGrants.WorkspaceAuthority, WorkspaceAuthorityFrame>()
 
+interface EnvironmentAuthorityFrame {
+  kind: "dispatch" | "inspection" | "retirement"
+  grant: Execution.BoundGrant
+  rootID: string
+  request:
+    | CloudEnvironment.Request
+    | CloudEnvironment.InspectionRequest
+    | CloudEnvironment.RetirementRequest
+    | CloudEnvironment.RetirementInspectionRequest
+  assert(): void
+  recheck(): Promise<void>
+}
+const environmentAuthorities = new WeakMap<
+  OrganizationExecutionGrants.EnvironmentAuthority,
+  EnvironmentAuthorityFrame
+>()
+function environmentReference(
+  grant: Execution.BoundGrant,
+  rootID: string,
+  reference: CloudEnvironment.Reference,
+  historical = false,
+) {
+  const selected = grant.selection.infrastructure
+  if (
+    reference.orgID !== grant.orgID ||
+    reference.deploymentIncarnation !== grant.deploymentIncarnation ||
+    reference.projectID !== grant.projectID ||
+    reference.runtimeID !== grant.runtimeID ||
+    reference.sessionID !== grant.sessionID ||
+    reference.rootID !== rootID ||
+    reference.rootID !== grant.rootID ||
+    reference.bindingEpoch !== grant.bindingEpoch ||
+    reference.grantID !== grant.grantID ||
+    reference.selectionRevision !== grant.selectionRevision ||
+    (historical
+      ? reference.retentionGeneration > grant.retention.generation
+      : reference.retentionGeneration !== grant.retention.generation) ||
+    !selected.environment ||
+    !selected.workspace ||
+    reference.resourceID !== selected.environment.resourceID ||
+    reference.environmentID !== selected.environment.environmentID ||
+    reference.workspace.orgID !== grant.orgID ||
+    reference.workspace.projectID !== grant.projectID ||
+    reference.workspace.resourceID !== selected.workspace.resourceID ||
+    reference.workspace.workspaceID !== selected.workspace.workspaceID
+  )
+    fail("PROTOCOL_MISMATCH", "Environment operation has another original retained resource binding")
+}
+
 export namespace OrganizationExecutionGrants {
+  export function assertRetainedEnvironmentReference(
+    grant: Execution.BoundGrant,
+    reference: CloudEnvironment.Reference,
+  ) {
+    environmentReference(grant, grant.rootID, reference, true)
+  }
   export async function closedHistory(reader: Record.HistoricalReader, grantID: string) {
     const grant = reader.read(Record.ExecutionGrant, Keys.executionGrant(grantID))
     if (
@@ -108,6 +165,29 @@ export namespace OrganizationExecutionGrants {
       grant: Execution.Grant.parse(frame.grant),
       rootID: frame.rootID,
       request: Cloud.LocalFileRequest.parse(frame.request),
+      assert: frame.assert,
+      recheck: frame.recheck,
+    }
+  }
+  export interface EnvironmentAuthority {
+    readonly kind: "organization-environment-authority"
+  }
+  export function environmentAuthority(evidence: EnvironmentAuthority) {
+    const frame = environmentAuthorities.get(evidence)
+    if (!frame) fail("PERMISSION_DENIED", "Environment execution requires its original accepted authority")
+    frame.assert()
+    return {
+      kind: frame.kind,
+      grant: Execution.BoundGrant.parse(frame.grant),
+      rootID: frame.rootID,
+      request:
+        frame.kind === "dispatch"
+          ? CloudEnvironment.Request.parse(frame.request)
+          : frame.kind === "inspection"
+            ? CloudEnvironment.InspectionRequest.parse(frame.request)
+            : frame.request.proof.purpose === "organization-environment-retirement"
+              ? CloudEnvironment.RetirementRequest.parse(frame.request)
+              : CloudEnvironment.RetirementInspectionRequest.parse(frame.request),
       assert: frame.assert,
       recheck: frame.recheck,
     }
@@ -199,12 +279,21 @@ export function createExecutionGrants(options: {
   connections: RuntimeConnections
   admissions: CommandAdmissions
   assertResourcesDrained(grantID: string): void
+  prepareResourcesDrained?(grantID: string): Promise<void>
   handoffs?: Pick<ReturnType<typeof createHandoffs>, "executionAuthority" | "continuationAuthority">
 }) {
   const fileCalls = new Map<string, number>()
   function assertResourcesDrained(grantID: string) {
     if (fileCalls.get(grantID)) fail("RESOURCE_UNAVAILABLE", "Accepted Workspace file operations are still draining")
     options.assertResourcesDrained(grantID)
+  }
+  async function prepareResourcesDrained(grantID: string) {
+    const grant = await Record.read(Record.ExecutionGrant, Keys.executionGrant(grantID))
+    if (!grant) fail("PROTOCOL_MISMATCH", "Resource closure has no canonical original grant")
+    if (grant.selection.infrastructure.environment && !options.prepareResourcesDrained)
+      fail("RESOURCE_UNAVAILABLE", "Selected Environment closure requires its actual native owner")
+    await options.prepareResourcesDrained?.(grantID)
+    assertResourcesDrained(grantID)
   }
   function window(proof: MachineProof) {
     if (proof.issuedAt > Date.now() || proof.expiresAt <= Date.now())
@@ -321,7 +410,7 @@ export function createExecutionGrants(options: {
           (predecessor.state === "bound" && predecessor.retention.state === "held")
         if (held && !session.retainedExecutionGrants)
           fail("PROTOCOL_MISMATCH", "Retained execution count is inconsistent")
-        assertResourcesDrained(predecessor.grantID)
+        await prepareResourcesDrained(predecessor.grantID)
         predecessorID = predecessor.grantID
         const contract = await Resources.read(session)
         const mapped = authority.workspaceContinuation
@@ -525,6 +614,34 @@ export function createExecutionGrants(options: {
       fail("PERMISSION_DENIED", "Execution continuation requires a new independent control")
     if ((grant.state === "provisional" || grant.retention.state === "held") && session.retainedExecutionGrants === 0)
       fail("PROTOCOL_MISMATCH", "Retained execution grant count is inconsistent")
+    const effective = grant.provenance?.control.permit
+    const actor = effective?.actor ?? grant.actor
+    const activeActor = await Record.read(Record.Account, Keys.account(actor.subjectID))
+    if (
+      !activeActor ||
+      activeActor.orgID !== grant.orgID ||
+      actor.orgID !== grant.orgID ||
+      activeActor.state !== "active"
+    )
+      fail("PERMISSION_DENIED", "The original execution actor is no longer active")
+    if (actor.clientKind === "api" || actor.tokenID) {
+      const admission = effective
+        ? undefined
+        : await Record.read(Record.CommandAttempt, Keys.commandAttempt(grant.attemptID))
+      const permit = effective ?? admission?.authorization.permit
+      if (!permit) fail("PROTOCOL_MISMATCH", "Execution API authority has no original command")
+      if (
+        !same(permit.actor, actor) ||
+        permit.orgID !== grant.orgID ||
+        permit.projectID !== grant.projectID ||
+        permit.sessionID !== grant.sessionID ||
+        permit.runtimeID !== grant.runtimeID ||
+        permit.bindingEpoch !== grant.bindingEpoch
+      )
+        fail("PROTOCOL_MISMATCH", "Execution API authority has another original command")
+      await assertApiExecutionActor(permit)
+    }
+    await accountSession(activeActor, session.sessionID, "session.execute")
     const [project, membership] = await Promise.all([
       Record.read(Record.Project, Keys.project(session.projectID)),
       account ? Record.read(Record.ProjectMember, Keys.projectMember(session.projectID, account.accountID)) : undefined,
@@ -659,7 +776,258 @@ export function createExecutionGrants(options: {
       return Execution.Inspection.parse({ ...envelope, state: "known", grant, release })
     })
   }
+  async function withRetirementOwner<T>(
+    request: CloudEnvironment.RetirementRequest | CloudEnvironment.RetirementInspectionRequest,
+    signal: AbortSignal | undefined,
+    body: (authority: OrganizationExecutionGrants.EnvironmentAuthority) => Promise<T>,
+  ) {
+    if (Storage.inTransaction())
+      fail("INVALID_REQUEST", "Environment retirement must own its original receipt boundary")
+    const signed = request.proof,
+      { proof, signature } = signed.authority
+    const owner = WorkspaceContent.captureOwner(signal)
+    window(proof)
+    const registered = await Storage.snapshot(() => machine(proof))
+    const verified =
+      signed.purpose === "organization-environment-retirement"
+        ? await CloudEnvironment.verifyRetirement(signed, request.signature, registered.runtime.publicKey)
+        : await CloudEnvironment.verifyRetirementInspection(signed, request.signature, registered.runtime.publicKey)
+    if (!verified || !(await Execution.verifyInspection(proof, signature, registered.runtime.publicKey)))
+      fail("PERMISSION_DENIED", "Environment retirement requires its complete original signed receipt")
+    const connection = capture(proof, registered.runtime)
+    let open = true,
+      retained: Execution.BoundGrant | undefined
+    const assert = () => {
+      owner()
+      window(proof)
+      connection.assertCurrent()
+      if (!open) fail("PERMISSION_DENIED", "Environment retirement callback has ended")
+    }
+    const recheck = async () => {
+      assert()
+      await Storage.snapshot(async () => {
+        await receivedSession(proof, registered.runtime.publicKey)
+        const grant = Execution.BoundGrant.parse(
+          receivedGrant(
+            proof,
+            await Record.read(Record.ExecutionGrant, Keys.executionGrant(signed.reference.grantID)),
+            "retention",
+          ),
+        )
+        environmentReference(grant, proof.rootID, signed.reference, true)
+        if (
+          proof.grantID !== signed.reference.grantID ||
+          proof.generation !== signed.reference.retentionGeneration ||
+          (signed.kind === "execution" && signed.id !== signed.reference.nativeOperationID)
+        )
+          fail("PROTOCOL_MISMATCH", "Environment retirement has another original grant or operation")
+        if (retained && (!same(retained.selection, grant.selection) || retained.grantID !== grant.grantID))
+          fail("PROTOCOL_MISMATCH", "Environment retirement changed its original selected resources")
+        retained ??= grant
+        assert()
+      })
+      assert()
+    }
+    await recheck()
+    const evidence: OrganizationExecutionGrants.EnvironmentAuthority = Object.freeze({
+      kind: "organization-environment-authority",
+    })
+    environmentAuthorities.set(evidence, {
+      kind: "retirement",
+      grant: Execution.BoundGrant.parse(retained),
+      rootID: proof.rootID,
+      request,
+      assert,
+      recheck,
+    })
+    try {
+      const result = await body(evidence)
+      await recheck()
+      return result
+    } finally {
+      open = false
+    }
+  }
   return {
+    withEnvironmentRetirement<T>(
+      value: CloudEnvironment.RetirementRequest,
+      signal: AbortSignal | undefined,
+      body: (authority: OrganizationExecutionGrants.EnvironmentAuthority) => Promise<T>,
+    ) {
+      return withRetirementOwner(CloudEnvironment.RetirementRequest.parse(structuredClone(value)), signal, body)
+    },
+    withEnvironmentRetirementInspection<T>(
+      value: CloudEnvironment.RetirementInspectionRequest,
+      signal: AbortSignal | undefined,
+      body: (authority: OrganizationExecutionGrants.EnvironmentAuthority) => Promise<T>,
+    ) {
+      return withRetirementOwner(
+        CloudEnvironment.RetirementInspectionRequest.parse(structuredClone(value)),
+        signal,
+        body,
+      )
+    },
+    async withEnvironment<T>(
+      value: CloudEnvironment.Request,
+      signal: AbortSignal | undefined,
+      body: (authority: OrganizationExecutionGrants.EnvironmentAuthority) => Promise<T>,
+    ): Promise<T> {
+      if (Storage.inTransaction())
+        fail("INVALID_REQUEST", "Environment authority must precede its actual native transaction")
+      const request = CloudEnvironment.Request.parse(value)
+      const { proof, signature } = request.proof.authority
+      const owner = WorkspaceContent.captureOwner(signal)
+      window(proof)
+      const registered = await Storage.snapshot(() => machine(proof))
+      owner()
+      if (
+        !(await Execution.verifyBinding(proof, signature, registered.runtime.publicKey)) ||
+        !(await CloudEnvironment.verify(request.proof, request.signature, registered.runtime.publicKey))
+      )
+        fail("PERMISSION_DENIED", "Environment execution requires its complete original signed operation")
+      const connection = capture(proof, registered.runtime)
+      await options.admissions.observe(connection, proof.continuation?.receipt ?? proof.receipt)
+      let open = true
+      let retained: Execution.BoundGrant | undefined
+      const assert = () => {
+        owner()
+        window(proof)
+        connection.assertCurrent()
+        if (!open) fail("PERMISSION_DENIED", "Environment authority callback has ended")
+      }
+      const recheck = async () => {
+        assert()
+        await Storage.snapshot(async () => {
+          const { session, grant, account } = await resolve(proof, registered.runtime.publicKey)
+          await enabled(session, grant, account)
+          const current = Execution.BoundGrant.parse(grant)
+          const root = await Record.read(
+            Record.RootGrant,
+            Keys.rootGrant(session.sessionID, session.bindingEpoch, proof.rootID),
+          )
+          if (
+            root?.grantID !== current.grantID ||
+            current.retention.state !== "held" ||
+            (retained &&
+              (retained.grantID !== current.grantID ||
+                !same(retained.retention, current.retention) ||
+                !same(retained.selection, current.selection)))
+          )
+            fail("PERMISSION_DENIED", "Environment operation lost its original retained root")
+          if (!current.selection.infrastructure.workspace || !current.selection.infrastructure.environment)
+            fail(
+              "RESOURCE_UNAVAILABLE",
+              "Environment execution requires an explicit compatible Workspace and Environment",
+            )
+          const operation = request.proof.operation
+          if (operation.action === "resolve") {
+            const workspace = operation.workspace
+            const selected = current.selection.infrastructure.workspace
+            if (
+              workspace.orgID !== current.orgID ||
+              workspace.projectID !== current.projectID ||
+              workspace.resourceID !== selected.resourceID ||
+              workspace.workspaceID !== selected.workspaceID
+            )
+              fail("PROTOCOL_MISMATCH", "Environment admission has another selected Working location")
+          } else environmentReference(current, proof.rootID, operation.reference)
+          retained ??= current
+          assert()
+        })
+        assert()
+      }
+      await recheck()
+      const grant = Execution.BoundGrant.parse(retained)
+      const evidence: OrganizationExecutionGrants.EnvironmentAuthority = Object.freeze({
+        kind: "organization-environment-authority",
+      })
+      environmentAuthorities.set(evidence, { kind: "dispatch", grant, rootID: proof.rootID, request, assert, recheck })
+      try {
+        const result = await body(evidence)
+        await recheck()
+        return result
+      } finally {
+        open = false
+      }
+    },
+    async withEnvironmentInspection<T>(
+      value: CloudEnvironment.InspectionRequest,
+      signal: AbortSignal | undefined,
+      body: (authority: OrganizationExecutionGrants.EnvironmentAuthority) => Promise<T>,
+    ): Promise<T> {
+      if (Storage.inTransaction())
+        fail("INVALID_REQUEST", "Environment inspection must own its original native read boundary")
+      const request = CloudEnvironment.InspectionRequest.parse(value)
+      const { proof, signature } = request.proof.authority
+      const owner = WorkspaceContent.captureOwner(signal)
+      window(proof)
+      const registered = await Storage.snapshot(() => machine(proof))
+      owner()
+      if (
+        !(await Execution.verifyInspection(proof, signature, registered.runtime.publicKey)) ||
+        !(await CloudEnvironment.verifyInspection(request.proof, request.signature, registered.runtime.publicKey))
+      )
+        fail("PERMISSION_DENIED", "Environment inspection requires its complete original signed operation")
+      const connection = capture(proof, registered.runtime)
+      let open = true
+      let retained: Execution.BoundGrant | undefined
+      const assert = () => {
+        owner()
+        window(proof)
+        connection.assertCurrent()
+        if (!open) fail("PERMISSION_DENIED", "Environment inspection callback has ended")
+      }
+      const recheck = async () => {
+        assert()
+        await Storage.snapshot(async () => {
+          const { session, account } = await receivedSession(proof, registered.runtime.publicKey)
+          await original(proof)
+          const grant = Execution.BoundGrant.parse(
+            receivedGrant(
+              proof,
+              await Record.read(Record.ExecutionGrant, Keys.executionGrant(request.proof.reference.grantID)),
+              "retention",
+            ),
+          )
+          environmentReference(grant, proof.rootID, request.proof.reference, true)
+          if (proof.generation !== request.proof.reference.retentionGeneration)
+            fail("PROTOCOL_MISMATCH", "Environment inspection has another original retention generation")
+          const project = await Record.read(Record.Project, Keys.project(session.projectID))
+          if (!project) fail("NOT_FOUND", "Environment receipt project is unavailable")
+          if (account) {
+            const membership = await Record.read(
+              Record.ProjectMember,
+              Keys.projectMember(project.projectID, account.accountID),
+            )
+            sessionView(account, session, projectView(account, project, membership, "project.read"), "session.read")
+          }
+          if (retained && (retained.grantID !== grant.grantID || !same(retained.selection, grant.selection)))
+            fail("PROTOCOL_MISMATCH", "Environment inspection changed its original selection")
+          retained ??= grant
+          assert()
+        })
+        assert()
+      }
+      await recheck()
+      const evidence: OrganizationExecutionGrants.EnvironmentAuthority = Object.freeze({
+        kind: "organization-environment-authority",
+      })
+      environmentAuthorities.set(evidence, {
+        kind: "inspection",
+        grant: Execution.BoundGrant.parse(retained),
+        rootID: proof.rootID,
+        request,
+        assert,
+        recheck,
+      })
+      try {
+        const result = await body(evidence)
+        await recheck()
+        return result
+      } finally {
+        open = false
+      }
+    },
     async withWorkspaceInspection<T>(
       value: Cloud.FileInspectionRequest,
       signal: AbortSignal | undefined,
@@ -970,7 +1338,7 @@ export function createExecutionGrants(options: {
             fail("REVISION_CONFLICT", "Unbound source grant has another generation")
           if (!session.retainedExecutionGrants)
             fail("PROTOCOL_MISMATCH", "Retained execution grant count is inconsistent")
-          assertResourcesDrained(grant.grantID)
+          await prepareResourcesDrained(grant.grantID)
           const closure = {
             handoffID: proof.handoffID,
             manifestHash: proof.manifestHash,
@@ -1202,7 +1570,7 @@ export function createExecutionGrants(options: {
             fail("RESOURCE_UNAVAILABLE", "Unbound execution release lacks materialized root evidence")
           if (session.retainedExecutionGrants === 0)
             fail("PROTOCOL_MISMATCH", "Retained execution grant count is inconsistent")
-          assertResourcesDrained(grant.grantID)
+          await prepareResourcesDrained(grant.grantID)
           releasingGrantID = grant.grantID
           await saveGrant(
             Execution.Grant.parse(

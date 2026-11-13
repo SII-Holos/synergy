@@ -11,6 +11,7 @@ import { EnvironmentProviders, type EnvironmentProvider } from "@ericsanchezok/s
 import type { BlobStore } from "@ericsanchezok/synergy-harness/workspace/content"
 import {
   OrganizationCloudProtocol as Cloud,
+  OrganizationCloudExecutionProtocol as CloudExecution,
   OrganizationExecutionProtocol as Execution,
   OrganizationIdentity as Identity,
 } from "@ericsanchezok/synergy-organization-protocol"
@@ -23,6 +24,8 @@ import { OrganizationExecutionGrants } from "./execution-grants"
 import { OrganizationHandoffExecution } from "./handoff"
 import { WorkspaceMove } from "@ericsanchezok/synergy-harness/workspace/move"
 import { WorkspaceArchive } from "@ericsanchezok/synergy-harness/workspace/archive"
+import { WorkspaceProtocol } from "@ericsanchezok/synergy-harness/workspace/protocol"
+import { OrganizationCloudRecord as CloudRecord } from "./cloud-records"
 
 export interface OrganizationCloudOptions {
   blobStores?: Record<string, BlobStore>
@@ -32,51 +35,26 @@ export interface OrganizationCloudOptions {
 }
 
 export namespace OrganizationCloud {
+  export interface LiveFiles {
+    files: Readonly<{
+      canonical(path: string, follow: boolean): Promise<string>
+      stat(path: string, follow?: boolean): Promise<WorkspaceProtocol.Item | undefined>
+      read(input: Omit<WorkspaceProtocol.ReadInput, "mount">): Promise<WorkspaceProtocol.Read>
+    }>
+    mount: WorkspaceProtocol.Mount
+    assert(): void
+    recheck(): Promise<void>
+  }
+  export type LiveFileOwner = <T>(
+    evidence: OrganizationExecutionGrants.WorkspaceAuthority,
+    workspace: WorkspaceCatalog.Info,
+    signal: AbortSignal | undefined,
+    body: (files: LiveFiles) => Promise<T>,
+  ) => Promise<T>
   const moveSource =
     RuntimeContext.createAsyncContext<ReturnType<typeof OrganizationHandoffExecution.workspaceAuthority>>()
   const configuration = RuntimeContext.state(() => ({ profiles: undefined as OrganizationCloudOptions | undefined }))
-  const Locator = z.strictObject({
-    schemaVersion: z.literal(1),
-    orgID: Identity.ID,
-    projectID: Identity.ID,
-    resourceID: Identity.ID,
-    id: Identity.ID,
-    name: Identity.Name,
-  })
-  const Receipt = z.strictObject({ schemaVersion: z.literal(1), digest: z.string(), result: Cloud.Workspace })
-  const EnvironmentReceipt = z.strictObject({ schemaVersion: z.literal(1), digest: z.string(), id: Identity.ID })
-  const FileReceipt = z.strictObject({
-    version: z.literal(1),
-    digest: Cloud.Hash,
-    reference: Cloud.FileReference,
-    result: Cloud.FileResult,
-  })
-  const key = (kind: "workspaces" | "environments", id: string) => ["organization", "cloud", kind, id]
-  const receiptKey = (workspaceID: string, operationID: string) => [
-    "organization",
-    "cloud",
-    "receipts",
-    workspaceID,
-    operationID,
-  ]
-  const creationKey = (kind: string, orgID: string, accountID: string, requestID: string) => [
-    "organization",
-    "cloud",
-    "creation",
-    kind,
-    orgID,
-    accountID,
-    requestID,
-  ]
-  const projectKey = (kind: string, orgID: string, projectID: string, resourceID: string) => [
-    "organization",
-    "cloud",
-    "project",
-    kind,
-    orgID,
-    projectID,
-    resourceID,
-  ]
+  const { Locator, Receipt, EnvironmentReceipt, FileReceipt, key, receiptKey, creationKey, projectKey } = CloudRecord
   const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex")
 
   export function register(options: OrganizationCloudOptions = {}) {
@@ -125,7 +103,7 @@ export namespace OrganizationCloud {
   }
 
   export function scopeID(orgID: string, projectID: string) {
-    return `org_${digest([orgID, projectID])}`
+    return CloudRecord.scopeID(orgID, projectID)
   }
 
   export async function assertInfrastructure(orgID: string, projectID: string, value: Execution.Infrastructure) {
@@ -362,6 +340,7 @@ export namespace OrganizationCloud {
   export async function file(
     evidence: OrganizationExecutionGrants.WorkspaceAuthority,
     signal?: AbortSignal,
+    live?: LiveFileOwner,
   ): Promise<Cloud.FileResult> {
     const authority = OrganizationExecutionGrants.workspaceAuthority(evidence)
     const input = authority.request
@@ -394,7 +373,10 @@ export namespace OrganizationCloud {
       const info = await (receiptOnly
         ? WorkspaceCatalog.get(locator.id, scope)
         : WorkspaceCatalog.assertActive(locator.id, scope))
-      if (!receiptOnly && (info.backend?.provider !== "objects" || info.activeMount || info.binding.state !== "bound"))
+      if (
+        !receiptOnly &&
+        (info.backend?.provider !== "objects" || (info.activeMount && !live) || info.binding.state !== "bound")
+      )
         fail("RESOURCE_UNAVAILABLE", "Workspace files require their dormant object owner")
       if (!receiptOnly && ref && ref.generation !== info.binding.generation)
         fail("REVISION_CONFLICT", "Workspace binding generation changed")
@@ -433,6 +415,37 @@ export namespace OrganizationCloud {
       await current()
       authority.assert()
       return Cloud.FileResult.parse({ reference: receiptOnly ? ref : reference(info), result })
+    }
+    if (!receiptOnly && info.activeMount) {
+      if (!live) fail("RESOURCE_UNAVAILABLE", "Live Workspace files require their original mounted owner")
+      if (!["describe", "canonical", "stat", "read"].includes(operation.action))
+        fail("RESOURCE_UNAVAILABLE", "This live Workspace operation requires its original publication owner")
+      return live(evidence, info, signal, async (current) => {
+        const result = async (value: Cloud.FileResult["result"]) => {
+          await current.recheck()
+          current.assert()
+          return finish(value)
+        }
+        if (operation.action === "describe") return result({ action: "describe" })
+        if (!ref) fail("INVALID_REQUEST", "File operations require their original Workspace version")
+        if (!("path" in operation)) fail("INVALID_REQUEST", "Live Workspace operation requires its original path")
+        within(operation.path)
+        const path = await current.files.canonical(
+          operation.path,
+          operation.action === "canonical"
+            ? operation.follow
+            : operation.action === "stat"
+              ? (operation.follow ?? true)
+              : true,
+        )
+        within(path)
+        await current.recheck()
+        if (operation.action === "canonical") return result({ action: "canonical", path })
+        if (operation.action === "stat")
+          return result({ action: "stat", item: await current.files.stat(path, operation.follow) })
+        if (operation.action !== "read") fail("RESOURCE_UNAVAILABLE", "Live Workspace operation is unsupported")
+        return result({ action: "read", ...(await current.files.read({ ...operation, path })) })
+      })
     }
     if (operation.action === "describe") return finish({ action: "describe" })
     if (!ref) fail("INVALID_REQUEST", "File operations require their original Workspace version")
@@ -713,6 +726,60 @@ export namespace OrganizationCloud {
         : await moveSource.run(frame, () => WorkspaceMove.runCaptured(request, "organization-handoff", { signal }))
     await frame.recheck()
     return Cloud.HandoffWorkspaceResult.parse({ action: operation.action, receipt })
+  }
+
+  export async function* environmentEntries() {
+    const owner = WorkspaceContent.captureOwner()
+    for await (const row of Storage.records({ prefix: ["organization", "cloud", "environments"], limit: 64 })) {
+      owner()
+      const locator = Locator.parse(row.value)
+      if (JSON.stringify(row.key) !== JSON.stringify(key("environments", locator.id)))
+        fail("PROTOCOL_MISMATCH", "Environment locator has another canonical address")
+      const scope = scopeID(locator.orgID, locator.projectID)
+      const environment = await Environment.get(locator.id, scope)
+      owner()
+      if (environment.id !== locator.id || environment.scopeID !== scope)
+        fail("PROTOCOL_MISMATCH", "Environment locator has another native Scope")
+      yield { locator, environment }
+      owner()
+    }
+  }
+
+  export async function withExecutionSelection<T>(
+    evidence: OrganizationExecutionGrants.EnvironmentAuthority,
+    body: (value: { scopeID: string; workspace: WorkspaceCatalog.Info; environment: Environment.Info }) => Promise<T>,
+  ): Promise<T> {
+    const frame = OrganizationExecutionGrants.environmentAuthority(evidence)
+    if (frame.kind !== "dispatch")
+      fail("PERMISSION_DENIED", "Retained inspection cannot acquire an Environment selection")
+    if (CloudExecution.Request.parse(frame.request).proof.operation.action !== "resolve")
+      fail("PERMISSION_DENIED", "Only the original Environment resolution may acquire its selected resources")
+    const grant = frame.grant
+    const selected = grant.selection.infrastructure
+    const workspace = selected.workspace
+    const environment = selected.environment
+    if (!workspace || !environment)
+      fail("RESOURCE_UNAVAILABLE", "Environment execution requires its explicit Workspace and Environment")
+    const scope = scopeID(grant.orgID, grant.projectID)
+    const read = async () => {
+      frame.assert()
+      await frame.recheck()
+      await assertInfrastructure(grant.orgID, grant.projectID, selected)
+      const value = await Storage.snapshot(async () => {
+        const catalog = await WorkspaceCatalog.get(workspace.workspaceID, scope)
+        const compute = await Environment.get(environment.environmentID, scope)
+        if (catalog.lifecycle !== "active" || catalog.binding.state !== "bound")
+          fail("RESOURCE_UNAVAILABLE", "The selected Workspace has no current storage authority")
+        frame.assert()
+        return { scopeID: scope, workspace: catalog, environment: compute }
+      })
+      frame.assert()
+      return value
+    }
+    const current = await read()
+    const result = await body(current)
+    await read()
+    return result
   }
 
   export async function createEnvironment(credentials: Credentials, value: Cloud.CreateEnvironment) {

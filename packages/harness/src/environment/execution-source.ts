@@ -7,6 +7,7 @@ import { EnvironmentSchema } from "./schema"
 import { EnvironmentExecutionSchema } from "./execution-schema"
 import { ExecutionProtocol, type Executor } from "./executor"
 import { WorkspaceProtocol } from "../workspace/protocol"
+import { ProcessAccessSource } from "../process/access-source"
 
 export namespace EnvironmentExecutionSource {
   export const Record = EnvironmentExecutionSchema.Source
@@ -37,6 +38,11 @@ export namespace EnvironmentExecutionSource {
     stdin(id: string, data: Uint8Array, end: boolean): Promise<void>
     resize(id: string, cols: number, rows: number): Promise<void>
   }
+  const operationBrand: unique symbol = Symbol("original Environment execution operation")
+  export interface OriginalOperation extends Omit<Operations, "start"> {
+    readonly [operationBrand]: true
+    close(): Promise<void>
+  }
   export interface Input {
     selection: Readonly<Selection>
     origin: EnvironmentOrigin.Captured
@@ -60,6 +66,7 @@ export namespace EnvironmentExecutionSource {
     output: ExecutionProtocol.Chunk[]
   }
   export interface Port {
+    selected?(selection: Readonly<Selection>, signal?: AbortSignal): Promise<boolean>
     open(input: Input): Promise<Opened | undefined>
     inspect(input: {
       binding: z.infer<typeof JsonValue>
@@ -94,6 +101,7 @@ export namespace EnvironmentExecutionSource {
     closed: boolean
     calls: Set<Promise<unknown>>
     resources: Set<Retained>
+    operations: Set<{ origin: EnvironmentOrigin.Captured }>
     closing?: Promise<void>
   }
   interface Retained {
@@ -113,6 +121,7 @@ export namespace EnvironmentExecutionSource {
     open: boolean
     signal?: AbortSignal
     calls: Set<Promise<unknown>>
+    originalOperations: Map<string, { identity: string; operation: OriginalOperation }>
   }
   const frames = new WeakMap<Lease, Frame>()
   const state = RuntimeContext.state(() => new Map<string, Registration>())
@@ -182,24 +191,49 @@ export namespace EnvironmentExecutionSource {
     if (state().has(provider)) throw new Error("Environment execution source is already registered")
     state().set(provider, {
       provider,
-      port: { open: port.open.bind(port), inspect: port.inspect.bind(port), close: port.close?.bind(port) },
+      port: {
+        selected: port.selected?.bind(port),
+        open: port.open.bind(port),
+        inspect: port.inspect.bind(port),
+        close: port.close?.bind(port),
+      },
       owner: primaryOwner(),
       accepting: true,
       closed: false,
       calls: new Set(),
       resources: new Set(),
+      operations: new Set(),
     })
   }
   export function has(provider: string) {
     const registration = state().get(provider)
     return !!registration?.accepting && !registration.closed
   }
+  export async function selected(value: Selection, signal?: AbortSignal) {
+    const selection = Object.freeze({ ...value })
+    for (const registration of state().values()) {
+      registration.owner()
+      signal?.throwIfAborted()
+      if (!registration.accepting || registration.closed) fail("Environment execution source is closing")
+      const inspect = registration.port.selected
+      if (!inspect) fail("Environment source cannot verify native-only selection")
+      const remote = await tracked(registration, () => inspect(selection, signal))
+      registration.owner()
+      signal?.throwIfAborted()
+      if (!registration.accepting || registration.closed) fail("Environment execution source is closing")
+      if (typeof remote !== "boolean") fail("Environment source returned an unknown native-only selection")
+      if (remote) return true
+    }
+    return false
+  }
   export function hasPendingRequests() {
-    return [...state().values()].some((registration) => registration.calls.size || registration.resources.size)
+    return [...state().values()].some(
+      (registration) => registration.calls.size || registration.resources.size || registration.operations.size,
+    )
   }
   export function hasSessionPending(scopeID: string, sessionID: string) {
     return [...state().values()].some((registration) =>
-      [...registration.resources].some(
+      [...registration.resources, ...registration.operations].some(
         ({ origin }) =>
           origin.value.kind === "session" && origin.value.scopeID === scopeID && origin.value.sessionID === sessionID,
       ),
@@ -232,7 +266,7 @@ export namespace EnvironmentExecutionSource {
     assertEffect(frame)
     frame.signal?.throwIfAborted()
   }
-  function selected(lease: Lease) {
+  function selectedLease(lease: Lease) {
     const frame = frames.get(lease)
     if (!frame) fail("Remote execution requires its registered private live lease")
     assertOwner(frame)
@@ -341,6 +375,7 @@ export namespace EnvironmentExecutionSource {
             signal: input.signal,
             open: true,
             calls: new Set(),
+            originalOperations: new Map(),
             record: Record.parse({ version: 1, provider: registration.provider, target, binding: opened.binding }),
           }
           resource.frame = frame
@@ -380,12 +415,24 @@ export namespace EnvironmentExecutionSource {
     }
   }
   export function capture(lease: Lease, origin: EnvironmentOrigin.Captured): Record {
-    const frame = selected(lease)
+    const frame = selectedLease(lease)
     assertLive(frame)
     origin.assertCurrent()
     if (JSON.stringify(frame.origin.value) !== JSON.stringify(origin.value))
       fail("Remote execution changed its original native caller")
     return Record.parse(frame.record)
+  }
+  export async function assertAdmission(lease: Lease, origin: EnvironmentOrigin.Captured) {
+    const frame = selectedLease(lease)
+    assertLive(frame)
+    origin.assertCurrent()
+    if (JSON.stringify(frame.origin.value) !== JSON.stringify(origin.value))
+      fail("Remote execution changed its admitted native caller")
+    await EnvironmentOrigin.assertAdmission(origin, {
+      scopeID: frame.selection.scopeID,
+      environmentID: frame.selection.environmentID ?? undefined,
+    })
+    assertLive(frame)
   }
   function finiteExecutor(frame: Frame): Executor {
     const source = frame.opened.executor
@@ -462,7 +509,7 @@ export namespace EnvironmentExecutionSource {
     })
   }
   export function operations(lease: Lease): Operations {
-    const frame = selected(lease),
+    const frame = selectedLease(lease),
       source = frame.opened.operations
     function current() {
       assertOwner(frame)
@@ -493,8 +540,7 @@ export namespace EnvironmentExecutionSource {
           JSON.stringify(input.origin.value) !== JSON.stringify(frame.origin.value)
         )
           fail("Remote execution changed its admitted native caller")
-        await EnvironmentOrigin.assertAdmission(input.origin, { scopeID: input.scopeID })
-        assertLive(frame)
+        await assertAdmission(lease, input.origin)
         outsideTransaction()
         const info = await ownedCall(frame, () => source.start(input))
         const parsed = result(info, input.id)!
@@ -537,6 +583,141 @@ export namespace EnvironmentExecutionSource {
         current()
       },
     }
+  }
+  export async function retainOperation(
+    lease: Lease,
+    input: { scopeID: string; id: string; digest: string; origin: EnvironmentOrigin.Captured },
+  ): Promise<OriginalOperation> {
+    outsideTransaction()
+    const frame = selectedLease(lease)
+    assertLive(frame)
+    input.origin.assertCurrent()
+    const selected = { scopeID: input.scopeID, id: ExecutionProtocol.ID.parse(input.id), digest: input.digest }
+    if (
+      selected.scopeID !== frame.selection.scopeID ||
+      JSON.stringify(input.origin.value) !== JSON.stringify(frame.origin.value)
+    )
+      fail("Original operation changed its admitted native caller")
+    const { EnvironmentExecution } = await import("./execution")
+    assertLive(frame)
+    const initial = await EnvironmentExecution.get(selected.id, selected.scopeID)
+    assertLive(frame)
+    const identity = (info: EnvironmentExecutionSchema.Info) =>
+      JSON.stringify({
+        id: info.id,
+        scopeID: info.scopeID,
+        digest: info.digest,
+        intentDigest: info.intentDigest,
+        target: info.target,
+        origin: info.origin,
+        source: info.source,
+        workspaces: info.workspaces,
+      })
+    if (
+      initial.digest !== selected.digest ||
+      JSON.stringify(initial.source) !== JSON.stringify(frame.record) ||
+      JSON.stringify(initial.origin) !== JSON.stringify(frame.origin.value) ||
+      !EnvironmentSchema.sameTarget(initial.target, frame.record.target)
+    )
+      fail("Original operation requires its actual committed native submission")
+    const original = identity(initial),
+      source = frame.opened.operations
+    const existing = frame.originalOperations.get(selected.id)
+    if (existing) {
+      if (existing.identity !== original) fail("Original operation changed its committed native binding")
+      return existing.operation
+    }
+    if (initial.state !== "submitted") fail("Original operation requires its actual committed native submission")
+    const owner = { origin: frame.origin }
+    frame.registration.operations.add(owner)
+    let open = true
+    const assert = () => {
+      assertOwner(frame)
+      if (!open) fail("Original Environment operation has settled")
+    }
+    const canonical = async (id: string, effect = false) => {
+      outsideTransaction()
+      assert()
+      if (id !== selected.id) fail("Original operation cannot replace its native identity")
+      if (effect && Storage.current().store.options.readonly) fail("Remote execution requires a writable primary Store")
+      const info = await EnvironmentExecution.get(id, selected.scopeID)
+      assert()
+      if (identity(info) !== original) fail("Original operation changed its committed native binding")
+      return info
+    }
+    const invoke = async <T>(body: () => Promise<T>) => {
+      const value = await tracked(frame.registration, body)
+      assert()
+      return value
+    }
+    const result = (info: EnvironmentExecutionSchema.Info | undefined) => {
+      if (
+        info &&
+        (info.id !== selected.id ||
+          info.scopeID !== selected.scopeID ||
+          info.digest !== selected.digest ||
+          JSON.stringify(info.origin) !== JSON.stringify(initial.origin) ||
+          JSON.stringify(info.workspaces) !== JSON.stringify(initial.workspaces) ||
+          !EnvironmentSchema.sameTarget(info.target, initial.target))
+      )
+        fail("Original operation returned another native receipt")
+      return info && EnvironmentExecutionSchema.Info.parse(info)
+    }
+    const operation: OriginalOperation = Object.freeze({
+      [operationBrand]: true as const,
+      async inspect(id: string) {
+        await canonical(id)
+        return result(await invoke(() => source.inspect(id)))
+      },
+      async output(id: string, after: number, limit: number) {
+        await canonical(id)
+        if (!Number.isSafeInteger(after) || after < 0 || !Number.isSafeInteger(limit) || limit < 1 || limit > 128)
+          fail("Invalid original operation output cursor")
+        return z.array(ExecutionProtocol.Chunk).parse(await invoke(() => source.output(id, after, limit)))
+      },
+      async stdin(id: string, data: Uint8Array, end: boolean) {
+        const bytes = Uint8Array.from(data),
+          info = await canonical(id, true)
+        if (!frame.registration.accepting || info.state !== "running" || info.status?.state !== "running")
+          fail("Original operation no longer accepts new process input")
+        await ProcessAccessSource.recheckCurrent()
+        await invoke(() => source.stdin(id, bytes, end))
+      },
+      async resize(id: string, cols: number, rows: number) {
+        const size = ExecutionProtocol.Command.shape.pty.unwrap().parse({ cols, rows })
+        const info = await canonical(id, true)
+        if (!frame.registration.accepting || info.state !== "running" || info.status?.state !== "running")
+          fail("Original operation no longer accepts process resizing")
+        await ProcessAccessSource.recheckCurrent()
+        await invoke(() => source.resize(id, size.cols, size.rows))
+      },
+      async cancel(id: string, digest: string) {
+        const info = await canonical(id, true)
+        if (digest !== selected.digest) fail("Original cancellation changed its native command digest")
+        if (info.state === "completed") return
+        await ProcessAccessSource.recheckCurrent()
+        await invoke(() => source.cancel(id, digest))
+      },
+      async complete(id: string) {
+        const info = await canonical(id, true)
+        if (info.state === "completed") return info
+        if (!info.status || !ExecutionProtocol.terminal(info.status))
+          fail("Original operation has not physically completed")
+        const completed = result(await invoke(() => source.complete(id)))
+        if (!completed) fail("Original operation completion returned no native receipt")
+        return completed
+      },
+      async close() {
+        if (!open) return
+        const info = await canonical(selected.id)
+        if (info.state !== "completed") fail("Original operation completion is not committed")
+        open = false
+        frame.registration.operations.delete(owner)
+        frame.originalOperations.delete(selected.id)
+      },
+    })
+    frame.originalOperations.set(selected.id, { identity: original, operation })
+    return operation
   }
   export async function inspect(
     record: Record,
@@ -605,7 +786,8 @@ export namespace EnvironmentExecutionSource {
       await registration.port.close?.()
     })
     registration.owner()
-    if (registration.resources.size || registration.calls.size) fail("Environment execution source has not drained")
+    if (registration.resources.size || registration.calls.size || registration.operations.size)
+      fail("Environment execution source has not drained")
     registration.closed = true
   }
 }

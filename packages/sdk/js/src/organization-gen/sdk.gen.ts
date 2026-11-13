@@ -62,6 +62,18 @@ import type {
   OrgCloudEnvironmentsCreateResponses,
   OrgCloudEnvironmentsGetErrors,
   OrgCloudEnvironmentsGetResponses,
+  OrgCloudExecutionInspectErrors,
+  OrgCloudExecutionInspectionRequest,
+  OrgCloudExecutionInspectResponses,
+  OrgCloudExecutionInspectRetirementErrors,
+  OrgCloudExecutionInspectRetirementResponses,
+  OrgCloudExecutionRequest,
+  OrgCloudExecutionRequestErrors,
+  OrgCloudExecutionRequestResponses,
+  OrgCloudExecutionRetireErrors,
+  OrgCloudExecutionRetirementInspectionRequest,
+  OrgCloudExecutionRetirementRequest,
+  OrgCloudExecutionRetireResponses,
   OrgCloudFileInspectionRequest,
   OrgCloudFileRequest,
   OrgCloudFilesInspectErrors,
@@ -3666,6 +3678,121 @@ export class OrgCloudEnvironments extends HeyApiClient {
   }
 }
 
+export class OrgCloudExecution extends HeyApiClient {
+  /**
+   * Use the original selected Environment through accepted native execution
+   */
+  public request<ThrowOnError extends boolean = false>(
+    parameters: {
+      orgCloudExecutionRequest: OrgCloudExecutionRequest
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "orgCloudExecutionRequest", map: "body" }] }])
+    return (options?.client ?? this.client).post<
+      OrgCloudExecutionRequestResponses,
+      OrgCloudExecutionRequestErrors,
+      ThrowOnError
+    >({
+      url: "/runtime/v1/environments/execution",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Retire only the original retained Environment operation
+   */
+  public retire<ThrowOnError extends boolean = false>(
+    parameters: {
+      orgCloudExecutionRetirementRequest: OrgCloudExecutionRetirementRequest
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [{ args: [{ key: "orgCloudExecutionRetirementRequest", map: "body" }] }],
+    )
+    return (options?.client ?? this.client).post<
+      OrgCloudExecutionRetireResponses,
+      OrgCloudExecutionRetireErrors,
+      ThrowOnError
+    >({
+      url: "/runtime/v1/environments/execution/retirement",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Inspect the original Environment retirement without repeating cleanup
+   */
+  public inspectRetirement<ThrowOnError extends boolean = false>(
+    parameters: {
+      orgCloudExecutionRetirementInspectionRequest: OrgCloudExecutionRetirementInspectionRequest
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [{ args: [{ key: "orgCloudExecutionRetirementInspectionRequest", map: "body" }] }],
+    )
+    return (options?.client ?? this.client).post<
+      OrgCloudExecutionInspectRetirementResponses,
+      OrgCloudExecutionInspectRetirementErrors,
+      ThrowOnError
+    >({
+      url: "/runtime/v1/environments/execution/retirement/inspection",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Inspect only the original retained Environment operation without dispatch
+   */
+  public inspect<ThrowOnError extends boolean = false>(
+    parameters: {
+      orgCloudExecutionInspectionRequest: OrgCloudExecutionInspectionRequest
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [{ args: [{ key: "orgCloudExecutionInspectionRequest", map: "body" }] }],
+    )
+    return (options?.client ?? this.client).post<
+      OrgCloudExecutionInspectResponses,
+      OrgCloudExecutionInspectErrors,
+      ThrowOnError
+    >({
+      url: "/runtime/v1/environments/execution/inspection",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
 export class OrgCloudFiles extends HeyApiClient {
   /**
    * Access the one authoritative Workspace through an accepted native root
@@ -4845,6 +4972,8 @@ export class OrganizationClient extends HeyApiClient {
   orgCloudWorkspaces = new OrgCloudWorkspaces({ client: this.client })
 
   orgCloudEnvironments = new OrgCloudEnvironments({ client: this.client })
+
+  orgCloudExecution = new OrgCloudExecution({ client: this.client })
 
   orgCloudFiles = new OrgCloudFiles({ client: this.client })
 

@@ -49,6 +49,26 @@ export namespace ProcessAccessSource {
     source: undefined as Source | undefined,
     owner: undefined as (() => void) | undefined,
   }))
+  const effects = RuntimeContext.createAsyncContext<{ runtime: RuntimeContext.Instance; access: Scope }>()
+
+  function currentAccess() {
+    const current = effects.getStore()
+    if (!current) return
+    if (current.runtime !== RuntimeContext.current()) {
+      if (has()) throw new Error("Process control belongs to another Runtime")
+      return
+    }
+    current.access.assert()
+    return current.access
+  }
+
+  export function hasCurrent() {
+    return !!currentAccess()
+  }
+
+  export async function recheckCurrent() {
+    await currentAccess()?.recheck()
+  }
 
   export function has() {
     return !!state().source
@@ -175,9 +195,11 @@ export namespace ProcessAccessSource {
     })
     try {
       assert()
-      const result = await body(access)
-      await access.recheck()
-      return result
+      return await effects.run({ runtime: RuntimeContext.current(), access }, async () => {
+        const result = await body(access)
+        await access.recheck()
+        return result
+      })
     } finally {
       open = false
       await Promise.allSettled(pending)

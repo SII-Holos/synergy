@@ -17,6 +17,7 @@ import { registerOrganizationHomeMigration } from "./home-migration"
 import { registerOrganizationNamespaceIdentity } from "./namespace-identity"
 import { registerOrganizationToolPolicy } from "./tool-policy"
 import { registerOrganizationSessionTools } from "./session-tool-source"
+import { registerOrganizationProcessAccess } from "./process-access-source"
 
 export function registerMemberSources(identity: RuntimeIdentity, restoration?: HomeOwnershipFile.RestorationInfo) {
   registerSessionSchema({ orgID: identity.orgID })
@@ -46,6 +47,7 @@ export function registerMemberSources(identity: RuntimeIdentity, restoration?: H
       ]),
   })
   registerMemberExecution(identity)
+  registerOrganizationProcessAccess(identity)
   registerOrganizationToolPolicy(identity)
   registerOrganizationSessionTools(identity)
   registerMemberProviderSdks(identity)

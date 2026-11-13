@@ -16,6 +16,7 @@ import { NativeWorkspaceFiles } from "../workspace/file-host"
 import type { SandboxHost } from "@ericsanchezok/synergy-harness/sandbox/host"
 import type { SandboxExecutionWrapper } from "@ericsanchezok/synergy-harness/sandbox/types"
 import { ExecutionInputs } from "./inputs"
+import { NativeExecutionPreparation } from "./preparation"
 import { NativeFileMutation } from "../file/mutation-core"
 import { WorkspaceErrors } from "@ericsanchezok/synergy-harness/workspace/errors"
 
@@ -65,12 +66,28 @@ export class NativeExecutor implements Executor {
   private readonly description: ExecutionProtocol.Description
   private readonly sandboxes = new Map<string, SandboxExecutionWrapper>()
   private readonly inputs: ExecutionInputs
+  private readonly preparations: NativeExecutionPreparation
+  private readonly preparedSandboxes = new Map<string, string>()
 
   private constructor(private readonly options: NativeExecutorOptions) {
     this.inputs = new ExecutionInputs({
       directory: options.directory,
       root: options.inputsRoot,
       separateUser: Boolean(options.runAs),
+    })
+    this.preparations = new NativeExecutionPreparation({
+      target: options.target, directory: options.directory, inputs: this.inputs, sandbox: options.sandbox,
+      guard: async (id, phase) => {
+        const operation = this.operations.get(id)
+        const receipt = await this.read(id)
+        if (receipt) {
+          this.assertTarget(receipt.status.target)
+          if (receipt.status.id !== id) throw new Error("Native preparation has another original command receipt")
+        }
+        if (this.starting.has(id) || (operation && !operation.released) ||
+          (receipt && (phase === "prepare" || !receipt.released)))
+          throw new Error("Original execution retains its native preparation until saving completes")
+      },
     })
     this.description = ExecutionProtocol.Description.parse({
       target: options.target,
@@ -79,6 +96,7 @@ export class NativeExecutor implements Executor {
       shell: options.runtime?.shell ?? (process.platform === "win32" ? (process.env.ComSpec ?? "cmd.exe") : "/bin/sh"),
       directory: options.runtime?.directory ?? path.join(options.directory, "work"),
       env: ProcessEnvironment.select(options.runtime?.env ?? process.env),
+      preparationVersion: 1,
     })
     this.files = new NativeWorkspaceFiles({
       directory: path.join(options.directory, "workspace"),
@@ -124,10 +142,12 @@ export class NativeExecutor implements Executor {
 
   async prepareInputs(input: ExecutionProtocol.Inputs) {
     if (!this.accepting) throw new Error("Executor is closing")
-    return this.inputs.prepare(input)
+    return this.preparations.prepareInputs(input)
   }
 
   async discardInputs(id: string) {
+    const preparation = await this.preparations.inspect(id)
+    if (preparation.state !== "absent") return this.preparations.discardInputs(id)
     return this.inputs.discard(id, async () => {
       const receipt = await this.read(id)
       if (receipt && !receipt.released) throw new Error("Execution inputs are retained until saving completes")
@@ -141,6 +161,11 @@ export class NativeExecutor implements Executor {
   async prepareSandbox(raw: ExecutionProtocol.SandboxInput) {
     if (!this.accepting) throw new Error("Executor is closing")
     const input = ExecutionProtocol.SandboxInput.parse(raw)
+    if (input.operationID) {
+      const sandbox = await this.preparations.prepareSandbox(input)
+      this.preparedSandboxes.set(sandbox.id, input.operationID)
+      return sandbox
+    }
     const id = randomUUID()
     if (!this.options.sandbox)
       return {
@@ -155,7 +180,13 @@ export class NativeExecutor implements Executor {
     return ExecutionProtocol.Sandbox.parse({ ...wrapper, id })
   }
 
-  async releaseSandbox(id: string) {
+  async releaseSandbox(id: string, operationID?: string) {
+    const original = operationID ?? this.preparedSandboxes.get(id)
+    if (original && (await this.preparations.inspect(original)).sandboxes.some((sandbox) => sandbox.id === id)) {
+      await this.preparations.releaseSandbox(original, id)
+      this.preparedSandboxes.delete(id)
+      return
+    }
     if ([...this.operations.values()].some((operation) => operation.sandboxID === id && !operation.released))
       throw new Error("Execution sandbox is retained until saving completes")
     const wrapper = this.sandboxes.get(id)
@@ -164,19 +195,34 @@ export class NativeExecutor implements Executor {
     this.sandboxes.delete(id)
   }
 
+  inspectPreparation(id: string) {
+    return this.preparations.inspect(id)
+  }
+
+  releasePreparation(id: string) {
+    return this.preparations.release(id)
+  }
+
   async start(raw: ExecutionProtocol.Request): Promise<ExecutionProtocol.Status> {
     if (!this.accepting) throw new Error("Executor is closing")
     const request = ExecutionProtocol.Request.parse(raw)
     this.assertTarget(request.target)
     if (ExecutionProtocol.digest(request.command) !== request.digest)
       throw new Error("Execution input digest does not match")
+    const existing = await this.status(request.id)
+    if (existing) {
+      this.assertDigest(existing, request.digest)
+      return existing
+    }
     const pending = this.starting.get(request.id)
     if (pending) {
       const result = await pending
       this.assertDigest(result, request.digest)
       return result
     }
-    const start = this.inputs.admit(request.id, () => this.prepare(request))
+    const start = this.preparations.admit(request.id, request.command.sandboxID,
+      Boolean(request.command.sandboxID && this.sandboxes.has(request.command.sandboxID)),
+      () => this.inputs.admit(request.id, () => this.prepare(request)))
     this.starting.set(request.id, start)
     try {
       return await start
@@ -499,7 +545,7 @@ export class NativeExecutor implements Executor {
       await operation.lease?.release()
       operation.released = true
       await this.persist(operation)
-      if (operation.sandboxID) await this.releaseSandbox(operation.sandboxID)
+      if (operation.sandboxID) await this.releaseSandbox(operation.sandboxID, id)
       await this.discardInputs(id)
       return
     }
@@ -510,7 +556,7 @@ export class NativeExecutor implements Executor {
       private: true,
       durable: true,
     })
-    if (receipt.sandboxID) await this.releaseSandbox(receipt.sandboxID)
+    if (receipt.sandboxID) await this.releaseSandbox(receipt.sandboxID, id)
     if (receipt.sandbox) this.options.sandbox?.cleanupWrapper(receipt.sandbox)
     await this.discardInputs(id)
   }

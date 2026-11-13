@@ -35,7 +35,14 @@ async function executeSelected(ctx: Tool.Context, command: ComputerCommand): Pro
   if (profile !== "full_access")
     throw new ComputerError("computer_full_access_required", "Computer Use requires Full Access mode.")
   const session = await Session.get(ctx.sessionID)
-  const environment = session.environmentID ? await Environment.get(session.environmentID, session.scope.id) : undefined
+  const environment = await Environment.selectNative({
+    scopeID: session.scope.id,
+    ownerID: session.id,
+    environmentID: session.environmentID ?? null,
+    workspaceID: session.workspaceID,
+    workspaceGeneration: session.workspace?.generation,
+    signal: ctx.abort,
+  })
   if (environment?.provider !== "native")
     throw new ComputerError(
       "computer_environment_unavailable",

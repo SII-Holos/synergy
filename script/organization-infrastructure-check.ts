@@ -94,7 +94,8 @@ try {
   await run(["run", "--rm", "object-initialize"])
   const urlFile = path.join(credentials, "postgres-url")
   const objectFile = path.join(credentials, "object-credentials.json")
-  await fs.writeFile(urlFile, `postgres://organization:${password}@${postgres}/organization`, { mode: 0o600 })
+  const databaseURL = `postgres://organization:${password}@${postgres}/organization`
+  await fs.writeFile(urlFile, databaseURL, { mode: 0o600 })
   await fs.writeFile(objectFile, JSON.stringify({ accessKeyId, secretAccessKey }), { mode: 0o600 })
   await fs.writeFile(
     env.SYNERGY_ORGANIZATION_CONFIG,
@@ -120,9 +121,17 @@ try {
     }),
     { mode: 0o600 },
   )
-  const acceptance = Bun.spawn([process.execPath, "test", "test/infrastructure-external.test.ts"], {
+  const acceptance = Bun.spawn([process.execPath, "run", "test"], {
     cwd: path.resolve(import.meta.dir, "../packages/organization"),
-    env: { ...env, SYNERGY_TEST_ORGANIZATION_INFRASTRUCTURE: env.SYNERGY_ORGANIZATION_CONFIG },
+    env: {
+      ...env,
+      SYNERGY_TEST_ORGANIZATION_INFRASTRUCTURE: env.SYNERGY_ORGANIZATION_CONFIG,
+      SYNERGY_TEST_POSTGRES_URL: databaseURL,
+      SYNERGY_TEST_FILES: JSON.stringify([
+        "test/infrastructure-external.test.ts",
+        "test/backup/postgres-native.test.ts",
+      ]),
+    },
     stdout: "inherit",
     stderr: "inherit",
   })

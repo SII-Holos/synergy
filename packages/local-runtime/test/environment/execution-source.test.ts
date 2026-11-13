@@ -19,6 +19,8 @@ async function fixture(
     prepared?(value: ExecutionProtocol.PreparedInputs): Promise<void>
     releaseStarted?(value: Promise<void>): void
     read?(operation: "retained-inspect" | "live-inspect" | "live-output"): void
+  selected?: NonNullable<Source.Port["selected"]>
+  opening?(): void
   } = {},
 ) {
   const releases: Array<() => Promise<void>> = []
@@ -27,7 +29,9 @@ async function fixture(
     {
       register() {
         Source.register("native-fixture", {
+        selected: hooks.selected,
           async open(input) {
+          hooks.opening?.()
             const scopeID = input.selection.scopeID
             const environmentID = input.selection.environmentID
             if (!environmentID) return
@@ -409,5 +413,35 @@ test("a readonly actual primary permits retained inspection but cannot enter an 
     } finally {
       reader.dispose()
     }
+  })
+})
+
+test("native-only selection inspects its registered source without opening or allocating its Native provider", async () => {
+  let remote = true, opened = 0, inspected = 0
+  await using context = await fixture({
+    async selected(selection) {
+      inspected++
+      expect(Object.isFrozen(selection)).toBe(true)
+      return remote
+    },
+    opening() { opened++ },
+  })
+  await context.run(async (input, environment) => {
+    expect(await Environment.selectNative(input.selection)).toBeUndefined()
+    remote = false
+    expect((await Environment.selectNative(input.selection))?.id).toBe(environment.id)
+    expect(inspected).toBe(2)
+    expect(opened).toBe(0)
+    expect((await Environment.get(environment.id, environment.scopeID)).state).toBe("idle")
+    expect(await Environment.uses(environment.id)).toHaveLength(0)
+  })
+})
+
+test("native-only selection cannot treat an unavailable metadata owner as a native fallback", async () => {
+  await using context = await fixture()
+  await context.run(async (input, environment) => {
+    await expect(Environment.selectNative(input.selection)).rejects.toThrow("verify native-only selection")
+    expect((await Environment.get(environment.id, environment.scopeID)).state).toBe("idle")
+    expect(await Environment.uses(environment.id)).toHaveLength(0)
   })
 })

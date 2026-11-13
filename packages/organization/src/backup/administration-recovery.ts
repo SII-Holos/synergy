@@ -48,6 +48,19 @@ async function facet(work: string, name: string) {
     expected: StorageCheckpoint.Manifest.parse(await Bun.file(path.join(directory, "manifest.json")).json()),
   }
 }
+async function nativeFacet(work: string) {
+  const native = await facet(work, "native")
+  const directory = path.join(work, "h1", "resources")
+  const resource = await fs.lstat(directory).catch((error: NodeJS.ErrnoException) => {
+    if (error.code !== "ENOENT") throw error
+  })
+  return {
+    ...native,
+    resources: resource
+      ? { ...(await facet(work, "resources")), namespaceDirectory: path.join(work, "h1", "records") }
+      : undefined,
+  }
+}
 
 export namespace OrganizationRecoveryAdministration {
   export async function recover(input: {
@@ -156,7 +169,7 @@ export namespace OrganizationRecoveryAdministration {
             )
               throw new Error("Published recovery requires its same original durable Reference")
             const namespace = await facet(work, "records")
-            const native = await facet(work, "native")
+            const native = await nativeFacet(work)
             if (
               Native.sourceHash(namespace.expected) !== selector.reference.current.namespaceHash ||
               Native.sourceHash(native.expected) !== selector.reference.current.nativeHash
@@ -179,8 +192,15 @@ export namespace OrganizationRecoveryAdministration {
             } finally {
               fixed.rawConfiguration?.fill(0)
             }
+            const configuration = await readOrganizationConfiguration(sourceHome)
+            const { database } = await loadOrganizationInfrastructure(
+              configuration.infrastructure?.database
+                ? { version: 1, database: configuration.infrastructure.database }
+                : undefined,
+            )
             const source = await openOrganizationSourceRetirement({
               home: sourceHome,
+              database,
               reference: selector.reference,
             })
             sourceOwners.push(source)
@@ -191,8 +211,10 @@ export namespace OrganizationRecoveryAdministration {
             const prepared = Authority.describe(original.prepared)
             const resume = async (saved: z.infer<typeof Selector>) => {
               const namespace = await facet(work, "records")
-              const native = await facet(work, "native")
+              const native = await nativeFacet(work)
+              const configuration = await readOrganizationConfiguration(sourceHome)
               const source = await openOrganizationPendingRetirement({
+                ...(await loadOrganizationInfrastructure(configuration.infrastructure)),
                 home: sourceHome,
                 reference: saved.reference,
               })

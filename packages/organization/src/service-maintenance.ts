@@ -91,6 +91,15 @@ export namespace OrganizationServiceMaintenance {
         state().suspended = true
         await drain(context.signal)
       },
+      async reconcileReleasing(context) {
+        const held = await RuntimeMaintenance.assertHeld(context.lease)
+        if (held.version !== 2 || held.purpose !== "organization-home-upgrade" || held.phase !== "releasing")
+          throw new RuntimeMaintenance.Blocked({
+            message: "Service cold release requires its original releasing Home upgrade",
+          })
+        state().suspended = true
+        await drain(context.signal)
+      },
       async inspect() {
         return state().operations.size
           ? [

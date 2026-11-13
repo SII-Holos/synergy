@@ -9,6 +9,7 @@ import {
   OrganizationHandoffProtocol as Handoff,
   OrganizationHandoffObjectProtocol as Objects,
   OrganizationCloudProtocol as Cloud,
+  OrganizationCloudExecutionProtocol as CloudEnvironment,
   OrganizationSessionToolProtocol as SessionTool,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { createOrganizationClient } from "@ericsanchezok/synergy-sdk/organization"
@@ -18,6 +19,26 @@ import { WorkspaceArchive } from "@ericsanchezok/synergy-harness/workspace/archi
 import { WorkspaceTree } from "@ericsanchezok/synergy-harness/workspace/tree"
 
 export interface MemberResourceClient {
+  retireEnvironment(
+    proof: Execution.InspectionProof,
+    query: CloudEnvironment.RetirementQuery,
+    signal?: AbortSignal,
+  ): Promise<CloudEnvironment.RetirementResult>
+  inspectEnvironmentRetirement(
+    proof: Execution.InspectionProof,
+    query: CloudEnvironment.RetirementQuery,
+    signal?: AbortSignal,
+  ): Promise<CloudEnvironment.RetirementResult>
+  environmentOperation(
+    proof: Execution.BindingProof,
+    operation: CloudEnvironment.Operation,
+    signal?: AbortSignal,
+  ): Promise<CloudEnvironment.Result>
+  inspectEnvironment(
+    proof: Execution.InspectionProof,
+    operation: CloudEnvironment.InspectionQuery,
+    signal?: AbortSignal,
+  ): Promise<CloudEnvironment.InspectionResult>
   inspectWorkspaceFile(
     proof: Execution.InspectionProof,
     input: { reference: Cloud.FileReference; operation: Cloud.FileInspectionProof["operation"] },
@@ -127,6 +148,15 @@ function failure(
   return new OrganizationRuntimeError({ code, message, outcome, retryable: false })
 }
 
+function sameRetirement(result: CloudEnvironment.RetirementResult, query: CloudEnvironment.RetirementQuery) {
+  return (
+    JSON.stringify(result.reference) === JSON.stringify(query.reference) &&
+    result.kind === query.kind &&
+    (result.kind !== "execution" ||
+      (query.kind === "execution" && result.id === query.id && result.digest === query.digest))
+  )
+}
+
 export function createMemberResourceClient(options: {
   origin: string
   connection: z.infer<typeof Runtime.Connected>
@@ -169,11 +199,14 @@ export function createMemberResourceClient(options: {
         try {
           const pathname = new URL(input instanceof Request ? input.url : String(input), options.origin).pathname
           const maximum =
-            pathname === "/runtime/v1/workspaces/files" || pathname === "/runtime/v1/handoffs/workspace"
-              ? 6 * 1024 * 1024
-              : /\/runtime\/v1\/gateway\/connections\/[^/]+\/mcp$/.test(pathname)
-                ? 16 * 1024 * 1024
-                : 256 * 1024
+            pathname === "/runtime/v1/environments/execution" ||
+            pathname === "/runtime/v1/environments/execution/inspection"
+              ? 16 * 1024 * 1024
+              : pathname === "/runtime/v1/workspaces/files" || pathname === "/runtime/v1/handoffs/workspace"
+                ? 6 * 1024 * 1024
+                : /\/runtime\/v1\/gateway\/connections\/[^/]+\/mcp$/.test(pathname)
+                  ? 16 * 1024 * 1024
+                  : 256 * 1024
           while (true) {
             const next = await reader.read()
             if (next.done) break
@@ -362,6 +395,140 @@ export function createMemberResourceClient(options: {
     return permit
   }
   const resources: MemberResourceClient = {
+    async retireEnvironment(value, input, signal) {
+      const authority = Execution.InspectionProof.parse(structuredClone(value))
+      const query = CloudEnvironment.RetirementQuery.parse(structuredClone(input))
+      const proof = CloudEnvironment.RetirementProof.parse({
+        version: 2,
+        purpose: "organization-environment-retirement",
+        authority: { proof: authority, signature: await Execution.signInspection(authority, options.key) },
+        ...query,
+      })
+      const request = CloudEnvironment.RetirementRequest.parse({
+        proof,
+        signature: await CloudEnvironment.signRetirement(proof, options.key),
+      })
+      return invoke(
+        authority,
+        CloudEnvironment.RetirementResult,
+        (signal) => client.orgCloudExecution.retire({ orgCloudExecutionRetirementRequest: request }, { signal }),
+        (result) => {
+          if (!sameRetirement(result, query))
+            throw failure("PROTOCOL_MISMATCH", "Environment retirement returned another original receipt")
+        },
+        signal,
+      )
+    },
+    async inspectEnvironmentRetirement(value, input, signal) {
+      const authority = Execution.InspectionProof.parse(structuredClone(value))
+      const query = CloudEnvironment.RetirementQuery.parse(structuredClone(input))
+      const proof = CloudEnvironment.RetirementInspectionProof.parse({
+        version: 2,
+        purpose: "organization-environment-retirement-inspection",
+        authority: { proof: authority, signature: await Execution.signInspection(authority, options.key) },
+        ...query,
+      })
+      const request = CloudEnvironment.RetirementInspectionRequest.parse({
+        proof,
+        signature: await CloudEnvironment.signRetirementInspection(proof, options.key),
+      })
+      return invoke(
+        authority,
+        CloudEnvironment.RetirementResult,
+        (signal) =>
+          client.orgCloudExecution.inspectRetirement(
+            { orgCloudExecutionRetirementInspectionRequest: request },
+            { signal },
+          ),
+        (result) => {
+          if (!sameRetirement(result, query))
+            throw failure("PROTOCOL_MISMATCH", "Environment retirement inspection returned another original receipt")
+        },
+        signal,
+      )
+    },
+    async environmentOperation(value, input, signal) {
+      const authority = Execution.BindingProof.parse(value)
+      const operation = CloudEnvironment.Operation.parse(input)
+      const key = options.key
+      const proof = CloudEnvironment.Proof.parse({
+        version: 2,
+        purpose: "organization-environment-operation",
+        authority: { proof: authority, signature: await Execution.signBinding(authority, key) },
+        operation,
+      })
+      const request = CloudEnvironment.Request.parse({ proof, signature: await CloudEnvironment.sign(proof, key) })
+      return invoke(
+        authority,
+        CloudEnvironment.Result,
+        (signal) => client.orgCloudExecution.request({ orgCloudExecutionRequest: request }, { signal }),
+        (result) => {
+          const ref = result.reference,
+            accepted = authority.receipt.accepted!,
+            control = authority.continuation?.receipt.accepted
+          if (
+            ref.orgID !== authority.orgID ||
+            ref.deploymentIncarnation !== authority.deploymentIncarnation ||
+            ref.runtimeID !== authority.runtimeID ||
+            ref.sessionID !== accepted.permit.sessionID ||
+            ref.projectID !== accepted.permit.projectID ||
+            ref.rootID !== authority.rootID ||
+            ref.bindingEpoch !== (control?.permit.bindingEpoch ?? accepted.permit.bindingEpoch) ||
+            result.action !== operation.action
+          )
+            throw failure("PROTOCOL_MISMATCH", "Environment response belongs to another original native binding")
+          if (operation.action !== "resolve") {
+            if (JSON.stringify(ref) !== JSON.stringify(operation.reference))
+              throw failure("PROTOCOL_MISMATCH", "Environment response changed its original live reference")
+            return
+          }
+          const expected = operation.workspace,
+            actual = ref.workspace
+          if (
+            ref.nativeOperationID !== operation.nativeOperationID ||
+            actual.orgID !== expected.orgID ||
+            actual.projectID !== expected.projectID ||
+            actual.resourceID !== expected.resourceID ||
+            actual.workspaceID !== expected.workspaceID ||
+            actual.generation !== expected.generation ||
+            actual.rootPath !== expected.rootPath ||
+            actual.revision < expected.revision
+          )
+            throw failure("PROTOCOL_MISMATCH", "Environment response changed its selected Working location")
+        },
+        signal,
+      )
+    },
+    async inspectEnvironment(value, input, signal) {
+      const authority = Execution.InspectionProof.parse(value)
+      const selected = CloudEnvironment.InspectionQuery.parse(input)
+      const key = options.key
+      const proof = CloudEnvironment.InspectionProof.parse({
+        version: 2,
+        purpose: "organization-environment-inspection",
+        authority: { proof: authority, signature: await Execution.signInspection(authority, key) },
+        ...selected,
+      })
+      const request = CloudEnvironment.InspectionRequest.parse({
+        proof,
+        signature: await CloudEnvironment.signInspection(proof, key),
+      })
+      return invoke(
+        authority,
+        CloudEnvironment.InspectionResult,
+        (signal) => client.orgCloudExecution.inspect({ orgCloudExecutionInspectionRequest: request }, { signal }),
+        (result) => {
+          if (
+            JSON.stringify(result.reference) !== JSON.stringify(selected.reference) ||
+            result.id !== selected.id ||
+            result.kind !== selected.kind ||
+            (result.kind === "execution" && selected.kind === "execution" && result.digest !== selected.digest)
+          )
+            throw failure("PROTOCOL_MISMATCH", "Environment inspection returned another original operation")
+        },
+        signal,
+      )
+    },
     async inspectWorkspaceFile(value, input, signal) {
       const proof = Execution.InspectionProof.parse(value)
       const selected = Cloud.LocalFileRequest.parse(input)

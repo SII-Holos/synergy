@@ -171,7 +171,7 @@ export namespace OrganizationExecutionLeases {
       rootID: input.effect.messageID,
       originGrantID: input.permit.provisionalGrantID,
       input: accepted(input),
-      control: control ? { ...accepted(control), handoffID: proof.continuation!.handoffID } : undefined,
+      ...(control && { control: { ...accepted(control), handoffID: proof.continuation!.handoffID } }),
     })
   }
   async function enqueue(authority: Authority, deterministic?: string, uncertainUntil?: number) {

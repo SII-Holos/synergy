@@ -10,6 +10,7 @@ import { WorkspaceTree } from "../workspace/tree"
 import { EnvironmentOrigin } from "./origin"
 import { WorkspaceFileSource } from "../workspace/file-source"
 import { EnvironmentExecutionSource as Sources } from "./execution-source"
+import { EnvironmentExecution } from "./execution"
 
 export namespace EnvironmentResources {
   /** A model-facing file namespace, separate from any live Environment mount location. */
@@ -72,6 +73,8 @@ export namespace EnvironmentResources {
     release(): Promise<void>
   }
   export type Cleanup = Readonly<{ release(): Promise<void> }>
+  const preparations = new WeakMap<Resolved, Promise<EnvironmentExecution.Preparation>>()
+  const signals = new WeakMap<Resolved, AbortSignal>()
 
   async function releaseAfterFailure(release: () => Promise<void>, error: unknown): Promise<never> {
     try {
@@ -86,7 +89,48 @@ export namespace EnvironmentResources {
     value: Omit<Resolved, "release" | typeof Symbol.asyncDispose>,
     release: () => Promise<void> = async () => {},
   ): Resolved {
-    return { ...value, release, [Symbol.asyncDispose]: release }
+    const resources: Resolved = { ...value, release: close, [Symbol.asyncDispose]: close }
+    async function close() {
+      const errors: unknown[] = []
+      const preparation = preparations.get(resources)
+      if (preparation) {
+        try {
+          await (await preparation).release()
+        } catch (error) {
+          errors.push(error)
+        }
+      }
+      try {
+        await release()
+      } catch (error) {
+        errors.push(error)
+      }
+      if (errors.length) throw new AggregateError(errors, "Environment preparation and resource cleanup failed")
+    }
+    return resources
+  }
+
+  async function preparationFor(resources: Resolved, operationID?: string) {
+    if (!resources.origin || !resources.runtime || !resources.selection)
+      throw new Error("Preparation requires its actual admitted native resources")
+    const origin = resources.origin.value
+    const id = origin.kind === "session" ? EnvironmentExecution.operationID(origin) : operationID
+    if (!id) throw new Error("Host preparation requires its durable original operation identity")
+    if (operationID !== undefined && operationID !== id)
+      throw new Error("Preparation changed its original tool operation")
+    let preparation = preparations.get(resources)
+    if (!preparation) {
+      preparation = EnvironmentExecution.prepareResources({
+        id,
+        scopeID: resources.selection.scopeID,
+        target: resources.runtime.target,
+        origin: resources.origin,
+        workspaces: resources.workspace?.activeMount ? [WorkspaceMounts.reference(resources.workspace)] : [],
+        signal: signals.get(resources),
+      })
+      preparations.set(resources, preparation)
+    }
+    return preparation
   }
 
   export async function select(
@@ -123,11 +167,16 @@ export namespace EnvironmentResources {
         sandboxed: false,
         skipReason: "Selected Environment has no sandbox",
       }
-    const wrapper = await executor.prepareSandbox(input)
+    const preparation = resources.source ? undefined : await preparationFor(resources, input.operationID)
+    const wrapper = await (preparation ? preparation.prepareSandbox(input) : executor.prepareSandbox(input))
     const intentDigest = createHash("sha256")
       .update(JSON.stringify(ExecutionProtocol.SandboxInput.parse(input)))
       .digest("hex")
-    return { ...wrapper, intentDigest, cleanup: () => executor.releaseSandbox!(wrapper.id) }
+    return {
+      ...wrapper,
+      intentDigest,
+      cleanup: () => (preparation ? preparation.releaseSandbox(wrapper.id) : executor.releaseSandbox!(wrapper.id)),
+    }
   }
 
   export async function resolve(
@@ -203,6 +252,7 @@ export namespace EnvironmentResources {
           workspaceID: input.workspaceID,
           workspaceGeneration: input.workspaceGeneration,
         }
+        if (input.signal) signals.set(resolved, input.signal)
         return resolved
       } catch (error) {
         return releaseAfterFailure(resolved.release, error)
@@ -295,6 +345,7 @@ export namespace EnvironmentResources {
       })
     const use = await Environment.acquire(environmentID, {
       scopeID: input.scopeID,
+      ...(active && { expectedTarget: active.target }),
       useID: `admission:${randomUUID()}`,
       kind: "admission",
       ownership: input.origin,

@@ -2,6 +2,7 @@ import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { AuthorityJournal } from "@ericsanchezok/synergy-harness/storage/authority-journal"
 import { RuntimeMaintenance } from "@ericsanchezok/synergy-harness/storage/runtime-maintenance"
 import { Database } from "bun:sqlite"
+import { initializeSqliteEngine } from "@ericsanchezok/synergy-harness/storage/sqlite-engine"
 import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
@@ -28,6 +29,7 @@ import { OrganizationSharing } from "../sharing"
 import { OrganizationRuntimeHistory } from "../runtime-history"
 import { OrganizationSessionResources } from "../session-resources"
 import { OrganizationInviteHistory } from "../auth/invite-history"
+import { OrganizationCloudResourceHistory } from "../cloud-history"
 import {
   OrganizationProtocol,
   OrganizationExecutionProtocol as Execution,
@@ -127,7 +129,8 @@ function sourceResource(selected: Inventory, orgID: string, id: string) {
     resource.orgID !== orgID ||
     resource.orgID !== deployment.orgID ||
     resource.resourceID !== id ||
-    !modelProtocols.has(resource.configuration.protocol)
+    (!modelProtocols.has(resource.configuration.protocol) &&
+      hash(resource) !== hash(OrganizationCloudResourceHistory.resource(historicalReader(selected), orgID, id)))
   )
     blocked("external resource owner")
   return resource
@@ -377,6 +380,7 @@ function historicalReader(selected: HistoryIndex): Record.HistoricalReader {
 }
 
 function inventoryDatabase(filename: string) {
+  initializeSqliteEngine()
   const database = new Database(filename)
   database.exec(
     "PRAGMA journal_mode=OFF; PRAGMA temp_store=FILE; PRAGMA cache_size=-2048; CREATE TABLE records(key TEXT PRIMARY KEY,value TEXT NOT NULL,mode TEXT NOT NULL); CREATE TABLE artifacts(key TEXT PRIMARY KEY,sha256 TEXT NOT NULL,size INTEGER NOT NULL,location TEXT NOT NULL); CREATE TABLE blobs(sha256 TEXT PRIMARY KEY,size INTEGER NOT NULL); CREATE TABLE verified(key TEXT PRIMARY KEY,location TEXT NOT NULL,pack TEXT NOT NULL); CREATE TABLE target_blobs(location TEXT PRIMARY KEY); CREATE TABLE history(key TEXT PRIMARY KEY); CREATE TABLE history_groups(key TEXT PRIMARY KEY,digest TEXT NOT NULL); CREATE TABLE history_artifacts(key TEXT PRIMARY KEY); CREATE TABLE history_appends(key TEXT PRIMARY KEY); CREATE TABLE present_artifacts(key TEXT PRIMARY KEY); CREATE TABLE missing_artifacts(key TEXT PRIMARY KEY)",
@@ -450,6 +454,7 @@ async function validatePublishedHistory(selected: HistoryIndex, stream: (key: st
   })
   await OrganizationArtifacts.history(history)
   await OrganizationSharing.history(history)
+  OrganizationCloudResourceHistory.accept(history, (key) => history.accept(key))
   using artifacts = selected.database.query<{ key: string }, []>("SELECT key FROM artifacts ORDER BY key")
   using known = selected.database.query<{ key: string }, [string]>("SELECT key FROM history_artifacts WHERE key=?")
   for (const row of artifacts.iterate()) {
@@ -1199,7 +1204,8 @@ export namespace OrganizationRecoveryWriters {
         (await tx.queryKeys({ prefix: ["organization-knowledge"], limit: 1 })).length ||
         (await tx.queryKeys({ prefix: ["organization-publications"], limit: 1 })).length ||
         (await tx.queryKeys({ prefix: ["organization-artifacts"], limit: 1 })).length ||
-        (await tx.queryKeys({ prefix: ["organization", "shared-state"], limit: 1 })).length,
+        (await tx.queryKeys({ prefix: ["organization", "shared-state"], limit: 1 })).length ||
+        (await tx.queryKeys({ prefix: ["organization", "cloud"], limit: 1 })).length,
     )
     if (present) return withCurrentHistory((selected) => scanServiceOnly(selected, signal), signal)
     return scanServiceOnly(undefined, signal)

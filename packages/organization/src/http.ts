@@ -40,6 +40,8 @@ import { sessionReadRoutes } from "./routes/session-read"
 import type { SessionReadForwarder } from "./session-read"
 import type { OrganizationNotifications } from "./notifications"
 import { notificationRoutes } from "./routes/notifications"
+import { cloudEnvironmentExecutionRoutes } from "./routes/cloud-environments"
+import type { OrganizationCloudEnvironments } from "./cloud-environments"
 
 export function organizationOpenApi() {
   return generateSpecs(
@@ -65,6 +67,7 @@ export function organizationApp(
   handoffs?: Handoffs,
   reads?: SessionReadForwarder,
   notifications?: OrganizationNotifications,
+  environments?: OrganizationCloudEnvironments,
 ) {
   function registry() {
     if (!registrations) fail("SERVICE_UNAVAILABLE", "Runtime registration is unavailable")
@@ -126,7 +129,9 @@ export function organizationApp(
                 ? 12 * 1024 * 1024
                 : c.req.method === "POST" && c.req.path === "/runtime/v1/handoffs/workspace"
                   ? 6 * 1024 * 1024
-                  : 64 * 1024
+                  : c.req.method === "POST" && c.req.path === "/runtime/v1/environments/execution"
+                    ? 24 * 1024 * 1024
+                    : 64 * 1024
       return bodyLimit({ maxSize, onError: () => fail("INVALID_REQUEST", "Request body is too large") })(c, next)
     })
     .onError((error, c) => {
@@ -190,10 +195,17 @@ export function organizationApp(
     .route("/org/v1", cloudRoutes(publicOrigin))
     .route(
       "/runtime/v1",
+      cloudEnvironmentExecutionRoutes(() => {
+        if (!environments) fail("SERVICE_UNAVAILABLE", "Native Environment execution is unavailable")
+        return environments
+      }),
+    )
+    .route(
+      "/runtime/v1",
       cloudFileRoutes(() => {
         if (!execution) fail("SERVICE_UNAVAILABLE", "Workspace file authority is unavailable")
         return execution
-      }),
+      }, environments?.withWorkspaceFiles),
     )
     .route(
       "/org/v1",

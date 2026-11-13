@@ -4,6 +4,7 @@ import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context
 import { HomeOwnershipFile } from "@ericsanchezok/synergy-harness/lifecycle/home-ownership-file"
 import { RuntimeMaintenance } from "@ericsanchezok/synergy-harness/storage/runtime-maintenance"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import type { StoreOptions } from "@ericsanchezok/synergy-harness/storage/transactional-store"
 import { ServerProcessLock } from "@ericsanchezok/synergy-harness/util/server-process-lock"
 import { OrganizationProtocol } from "@ericsanchezok/synergy-organization-protocol"
 import { OrganizationCurrentAuthorityInfo } from "./current-authority-schema"
@@ -50,6 +51,10 @@ export namespace OrganizationSourceRetirement {
   const receipts = new WeakMap<Receipt, { reference: Reference; assert(): void; verify(): Promise<void> }>()
   const state = RuntimeContext.state(() => ({ pending: new Map<Promise<unknown>, "effect" | "read">() }))
 
+  export function assertStoreOptions(reference: Reference, options: StoreOptions) {
+    if (hash(options) !== reference.primaryConfigHash) fail("requires its original primary Store configuration")
+  }
+
   function binding(reference: Reference) {
     const runtime = RuntimeContext.current()
     const primary = Storage.current()
@@ -57,7 +62,7 @@ export namespace OrganizationSourceRetirement {
     const objects = primary.artifactObjects
     const ports = objects && { blobs: objects.blobs, writerID: objects.writerID, now: objects.now }
     const artifactDirectory = primary.artifactDirectory
-    if (hash(store.options) !== reference.primaryConfigHash) fail("requires its original primary Store configuration")
+    assertStoreOptions(reference, store.options)
     const assertAlive = () => {
       if (
         runtime.storage !== primary ||

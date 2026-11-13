@@ -4960,6 +4960,180 @@
         ]
       }
     },
+    "/runtime/v1/environments/execution": {
+      "post": {
+        "operationId": "orgCloudExecution.request",
+        "summary": "Use the original selected Environment through accepted native execution",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgCloudExecutionRequest" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgCloudExecutionResult" } } }
+          },
+          "400": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "404": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        }
+      }
+    },
+    "/runtime/v1/environments/execution/retirement": {
+      "post": {
+        "operationId": "orgCloudExecution.retire",
+        "summary": "Retire only the original retained Environment operation",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/OrgCloudExecutionRetirementRequest" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/OrgCloudExecutionRetirementResult" } }
+            }
+          },
+          "400": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "404": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        }
+      }
+    },
+    "/runtime/v1/environments/execution/retirement/inspection": {
+      "post": {
+        "operationId": "orgCloudExecution.inspectRetirement",
+        "summary": "Inspect the original Environment retirement without repeating cleanup",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/OrgCloudExecutionRetirementInspectionRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/OrgCloudExecutionRetirementResult" } }
+            }
+          },
+          "400": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "404": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        }
+      }
+    },
+    "/runtime/v1/environments/execution/inspection": {
+      "post": {
+        "operationId": "orgCloudExecution.inspect",
+        "summary": "Inspect only the original retained Environment operation without dispatch",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/OrgCloudExecutionInspectionRequest" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/OrgCloudExecutionInspectionResult" } }
+            }
+          },
+          "400": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "401": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "403": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "404": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "409": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          },
+          "503": {
+            "description": "Organization error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgError" } } }
+          }
+        }
+      }
+    },
     "/runtime/v1/workspaces/files": {
       "post": {
         "operationId": "orgCloudFiles.request",
@@ -11424,6 +11598,62 @@
         "required": ["projectID", "resourceID", "requestID", "name"],
         "additionalProperties": false
       },
+      "__schema0": {
+        "anyOf": [
+          { "type": "string" },
+          { "type": "number" },
+          { "type": "boolean" },
+          { "type": "null" },
+          { "type": "array", "items": { "$ref": "#/components/schemas/__schema0" } },
+          {
+            "type": "object",
+            "propertyNames": { "type": "string" },
+            "additionalProperties": { "$ref": "#/components/schemas/__schema0" }
+          }
+        ]
+      },
+      "__schema1": {
+        "anyOf": [
+          { "type": "string" },
+          { "type": "number" },
+          { "type": "boolean" },
+          { "type": "null" },
+          { "type": "array", "items": { "$ref": "#/components/schemas/__schema1" } },
+          {
+            "type": "object",
+            "propertyNames": { "type": "string" },
+            "additionalProperties": { "$ref": "#/components/schemas/__schema1" }
+          }
+        ]
+      },
+      "__schema2": {
+        "anyOf": [
+          { "type": "string" },
+          { "type": "number" },
+          { "type": "boolean" },
+          { "type": "null" },
+          { "type": "array", "items": { "$ref": "#/components/schemas/__schema2" } },
+          {
+            "type": "object",
+            "propertyNames": { "type": "string" },
+            "additionalProperties": { "$ref": "#/components/schemas/__schema2" }
+          }
+        ]
+      },
+      "__schema3": {
+        "anyOf": [
+          { "type": "string" },
+          { "type": "number" },
+          { "type": "boolean" },
+          { "type": "null" },
+          { "type": "array", "items": { "$ref": "#/components/schemas/__schema3" } },
+          {
+            "type": "object",
+            "propertyNames": { "type": "string" },
+            "additionalProperties": { "$ref": "#/components/schemas/__schema3" }
+          }
+        ]
+      },
       "OrgCloudFileReference": {
         "type": "object",
         "properties": {
@@ -11438,254 +11668,131 @@
         "required": ["orgID", "projectID", "resourceID", "workspaceID", "generation", "revision"],
         "additionalProperties": false
       },
-      "OrgCloudFileResult": {
+      "OrgCloudExecutionReference": {
         "type": "object",
         "properties": {
-          "reference": { "$ref": "#/components/schemas/OrgCloudFileReference" },
-          "result": {
-            "oneOf": [
-              {
-                "type": "object",
-                "properties": { "action": { "type": "string", "const": "describe" } },
-                "required": ["action"],
-                "additionalProperties": false
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "action": { "type": "string", "const": "canonical" },
-                  "path": {
-                    "anyOf": [
-                      { "type": "string", "minLength": 1, "maxLength": 4096 },
-                      { "type": "string", "const": "" }
-                    ]
-                  }
-                },
-                "required": ["action", "path"],
-                "additionalProperties": false
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "action": { "type": "string", "const": "stat" },
-                  "item": {
-                    "type": "object",
-                    "properties": {
-                      "path": {
-                        "anyOf": [
-                          { "type": "string", "minLength": 1, "maxLength": 4096 },
-                          { "type": "string", "const": "" }
-                        ]
-                      },
-                      "entryVersion": { "type": "string" },
-                      "identity": { "type": "string" },
-                      "ctime": { "type": "number" },
-                      "mtime": { "type": "number" },
-                      "kind": { "type": "string", "enum": ["file", "directory", "symlink", "unknown"] },
-                      "size": { "type": "number", "minimum": 0 },
-                      "mode": { "type": "integer", "minimum": -9007199254740991, "maximum": 9007199254740991 }
-                    },
-                    "required": ["path", "entryVersion", "ctime", "mtime", "kind", "size", "mode"],
-                    "additionalProperties": false
-                  }
-                },
-                "required": ["action"],
-                "additionalProperties": false
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "action": { "type": "string", "const": "list" },
-                  "items": {
-                    "maxItems": 128,
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "path": {
-                          "anyOf": [
-                            { "type": "string", "minLength": 1, "maxLength": 4096 },
-                            { "type": "string", "const": "" }
-                          ]
-                        },
-                        "entryVersion": { "type": "string" },
-                        "identity": { "type": "string" },
-                        "ctime": { "type": "number" },
-                        "mtime": { "type": "number" },
-                        "kind": { "type": "string", "enum": ["file", "directory", "symlink", "unknown"] },
-                        "size": { "type": "number", "minimum": 0 },
-                        "mode": { "type": "integer", "minimum": -9007199254740991, "maximum": 9007199254740991 }
-                      },
-                      "required": ["path", "entryVersion", "ctime", "mtime", "kind", "size", "mode"],
-                      "additionalProperties": false
-                    }
-                  },
-                  "cursor": { "type": "string", "minLength": 1, "maxLength": 4096 },
-                  "revision": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 }
-                },
-                "required": ["action", "items", "revision"],
-                "additionalProperties": false
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "action": { "type": "string", "const": "read" },
-                  "data": { "type": "string", "maxLength": 5592408 },
-                  "version": { "type": "string" },
-                  "size": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
-                  "mode": { "type": "integer", "minimum": -9007199254740991, "maximum": 9007199254740991 }
-                },
-                "required": ["action", "data", "version", "size", "mode"],
-                "additionalProperties": false
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "action": { "type": "string", "const": "write" },
-                  "checkpoint": {
-                    "type": "object",
-                    "properties": {
-                      "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
-                      "mount": {
-                        "type": "object",
-                        "properties": {
-                          "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
-                          "workspaceID": {
-                            "type": "string",
-                            "minLength": 1,
-                            "maxLength": 128,
-                            "pattern": "^[a-zA-Z0-9_-]+$"
-                          },
-                          "generation": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 }
-                        },
-                        "required": ["id", "workspaceID", "generation"],
-                        "additionalProperties": false
-                      },
-                      "manifest": { "anyOf": [{ "type": "string", "pattern": "^[a-f0-9]{64}$" }, { "type": "null" }] },
-                      "beforeManifest": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
-                      "isolated": { "type": "boolean" }
-                    },
-                    "required": ["id", "mount", "manifest"],
-                    "additionalProperties": false
-                  }
-                },
-                "required": ["action", "checkpoint"],
-                "additionalProperties": false
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "action": { "type": "string", "const": "mutate" },
-                  "checkpoint": {
-                    "type": "object",
-                    "properties": {
-                      "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
-                      "mount": {
-                        "type": "object",
-                        "properties": {
-                          "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
-                          "workspaceID": {
-                            "type": "string",
-                            "minLength": 1,
-                            "maxLength": 128,
-                            "pattern": "^[a-zA-Z0-9_-]+$"
-                          },
-                          "generation": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 }
-                        },
-                        "required": ["id", "workspaceID", "generation"],
-                        "additionalProperties": false
-                      },
-                      "manifest": { "anyOf": [{ "type": "string", "pattern": "^[a-f0-9]{64}$" }, { "type": "null" }] },
-                      "beforeManifest": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
-                      "isolated": { "type": "boolean" }
-                    },
-                    "required": ["id", "mount", "manifest"],
-                    "additionalProperties": false
-                  }
-                },
-                "required": ["action", "checkpoint"],
-                "additionalProperties": false
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "action": { "type": "string", "const": "receipt" },
-                  "status": {
-                    "type": "object",
-                    "properties": {
-                      "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
-                      "mount": {
-                        "type": "object",
-                        "properties": {
-                          "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
-                          "workspaceID": {
-                            "type": "string",
-                            "minLength": 1,
-                            "maxLength": 128,
-                            "pattern": "^[a-zA-Z0-9_-]+$"
-                          },
-                          "generation": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 }
-                        },
-                        "required": ["id", "workspaceID", "generation"],
-                        "additionalProperties": false
-                      },
-                      "state": { "type": "string", "enum": ["pending", "failed", "saved", "released"] },
-                      "checkpoint": {
-                        "type": "object",
-                        "properties": {
-                          "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
-                          "mount": {
-                            "type": "object",
-                            "properties": {
-                              "id": {
-                                "type": "string",
-                                "minLength": 1,
-                                "maxLength": 128,
-                                "pattern": "^[a-zA-Z0-9_-]+$"
-                              },
-                              "workspaceID": {
-                                "type": "string",
-                                "minLength": 1,
-                                "maxLength": 128,
-                                "pattern": "^[a-zA-Z0-9_-]+$"
-                              },
-                              "generation": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 }
-                            },
-                            "required": ["id", "workspaceID", "generation"],
-                            "additionalProperties": false
-                          },
-                          "manifest": {
-                            "anyOf": [{ "type": "string", "pattern": "^[a-f0-9]{64}$" }, { "type": "null" }]
-                          },
-                          "beforeManifest": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
-                          "isolated": { "type": "boolean" }
-                        },
-                        "required": ["id", "mount", "manifest"],
-                        "additionalProperties": false
-                      },
-                      "error": { "type": "string" }
-                    },
-                    "required": ["id", "mount", "state"],
-                    "additionalProperties": false
-                  }
-                },
-                "required": ["action"],
-                "additionalProperties": false
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "action": { "type": "string", "const": "acknowledge" },
-                  "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
-                },
-                "required": ["action", "id"],
-                "additionalProperties": false
-              }
-            ]
-          }
+          "version": { "type": "number", "const": 2 },
+          "nativeOperationID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "preparationVersion": { "type": "number", "const": 1 },
+          "orgID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "deploymentIncarnation": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[a-zA-Z0-9_-]+$"
+          },
+          "projectID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "runtimeID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "sessionID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "rootID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "bindingEpoch": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+          "grantID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "retentionGeneration": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+          "selectionRevision": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "resourceID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "environmentID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "serviceScopeID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "hostOwner": { "type": "string", "const": "organization-environment" },
+          "leaseID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "target": { "$ref": "#/components/schemas/__schema0" },
+          "workspace": { "$ref": "#/components/schemas/OrgCloudFileReference" },
+          "mount": { "$ref": "#/components/schemas/__schema1" },
+          "directory": { "type": "string", "minLength": 1, "maxLength": 4096 }
         },
-        "required": ["reference", "result"],
+        "required": [
+          "version",
+          "nativeOperationID",
+          "preparationVersion",
+          "orgID",
+          "deploymentIncarnation",
+          "projectID",
+          "runtimeID",
+          "sessionID",
+          "rootID",
+          "bindingEpoch",
+          "grantID",
+          "retentionGeneration",
+          "selectionRevision",
+          "resourceID",
+          "environmentID",
+          "serviceScopeID",
+          "hostOwner",
+          "leaseID",
+          "target",
+          "workspace",
+          "mount",
+          "directory"
+        ],
         "additionalProperties": false
+      },
+      "OrgCloudExecutionResult": {
+        "type": "object",
+        "properties": {
+          "reference": { "$ref": "#/components/schemas/OrgCloudExecutionReference" },
+          "action": {
+            "anyOf": [
+              { "type": "string", "const": "resolve" },
+              { "type": "string", "const": "release-admission" },
+              { "type": "string", "const": "prepare-inputs" },
+              { "type": "string", "const": "discard-inputs" },
+              { "type": "string", "const": "prepare-sandbox" },
+              { "type": "string", "const": "release-sandbox" },
+              { "type": "string", "const": "start" },
+              { "type": "string", "const": "status" },
+              { "type": "string", "const": "output" },
+              { "type": "string", "const": "stdin" },
+              { "type": "string", "const": "resize" },
+              { "type": "string", "const": "cancel" },
+              { "type": "string", "const": "complete" }
+            ]
+          },
+          "value": { "$ref": "#/components/schemas/__schema2" },
+          "runtime": { "$ref": "#/components/schemas/__schema3" }
+        },
+        "required": ["reference", "action", "value"],
+        "additionalProperties": false
+      },
+      "__schema4": {
+        "anyOf": [
+          { "type": "string" },
+          { "type": "number" },
+          { "type": "boolean" },
+          { "type": "null" },
+          { "type": "array", "items": { "$ref": "#/components/schemas/__schema4" } },
+          {
+            "type": "object",
+            "propertyNames": { "type": "string" },
+            "additionalProperties": { "$ref": "#/components/schemas/__schema4" }
+          }
+        ]
+      },
+      "__schema5": {
+        "anyOf": [
+          { "type": "string" },
+          { "type": "number" },
+          { "type": "boolean" },
+          { "type": "null" },
+          { "type": "array", "items": { "$ref": "#/components/schemas/__schema5" } },
+          {
+            "type": "object",
+            "propertyNames": { "type": "string" },
+            "additionalProperties": { "$ref": "#/components/schemas/__schema5" }
+          }
+        ]
+      },
+      "__schema6": {
+        "anyOf": [
+          { "type": "string" },
+          { "type": "number" },
+          { "type": "boolean" },
+          { "type": "null" },
+          { "type": "array", "items": { "$ref": "#/components/schemas/__schema6" } },
+          {
+            "type": "object",
+            "propertyNames": { "type": "string" },
+            "additionalProperties": { "$ref": "#/components/schemas/__schema6" }
+          }
+        ]
       },
       "OrgCommandPermit": {
         "type": "object",
@@ -12069,196 +12176,204 @@
         "required": ["proof", "signature"],
         "additionalProperties": false
       },
-      "OrgCloudFileRequest": {
-        "type": "object",
-        "properties": {
-          "proof": {
+      "OrgCloudExecutionOperation": {
+        "oneOf": [
+          {
             "type": "object",
             "properties": {
-              "purpose": { "type": "string", "const": "organization-workspace-file" },
-              "authority": { "$ref": "#/components/schemas/OrgExecutionBindingRequest" },
-              "reference": { "$ref": "#/components/schemas/OrgCloudFileReference" },
-              "operation": {
-                "oneOf": [
-                  {
-                    "type": "object",
-                    "properties": { "action": { "type": "string", "const": "describe" } },
-                    "required": ["action"],
-                    "additionalProperties": false
-                  },
-                  {
-                    "type": "object",
-                    "properties": {
-                      "action": { "type": "string", "const": "canonical" },
-                      "path": {
-                        "anyOf": [
-                          { "type": "string", "minLength": 1, "maxLength": 4096 },
-                          { "type": "string", "const": "" }
-                        ]
-                      },
-                      "follow": { "type": "boolean" }
-                    },
-                    "required": ["action", "path", "follow"],
-                    "additionalProperties": false
-                  },
-                  {
-                    "type": "object",
-                    "properties": {
-                      "action": { "type": "string", "const": "stat" },
-                      "path": {
-                        "anyOf": [
-                          { "type": "string", "minLength": 1, "maxLength": 4096 },
-                          { "type": "string", "const": "" }
-                        ]
-                      },
-                      "follow": { "type": "boolean" }
-                    },
-                    "required": ["action", "path"],
-                    "additionalProperties": false
-                  },
-                  {
-                    "type": "object",
-                    "properties": {
-                      "action": { "type": "string", "const": "list" },
-                      "path": {
-                        "anyOf": [
-                          { "type": "string", "minLength": 1, "maxLength": 4096 },
-                          { "type": "string", "const": "" }
-                        ]
-                      },
-                      "cursor": { "type": "string", "minLength": 1, "maxLength": 4096 },
-                      "revision": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
-                      "limit": { "default": 128, "type": "integer", "minimum": 1, "maximum": 128 }
-                    },
-                    "required": ["action", "path"],
-                    "additionalProperties": false
-                  },
-                  {
-                    "type": "object",
-                    "properties": {
-                      "action": { "type": "string", "const": "read" },
-                      "path": { "type": "string", "minLength": 1, "maxLength": 4096 },
-                      "offset": { "default": 0, "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
-                      "maximumBytes": { "default": 4194304, "type": "integer", "minimum": 0, "maximum": 4194304 },
-                      "expectedVersion": { "type": "string" }
-                    },
-                    "required": ["action", "path"],
-                    "additionalProperties": false
-                  },
-                  {
-                    "type": "object",
-                    "properties": {
-                      "action": { "type": "string", "const": "write" },
-                      "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
-                      "path": { "type": "string", "minLength": 1, "maxLength": 4096 },
-                      "data": { "type": "string", "maxLength": 11184812 },
-                      "expectedVersion": { "type": ["string", "null"] },
-                      "expectedEntryVersion": { "type": ["string", "null"] },
-                      "protectSensitive": { "type": "boolean" },
-                      "mode": { "type": "integer", "minimum": 0, "maximum": 511 }
-                    },
-                    "required": ["action", "id", "path", "data", "expectedVersion"],
-                    "additionalProperties": false
-                  },
-                  {
-                    "type": "object",
-                    "properties": {
-                      "action": { "type": "string", "const": "mutate" },
-                      "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
-                      "change": {
-                        "oneOf": [
-                          {
-                            "type": "object",
-                            "properties": {
-                              "kind": { "type": "string", "const": "replace" },
-                              "path": { "type": "string", "minLength": 1, "maxLength": 4096 },
-                              "data": { "type": "string", "maxLength": 11184812 },
-                              "mode": { "type": "string", "enum": ["100644", "100755", "120000"] },
-                              "expectedVersion": { "type": ["string", "null"] },
-                              "expectedContentVersion": { "type": "string" }
-                            },
-                            "required": ["kind", "path", "data", "mode", "expectedVersion"],
-                            "additionalProperties": false
-                          },
-                          {
-                            "type": "object",
-                            "properties": {
-                              "kind": { "type": "string", "const": "mkdir" },
-                              "path": { "type": "string", "minLength": 1, "maxLength": 4096 },
-                              "createParents": { "type": "boolean" },
-                              "mode": { "type": "integer", "minimum": 0, "maximum": 511 }
-                            },
-                            "required": ["kind", "path"],
-                            "additionalProperties": false
-                          },
-                          {
-                            "type": "object",
-                            "properties": {
-                              "kind": { "type": "string", "const": "remove" },
-                              "path": { "type": "string", "minLength": 1, "maxLength": 4096 },
-                              "expectedVersion": { "type": "string" },
-                              "recursive": { "type": "boolean" }
-                            },
-                            "required": ["kind", "path", "expectedVersion"],
-                            "additionalProperties": false
-                          },
-                          {
-                            "type": "object",
-                            "properties": {
-                              "kind": { "type": "string", "const": "move" },
-                              "from": { "type": "string", "minLength": 1, "maxLength": 4096 },
-                              "to": { "type": "string", "minLength": 1, "maxLength": 4096 },
-                              "expectedVersion": { "type": "string" }
-                            },
-                            "required": ["kind", "from", "to", "expectedVersion"],
-                            "additionalProperties": false
-                          },
-                          {
-                            "type": "object",
-                            "properties": {
-                              "kind": { "type": "string", "const": "copy" },
-                              "from": { "type": "string", "minLength": 1, "maxLength": 4096 },
-                              "to": { "type": "string", "minLength": 1, "maxLength": 4096 },
-                              "expectedVersion": { "type": "string" }
-                            },
-                            "required": ["kind", "from", "to", "expectedVersion"],
-                            "additionalProperties": false
-                          }
-                        ]
-                      },
-                      "protectSensitive": { "type": "boolean" }
-                    },
-                    "required": ["action", "id", "change"],
-                    "additionalProperties": false
-                  },
-                  {
-                    "type": "object",
-                    "properties": {
-                      "action": { "type": "string", "const": "receipt" },
-                      "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
-                    },
-                    "required": ["action", "id"],
-                    "additionalProperties": false
-                  },
-                  {
-                    "type": "object",
-                    "properties": {
-                      "action": { "type": "string", "const": "acknowledge" },
-                      "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
-                    },
-                    "required": ["action", "id"],
-                    "additionalProperties": false
-                  }
-                ]
-              }
+              "action": { "type": "string", "const": "resolve" },
+              "nativeOperationID": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[a-zA-Z0-9_-]+$"
+              },
+              "capability": { "type": "string", "enum": ["exec", "pty"] },
+              "origin": { "$ref": "#/components/schemas/__schema0" },
+              "workspace": { "$ref": "#/components/schemas/OrgCloudFileReference" }
             },
-            "required": ["purpose", "authority", "operation"],
+            "required": ["action", "nativeOperationID", "capability", "origin", "workspace"],
             "additionalProperties": false
           },
+          {
+            "type": "object",
+            "properties": {
+              "reference": { "$ref": "#/components/schemas/OrgCloudExecutionReference" },
+              "action": { "type": "string", "const": "release-admission" }
+            },
+            "required": ["reference", "action"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "reference": { "$ref": "#/components/schemas/OrgCloudExecutionReference" },
+              "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "action": { "type": "string", "const": "prepare-inputs" },
+              "input": { "$ref": "#/components/schemas/__schema3" }
+            },
+            "required": ["reference", "id", "action", "input"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "reference": { "$ref": "#/components/schemas/OrgCloudExecutionReference" },
+              "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "action": { "type": "string", "const": "discard-inputs" }
+            },
+            "required": ["reference", "id", "action"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "reference": { "$ref": "#/components/schemas/OrgCloudExecutionReference" },
+              "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "action": { "type": "string", "const": "prepare-sandbox" },
+              "input": { "$ref": "#/components/schemas/__schema4" }
+            },
+            "required": ["reference", "id", "action", "input"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "reference": { "$ref": "#/components/schemas/OrgCloudExecutionReference" },
+              "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "action": { "type": "string", "const": "release-sandbox" }
+            },
+            "required": ["reference", "id", "action"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "reference": { "$ref": "#/components/schemas/OrgCloudExecutionReference" },
+              "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "action": { "type": "string", "const": "start" },
+              "request": { "$ref": "#/components/schemas/__schema5" },
+              "origin": { "$ref": "#/components/schemas/__schema6" },
+              "intentDigest": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+            },
+            "required": ["reference", "id", "action", "request", "origin"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "reference": { "$ref": "#/components/schemas/OrgCloudExecutionReference" },
+              "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "action": { "type": "string", "const": "status" }
+            },
+            "required": ["reference", "id", "action"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "reference": { "$ref": "#/components/schemas/OrgCloudExecutionReference" },
+              "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "action": { "type": "string", "const": "output" },
+              "after": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "limit": { "type": "integer", "exclusiveMinimum": 0, "maximum": 128 }
+            },
+            "required": ["reference", "id", "action", "after", "limit"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "reference": { "$ref": "#/components/schemas/OrgCloudExecutionReference" },
+              "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "action": { "type": "string", "const": "stdin" },
+              "data": { "type": "string", "maxLength": 87384 },
+              "end": { "type": "boolean" }
+            },
+            "required": ["reference", "id", "action", "data", "end"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "reference": { "$ref": "#/components/schemas/OrgCloudExecutionReference" },
+              "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "action": { "type": "string", "const": "resize" },
+              "cols": { "type": "integer", "exclusiveMinimum": 0, "maximum": 65535 },
+              "rows": { "type": "integer", "exclusiveMinimum": 0, "maximum": 65535 }
+            },
+            "required": ["reference", "id", "action", "cols", "rows"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "reference": { "$ref": "#/components/schemas/OrgCloudExecutionReference" },
+              "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "action": { "type": "string", "const": "cancel" },
+              "digest": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+            },
+            "required": ["reference", "id", "action", "digest"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "reference": { "$ref": "#/components/schemas/OrgCloudExecutionReference" },
+              "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "action": { "type": "string", "const": "complete" },
+              "digest": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+            },
+            "required": ["reference", "id", "action", "digest"],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "OrgCloudExecutionProof": {
+        "type": "object",
+        "properties": {
+          "version": { "type": "number", "const": 2 },
+          "purpose": { "type": "string", "const": "organization-environment-operation" },
+          "authority": { "$ref": "#/components/schemas/OrgExecutionBindingRequest" },
+          "operation": { "$ref": "#/components/schemas/OrgCloudExecutionOperation" }
+        },
+        "required": ["version", "purpose", "authority", "operation"],
+        "additionalProperties": false
+      },
+      "OrgCloudExecutionRequest": {
+        "type": "object",
+        "properties": {
+          "proof": { "$ref": "#/components/schemas/OrgCloudExecutionProof" },
           "signature": { "type": "string", "pattern": "^[a-f0-9]{128}$" }
         },
         "required": ["proof", "signature"],
         "additionalProperties": false
+      },
+      "OrgCloudExecutionRetirementResult": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": { "type": "string", "const": "admission" },
+              "reference": { "$ref": "#/components/schemas/OrgCloudExecutionReference" },
+              "released": { "type": "boolean" }
+            },
+            "required": ["kind", "reference", "released"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": { "type": "string", "const": "execution" },
+              "reference": { "$ref": "#/components/schemas/OrgCloudExecutionReference" },
+              "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "digest": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+              "execution": { "anyOf": [{ "$ref": "#/components/schemas/__schema2" }, { "type": "null" }] }
+            },
+            "required": ["kind", "reference", "id", "digest", "execution"],
+            "additionalProperties": false
+          }
+        ]
       },
       "OrgExecutionInspectionProof": {
         "type": "object",
@@ -12489,6 +12604,611 @@
         "type": "object",
         "properties": {
           "proof": { "$ref": "#/components/schemas/OrgExecutionInspectionProof" },
+          "signature": { "type": "string", "pattern": "^[a-f0-9]{128}$" }
+        },
+        "required": ["proof", "signature"],
+        "additionalProperties": false
+      },
+      "OrgCloudExecutionRetirementProof": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": { "type": "string", "const": "admission" },
+              "reference": { "$ref": "#/components/schemas/OrgCloudExecutionReference" },
+              "origin": { "$ref": "#/components/schemas/__schema2" },
+              "version": { "type": "number", "const": 2 },
+              "purpose": { "type": "string", "const": "organization-environment-retirement" },
+              "authority": { "$ref": "#/components/schemas/OrgExecutionInspectionRequest" }
+            },
+            "required": ["kind", "reference", "origin", "version", "purpose", "authority"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": { "type": "string", "const": "execution" },
+              "reference": { "$ref": "#/components/schemas/OrgCloudExecutionReference" },
+              "origin": { "$ref": "#/components/schemas/__schema2" },
+              "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "digest": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+              "version": { "type": "number", "const": 2 },
+              "purpose": { "type": "string", "const": "organization-environment-retirement" },
+              "authority": { "$ref": "#/components/schemas/OrgExecutionInspectionRequest" }
+            },
+            "required": ["kind", "reference", "origin", "id", "digest", "version", "purpose", "authority"],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "OrgCloudExecutionRetirementRequest": {
+        "type": "object",
+        "properties": {
+          "proof": { "$ref": "#/components/schemas/OrgCloudExecutionRetirementProof" },
+          "signature": { "type": "string", "pattern": "^[a-f0-9]{128}$" }
+        },
+        "required": ["proof", "signature"],
+        "additionalProperties": false
+      },
+      "OrgCloudExecutionRetirementInspectionProof": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": { "type": "string", "const": "admission" },
+              "reference": { "$ref": "#/components/schemas/OrgCloudExecutionReference" },
+              "origin": { "$ref": "#/components/schemas/__schema2" },
+              "version": { "type": "number", "const": 2 },
+              "purpose": { "type": "string", "const": "organization-environment-retirement-inspection" },
+              "authority": { "$ref": "#/components/schemas/OrgExecutionInspectionRequest" }
+            },
+            "required": ["kind", "reference", "origin", "version", "purpose", "authority"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": { "type": "string", "const": "execution" },
+              "reference": { "$ref": "#/components/schemas/OrgCloudExecutionReference" },
+              "origin": { "$ref": "#/components/schemas/__schema2" },
+              "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "digest": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+              "version": { "type": "number", "const": 2 },
+              "purpose": { "type": "string", "const": "organization-environment-retirement-inspection" },
+              "authority": { "$ref": "#/components/schemas/OrgExecutionInspectionRequest" }
+            },
+            "required": ["kind", "reference", "origin", "id", "digest", "version", "purpose", "authority"],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "OrgCloudExecutionRetirementInspectionRequest": {
+        "type": "object",
+        "properties": {
+          "proof": { "$ref": "#/components/schemas/OrgCloudExecutionRetirementInspectionProof" },
+          "signature": { "type": "string", "pattern": "^[a-f0-9]{128}$" }
+        },
+        "required": ["proof", "signature"],
+        "additionalProperties": false
+      },
+      "OrgCloudExecutionInspectionResult": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": { "type": "string", "const": "execution" },
+              "reference": { "$ref": "#/components/schemas/OrgCloudExecutionReference" },
+              "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "digest": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+              "execution": { "anyOf": [{ "$ref": "#/components/schemas/__schema2" }, { "type": "null" }] },
+              "output": { "maxItems": 128, "type": "array", "items": { "$ref": "#/components/schemas/__schema3" } }
+            },
+            "required": ["kind", "reference", "id", "digest", "execution", "output"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": { "type": "string", "const": "preparation" },
+              "reference": { "$ref": "#/components/schemas/OrgCloudExecutionReference" },
+              "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "preparation": { "anyOf": [{ "$ref": "#/components/schemas/__schema4" }, { "type": "null" }] }
+            },
+            "required": ["kind", "reference", "id", "preparation"],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "OrgCloudExecutionInspectionProof": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "reference": { "$ref": "#/components/schemas/OrgCloudExecutionReference" },
+              "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "origin": { "$ref": "#/components/schemas/__schema2" },
+              "kind": { "type": "string", "const": "execution" },
+              "digest": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+              "after": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "limit": { "type": "integer", "exclusiveMinimum": 0, "maximum": 128 },
+              "version": { "type": "number", "const": 2 },
+              "purpose": { "type": "string", "const": "organization-environment-inspection" },
+              "authority": { "$ref": "#/components/schemas/OrgExecutionInspectionRequest" }
+            },
+            "required": [
+              "reference",
+              "id",
+              "origin",
+              "kind",
+              "digest",
+              "after",
+              "limit",
+              "version",
+              "purpose",
+              "authority"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "reference": { "$ref": "#/components/schemas/OrgCloudExecutionReference" },
+              "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+              "origin": { "$ref": "#/components/schemas/__schema2" },
+              "kind": { "type": "string", "const": "preparation" },
+              "version": { "type": "number", "const": 2 },
+              "purpose": { "type": "string", "const": "organization-environment-inspection" },
+              "authority": { "$ref": "#/components/schemas/OrgExecutionInspectionRequest" }
+            },
+            "required": ["reference", "id", "origin", "kind", "version", "purpose", "authority"],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "OrgCloudExecutionInspectionRequest": {
+        "type": "object",
+        "properties": {
+          "proof": { "$ref": "#/components/schemas/OrgCloudExecutionInspectionProof" },
+          "signature": { "type": "string", "pattern": "^[a-f0-9]{128}$" }
+        },
+        "required": ["proof", "signature"],
+        "additionalProperties": false
+      },
+      "OrgCloudFileResult": {
+        "type": "object",
+        "properties": {
+          "reference": { "$ref": "#/components/schemas/OrgCloudFileReference" },
+          "result": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": { "action": { "type": "string", "const": "describe" } },
+                "required": ["action"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "action": { "type": "string", "const": "canonical" },
+                  "path": {
+                    "anyOf": [
+                      { "type": "string", "minLength": 1, "maxLength": 4096 },
+                      { "type": "string", "const": "" }
+                    ]
+                  }
+                },
+                "required": ["action", "path"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "action": { "type": "string", "const": "stat" },
+                  "item": {
+                    "type": "object",
+                    "properties": {
+                      "path": {
+                        "anyOf": [
+                          { "type": "string", "minLength": 1, "maxLength": 4096 },
+                          { "type": "string", "const": "" }
+                        ]
+                      },
+                      "entryVersion": { "type": "string" },
+                      "identity": { "type": "string" },
+                      "ctime": { "type": "number" },
+                      "mtime": { "type": "number" },
+                      "kind": { "type": "string", "enum": ["file", "directory", "symlink", "unknown"] },
+                      "size": { "type": "number", "minimum": 0 },
+                      "mode": { "type": "integer", "minimum": -9007199254740991, "maximum": 9007199254740991 }
+                    },
+                    "required": ["path", "entryVersion", "ctime", "mtime", "kind", "size", "mode"],
+                    "additionalProperties": false
+                  }
+                },
+                "required": ["action"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "action": { "type": "string", "const": "list" },
+                  "items": {
+                    "maxItems": 128,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "path": {
+                          "anyOf": [
+                            { "type": "string", "minLength": 1, "maxLength": 4096 },
+                            { "type": "string", "const": "" }
+                          ]
+                        },
+                        "entryVersion": { "type": "string" },
+                        "identity": { "type": "string" },
+                        "ctime": { "type": "number" },
+                        "mtime": { "type": "number" },
+                        "kind": { "type": "string", "enum": ["file", "directory", "symlink", "unknown"] },
+                        "size": { "type": "number", "minimum": 0 },
+                        "mode": { "type": "integer", "minimum": -9007199254740991, "maximum": 9007199254740991 }
+                      },
+                      "required": ["path", "entryVersion", "ctime", "mtime", "kind", "size", "mode"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "cursor": { "type": "string", "minLength": 1, "maxLength": 4096 },
+                  "revision": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 }
+                },
+                "required": ["action", "items", "revision"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "action": { "type": "string", "const": "read" },
+                  "data": { "type": "string", "maxLength": 5592408 },
+                  "version": { "type": "string" },
+                  "size": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                  "mode": { "type": "integer", "minimum": -9007199254740991, "maximum": 9007199254740991 }
+                },
+                "required": ["action", "data", "version", "size", "mode"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "action": { "type": "string", "const": "write" },
+                  "checkpoint": {
+                    "type": "object",
+                    "properties": {
+                      "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+                      "mount": {
+                        "type": "object",
+                        "properties": {
+                          "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+                          "workspaceID": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 128,
+                            "pattern": "^[a-zA-Z0-9_-]+$"
+                          },
+                          "generation": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 }
+                        },
+                        "required": ["id", "workspaceID", "generation"],
+                        "additionalProperties": false
+                      },
+                      "manifest": { "anyOf": [{ "type": "string", "pattern": "^[a-f0-9]{64}$" }, { "type": "null" }] },
+                      "beforeManifest": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+                      "isolated": { "type": "boolean" }
+                    },
+                    "required": ["id", "mount", "manifest"],
+                    "additionalProperties": false
+                  }
+                },
+                "required": ["action", "checkpoint"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "action": { "type": "string", "const": "mutate" },
+                  "checkpoint": {
+                    "type": "object",
+                    "properties": {
+                      "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+                      "mount": {
+                        "type": "object",
+                        "properties": {
+                          "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+                          "workspaceID": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 128,
+                            "pattern": "^[a-zA-Z0-9_-]+$"
+                          },
+                          "generation": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 }
+                        },
+                        "required": ["id", "workspaceID", "generation"],
+                        "additionalProperties": false
+                      },
+                      "manifest": { "anyOf": [{ "type": "string", "pattern": "^[a-f0-9]{64}$" }, { "type": "null" }] },
+                      "beforeManifest": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+                      "isolated": { "type": "boolean" }
+                    },
+                    "required": ["id", "mount", "manifest"],
+                    "additionalProperties": false
+                  }
+                },
+                "required": ["action", "checkpoint"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "action": { "type": "string", "const": "receipt" },
+                  "status": {
+                    "type": "object",
+                    "properties": {
+                      "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+                      "mount": {
+                        "type": "object",
+                        "properties": {
+                          "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+                          "workspaceID": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 128,
+                            "pattern": "^[a-zA-Z0-9_-]+$"
+                          },
+                          "generation": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 }
+                        },
+                        "required": ["id", "workspaceID", "generation"],
+                        "additionalProperties": false
+                      },
+                      "state": { "type": "string", "enum": ["pending", "failed", "saved", "released"] },
+                      "checkpoint": {
+                        "type": "object",
+                        "properties": {
+                          "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+                          "mount": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 128,
+                                "pattern": "^[a-zA-Z0-9_-]+$"
+                              },
+                              "workspaceID": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 128,
+                                "pattern": "^[a-zA-Z0-9_-]+$"
+                              },
+                              "generation": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 }
+                            },
+                            "required": ["id", "workspaceID", "generation"],
+                            "additionalProperties": false
+                          },
+                          "manifest": {
+                            "anyOf": [{ "type": "string", "pattern": "^[a-f0-9]{64}$" }, { "type": "null" }]
+                          },
+                          "beforeManifest": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+                          "isolated": { "type": "boolean" }
+                        },
+                        "required": ["id", "mount", "manifest"],
+                        "additionalProperties": false
+                      },
+                      "error": { "type": "string" }
+                    },
+                    "required": ["id", "mount", "state"],
+                    "additionalProperties": false
+                  }
+                },
+                "required": ["action"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "action": { "type": "string", "const": "acknowledge" },
+                  "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
+                },
+                "required": ["action", "id"],
+                "additionalProperties": false
+              }
+            ]
+          }
+        },
+        "required": ["reference", "result"],
+        "additionalProperties": false
+      },
+      "OrgCloudFileRequest": {
+        "type": "object",
+        "properties": {
+          "proof": {
+            "type": "object",
+            "properties": {
+              "purpose": { "type": "string", "const": "organization-workspace-file" },
+              "authority": { "$ref": "#/components/schemas/OrgExecutionBindingRequest" },
+              "reference": { "$ref": "#/components/schemas/OrgCloudFileReference" },
+              "operation": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": { "action": { "type": "string", "const": "describe" } },
+                    "required": ["action"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "action": { "type": "string", "const": "canonical" },
+                      "path": {
+                        "anyOf": [
+                          { "type": "string", "minLength": 1, "maxLength": 4096 },
+                          { "type": "string", "const": "" }
+                        ]
+                      },
+                      "follow": { "type": "boolean" }
+                    },
+                    "required": ["action", "path", "follow"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "action": { "type": "string", "const": "stat" },
+                      "path": {
+                        "anyOf": [
+                          { "type": "string", "minLength": 1, "maxLength": 4096 },
+                          { "type": "string", "const": "" }
+                        ]
+                      },
+                      "follow": { "type": "boolean" }
+                    },
+                    "required": ["action", "path"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "action": { "type": "string", "const": "list" },
+                      "path": {
+                        "anyOf": [
+                          { "type": "string", "minLength": 1, "maxLength": 4096 },
+                          { "type": "string", "const": "" }
+                        ]
+                      },
+                      "cursor": { "type": "string", "minLength": 1, "maxLength": 4096 },
+                      "revision": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+                      "limit": { "default": 128, "type": "integer", "minimum": 1, "maximum": 128 }
+                    },
+                    "required": ["action", "path"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "action": { "type": "string", "const": "read" },
+                      "path": { "type": "string", "minLength": 1, "maxLength": 4096 },
+                      "offset": { "default": 0, "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                      "maximumBytes": { "default": 4194304, "type": "integer", "minimum": 0, "maximum": 4194304 },
+                      "expectedVersion": { "type": "string" }
+                    },
+                    "required": ["action", "path"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "action": { "type": "string", "const": "write" },
+                      "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+                      "path": { "type": "string", "minLength": 1, "maxLength": 4096 },
+                      "data": { "type": "string", "maxLength": 11184812 },
+                      "expectedVersion": { "type": ["string", "null"] },
+                      "expectedEntryVersion": { "type": ["string", "null"] },
+                      "protectSensitive": { "type": "boolean" },
+                      "mode": { "type": "integer", "minimum": 0, "maximum": 511 }
+                    },
+                    "required": ["action", "id", "path", "data", "expectedVersion"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "action": { "type": "string", "const": "mutate" },
+                      "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+                      "change": {
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": { "type": "string", "const": "replace" },
+                              "path": { "type": "string", "minLength": 1, "maxLength": 4096 },
+                              "data": { "type": "string", "maxLength": 11184812 },
+                              "mode": { "type": "string", "enum": ["100644", "100755", "120000"] },
+                              "expectedVersion": { "type": ["string", "null"] },
+                              "expectedContentVersion": { "type": "string" }
+                            },
+                            "required": ["kind", "path", "data", "mode", "expectedVersion"],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": { "type": "string", "const": "mkdir" },
+                              "path": { "type": "string", "minLength": 1, "maxLength": 4096 },
+                              "createParents": { "type": "boolean" },
+                              "mode": { "type": "integer", "minimum": 0, "maximum": 511 }
+                            },
+                            "required": ["kind", "path"],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": { "type": "string", "const": "remove" },
+                              "path": { "type": "string", "minLength": 1, "maxLength": 4096 },
+                              "expectedVersion": { "type": "string" },
+                              "recursive": { "type": "boolean" }
+                            },
+                            "required": ["kind", "path", "expectedVersion"],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": { "type": "string", "const": "move" },
+                              "from": { "type": "string", "minLength": 1, "maxLength": 4096 },
+                              "to": { "type": "string", "minLength": 1, "maxLength": 4096 },
+                              "expectedVersion": { "type": "string" }
+                            },
+                            "required": ["kind", "from", "to", "expectedVersion"],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": { "type": "string", "const": "copy" },
+                              "from": { "type": "string", "minLength": 1, "maxLength": 4096 },
+                              "to": { "type": "string", "minLength": 1, "maxLength": 4096 },
+                              "expectedVersion": { "type": "string" }
+                            },
+                            "required": ["kind", "from", "to", "expectedVersion"],
+                            "additionalProperties": false
+                          }
+                        ]
+                      },
+                      "protectSensitive": { "type": "boolean" }
+                    },
+                    "required": ["action", "id", "change"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "action": { "type": "string", "const": "receipt" },
+                      "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
+                    },
+                    "required": ["action", "id"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "action": { "type": "string", "const": "acknowledge" },
+                      "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" }
+                    },
+                    "required": ["action", "id"],
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            },
+            "required": ["purpose", "authority", "operation"],
+            "additionalProperties": false
+          },
           "signature": { "type": "string", "pattern": "^[a-f0-9]{128}$" }
         },
         "required": ["proof", "signature"],
@@ -14797,76 +15517,6 @@
           "factHash"
         ],
         "additionalProperties": false
-      },
-      "__schema0": {
-        "anyOf": [
-          { "type": "string" },
-          { "type": "number" },
-          { "type": "boolean" },
-          { "type": "null" },
-          { "type": "array", "items": { "$ref": "#/components/schemas/__schema0" } },
-          {
-            "type": "object",
-            "propertyNames": { "type": "string" },
-            "additionalProperties": { "$ref": "#/components/schemas/__schema0" }
-          }
-        ]
-      },
-      "__schema1": {
-        "anyOf": [
-          { "type": "string" },
-          { "type": "number" },
-          { "type": "boolean" },
-          { "type": "null" },
-          { "type": "array", "items": { "$ref": "#/components/schemas/__schema1" } },
-          {
-            "type": "object",
-            "propertyNames": { "type": "string" },
-            "additionalProperties": { "$ref": "#/components/schemas/__schema1" }
-          }
-        ]
-      },
-      "__schema2": {
-        "anyOf": [
-          { "type": "string" },
-          { "type": "number" },
-          { "type": "boolean" },
-          { "type": "null" },
-          { "type": "array", "items": { "$ref": "#/components/schemas/__schema2" } },
-          {
-            "type": "object",
-            "propertyNames": { "type": "string" },
-            "additionalProperties": { "$ref": "#/components/schemas/__schema2" }
-          }
-        ]
-      },
-      "__schema3": {
-        "anyOf": [
-          { "type": "string" },
-          { "type": "number" },
-          { "type": "boolean" },
-          { "type": "null" },
-          { "type": "array", "items": { "$ref": "#/components/schemas/__schema3" } },
-          {
-            "type": "object",
-            "propertyNames": { "type": "string" },
-            "additionalProperties": { "$ref": "#/components/schemas/__schema3" }
-          }
-        ]
-      },
-      "__schema4": {
-        "anyOf": [
-          { "type": "string" },
-          { "type": "number" },
-          { "type": "boolean" },
-          { "type": "null" },
-          { "type": "array", "items": { "$ref": "#/components/schemas/__schema4" } },
-          {
-            "type": "object",
-            "propertyNames": { "type": "string" },
-            "additionalProperties": { "$ref": "#/components/schemas/__schema4" }
-          }
-        ]
       },
       "OrgHandoffWorkspaceResult": {
         "oneOf": [

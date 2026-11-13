@@ -81,6 +81,14 @@ The Home's `.synergy` directory contains its native identity, configuration, sto
 
 Retain the old image digest and package lockfile before replacement. Stop admission at the proxy, stop the service gracefully, and preserve its persistent volume. Install both packages at the same selected version or replace the image without changing the volume, then wait for readiness and verify the retained organization identity. Home reader upgrades require the service owner's frozen maintenance flow; an unsupported reader fails closed instead of reinitializing storage. Never run `init` to repair a retained deployment.
 
+For an established ordinary format-two Home using writable SQLite and local artifacts, stop its supervisor and drain native resources, then run the explicit reader upgrade with one stable request identifier:
+
+```bash
+SYNERGY_HOME=/absolute/service-home synergy-org upgrade --request-id environment-reader-upgrade
+```
+
+The full installation exposes the same operation as `synergy org upgrade`. Retry the same request after an interrupted command; it reconciles the original operation instead of starting another one. Failed or cancelled work retains its native hold. A successful JSON receipt reports `upgrade-complete`, `restartRequired: true` and `executesAgents: false`; restart through the normal supervisor and verify readiness separately. Unsupported native ownership, PostgreSQL and restored format-three Homes require their owning upgrade flow. Preserve the held Home when a partial or invalid marker requires recovery; do not rewrite its metadata or clear its maintenance records.
+
 Consistent encrypted backup and recovery use the [native maintenance and recovery owners](../architecture/organization.md), including current-policy reconciliation and source retirement. The [administrative commands](#encrypted-backup-and-held-restoration) capture encrypted native checkpoints and install a held target. Filesystem copying a live SQL database does not establish a recoverable deployment. Do not use `docker compose down --volumes` during an upgrade. The Compose acceptance script uses that operation only for its own temporary test project.
 
 ## Encrypted backup and held restoration

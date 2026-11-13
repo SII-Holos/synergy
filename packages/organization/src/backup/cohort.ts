@@ -21,6 +21,7 @@ import { OrganizationRecord as Record } from "../storage/records"
 import { OrganizationStoragePath as Keys } from "../storage/path"
 import { OrganizationRecoveryArchive } from "./archive"
 import { OrganizationServiceNative } from "./service-native"
+import { OrganizationResourceNative } from "./resources"
 
 const hash = (value: string | Uint8Array) => createHash("sha256").update(value).digest("hex")
 const deployment = { orgID: Identity.ID, deploymentIncarnation: Identity.ID }
@@ -105,7 +106,11 @@ async function required() {
   result.sort((left, right) => left.runtimeID.localeCompare(right.runtimeID))
   return result
 }
-async function coverage() {
+async function coverage(kind: "service" | "hosted") {
+  if (kind === "service" && OrganizationResourceNative.configured()) {
+    await OrganizationResourceNative.assertSupported()
+    return
+  }
   for (const prefix of [["workspace"], ["environment"]])
     if ((await Storage.queryKeys({ prefix, limit: 1 })).length)
       throw new CohortError(
@@ -182,6 +187,7 @@ export namespace OrganizationBackupCohort {
       native: StorageCheckpoint.Manifest.optional(),
       hostedNative: StorageCheckpoint.Manifest.optional(),
       hostedKnowledge: StorageCheckpoint.Manifest.optional(),
+      resources: StorageCheckpoint.Manifest.optional(),
     })
     .refine(
       (value) => (value.identity.kind === "service") === !!value.native,
@@ -190,6 +196,10 @@ export namespace OrganizationBackupCohort {
     .refine(
       (value) => value.identity.kind === "hosted" || (!value.hostedNative && !value.hostedKnowledge),
       "Hosted native material requires a Hosted namespace",
+    )
+    .refine(
+      (value) => value.identity.kind === "service" || !value.resources,
+      "Resource material requires its actual Service namespace",
     )
   export type NamespaceInventory = z.infer<typeof NamespaceInventory>
   export function service(runner: Runner): Source {
@@ -261,7 +271,7 @@ export namespace OrganizationBackupCohort {
         const store = Storage.current().store
         if (seen.has(store)) throw new CohortError("Two backup participants refer to one native namespace")
         seen.add(store)
-        await coverage()
+        await coverage(source.identity.kind)
       })
     const controller = new AbortController()
     const signal = originalSignal ? AbortSignal.any([originalSignal, controller.signal]) : controller.signal
@@ -307,7 +317,7 @@ export namespace OrganizationBackupCohort {
         for (const [ordinal, source] of sources.entries())
           await run(source.source, async (identity) => {
             if (!same(identity, source.identity)) throw new CohortError("Backup participant identity changed")
-            await coverage()
+            await coverage(identity.kind)
             const base = path.join(temporary, "namespaces", String(ordinal).padStart(16, "0"))
             const namespaceID =
               identity.kind === "service"
@@ -378,6 +388,7 @@ export namespace OrganizationBackupCohort {
                   native: native?.namespace,
                   hostedNative: hostedNative?.namespace,
                   hostedKnowledge: hostedKnowledge?.namespace,
+                  resources: native?.resources?.expected,
                 })
               },
               { signal },

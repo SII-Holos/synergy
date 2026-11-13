@@ -1,6 +1,7 @@
 import {
   OrganizationApiTokenProtocol as Protocol,
   OrganizationProtocol,
+  OrganizationCommandProtocol as Command,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { OrganizationRecord as Record } from "../storage/records"
@@ -34,6 +35,37 @@ export async function authenticateApiToken(secret: string, operation?: Protocol.
   )
     fail("AUTHENTICATION_REQUIRED", "The API token is no longer valid")
   return { account, expiresAt: token.expiresAt, clientKind: "api" as const, apiToken: token, tokenID: token.tokenID }
+}
+
+export async function assertApiExecutionActor(permit: Command.Permit) {
+  const actor = permit.actor
+  if (actor.clientKind !== "api" || !actor.tokenID)
+    fail("PERMISSION_DENIED", "Execution has no original API token actor")
+  const token = await Record.read(ApiTokenRecord, apiTokenKeys.record(actor.tokenID))
+  const account = await Record.read(Record.Account, Keys.account(actor.subjectID))
+  const deployment = OrganizationProtocol.Deployment.parse(await Storage.read(Keys.deployment()))
+  if (
+    !token ||
+    !account ||
+    token.tokenID !== actor.tokenID ||
+    token.accountID !== actor.subjectID ||
+    token.orgID !== permit.orgID ||
+    token.orgID !== account.orgID ||
+    token.deploymentIncarnation !== permit.deploymentIncarnation ||
+    token.deploymentIncarnation !== deployment.deploymentIncarnation ||
+    token.orgID !== deployment.orgID ||
+    token.revokedAt !== undefined ||
+    token.expiresAt <= Date.now() ||
+    account.state !== "active" ||
+    token.authRevision !== account.authRevision ||
+    permit.authRevision !== account.authRevision
+  )
+    fail("PERMISSION_DENIED", "The original execution API token is no longer valid")
+  const operation =
+    permit.operation === "input" ? "sessions.input" : permit.operation === "continue" ? "sessions.continue" : undefined
+  if (!operation || !token.operations.includes(operation))
+    fail("PERMISSION_DENIED", "The API token cannot continue this execution")
+  assertApiTokenAction(token, operation, "session.execute", permit.projectID)
 }
 
 export function assertApiTokenAction(
