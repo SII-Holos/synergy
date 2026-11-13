@@ -213,7 +213,19 @@ export namespace WorkspaceOperations {
             requirements,
           })
       },
-      inspect: (context) => inspectMaintenance(context.signal),
+      async inspect(context) {
+        const held =
+          context.purpose === "organization-home-upgrade"
+            ? await RuntimeMaintenance.operation(context.maintenanceID)
+            : undefined
+        if (held?.version === 2 && held.phase === "released") {
+          await reconcileHomeUpgrade(context, "released")
+          return []
+        }
+        return inspectMaintenance(context.signal)
+      },
+      reconcileFrozen: (context) => reconcileHomeUpgrade(context, "frozen"),
+      reconcileReleasing: (context) => reconcileHomeUpgrade(context, "releasing"),
       async release(context) {
         context.signal.throwIfAborted()
       },
@@ -229,7 +241,10 @@ export namespace WorkspaceOperations {
     return info
   }
 
-  async function inspectMaintenance(signal: AbortSignal): Promise<RuntimeMaintenance.Requirement[]> {
+  async function inspectMaintenance(
+    signal: AbortSignal,
+    homeUpgrade = false,
+  ): Promise<RuntimeMaintenance.Requirement[]> {
     signal.throwIfAborted()
     const requirements = new Map<string, RuntimeMaintenance.Requirement>()
     const add = (code: string, label: string) =>
@@ -241,7 +256,64 @@ export namespace WorkspaceOperations {
       if (info.state !== "completed" && info.state !== "failed")
         add("workspace_save_unsettled", "Confirm the original Workspace mutation receipt, checkpoint and use release")
     }
+    if (homeUpgrade) {
+      for await (const row of Storage.records({ prefix: ["workspace_operation"], limit: 128 })) {
+        signal.throwIfAborted()
+        const info = Info.parse(row.value)
+        if (row.key.length !== 3 || row.key[1] !== info.scopeID || row.key[2] !== info.id)
+          throw new Error("Workspace operation has another canonical address")
+        if (info.state !== "completed" && info.state !== "failed")
+          add("workspace_save_unsettled", "Confirm the original canonical mutation, checkpoint and use release")
+      }
+    }
     return [...requirements.values()]
+  }
+  async function reconcileHomeUpgrade(context: RuntimeMaintenance.Context, phase: "frozen" | "releasing" | "released") {
+    const held =
+      phase === "released"
+        ? await RuntimeMaintenance.assertReleased(context.lease)
+        : phase === "releasing"
+          ? await RuntimeMaintenance.assertReleasing(context.lease)
+          : await RuntimeMaintenance.assertHeld(context.lease)
+    if (held.version !== 2 || held.purpose !== "organization-home-upgrade" || held.phase !== phase)
+      throw new RuntimeMaintenance.Blocked({
+        message: "Cold Workspace inspection requires its original Home upgrade phase",
+      })
+    let requirements: RuntimeMaintenance.Requirement[]
+    try {
+      requirements = await inspectMaintenance(context.signal, true)
+    } catch (cause) {
+      context.signal.throwIfAborted()
+      throw new RuntimeMaintenance.Blocked(
+        {
+          maintenanceID: held.maintenanceID,
+          message: "Cold Workspace operations have invalid or foreign canonical ownership",
+          requirements: [
+            {
+              owner: "workspace-operations",
+              code: "workspace_operation_inventory_unknown",
+              label: "Inspect the original canonical Workspace operations",
+              recoverable: true,
+            },
+          ],
+        },
+        { cause },
+      )
+    }
+    if (requirements.length)
+      throw new RuntimeMaintenance.Blocked({
+        maintenanceID: held.maintenanceID,
+        message: "Original Workspace operations still require native settlement",
+        requirements,
+      })
+    const after =
+      phase === "released"
+        ? await RuntimeMaintenance.assertReleased(context.lease)
+        : phase === "releasing"
+          ? await RuntimeMaintenance.assertReleasing(context.lease)
+          : await RuntimeMaintenance.assertHeld(context.lease)
+    if (JSON.stringify(after) !== JSON.stringify(held))
+      throw new RuntimeMaintenance.Blocked({ message: "Cold Workspace inspection changed its original Home operation" })
   }
 
   export async function get(id: string, scopeID: string): Promise<Info> {

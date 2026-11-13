@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto"
+import path from "node:path"
 import { z } from "zod"
 import { ActorStamp } from "@ericsanchezok/synergy-util/actor-stamp"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
@@ -70,6 +71,20 @@ export namespace RuntimeMaintenance {
   )
   export const Info = Schema.Info
   export type Info = z.infer<typeof Info>
+  export const HomeUpgradeSelection = Schema.HomeUpgradeSelection
+  export type HomeUpgradeSelection = z.infer<typeof HomeUpgradeSelection>
+  type HomeUpgradeInfo = z.infer<typeof Schema.HomeUpgradeInfo>
+  type HomeUpgradeNative = z.infer<typeof Schema.HomeUpgradeNative>
+  interface HomeUpgradeOwner {
+    version: number
+    capture(signal?: AbortSignal): Promise<HomeUpgradeSelection>
+    verify(selection: HomeUpgradeSelection, signal?: AbortSignal): Promise<void>
+  }
+  interface HomeUpgradeBinding {
+    assert(): void
+    verify(native: HomeUpgradeNative): Promise<void>
+    native(selection: HomeUpgradeSelection): Promise<HomeUpgradeNative>
+  }
   export const Restoration = z.strictObject({
     version: z.literal(1),
     installationID: z.uuid(),
@@ -103,6 +118,7 @@ export namespace RuntimeMaintenance {
     release(context: Context): Promise<void>
     released?(context: Context): Promise<void>
     reconcileFrozen?(context: Context): Promise<void>
+    reconcileReleasing?(context: Context): Promise<void>
   }
   interface LeaseIdentity {
     runtime: RuntimeContext.Instance
@@ -110,6 +126,11 @@ export namespace RuntimeMaintenance {
     maintenanceID: string
     cohortHash: string
     resumed?: { source: Info; referenceHash: string; assert(): void }
+    homeUpgrade?: {
+      binding: HomeUpgradeBinding
+      native: HomeUpgradeNative
+      recovered?: { expected: HomeUpgradeInfo }
+    }
   }
   interface ReceiptIdentity extends LeaseIdentity {
     revision: number
@@ -122,6 +143,7 @@ export namespace RuntimeMaintenance {
     owners: new Map<string, Contribution>(),
     installed: false,
     pending: false,
+    homeUpgrade: undefined as { ownerID: string; owner: HomeUpgradeOwner } | undefined,
     retirementSource: undefined as
       | {
           inspect(evidence: object): {
@@ -265,6 +287,7 @@ export namespace RuntimeMaintenance {
       throw new Blocked({ message: "Maintenance lease belongs to another Runtime or namespace" })
     if (value.cohortHash !== cohortHash()) throw new Blocked({ message: "Maintenance writer cohort changed" })
     value.resumed?.assert()
+    value.homeUpgrade?.binding.assert()
     return value
   }
   async function requireCurrent(tx: StoreTransaction, lease: Lease) {
@@ -273,8 +296,12 @@ export namespace RuntimeMaintenance {
     if (
       !info ||
       info.maintenanceID !== held.maintenanceID ||
-      info.sourceRuntimeID !== (held.resumed?.source.sourceRuntimeID ?? held.runtime.id) ||
+      info.sourceRuntimeID !==
+        (held.resumed?.source.sourceRuntimeID ??
+          held.homeUpgrade?.recovered?.expected.sourceRuntimeID ??
+          held.runtime.id) ||
       (held.resumed && digest(info) !== digest(held.resumed.source)) ||
+      (held.homeUpgrade?.recovered && digest(info) !== digest(held.homeUpgrade.recovered.expected)) ||
       info.cohortHash !== held.cohortHash
     )
       throw new Blocked({ message: "Maintenance lease is no longer the current native operation" })
@@ -286,6 +313,226 @@ export namespace RuntimeMaintenance {
   export async function operation(maintenanceID: string) {
     ID.parse(maintenanceID)
     return Storage.snapshot((tx) => read(tx, Info, operationKey(maintenanceID)))
+  }
+  export function registerHomeUpgradeOwner(ownerID: string, owner: HomeUpgradeOwner) {
+    RuntimeContext.assertCompositionOpen("native Home upgrade owner")
+    ID.parse(ownerID)
+    Count.positive().parse(owner.version)
+    if (!state().owners.has(ownerID) || !state().required?.includes(ownerID) || state().homeUpgrade)
+      throw new Blocked({ message: "Home upgrade requires its single required native maintenance owner" })
+    state().homeUpgrade = {
+      ownerID,
+      owner: { version: owner.version, capture: owner.capture.bind(owner), verify: owner.verify.bind(owner) },
+    }
+  }
+  async function homeUpgradeBinding(signal?: AbortSignal): Promise<HomeUpgradeBinding> {
+    const selected = state().homeUpgrade
+    if (!selected) throw new Blocked({ message: "Home upgrade requires its registered native owner" })
+    const runtime = RuntimeContext.current()
+    const primary = runtime.storage
+    const current = Storage.current()
+    if (!primary || current.store !== primary.store || current.artifactDirectory !== primary.artifactDirectory)
+      throw new Blocked({ message: "Home upgrade requires its original primary namespace" })
+    const store = primary.store
+    const directory = primary.artifactDirectory
+    const configuration = digest(store.options)
+    const root = runtime.host.root
+    const home = runtime.host.home
+    if (
+      store.options.backend !== "sqlite" ||
+      store.options.readonly ||
+      primary.artifactObjects ||
+      current.artifactObjects ||
+      !path.isAbsolute(directory) ||
+      path.resolve(root) !== path.join(path.resolve(home), ".synergy")
+    )
+      throw new Blocked({ message: "Home upgrade requires its original ordinary native SQLite owner" })
+    const writer = await ServerProcessLock.currentOwnership()
+    const files = HomeOwnershipFile.open({ root, env: runtime.host.env })
+    const physical = await files.physicalHash()
+    const assert = () => {
+      signal?.throwIfAborted()
+      const actual = Storage.current()
+      if (
+        RuntimeContext.current() !== runtime ||
+        state().homeUpgrade !== selected ||
+        runtime.storage !== primary ||
+        runtime.host.root !== root ||
+        runtime.host.home !== home ||
+        primary.store !== store ||
+        actual.store !== store ||
+        !store.readiness.readerReady ||
+        digest(store.options) !== configuration ||
+        primary.artifactDirectory !== directory ||
+        actual.artifactDirectory !== directory ||
+        primary.artifactObjects ||
+        actual.artifactObjects
+      )
+        throw new Blocked({ message: "Home upgrade lost its original native primary or configuration" })
+      ServerProcessLock.assertCurrent(writer)
+    }
+    const verify = async (value: HomeUpgradeNative) => {
+      const native = Schema.HomeUpgradeNative.parse(value)
+      assert()
+      if (
+        native.ownerID !== selected.ownerID ||
+        native.ownerVersion !== selected.owner.version ||
+        native.primaryConfigHash !== configuration ||
+        native.artifactDirectory !== directory ||
+        native.physicalHash !== physical
+      )
+        throw new Blocked({ message: "Home upgrade belongs to another original native owner" })
+      const inspect = async () => {
+        assert()
+        await ServerProcessLock.verifyOwnership(writer)
+        if ((await files.physicalHash()) !== physical)
+          throw new Blocked({ message: "Home upgrade physical directory changed" })
+        const marker = await files.read()
+        if (digest(marker) !== digest(native.source) && digest(marker) !== digest(native.target))
+          throw new Blocked({ message: "Home upgrade requires its complete original or target marker" })
+        assert()
+      }
+      await inspect()
+      await selected.owner.verify(
+        HomeUpgradeSelection.parse({
+          version: native.version,
+          source: native.source,
+          target: native.target,
+          namespace: native.namespace,
+          signingHash: native.signingHash,
+        }),
+        signal,
+      )
+      await inspect()
+    }
+    assert()
+    return {
+      assert,
+      verify,
+      async native(value) {
+        const selection = HomeUpgradeSelection.parse(value)
+        assert()
+        if (digest(await files.read()) !== digest(selection.source))
+          throw new Blocked({ message: "Home upgrade capture changed its original native marker" })
+        const native = Schema.HomeUpgradeNative.parse({
+          ...selection,
+          ownerID: selected.ownerID,
+          ownerVersion: selected.owner.version,
+          physicalHash: physical,
+          primaryConfigHash: configuration,
+          artifactDirectory: directory,
+        })
+        await verify(native)
+        return native
+      },
+    }
+  }
+  function homeUpgradeRequest(
+    info: Pick<
+      HomeUpgradeInfo,
+      "purpose" | "maintenanceID" | "sourceRuntimeID" | "requestID" | "actor" | "cohortHash" | "native"
+    >,
+  ) {
+    return digest({
+      purpose: info.purpose,
+      maintenanceID: info.maintenanceID,
+      sourceRuntimeID: info.sourceRuntimeID,
+      requestID: info.requestID,
+      actor: info.actor,
+      cohortHash: info.cohortHash,
+      native: info.native,
+    })
+  }
+  async function verifyHomeUpgrade(lease: Lease) {
+    const held = identity(lease)
+    if (!held.homeUpgrade) return
+    await held.homeUpgrade.binding.verify(held.homeUpgrade.native)
+    identity(lease)
+  }
+  export async function withHomeUpgradeRecovery<T>(
+    input: { requestID: string; signal?: AbortSignal },
+    body: (lease: Lease) => Promise<T>,
+  ) {
+    if (Storage.inTransaction()) throw new Blocked({ message: "Cold Home upgrade requires its native boundary" })
+    const requestID = ID.parse(input.requestID)
+    const signal = input.signal
+    const binding = await homeUpgradeBinding(signal)
+    let lease: Lease | undefined
+    try {
+      {
+        using lock = signal
+          ? await Lock.writeWithSignal("runtime-maintenance", signal)
+          : await Lock.write("runtime-maintenance")
+        const info = await Storage.snapshot(async (tx) => {
+          const currentInfo = await current(tx)
+          if (!currentInfo || currentInfo.version !== 2 || currentInfo.requestID !== requestID)
+            throw new Blocked({ message: "Cold Home upgrade has no original native operation witness" })
+          const request = await read(
+            tx,
+            z.strictObject({ maintenanceID: ID, requestHash: Hash }),
+            requestKey(requestID),
+          )
+          if (
+            request?.maintenanceID !== currentInfo.maintenanceID ||
+            request.requestHash !== currentInfo.requestHash ||
+            currentInfo.requestHash !== homeUpgradeRequest(currentInfo) ||
+            currentInfo.cohortHash !== cohortHash() ||
+            (await Retirements.read(currentInfo.maintenanceID))
+          )
+            throw new Blocked({ message: "Cold Home upgrade lost its original request or native writer cohort" })
+          for (const [id, owner] of currentInfo.phase === "draining" ? [] : owners()) {
+            const retained = await read(
+              tx,
+              z.strictObject({
+                version: z.literal(1),
+                ownerID: ID,
+                ownerVersion: Count,
+                phase: z.literal("drained"),
+                tailRevision: Count,
+              }),
+              ownerKey(currentInfo.maintenanceID, id),
+            )
+            if (
+              !retained ||
+              retained.ownerID !== id ||
+              retained.ownerVersion !== owner.version ||
+              retained.tailRevision !== currentInfo.tailRevision
+            )
+              throw new Blocked({ message: "Cold Home upgrade has no original native owner drainage" })
+          }
+          return currentInfo
+        })
+        await binding.verify(info.native)
+        lease = Object.freeze({ maintenanceID: info.maintenanceID, purpose: info.purpose })
+        leases.set(lease, {
+          runtime: RuntimeContext.current(),
+          store: Storage.current().store,
+          maintenanceID: info.maintenanceID,
+          cohortHash: info.cohortHash,
+          homeUpgrade: { binding, native: info.native, recovered: { expected: info } },
+        })
+        const currentContext = context(lease, signal)
+        if (info.phase === "frozen" || info.phase === "releasing") {
+          for (const [, owner] of owners()) {
+            const reconcile = info.phase === "frozen" ? owner.reconcileFrozen : owner.reconcileReleasing
+            if (!reconcile)
+              throw new Blocked({
+                message: "A Home upgrade writer has no native cold reconciliation owner for its actual phase",
+              })
+            await reconcile(currentContext)
+            await verifyHomeUpgrade(lease)
+          }
+        }
+        await inspectOwners(currentContext)
+        await Storage.snapshot((tx) => requireCurrent(tx, lease!))
+      }
+      const result = await body(lease)
+      await verifyHomeUpgrade(lease)
+      await Storage.snapshot((tx) => requireCurrent(tx, lease!))
+      return result
+    } finally {
+      if (lease) leases.delete(lease)
+    }
   }
   export function restoration(installationID: string) {
     z.uuid().parse(installationID)
@@ -788,13 +1035,15 @@ export namespace RuntimeMaintenance {
   }
   export async function assertReleasing(lease: Lease) {
     const info = await Storage.snapshot((tx) => requireCurrent(tx, lease))
-    if (info.phase !== "releasing" || info.purpose !== "organization-backup")
+    const upgrade = info.version === 2 && info.purpose === "organization-home-upgrade" && identity(lease).homeUpgrade
+    if (info.phase !== "releasing" || (info.purpose !== "organization-backup" && !upgrade))
       throw new Blocked({ message: "Native source release requires its current releasing backup operation" })
     return info
   }
   export async function assertReleased(lease: Lease) {
     const info = await Storage.snapshot((tx) => requireCurrent(tx, lease))
-    if (info.phase !== "released" || info.purpose !== "organization-backup")
+    const upgrade = info.version === 2 && info.purpose === "organization-home-upgrade" && identity(lease).homeUpgrade
+    if (info.phase !== "released" || (info.purpose !== "organization-backup" && !upgrade))
       throw new Blocked({ message: "Native admission requires its confirmed released backup operation" })
     return info
   }
@@ -809,6 +1058,7 @@ export namespace RuntimeMaintenance {
     using held = options.signal
       ? await Lock.writeWithSignal("runtime-maintenance", options.signal)
       : await Lock.write("runtime-maintenance")
+    await verifyHomeUpgrade(lease)
     const assertFrozen = async () => {
       const info = await assertHeld(lease)
       if (info.phase !== "frozen")
@@ -827,6 +1077,7 @@ export namespace RuntimeMaintenance {
     try {
       const result = await frozenWork.run(frame, () => body(currentContext))
       currentContext.signal.throwIfAborted()
+      await verifyHomeUpgrade(lease)
       await assertFrozen()
       return result
     } finally {
@@ -853,6 +1104,8 @@ export namespace RuntimeMaintenance {
     const actor = Operator.parse(input.actor)
     if (actor.requestID !== requestID) throw new Blocked({ message: "Maintenance actor must bind its logical request" })
     const contract = cohortHash()
+    if (purpose === "organization-home-upgrade")
+      return beginHomeUpgrade({ requestID, actor, signal: input.signal }, contract)
     const requestHash = digest({ purpose, requestID, actor, cohortHash: contract })
     const maintenanceID = randomUUID()
     input.signal?.throwIfAborted()
@@ -935,6 +1188,126 @@ export namespace RuntimeMaintenance {
       throw error
     }
   }
+  async function beginHomeUpgrade(
+    input: { requestID: string; actor: z.infer<typeof Operator>; signal?: AbortSignal },
+    contract: string,
+  ): Promise<Lease> {
+    const { requestID, actor, signal } = input
+    signal?.throwIfAborted()
+    state().pending = true
+    try {
+      using lock = signal
+        ? await Lock.writeWithSignal("runtime-maintenance", signal)
+        : await Lock.write("runtime-maintenance")
+      const binding = await homeUpgradeBinding(signal)
+      const existing = await Storage.snapshot(async (tx) => {
+        const request = await read(tx, z.strictObject({ maintenanceID: ID, requestHash: Hash }), requestKey(requestID))
+        if (!request) return
+        const raw = await read(tx, Info, operationKey(request.maintenanceID))
+        if (
+          !raw ||
+          raw.version !== 2 ||
+          raw.requestID !== requestID ||
+          raw.requestHash !== request.requestHash ||
+          raw.requestHash !== homeUpgradeRequest(raw) ||
+          raw.cohortHash !== contract ||
+          digest(raw.actor) !== digest(actor) ||
+          digest(await current(tx)) !== digest(raw)
+        )
+          throw new Blocked({ message: "Home upgrade request identity has different parameters" })
+        return raw
+      })
+      let info: HomeUpgradeInfo
+      if (existing) {
+        await binding.verify(existing.native)
+        info = existing
+      } else {
+        const owner = state().homeUpgrade!
+        const native = await binding.native(await owner.owner.capture(signal))
+        const now = Date.now()
+        const maintenanceID = randomUUID()
+        const sourceRuntimeID = RuntimeContext.current().id
+        const selected = Schema.HomeUpgradeInfo.parse({
+          version: 2,
+          maintenanceID,
+          requestID,
+          requestHash: homeUpgradeRequest({
+            purpose: "organization-home-upgrade",
+            maintenanceID,
+            sourceRuntimeID,
+            requestID,
+            actor,
+            cohortHash: contract,
+            native,
+          }),
+          purpose: "organization-home-upgrade",
+          sourceRuntimeID,
+          cohortHash: contract,
+          phase: "draining",
+          revision: 1,
+          tailRevision: 0,
+          actor,
+          createdAt: now,
+          updatedAt: now,
+          native,
+        })
+        await binding.verify(native)
+        info = await mutate(
+          async (tx) => {
+            binding.assert()
+            const prior = await current(tx)
+            if (prior && prior.phase !== "released")
+              throw new Blocked({
+                maintenanceID: prior.maintenanceID,
+                message: "Another maintenance operation is still held",
+              })
+            await tx.write(operationKey(selected.maintenanceID), selected)
+            await tx.write(currentKey, { maintenanceID: selected.maintenanceID })
+            await tx.write(requestKey(requestID), {
+              maintenanceID: selected.maintenanceID,
+              requestHash: selected.requestHash,
+            })
+            return selected
+          },
+          {
+            operationID: `runtime-maintenance-begin:${digest(requestID)}`,
+            requestHash: selected.requestHash,
+            commitGuard: binding.assert,
+          },
+        )
+        await binding.verify(info.native)
+      }
+      state().pending = info.phase !== "released"
+      if (info.sourceRuntimeID !== RuntimeContext.current().id && info.phase !== "released")
+        throw new Blocked({
+          maintenanceID: info.maintenanceID,
+          message: "A prior Runtime's Home upgrade requires actual writer reconciliation",
+        })
+      const lease = Object.freeze({ maintenanceID: info.maintenanceID, purpose: info.purpose })
+      leases.set(lease, {
+        runtime: RuntimeContext.current(),
+        store: Storage.current().store,
+        maintenanceID: info.maintenanceID,
+        cohortHash: contract,
+        homeUpgrade: {
+          binding,
+          native: info.native,
+          ...(info.sourceRuntimeID === RuntimeContext.current().id ? {} : { recovered: { expected: info } }),
+        },
+      })
+      return lease
+    } catch (error) {
+      if (!(error instanceof Storage.CommitUnknownError)) {
+        try {
+          const latest = await status()
+          state().pending = latest !== undefined && latest.phase !== "released"
+        } catch {
+          state().pending = true
+        }
+      }
+      throw error
+    }
+  }
   async function inspectOwners(context: Context) {
     const requirements: Requirement[] = []
     for (const [id, owner] of owners()) {
@@ -963,9 +1336,13 @@ export namespace RuntimeMaintenance {
   }
   export async function drain(lease: Lease, options: { signal?: AbortSignal } = {}): Promise<DrainReceipt> {
     if (identity(lease).resumed) throw new Blocked({ message: "Cold retirement cannot establish another drainage" })
+    const recovered = identity(lease).homeUpgrade?.recovered
+    if (recovered && recovered.expected.phase !== "draining")
+      throw new Blocked({ message: "Cold Home upgrade cannot replace its original native drainage" })
     using lock = options.signal
       ? await Lock.writeWithSignal("runtime-maintenance", options.signal)
       : await Lock.write("runtime-maintenance")
+    await verifyHomeUpgrade(lease)
     const initial = await Storage.snapshot((tx) => requireCurrent(tx, lease))
     if (initial.phase !== "draining")
       throw new Blocked({ message: "Only a draining native operation can establish its freeze receipt" })
@@ -979,6 +1356,7 @@ export namespace RuntimeMaintenance {
       await owner.drain(currentContext)
     }
     await inspectOwners(currentContext)
+    await verifyHomeUpgrade(lease)
     const info = await mutate(async (tx) => {
       const info = await requireCurrent(tx, lease)
       if (info.phase !== "draining")
@@ -1009,7 +1387,9 @@ export namespace RuntimeMaintenance {
     )
       throw new Blocked({ message: "Native freeze requires this operation's actual owner drainage receipt" })
     using lock = await Lock.write("runtime-maintenance")
-    return mutate(async (tx) => {
+    await verifyHomeUpgrade(lease)
+    if (held.homeUpgrade) return homeUpgradeTransition(lease, "frozen", proof)
+    const result = await mutate(async (tx) => {
       const info = await requireCurrent(tx, lease)
       if (info.tailRevision !== proof.tailRevision || (info.phase !== "frozen" && info.revision !== proof.revision))
         throw new Blocked({ message: "A native writer changed after maintenance drainage" })
@@ -1019,43 +1399,124 @@ export namespace RuntimeMaintenance {
       await tx.write(operationKey(info.maintenanceID), frozen)
       return frozen
     })
+    await verifyHomeUpgrade(lease)
+    return result
+  }
+  async function homeUpgradeTransition(
+    lease: Lease,
+    phase: "frozen" | "releasing" | "released",
+    proof?: ReceiptIdentity,
+  ) {
+    const held = identity(lease)
+    const upgrade = held.homeUpgrade
+    if (!upgrade) throw new Blocked({ message: "Home upgrade transition has no native owner" })
+    await verifyHomeUpgrade(lease)
+    let previous: HomeUpgradeInfo | undefined
+    let intended: HomeUpgradeInfo | undefined
+    let result: HomeUpgradeInfo
+    try {
+      result = await mutate(
+        async (tx) => {
+          const current = await requireCurrent(tx, lease)
+          if (current.version !== 2)
+            throw new Blocked({ message: "Home upgrade transition lost its original operation witness" })
+          if (phase === "frozen") {
+            if (
+              !proof ||
+              current.tailRevision !== proof.tailRevision ||
+              (current.phase !== "frozen" && current.revision !== proof.revision)
+            )
+              throw new Blocked({ message: "A native Home writer changed after its actual drainage" })
+            if (current.phase === "frozen") return current
+          }
+          const expectedPhase = phase === "frozen" ? "draining" : phase === "releasing" ? "frozen" : "releasing"
+          if (current.phase !== expectedPhase)
+            throw new Blocked({ message: "Home upgrade release changed its original phase" })
+          previous = current
+          intended = Schema.HomeUpgradeInfo.parse({
+            ...current,
+            phase,
+            revision: current.revision + 1,
+            updatedAt: Date.now(),
+          })
+          await tx.write(operationKey(current.maintenanceID), intended)
+          return intended
+        },
+        {
+          commitGuard: () => {
+            identity(lease)
+          },
+        },
+      )
+    } catch (error) {
+      if (!(error instanceof Storage.CommitUnknownError) || !previous || !intended) throw error
+      const observed = await Storage.snapshot(current)
+      if (digest(observed) !== digest(intended)) {
+        if (digest(observed) === digest(previous)) throw error
+        throw new Blocked({ message: "Home upgrade unknown commit has another native operation" })
+      }
+      result = intended
+    }
+    if (upgrade.recovered) upgrade.recovered.expected = Schema.HomeUpgradeInfo.parse(result)
+    await verifyHomeUpgrade(lease)
+    return result
   }
   export async function release(lease: Lease, options: { signal?: AbortSignal } = {}) {
     if (identity(lease).resumed) throw new Blocked({ message: "Cold retirement cannot release its original hold" })
     using lock = options.signal
       ? await Lock.writeWithSignal("runtime-maintenance", options.signal)
       : await Lock.write("runtime-maintenance")
+    await verifyHomeUpgrade(lease)
     const initial = await Storage.snapshot((tx) => requireCurrent(tx, lease))
     if (await Retirements.read(initial.maintenanceID))
       throw new Blocked({ message: "Source retirement permanently retains its native maintenance hold" })
     if (initial.phase === "released") {
-      await reopen(context(lease, options.signal))
+      const currentContext = context(lease, options.signal)
+      if (identity(lease).homeUpgrade) {
+        await inspectOwners(currentContext)
+        await verifyHomeUpgrade(lease)
+      }
+      await reopen(currentContext)
+      await verifyHomeUpgrade(lease)
       return initial
     }
     if (initial.phase === "recovery-held" || lease.purpose === "organization-restore")
       throw new Blocked({ message: "Restored execution requires independent current-writer reconciliation" })
     const currentContext = context(lease, options.signal)
     await inspectOwners(currentContext)
-    await mutate(async (tx) => {
-      const info = await requireCurrent(tx, lease)
-      await tx.write(
-        operationKey(info.maintenanceID),
-        Info.parse({ ...info, phase: "releasing", revision: info.revision + 1, updatedAt: Date.now() }),
-      )
-    })
+    if (identity(lease).homeUpgrade) {
+      if (initial.phase !== "releasing") await homeUpgradeTransition(lease, "releasing")
+    } else {
+      await mutate(async (tx) => {
+        const info = await requireCurrent(tx, lease)
+        await tx.write(
+          operationKey(info.maintenanceID),
+          Info.parse({ ...info, phase: "releasing", revision: info.revision + 1, updatedAt: Date.now() }),
+        )
+      })
+    }
     for (const [, owner] of owners().reverse()) {
       currentContext.signal.throwIfAborted()
       await owner.release(currentContext)
+      await verifyHomeUpgrade(lease)
     }
     await inspectOwners(currentContext)
-    const released = await mutate(async (tx) => {
-      const info = await requireCurrent(tx, lease)
-      if (info.phase !== "releasing") throw new Blocked({ message: "Maintenance release phase changed" })
-      const released = Info.parse({ ...info, phase: "released", revision: info.revision + 1, updatedAt: Date.now() })
-      await tx.write(operationKey(info.maintenanceID), released)
-      return released
-    })
+    const released = identity(lease).homeUpgrade
+      ? await homeUpgradeTransition(lease, "released")
+      : await mutate(async (tx) => {
+          const info = await requireCurrent(tx, lease)
+          if (info.phase !== "releasing") throw new Blocked({ message: "Maintenance release phase changed" })
+          const released = Info.parse({
+            ...info,
+            phase: "released",
+            revision: info.revision + 1,
+            updatedAt: Date.now(),
+          })
+          await tx.write(operationKey(info.maintenanceID), released)
+          return released
+        })
     await reopen(currentContext)
+    await verifyHomeUpgrade(lease)
     return released
   }
   async function reopen(context: Context) {

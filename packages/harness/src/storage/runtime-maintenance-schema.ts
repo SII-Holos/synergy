@@ -1,5 +1,7 @@
 import { z } from "zod"
 import { ActorStamp } from "@ericsanchezok/synergy-util/actor-stamp"
+import { HomeOwnershipFile } from "../lifecycle/home-ownership-file"
+import { NativeNamespaceIdentity } from "../lifecycle/namespace-identity"
 
 export namespace RuntimeMaintenanceSchema {
   const ID = z.string().min(1).max(128)
@@ -9,9 +11,29 @@ export namespace RuntimeMaintenanceSchema {
     (actor) => actor.kind !== "account",
     "Maintenance requires trusted Host authority",
   )
-  export const Purpose = z.enum(["organization-backup", "organization-restore"])
-  export const Info = z.strictObject({
+  const legacyPurpose = z.enum(["organization-backup", "organization-restore"])
+  export const Purpose = z.enum([...legacyPurpose.options, "organization-home-upgrade"])
+  const selection = z.strictObject({
     version: z.literal(1),
+    source: HomeOwnershipFile.FencedInfo,
+    target: HomeOwnershipFile.FencedInfo,
+    namespace: NativeNamespaceIdentity.Descriptor,
+    signingHash: Hash,
+  })
+  const sameOwner = (value: z.infer<typeof selection>) =>
+    value.namespace.owner === value.source.owner &&
+    JSON.stringify({ ...value.source, readerContract: value.target.readerContract }) === JSON.stringify(value.target)
+  export const HomeUpgradeSelection = selection.refine(sameOwner, "Home upgrade must retain its original native owner")
+  export const HomeUpgradeNative = selection
+    .extend({
+      ownerID: ID,
+      ownerVersion: Count.positive(),
+      physicalHash: Hash,
+      primaryConfigHash: Hash,
+      artifactDirectory: z.string().min(1),
+    })
+    .refine(sameOwner, "Home upgrade must retain its original native owner")
+  const fields = {
     maintenanceID: ID,
     requestID: ID,
     requestHash: Hash,
@@ -24,5 +46,14 @@ export namespace RuntimeMaintenanceSchema {
     actor: Operator,
     createdAt: Count,
     updatedAt: Count,
+  }
+  const legacy = z.strictObject({ version: z.literal(1), ...fields, purpose: legacyPurpose })
+  export const HomeUpgradeInfo = z.strictObject({
+    version: z.literal(2),
+    ...fields,
+    purpose: z.literal("organization-home-upgrade"),
+    phase: z.enum(["draining", "frozen", "releasing", "released"]),
+    native: HomeUpgradeNative,
   })
+  export const Info = z.discriminatedUnion("version", [legacy, HomeUpgradeInfo])
 }

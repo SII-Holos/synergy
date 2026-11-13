@@ -3,6 +3,7 @@ import { EnvironmentExecution } from "./execution"
 import { RuntimeMaintenance } from "../storage/runtime-maintenance"
 import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
+import { ExecutionProtocol } from "./executor"
 
 const requirement = (code: string, label: string): RuntimeMaintenance.Requirement => ({
   code,
@@ -51,6 +52,92 @@ async function inspect(signal: AbortSignal, final = true) {
   return [...requirements.values()]
 }
 
+async function reconcileHomeUpgrade(context: RuntimeMaintenance.Context, phase: "frozen" | "releasing" | "released") {
+  const held =
+    phase === "released"
+      ? await RuntimeMaintenance.assertReleased(context.lease)
+      : phase === "releasing"
+        ? await RuntimeMaintenance.assertReleasing(context.lease)
+        : await RuntimeMaintenance.assertHeld(context.lease)
+  if (held.version !== 2 || held.purpose !== "organization-home-upgrade" || held.phase !== phase)
+    throw new RuntimeMaintenance.Blocked({
+      message: "Cold Environment inspection requires its original Home upgrade phase",
+    })
+  const requirements = new Map<string, RuntimeMaintenance.Requirement>()
+  const add = (code: string, label: string) => requirements.set(code, requirement(code, label))
+  try {
+    context.signal.throwIfAborted()
+    if (Environment.hasPendingRequests() || EnvironmentExecution.hasPendingRequests())
+      add("environment_request_active", "Wait for the original native Environment requests")
+    for await (const environment of Environment.entries()) {
+      context.signal.throwIfAborted()
+      if (environment.state !== "idle" || environment.allocation !== undefined)
+        add("environment_allocation_retained", "Reconcile the original allocation before recovering this Home upgrade")
+    }
+    for await (const use of Environment.useEntries()) {
+      context.signal.throwIfAborted()
+      if (use.ownership.kind === "legacy-unknown")
+        add("environment_use_unknown", "Resolve the retained Environment Use through its original owner")
+      else add("environment_use_retained", "Release the original Environment Use after native drainage")
+    }
+    for await (const execution of EnvironmentExecution.entries()) {
+      context.signal.throwIfAborted()
+      if (execution.origin.kind === "legacy-unknown") {
+        add("environment_execution_unknown", "Resolve the retained execution through its original native owner")
+        continue
+      }
+      const status = execution.status
+      if (
+        execution.state !== "completed" ||
+        !status ||
+        !ExecutionProtocol.terminal(status) ||
+        status.id !== execution.id ||
+        status.digest !== execution.digest ||
+        !Environment.sameTarget(status.target, execution.target) ||
+        status.cursor !== execution.outputCursor
+      )
+        add(
+          "environment_execution_unsettled",
+          "Confirm the original process, streams and complete saved execution receipt",
+        )
+      if (execution.sourceObservation !== undefined) {
+        const original = EnvironmentExecution.Info.parse(execution.sourceObservation)
+        if (original.origin.kind === "legacy-unknown")
+          add(
+            "environment_execution_unknown",
+            "Resolve the original remote execution owner before recovering this Home",
+          )
+      }
+    }
+  } catch (cause) {
+    context.signal.throwIfAborted()
+    throw new RuntimeMaintenance.Blocked(
+      {
+        maintenanceID: held.maintenanceID,
+        message: "Cold Environment inventory is invalid or belongs to another canonical owner",
+        requirements: [
+          requirement("environment_inventory_unknown", "Inspect the original canonical Environment inventory"),
+        ],
+      },
+      { cause },
+    )
+  }
+  if (requirements.size)
+    throw new RuntimeMaintenance.Blocked({
+      maintenanceID: held.maintenanceID,
+      message: "Native Environment ownership still blocks this Home upgrade",
+      requirements: [...requirements.values()],
+    })
+  const after =
+    phase === "released"
+      ? await RuntimeMaintenance.assertReleased(context.lease)
+      : phase === "releasing"
+        ? await RuntimeMaintenance.assertReleasing(context.lease)
+        : await RuntimeMaintenance.assertHeld(context.lease)
+  if (JSON.stringify(after) !== JSON.stringify(held))
+    throw new RuntimeMaintenance.Blocked({ message: "Cold Environment inspection changed its original Home operation" })
+}
+
 export function registerEnvironmentMaintenanceOwner() {
   RuntimeMaintenance.register("environments", {
     version: 1,
@@ -81,7 +168,19 @@ export function registerEnvironmentMaintenanceOwner() {
           requirements,
         })
     },
-    inspect: (context) => inspect(context.signal),
+    async inspect(context) {
+      const held =
+        context.purpose === "organization-home-upgrade"
+          ? await RuntimeMaintenance.operation(context.maintenanceID)
+          : undefined
+      if (held?.version === 2 && held.phase === "released") {
+        await reconcileHomeUpgrade(context, "released")
+        return []
+      }
+      return inspect(context.signal)
+    },
+    reconcileFrozen: (context) => reconcileHomeUpgrade(context, "frozen"),
+    reconcileReleasing: (context) => reconcileHomeUpgrade(context, "releasing"),
     async release(context) {
       context.signal.throwIfAborted()
     },
