@@ -6,6 +6,8 @@ Read only sections relevant to the current change. Search the headings and domai
 
 ## Handoff
 
+For chunked authenticated transports, exercise a real native body spanning multiple logical chunks and verify the final authorized download digest. Observe transport fragments separately from queued domain operations. Retain negative signed-peer cases for partial bytes without domain effects, aggregate decoded-byte limits, replacement behind an in-flight operation and final acknowledgment authority; increasing queue limits or deadlines cannot establish the original invariant.
+
 The root `coverage:check` command builds the public Plugin package through the dependency graph before instrumented suites run. Browser fixtures and Plugin Kit scaffolds resolve the published `import` entries; a clean checkout must not rely on artifacts left by another test or package-validation job.
 
 Coverage is attributed to source owners after all commands in a complete root gate succeed. The gate deletes old canonical and shard reports before each command; failed or missing reports cannot contribute cross-package hits. Keep owner thresholds and exact-file exemption reasons when relocating code. Register cross-package coverage contributors as task dependencies and test an affected plan that selects the owner indirectly; Local Runtime requires the complete CLI and Presets suites even when selected through a native platform check. Use `bun script/coverage-check.ts --package packages/<owner>` for a fresh local check; `--existing` is diagnostic only, keeps measurements package-local, and cannot certify command success or freshness. Never report a passing `test:coverage` command alone as a threshold pass.

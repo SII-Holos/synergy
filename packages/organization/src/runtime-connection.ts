@@ -29,6 +29,10 @@ export interface RuntimeSocket {
 type Socket = ServerWebSocket<RuntimeSocket>
 const frameLimit = 64 * 1024
 const syncFrameLimit = 1024 * 1024
+const receiveFrameLimit = 16
+const receiveByteLimit = syncFrameLimit * 4
+
+type BlobTransfer = { frame: Runtime.BlobChunk; next: number; bytes: number; parts: Buffer[]; completed: boolean }
 
 function stale(epoch: number): never {
   throw new OrganizationError({
@@ -65,10 +69,7 @@ export function createRuntimeConnections(input: {
   const sockets = new Set<Socket>()
   const active = new Map<string, Socket>()
   const transports = new WeakMap<Socket, ReturnType<typeof createCommandTransport>>()
-  const blobTransfers = new WeakMap<
-    Socket,
-    Map<string, { frame: Runtime.BlobChunk; next: number; bytes: number; parts: Buffer[] }>
-  >()
+  const blobTransfers = new WeakMap<Socket, { groups: Map<string, BlobTransfer>; bytes: number }>()
   let closed = false
 
   function remove(socket: Socket) {
@@ -76,7 +77,13 @@ export function createRuntimeConnections(input: {
     clearTimeout(socket.data.timer)
     sockets.delete(socket)
     transports.get(socket)?.close()
-    blobTransfers.get(socket)?.clear()
+    const partial = blobTransfers.get(socket)
+    if (partial)
+      for (const [id, transfer] of partial.groups) {
+        if (transfer.completed) continue
+        partial.groups.delete(id)
+        partial.bytes -= transfer.bytes
+      }
     const id = socket.data.handshake?.runtimeID
     if (id && active.get(id) === socket) active.delete(id)
   }
@@ -338,57 +345,6 @@ export function createRuntimeConnections(input: {
       })
       return
     }
-    if (frame.data.type === "blob-chunk") {
-      const connection = captureSocket(socket, false)
-      if (frame.data.connectionEpoch !== connection.handshake.connectionEpoch)
-        stale(connection.handshake.connectionEpoch)
-      lease(socket, settings.offlineMs)
-      if (!input.onBlobChunk) fail("SERVICE_UNAVAILABLE", "Shared Session blobs are unavailable")
-      if (frame.data.index >= frame.data.total) fail("PROTOCOL_MISMATCH", "Blob chunk index is out of range")
-      const encoded = Buffer.from(frame.data.data, "base64url")
-      if (encoded.toString("base64url") !== frame.data.data || (!encoded.length && frame.data.totalBytes !== 0))
-        fail("PROTOCOL_MISMATCH", "Blob chunk encoding is invalid")
-      const transfers = blobTransfers.get(socket) ?? new Map()
-      blobTransfers.set(socket, transfers)
-      let transfer = transfers.get(frame.data.exchangeID)
-      if (!transfer) {
-        if (frame.data.index !== 0) fail("PROTOCOL_MISMATCH", "Blob chunks must start at index zero")
-        transfer = { frame: frame.data, next: 0, bytes: 0, parts: [] }
-        transfers.set(frame.data.exchangeID, transfer)
-      }
-      if (
-        transfer.frame.sessionID !== frame.data.sessionID ||
-        transfer.frame.shareGeneration !== frame.data.shareGeneration ||
-        transfer.frame.hash !== frame.data.hash ||
-        transfer.frame.offset !== frame.data.offset ||
-        transfer.frame.totalBytes !== frame.data.totalBytes ||
-        transfer.frame.total !== frame.data.total ||
-        transfer.next !== frame.data.index
-      )
-        fail("PROTOCOL_MISMATCH", "Blob chunks are not contiguous")
-      transfer.parts.push(encoded)
-      transfer.bytes += encoded.byteLength
-      if (transfer.bytes > 4 * 1024 * 1024) fail("SERVICE_UNAVAILABLE", "Blob chunk buffer is full")
-      transfer.next++
-      if (transfer.next !== transfer.frame.total) return
-      transfers.delete(frame.data.exchangeID)
-      const status = await input.onBlobChunk(connection, {
-        sessionID: transfer.frame.sessionID,
-        shareGeneration: transfer.frame.shareGeneration,
-        hash: transfer.frame.hash,
-        offset: transfer.frame.offset,
-        totalBytes: transfer.frame.totalBytes,
-        bytes: Buffer.concat(transfer.parts),
-      })
-      connection.assertCurrent()
-      send(socket, {
-        type: "blob-ack",
-        connectionEpoch: connection.handshake.connectionEpoch,
-        exchangeID: frame.data.exchangeID,
-        status: Sync.BlobStatus.parse(status),
-      })
-      return
-    }
     if (frame.data.type !== "heartbeat") fail("INVALID_REQUEST", "Runtime connection is already authenticated")
     const heartbeat = frame.data
     const handshake = current(socket)
@@ -428,6 +384,88 @@ export function createRuntimeConnections(input: {
     lease(socket, settings.offlineMs)
     send(socket, heartbeat)
   }
+  function partialBlobGroups(socket: Socket) {
+    let count = 0
+    for (const transfer of blobTransfers.get(socket)?.groups.values() ?? []) if (!transfer.completed) count++
+    return count
+  }
+
+  type CompletedBlob = { frame: Runtime.BlobChunk; bytes: Buffer; transfer: BlobTransfer }
+
+  function assembleBlob(socket: Socket, frame: Runtime.BlobChunk): CompletedBlob | undefined {
+    const handshake = current(socket)
+    if (!handshake.capabilities.includes("sync") || handshake.schemas.sync !== 1)
+      fail("PROTOCOL_MISMATCH", "Runtime does not support shared Session sync")
+    if (frame.connectionEpoch !== handshake.connectionEpoch) stale(handshake.connectionEpoch)
+    if (!input.onBlobChunk) fail("SERVICE_UNAVAILABLE", "Shared Session blobs are unavailable")
+    if (frame.index >= frame.total) fail("PROTOCOL_MISMATCH", "Blob chunk index is out of range")
+    const encoded = Buffer.from(frame.data, "base64url")
+    if (encoded.toString("base64url") !== frame.data || (!encoded.length && frame.totalBytes !== 0))
+      fail("PROTOCOL_MISMATCH", "Blob chunk encoding is invalid")
+    const state = blobTransfers.get(socket) ?? { groups: new Map<string, BlobTransfer>(), bytes: 0 }
+    blobTransfers.set(socket, state)
+    let transfer = state.groups.get(frame.exchangeID)
+    if (!transfer) {
+      if (frame.index !== 0) fail("PROTOCOL_MISMATCH", "Blob chunks must start at index zero")
+      if (partialBlobGroups(socket) + socket.data.frames >= receiveFrameLimit)
+        fail("SERVICE_UNAVAILABLE", "Blob transfer window is full")
+      transfer = { frame, next: 0, bytes: 0, parts: [], completed: false }
+      state.groups.set(frame.exchangeID, transfer)
+    }
+    if (
+      transfer.frame.sessionID !== frame.sessionID ||
+      transfer.frame.shareGeneration !== frame.shareGeneration ||
+      transfer.frame.hash !== frame.hash ||
+      transfer.frame.offset !== frame.offset ||
+      transfer.frame.totalBytes !== frame.totalBytes ||
+      transfer.frame.total !== frame.total ||
+      transfer.next !== frame.index ||
+      transfer.completed
+    )
+      fail("PROTOCOL_MISMATCH", "Blob chunks are not contiguous")
+    if (transfer.bytes + encoded.byteLength > receiveByteLimit || state.bytes + encoded.byteLength > receiveByteLimit)
+      fail("SERVICE_UNAVAILABLE", "Blob chunk buffer is full")
+    transfer.parts.push(encoded)
+    transfer.bytes += encoded.byteLength
+    state.bytes += encoded.byteLength
+    transfer.next++
+    lease(socket, settings.offlineMs)
+    if (transfer.next !== transfer.frame.total) return
+    transfer.completed = true
+    const bytes = Buffer.concat(transfer.parts)
+    transfer.parts = []
+    return { frame: transfer.frame, bytes, transfer }
+  }
+
+  function releaseBlob(socket: Socket, blob: CompletedBlob) {
+    const state = blobTransfers.get(socket)
+    if (!state || state.groups.get(blob.frame.exchangeID) !== blob.transfer)
+      throw new Error("Completed blob transport no longer has its original owner")
+    state.groups.delete(blob.frame.exchangeID)
+    state.bytes -= blob.transfer.bytes
+  }
+
+  async function receiveBlob(socket: Socket, blob: CompletedBlob) {
+    const connection = captureSocket(socket, false)
+    if (blob.frame.connectionEpoch !== connection.handshake.connectionEpoch) stale(connection.handshake.connectionEpoch)
+    if (!input.onBlobChunk) fail("SERVICE_UNAVAILABLE", "Shared Session blobs are unavailable")
+    const status = await input.onBlobChunk(connection, {
+      sessionID: blob.frame.sessionID,
+      shareGeneration: blob.frame.shareGeneration,
+      hash: blob.frame.hash,
+      offset: blob.frame.offset,
+      totalBytes: blob.frame.totalBytes,
+      bytes: blob.bytes,
+    })
+    connection.assertCurrent()
+    send(socket, {
+      type: "blob-ack",
+      connectionEpoch: connection.handshake.connectionEpoch,
+      exchangeID: blob.frame.exchangeID,
+      status: Sync.BlobStatus.parse(status),
+    })
+  }
+
   const websocket: WebSocketHandler<RuntimeSocket> = {
     maxPayloadLength: syncFrameLimit,
     backpressureLimit: syncFrameLimit * 2,
@@ -454,19 +492,37 @@ export function createRuntimeConnections(input: {
           }),
         )
       const size = Buffer.byteLength(message)
-      if (++socket.data.frames > 16 || (socket.data.bytes += size) > syncFrameLimit * 4)
-        return close(socket, 1013, "Runtime receive window is full")
-      const prior = socket.data.pending
-      const body = async () => {
-        await prior
-        if (!socket.data.closed) await receive(socket, message)
-      }
-      let retained: Promise<void> | undefined
       let raw: unknown
       try {
         raw = JSON.parse(message)
       } catch {}
       const frame = Runtime.ClientFrame.safeParse(raw)
+      let complete: CompletedBlob | undefined
+      if (frame.success && frame.data.type === "blob-chunk") {
+        try {
+          complete = assembleBlob(socket, frame.data)
+        } catch (error) {
+          return reject(socket, error)
+        }
+        if (!complete) return
+      }
+      if (
+        ++socket.data.frames + partialBlobGroups(socket) > receiveFrameLimit ||
+        (socket.data.bytes += size) > receiveByteLimit
+      ) {
+        if (complete) releaseBlob(socket, complete)
+        return close(socket, 1013, "Runtime receive window is full")
+      }
+      const prior = socket.data.pending
+      const blob = complete
+      const body = async () => {
+        await prior
+        if (!socket.data.closed) {
+          if (blob) await receiveBlob(socket, blob)
+          else await receive(socket, message)
+        }
+      }
+      let retained: Promise<void> | undefined
       try {
         if (frame.success && frame.data.type === "receipt")
           retained = transports.get(socket)?.resume(frame.data.exchangeID, frame.data.reply, body)
@@ -478,6 +534,7 @@ export function createRuntimeConnections(input: {
         .finally(() => {
           socket.data.frames--
           socket.data.bytes -= size
+          if (blob) releaseBlob(socket, blob)
         })
     },
   }

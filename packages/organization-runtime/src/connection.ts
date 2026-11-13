@@ -276,8 +276,13 @@ async function attempt(input: {
           (frame.reply.kind === "read" || frame.reply.kind === "interactions" || frame.reply.kind === "handoff"))
           ? syncFrameLimit
           : frameLimit
-      if (Buffer.byteLength(encoded) > limit || socket.readyState !== WebSocket.OPEN || socket.bufferedAmount > limit)
+      if (
+        Buffer.byteLength(encoded) > limit ||
+        socket.readyState !== WebSocket.OPEN ||
+        socket.bufferedAmount > syncFrameLimit
+      ) {
         throw failure("RUNTIME_OFFLINE", "Runtime connection is not receiving frames")
+      }
       socket.send(encoded)
     } catch (error) {
       reject(error)
@@ -692,7 +697,7 @@ async function attempt(input: {
       signal?.addEventListener("abort", request.cancel, { once: true })
       void (async () => {
         for (let index = 0; index < total; index++) {
-          while (!stopped && socket.bufferedAmount > syncFrameLimit) await Bun.sleep(1)
+          while (!stopped && socket.bufferedAmount > syncFrameLimit - frameLimit) await Bun.sleep(1)
           if (stopped) return
           const part = bytes.subarray(index * fragmentBytes, Math.min(bytes.byteLength, (index + 1) * fragmentBytes))
           send(

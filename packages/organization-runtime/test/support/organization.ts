@@ -24,12 +24,32 @@ export async function fixture(options: Pick<Parameters<typeof openOrganizationSe
     let lostResponse = false
     let intercept: ((socket: Socket, frame: string | Buffer) => boolean) | undefined
     let http: ((request: Request) => Response | undefined | Promise<Response | undefined>) | undefined
+    let closeObserver:
+      | ((value: {
+          code: number
+          reason: string
+          readyState: number
+          pendingFrames: number
+          pendingBytes: number
+        }) => void)
+      | undefined
     const server = Bun.serve({
       hostname: "127.0.0.1",
       port: 0,
       tls: { cert, key },
       websocket: {
         ...service.websocket,
+        close(socket, code, reason) {
+          const result = service.websocket.close?.(socket, code, reason)
+          closeObserver?.({
+            code,
+            reason,
+            readyState: socket.readyState,
+            pendingFrames: socket.data.frames,
+            pendingBytes: socket.data.bytes,
+          })
+          return result
+        },
         message(socket, frame) {
           if (intercept?.(socket, frame)) return
           return service.websocket.message(socket, frame)
@@ -102,6 +122,9 @@ export async function fixture(options: Pick<Parameters<typeof openOrganizationSe
       ca: cert,
       stopListener() {
         return server.stop(true)
+      },
+      observeClose(value: typeof closeObserver) {
+        closeObserver = value
       },
       interceptFrames(value: typeof intercept) {
         intercept = value
