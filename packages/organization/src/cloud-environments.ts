@@ -1873,6 +1873,7 @@ export function createOrganizationCloudEnvironments(options: { grants: Execution
               await recheck()
               if (!same(await files.inspect(binding.mount), actual))
                 fail("REVISION_CONFLICT", "The original native file mount changed")
+              await frame.recheck()
               assert()
             }
             const call = async <R>(body: () => Promise<R>): Promise<R> => {

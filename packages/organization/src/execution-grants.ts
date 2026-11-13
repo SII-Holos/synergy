@@ -1166,7 +1166,7 @@ export function createExecutionGrants(options: {
       const recheck = async () => {
         assert()
         await Storage.snapshot(async () => {
-          const { session, account } = await receivedSession(proof, registered.runtime.publicKey)
+          const { session } = await receivedSession(proof, registered.runtime.publicKey)
           const accepted = await original(proof)
           const selector = proof.grantID ?? accepted.permit.provisionalGrantID!
           const grant = receivedGrant(
@@ -1181,14 +1181,8 @@ export function createExecutionGrants(options: {
           )
             fail("PROTOCOL_MISMATCH", "Workspace receipt inspection has another original grant")
           const project = await Record.read(Record.Project, Keys.project(session.projectID))
-          if (!project) fail("NOT_FOUND", "Workspace receipt project is unavailable")
-          if (account) {
-            const membership = await Record.read(
-              Record.ProjectMember,
-              Keys.projectMember(project.projectID, account.accountID),
-            )
-            sessionView(account, session, projectView(account, project, membership, "project.read"), "session.read")
-          }
+          if (!project || project.orgID !== grant.orgID || project.projectID !== grant.projectID)
+            fail("NOT_FOUND", "Workspace receipt project is unavailable")
           const selected = grant.selection.infrastructure.workspace
           if (!selected) fail("RESOURCE_UNAVAILABLE", "Original execution has no organization Workspace")
           const resource = await Record.read(Record.Resource, Keys.resource(grant.orgID, selected.resourceID))
@@ -1196,7 +1190,6 @@ export function createExecutionGrants(options: {
             !resource ||
             resource.orgID !== grant.orgID ||
             resource.resourceID !== selected.resourceID ||
-            resource.state !== "enabled" ||
             resource.configuration.protocol !== "workspace-storage" ||
             (resource.scope.kind === "project" && resource.scope.projectID !== session.projectID)
           )

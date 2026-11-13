@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0188](0188-active-file-authority-crossed-the-final-inspection.md)
+
 - [0187](0187-cold-inventory-assumed-home-upgrade-purpose.md)
 
 - [0186](0186-portable-index-loaded-sqlite-before-its-owner.md)
