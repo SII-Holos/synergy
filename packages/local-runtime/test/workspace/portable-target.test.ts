@@ -50,6 +50,32 @@ test("native target preparation stays private, verifies original bytes and holds
       receipt = await Target.prepare(request)
       expect(await Bun.file(path.join(receipt.directory, "file")).text()).toBe("original bytes")
       expect((await Storage.queryKeys({ prefix: ["workspace"], limit: 1 })).length).toBe(0)
+      let readUnpublished = false
+      const unpublished = WorkspaceCatalog.Info.parse({
+        id: receipt.workspaceID,
+        scopeID: receipt.scopeID,
+        type: "directory",
+        revision: 1,
+        binding: {
+          state: "bound",
+          path: receipt.directory,
+          hostID: receipt.hostID,
+          physicalID: receipt.physicalID,
+          generation: 1,
+        },
+        backend: { provider: "directory", spec: {} },
+        metadata: {},
+        sharedWritableWorkspaceIDs: [],
+        lifecycle: "active",
+        createdAt: 0,
+        updatedAt: 0,
+      })
+      await expect(
+        Target.withPublishedSource(unpublished, request.signal, async () => {
+          readUnpublished = true
+        }),
+      ).rejects.toThrow("activated publication")
+      expect(readUnpublished).toBe(false)
       expect(() => Target.assertPublication(receipt!)).toThrow("publication")
       const handle = Storage.current()
       await Storage.provide(

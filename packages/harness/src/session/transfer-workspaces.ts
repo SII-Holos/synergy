@@ -19,6 +19,7 @@ export namespace SessionTransferWorkspaces {
   export const targetMapping = WorkspacePortableTarget.mapping
   export const withTargetPublication = WorkspacePortableTarget.withPublication
   export const ownsWorkspace = WorkspacePortableTarget.ownsWorkspace
+  export const withPublishedNative = WorkspacePortableTarget.withPublishedNative
   export function register() {
     if (typeof Owners.publicationOrder !== "function")
       throw new Error("Workspace portability requires native publication ordering")

@@ -29,7 +29,7 @@ Vault and execution-time secret resolution stay here; detection belongs to `pack
 
 Check `storage/compat` before copies. Existing-only attachment validates without initialization; test `storage/existing-attach`. Central migrations own upgrades; Runtime Handle drains imports.
 
-Preserve Snapshot ownership, callback-bound readers, Archive verification/paging and preparations. Publish heads/receipts together. `WorkspaceMove` guards range/adoption claims through COMMIT and unknown outcomes; release outside SQL. Verify `test/snapshot/`, `test/workspace/{content-producer,portable-tree,archive,archive-paged,tree-import}.test.ts` and Local Runtime's `test/workspace/{move,native-adoption,change-attribution}.test.ts`.
+Preserve Snapshot ownership, `withPublishedNative`, callback-bound readers, Archive verification/paging and preparations. Atomic heads/receipts. `WorkspaceMove` guards range/adoption claims through COMMIT and unknown outcomes; release outside SQL. Verify `test/snapshot/`, `test/workspace/{content-producer,portable-tree,archive,archive-paged,tree-import}.test.ts` and Local Runtime's `test/workspace/{move,native-adoption,change-attribution}.test.ts`.
 
 Cortex holds preserve task/root/input/budget/deadline/notification identity; never cancel/recreate or auto-resume. Transfer: `session/transfer`, `session/transfer-workspace`; verify `test/session/transfer.test.ts`, `test/cortex/{parent-abort,task-tool-abort}.test.ts`.
 

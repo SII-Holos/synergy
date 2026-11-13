@@ -558,19 +558,20 @@ export namespace WorkspacePortableTarget {
     }
   }
 
-  export async function ownsWorkspace(info: WorkspaceCatalog.Info, signal: AbortSignal): Promise<boolean> {
+  async function publishedNative(info: WorkspaceCatalog.Info, signal: AbortSignal) {
     const catalog = WorkspaceCatalog.Info.parse(info)
     const assert = ownership(signal)
     const [raw] = await Storage.readMany([["workspace_portable_target_published", catalog.id]])
     assert()
-    if (raw === undefined) return false
+    if (raw === undefined) return
     const published = z.strictObject({ version: z.literal(1), handoffID: ID, sourceWorkspaceID: ID }).parse(raw)
     const prepared = Prepared.parse(await Storage.read(preparedKey(published.handoffID)))
     const workspace = await readWorkspace(published.handoffID, published.sourceWorkspaceID)
     const epoch = await Epochs.inspect(prepared.binding)
     const current = await WorkspaceCatalog.get(catalog.id, catalog.scopeID)
     assert()
-    return (
+    if (!workspace?.native) return
+    if (!(
       current.lifecycle === "active" &&
       current.binding.state === "bound" &&
       current.revision === catalog.revision &&
@@ -578,12 +579,38 @@ export namespace WorkspacePortableTarget {
       epoch.role === "target" &&
       epoch.phase === "activated" &&
       epoch.manifestHash === prepared.manifestHash &&
-      !!workspace?.native &&
       workspace.catalog.id === catalog.id &&
       workspace.catalog.scopeID === catalog.scopeID &&
+      workspace.catalog.binding.generation === catalog.binding.generation &&
       workspace.catalog.binding.hostID === catalog.binding.hostID &&
       workspace.catalog.binding.path === catalog.binding.path &&
       workspace.catalog.binding.physicalID === catalog.binding.physicalID
-    )
+    ))
+      return
+    return { published, prepared, workspace, native: workspace.native, epoch, catalog: current }
+  }
+
+  export async function ownsWorkspace(info: WorkspaceCatalog.Info, signal: AbortSignal): Promise<boolean> {
+    return !!(await publishedNative(info, signal))
+  }
+
+  export async function withPublishedNative<T>(
+    info: WorkspaceCatalog.Info,
+    signal: AbortSignal,
+    body: (native: Native) => Promise<T>,
+  ): Promise<T> {
+    const catalog = WorkspaceCatalog.Info.parse(info)
+    const assert = ownership(signal)
+    const original = await publishedNative(catalog, signal)
+    assert()
+    if (!original) fail("Native Workspace source requires its original activated publication")
+    const originalHash = digest(original)
+    const result = await body(Native.parse(original.native))
+    assert()
+    const retained = await publishedNative(catalog, signal)
+    assert()
+    if (!retained || digest(retained) !== originalHash)
+      fail("Native Workspace source publication changed during capture")
+    return result
   }
 }

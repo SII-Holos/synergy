@@ -9,6 +9,7 @@ import {
 } from "@ericsanchezok/synergy-harness/session/transfer"
 import { NativeSessionTransferPhysical as Physical } from "./session-transfer-physical"
 import { NativeWorkspacePortableTree } from "./workspace/portable-tree"
+import { NativeWorkspacePortableTarget } from "./workspace/portable-target"
 
 export function registerSessionTransferWorkspaces() {
   SessionTransferWorkspaces.registerHost({
@@ -32,23 +33,27 @@ export function registerSessionTransferWorkspaces() {
           assert()
           const root = await fs.realpath(selected.path)
           const home = await fs.realpath(Global.Path.root)
-          if (root === home || root.startsWith(home + path.sep) || home.startsWith(root + path.sep))
+          if (root === home || home.startsWith(root + path.sep))
             throw new Error("Workspace capture overlaps Runtime data")
-          return Physical.withWorkspaceClaim(info.id, () =>
-            WorkspaceAccess.exclusive([root], async () => {
-              assert()
-              await WorkspaceBinding.validate(info.id, info.scopeID, info.binding.generation)
-              const captured = await NativeWorkspacePortableTree.capture({
-                root,
-                directory: path.join(Global.Path.cache, "session-workspace-files"),
-                store,
-                signal,
-              })
-              await WorkspaceBinding.validate(info.id, info.scopeID, info.binding.generation)
-              assert()
-              return captured
-            }),
-          )
+          const capture = () =>
+            Physical.withWorkspaceClaim(info.id, () =>
+              WorkspaceAccess.exclusive([root], async () => {
+                assert()
+                await WorkspaceBinding.validate(info.id, info.scopeID, info.binding.generation)
+                const captured = await NativeWorkspacePortableTree.capture({
+                  root,
+                  directory: path.join(Global.Path.cache, "session-workspace-files"),
+                  store,
+                  signal,
+                })
+                await WorkspaceBinding.validate(info.id, info.scopeID, info.binding.generation)
+                assert()
+                return captured
+              }),
+            )
+          if (root.startsWith(home + path.sep))
+            return NativeWorkspacePortableTarget.withPublishedSource(info, signal, capture)
+          return capture()
         },
       }
     },

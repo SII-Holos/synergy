@@ -19,6 +19,7 @@
 
 ## Index
 
+- [0173](0173-received-workspace-copy-could-not-be-transferred-again.md)
 - [0172](0172-handoff-response-crossed-cleanup-authorization-mode.md)
 - [0171](0171-native-move-cold-open-changed-dispatch-identity.md)
 - [0170](0170-service-recovery-skipped-retained-binary-changes.md)

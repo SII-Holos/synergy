@@ -9,7 +9,8 @@ import { Lock } from "@ericsanchezok/synergy-harness/util/lock"
 import { withStorageQueueOptions } from "@ericsanchezok/synergy-harness/storage/queue"
 import { ServerProcessLock } from "@ericsanchezok/synergy-harness/util/server-process-lock"
 import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
-import { WorkspaceLocation } from "@ericsanchezok/synergy-harness/workspace"
+import { WorkspaceCatalog, WorkspaceLocation } from "@ericsanchezok/synergy-harness/workspace"
+import { SessionTransferWorkspaces } from "@ericsanchezok/synergy-harness/session/transfer"
 import { WorkspacePortableTree } from "@ericsanchezok/synergy-harness/workspace/portable-tree"
 import type { BlobStore } from "@ericsanchezok/synergy-harness/storage/blobs"
 import { NativeWorkspacePortableTree as Tree } from "./portable-tree"
@@ -96,11 +97,26 @@ export namespace NativeWorkspacePortableTarget {
     const [raw] = await Storage.readMany([key(value)])
     return raw === undefined ? undefined : State.parse(raw)
   }
-  async function verify(receipt: Receipt, assert: () => void, signal: AbortSignal) {
+  async function verifyIdentity(receipt: Receipt, assert: () => void) {
     assert()
     const current = await saved(receipt)
     assert()
-    if (current?.phase !== "prepared" || !current.receipt || digest(current.receipt) !== digest(receipt))
+    if (
+      current?.phase !== "prepared" ||
+      !current.receipt ||
+      digest(current.receipt) !== digest(receipt) ||
+      digest(current.intent) !==
+        digest({
+          version: receipt.version,
+          handoffID: receipt.handoffID,
+          scopeID: receipt.scopeID,
+          sourceWorkspaceID: receipt.sourceWorkspaceID,
+          workspaceID: receipt.workspaceID,
+          directory: receipt.directory,
+          files: receipt.files,
+        }) ||
+      receipt.workspaceID !== "wsp_" + identity(receipt)
+    )
       fail("requires its exact prepared receipt")
     if (receipt.directory !== (await directory(receipt))) fail("has another native location")
     if ((await fs.realpath(path.dirname(receipt.directory))) !== path.dirname(receipt.directory))
@@ -116,6 +132,9 @@ export namespace NativeWorkspacePortableTarget {
     )
       fail("native directory identity changed")
     assert()
+  }
+  async function verify(receipt: Receipt, assert: () => void, signal: AbortSignal) {
+    await verifyIdentity(receipt, assert)
     await Tree.verify({ root: receipt.directory, captured: receipt.files, directory: Global.Path.cache, signal })
     assert()
   }
@@ -200,6 +219,38 @@ export namespace NativeWorkspacePortableTarget {
     return withStorageQueueOptions({ signal }, async () => {
       const assert = await owner(signal)
       await verify(receipt, assert, signal)
+    })
+  }
+  export async function withPublishedSource<T>(
+    value: WorkspaceCatalog.Info,
+    signal: AbortSignal,
+    body: () => Promise<T>,
+  ): Promise<T> {
+    const catalog = WorkspaceCatalog.Info.parse(value)
+    const assert = await owner(signal)
+    assert()
+    return SessionTransferWorkspaces.withPublishedNative(catalog, signal, async (native) => {
+      const receipt = Receipt.parse(native.receipt)
+      if (
+        native.workspaceID !== receipt.workspaceID ||
+        native.scopeID !== receipt.scopeID ||
+        native.path !== receipt.directory ||
+        native.hostID !== receipt.hostID ||
+        native.physicalID !== receipt.physicalID ||
+        catalog.id !== receipt.workspaceID ||
+        catalog.scopeID !== receipt.scopeID ||
+        catalog.backend?.provider !== "directory" ||
+        catalog.binding.state !== "bound" ||
+        catalog.binding.path !== receipt.directory ||
+        catalog.binding.physicalID !== receipt.physicalID ||
+        catalog.binding.hostID !== receipt.hostID
+      )
+        fail("source has another original native preparation")
+      await verifyIdentity(receipt, assert)
+      const result = await body()
+      await verifyIdentity(receipt, assert)
+      assert()
+      return result
     })
   }
   export function withPublication<T>(
