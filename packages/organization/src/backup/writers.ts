@@ -23,6 +23,7 @@ import { OrganizationExecutionGrants } from "../execution-grants"
 import { OrganizationGatewayHistory } from "../gateway-calls"
 import { OrganizationKnowledge } from "../knowledge"
 import { OrganizationPublications } from "../publications"
+import { OrganizationArtifacts } from "../artifacts"
 import {
   OrganizationProtocol,
   OrganizationExecutionProtocol as Execution,
@@ -359,13 +360,13 @@ function inventoryDatabase(filename: string) {
   )
   return database
 }
+const historicalRoots = new Set(["organization-knowledge", "organization-publications", "organization-artifacts"])
 function historyMatches(selected: HistoryIndex, key: string[], value: unknown) {
-  if (!selected.historyComplete || !["organization-knowledge", "organization-publications"].includes(key[0]))
-    return false
+  if (!selected.historyComplete || !historicalRoots.has(key[0])) return false
   using known = selected.database.query<{ key: string }, [string]>("SELECT key FROM history WHERE key=?")
   return !!known.get(JSON.stringify(key)) && hash(sourceRow(selected, key)?.value) === hash(value)
 }
-async function validateKnowledge(selected: HistoryIndex, stream: (key: string[]) => AsyncIterable<Uint8Array>) {
+async function validatePublishedHistory(selected: HistoryIndex, stream: (key: string[]) => AsyncIterable<Uint8Array>) {
   const reader = historicalReader(selected)
   using accept = selected.database.query("INSERT OR IGNORE INTO history VALUES(?)")
   using group = selected.database.query<{ digest: string }, [string]>("SELECT digest FROM history_groups WHERE key=?")
@@ -414,15 +415,16 @@ async function validateKnowledge(selected: HistoryIndex, stream: (key: string[])
       return Uint8Array.from(Buffer.concat(chunks, bytes))
     },
   }
+  OrganizationPublications.historicalRequests(history)
   await OrganizationKnowledge.history(history)
+  await OrganizationArtifacts.history(history)
   using artifacts = selected.database.query<{ key: string }, []>("SELECT key FROM artifacts ORDER BY key")
   using known = selected.database.query<{ key: string }, [string]>("SELECT key FROM history_artifacts WHERE key=?")
   for (const row of artifacts.iterate()) {
     selected.assertTarget()
     const key: unknown = JSON.parse(row.key)
     const parsed = z.array(z.string()).parse(key)
-    if (["organization-publications", "organization-knowledge"].includes(parsed[0]) && !known.get(row.key))
-      blocked("unreconciled historical publication bytes")
+    if (historicalRoots.has(parsed[0]) && !known.get(row.key)) blocked("unreconciled historical publication bytes")
   }
   selected.historyComplete = true
 }
@@ -478,7 +480,7 @@ async function withCurrentHistory<T>(body: (selected: HistoryIndex) => Promise<T
               )
           }
         })
-        await validateKnowledge(selected, (key) =>
+        await validatePublishedHistory(selected, (key) =>
           (async function* () {
             assert()
             const row = database
@@ -715,7 +717,7 @@ export namespace OrganizationRecoveryWriters {
       }
       assert()
       if (unsafe) blocked(unsafe)
-      await validateKnowledge(selected, (key) =>
+      await validatePublishedHistory(selected, (key) =>
         (async function* () {
           assert()
           const row = database
@@ -1000,7 +1002,8 @@ export namespace OrganizationRecoveryWriters {
     const present = await Storage.snapshot(
       async (tx) =>
         (await tx.queryKeys({ prefix: ["organization-knowledge"], limit: 1 })).length ||
-        (await tx.queryKeys({ prefix: ["organization-publications"], limit: 1 })).length,
+        (await tx.queryKeys({ prefix: ["organization-publications"], limit: 1 })).length ||
+        (await tx.queryKeys({ prefix: ["organization-artifacts"], limit: 1 })).length,
     )
     if (present) return withCurrentHistory((selected) => scanServiceOnly(selected, signal), signal)
     return scanServiceOnly(undefined, signal)
@@ -1042,7 +1045,7 @@ export namespace OrganizationRecoveryWriters {
       if (history) {
         using count = history.database.query<{ count: number }, []>("SELECT COUNT(*) AS count FROM history")
         const expected = count.get()
-        if (!expected || expected.count !== accepted) blocked("incomplete historical knowledge closure")
+        if (!expected || expected.count !== accepted) blocked("incomplete historical publication closure")
         history.assertTarget()
       }
       if (store.hasUnpublishedOwners()) blocked("unpublished native owners")

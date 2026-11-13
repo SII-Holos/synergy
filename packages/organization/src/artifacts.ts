@@ -5,6 +5,7 @@ import {
   OrganizationArtifactProtocol as Artifact,
   OrganizationIdentity as Identity,
   OrganizationPublicationProtocol as Publication,
+  OrganizationProtocol as Protocol,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { authorize } from "./authorization"
 import type { Credentials } from "./auth/session"
@@ -12,6 +13,8 @@ import { OrganizationPublications as Publications } from "./publications"
 import { OrganizationError, fail, revision } from "./error"
 import { AuthorityJournal } from "@ericsanchezok/synergy-harness/storage/authority-journal"
 import { OrganizationAuthorityHistory as History } from "./authority-history"
+import { OrganizationRecord } from "./storage/records"
+import { OrganizationStoragePath as OrganizationKeys } from "./storage/path"
 
 const Item = z.strictObject({
   schemaVersion: z.literal(1),
@@ -95,6 +98,80 @@ async function view(credentials: Credentials, value: z.infer<typeof Version>): P
 }
 
 export namespace OrganizationArtifacts {
+  export async function history(reader: Publications.HistoricalSource) {
+    const bad = (message: string): never => fail("PROTOCOL_MISMATCH", "Historical artifact " + message)
+    const orgID = reader.read(Protocol.Deployment, OrganizationKeys.deployment()).orgID
+    const account = (accountID: string) => {
+      const value = reader.read(OrganizationRecord.Account, OrganizationKeys.account(accountID))
+      if (value.orgID !== orgID || value.accountID !== accountID) bad("has another original account")
+    }
+    for (const row of reader.entries(["organization-artifacts", "items"])) {
+      const item = Item.parse(row.value)
+      const project = reader.read(OrganizationRecord.Project, OrganizationKeys.project(item.projectID))
+      if (
+        JSON.stringify(row.key) !== JSON.stringify(keys.item(orgID, item.artifactID)) ||
+        item.orgID !== orgID ||
+        project.orgID !== orgID ||
+        project.projectID !== item.projectID
+      )
+        bad("item has another canonical project or key")
+      let count = 0
+      let latest: z.infer<typeof Version> | undefined
+      for (const row of reader.entries(keys.versions(orgID, item.artifactID))) {
+        const version = Version.parse(row.value)
+        if (
+          version.version !== ++count ||
+          JSON.stringify(row.key) !== JSON.stringify(keys.version(orgID, item.artifactID, count)) ||
+          version.orgID !== orgID ||
+          version.projectID !== item.projectID ||
+          version.artifactID !== item.artifactID ||
+          version.revision !== (latest?.revision ?? 0) + 1 ||
+          (version.author && version.author.accountID !== version.authorID)
+        )
+          bad("version has another original item or sequence")
+        account(version.authorID)
+        await Publications.historicalUpload(reader, {
+          ...version,
+          purpose: "artifact",
+          scope: { kind: "project", projectID: item.projectID },
+        })
+        latest = version
+        reader.accept(row.key)
+      }
+      if (!latest || count !== item.latestVersion || latest.revision !== item.revision || latest.title !== item.title)
+        bad("item version history is incomplete")
+      reader.accept(row.key)
+      const index = [...keys.index(orgID, item.projectID), item.artifactID]
+      if (reader.read(z.strictObject({ artifactID: Identity.ID }), index).artifactID !== item.artifactID)
+        bad("project index changed")
+      reader.accept(index)
+    }
+    for (const row of reader.entries(["organization-artifacts", "receipts"])) {
+      const receipt = Receipt.parse(row.value)
+      const originalOrgID = row.key[2],
+        accountID = row.key[3],
+        requestID = row.key[4]
+      if (row.key.length !== 5 || originalOrgID !== orgID || !accountID || !requestID)
+        bad("publication receipt has another key")
+      account(accountID)
+      Protocol.Digest.parse(receipt.requestHash)
+      const version = reader.read(Version, keys.version(orgID, receipt.artifactID, receipt.version))
+      if (
+        version.orgID !== orgID ||
+        version.artifactID !== receipt.artifactID ||
+        version.version !== receipt.version ||
+        version.authorID !== accountID ||
+        !reader.first(["artifact-publication", orgID, receipt.artifactID, String(receipt.version)], version)
+      )
+        bad("publication receipt changed its original version")
+      reader.accept(row.key)
+    }
+    for (const row of reader.entries(["organization-artifacts", "versions"])) {
+      const version = Version.parse(row.value)
+      if (reader.first(["artifact-publication", version.orgID, version.artifactID, String(version.version)], version))
+        bad("version has no original publication receipt")
+    }
+  }
   export function registerAuthorityHistory() {
     AuthorityJournal.register({
       id: "organization-artifact-authority",

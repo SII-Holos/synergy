@@ -47,6 +47,7 @@ import { OrganizationExecutionLeases } from "../../src/execution-leases"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/ledger"
+import { publishArtifactHistory, verifyArtifactHistory } from "../support/artifact-history"
 
 const keys = {
   async current() {
@@ -421,9 +422,10 @@ test("the real enrolled cohort encrypts its Hosted native segment and preserves 
   expect(manifest.registration.runtimeID).toBe(selected.registration.runtimeID)
 })
 
-async function recoverHostedWriter(withTask = false, late?: "session" | "input") {
+async function recoverHostedWriter(withTask = false, late?: "session" | "input", artifact?: "published" | "late") {
   await using selected = await source(true)
   await using task = withTask ? await completedHostedTask(selected) : undefined
+  const artifactHistory = artifact && task ? await publishArtifactHistory(selected.service, task) : undefined
   const originalCalls = task?.calls.length ?? 0
   if (task && !late) await verifyCompletedTaskHistory(selected, task)
   const originalInput = task
@@ -532,6 +534,7 @@ async function recoverHostedWriter(withTask = false, late?: "session" | "input")
     if (!task) throw new Error("Expected the original completed task")
     await appendCompletedHostedTask(selected, task)
   }
+  if (artifact === "late" && task) await publishArtifactHistory(selected.service, task, 3, 3)
   if (!originalTarget) throw new Error("Missing original target preparation")
   const h0 = originalTarget
   const withPolicyTarget = <T>(body: (evidence: OrganizationRecovery.Target) => Promise<T>) =>
@@ -576,7 +579,7 @@ async function recoverHostedWriter(withTask = false, late?: "session" | "input")
         keys,
       },
       async (current) => {
-        if (late) {
+        if (late || artifact === "late") {
           await selected.capture()
           const outcome = await withPolicyTarget((policyTarget) =>
             selected.service.service.maintenance.run(() =>
@@ -699,7 +702,6 @@ async function recoverHostedWriter(withTask = false, late?: "session" | "input")
             },
           )
         })
-        if (late) return
         await selected.runtime.run(async () => {
           const info = await RuntimeMaintenance.status()
           if (!info) throw new Error("Missing retired writer hold")
@@ -742,7 +744,7 @@ async function recoverHostedWriter(withTask = false, late?: "session" | "input")
       },
     )
   })
-  if (late) {
+  if (late || artifact === "late") {
     expect(retiredReference).toBeUndefined()
     expect(
       await HomeOwnershipFile.open({ root: selected.home.root, env: { SYNERGY_TEST_HOME: selected.home.home } }).read(),
@@ -848,6 +850,7 @@ async function recoverHostedWriter(withTask = false, late?: "session" | "input")
     fetch: normalService.fetch,
   })
   await using listenerCleanup = { [Symbol.asyncDispose]: () => restoredServer.stop(true) }
+  if (artifactHistory) await verifyArtifactHistory(selected.service, normalService, artifactHistory)
   const probe = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() })
   const port = probe.port!
   await probe.stop(true)
@@ -903,6 +906,18 @@ test(
 test(
   "a genuinely completed model task survives service and Hosted recovery without replay",
   () => recoverHostedWriter(true),
+  20_000,
+)
+
+test(
+  "published Artifact versions and bytes survive actual Hosted task recovery",
+  () => recoverHostedWriter(true, undefined, "published"),
+  20_000,
+)
+
+test(
+  "a new H1 Artifact version refuses recovery before either permanent source fence",
+  () => recoverHostedWriter(true, undefined, "late"),
   20_000,
 )
 

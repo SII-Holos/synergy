@@ -212,7 +212,6 @@ export namespace OrganizationKnowledge {
       )
         bad("reference changed its original release")
     }
-    Publications.historicalRequests(reader)
     for (const row of reader.entries(["organization-knowledge", "items"])) {
       const item = Item.parse(row.value)
       if (digest(row.key) !== digest(keys.item(item.orgID, item.itemID))) bad("item has another canonical key")
@@ -233,7 +232,7 @@ export namespace OrganizationKnowledge {
         )
           bad("release has another original item or version")
         account(item.orgID, release.authorID)
-        await Publications.historicalUpload(reader, release)
+        await Publications.historicalUpload(reader, { ...release, purpose: "knowledge", sourceSessionID: undefined })
         if (release.kind === "skill") {
           if (!release.skill) bad("Skill release has no original manifest")
           if (reader.first(["knowledge-skill", release.uploadID], release.skill)) {

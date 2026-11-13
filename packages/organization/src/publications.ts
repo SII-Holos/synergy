@@ -235,7 +235,6 @@ export namespace OrganizationPublications {
         kind !== "requests" ||
         upload.orgID !== orgID ||
         upload.authorID !== accountID ||
-        upload.purpose !== "knowledge" ||
         upload.state !== "sealed" ||
         receipt.requestHash !== upload.requestHash ||
         hash(JSON.stringify(input)) !== receipt.requestHash ||
@@ -276,6 +275,8 @@ export namespace OrganizationPublications {
       uploadID: string
       orgID: string
       authorID: string
+      purpose: Publication.Create["purpose"]
+      sourceSessionID: string | undefined
       scope: Publication.Scope
       manifestHash: string
       fileCount: number
@@ -288,7 +289,8 @@ export namespace OrganizationPublications {
       upload.orgID !== expected.orgID ||
       upload.authorID !== expected.authorID ||
       JSON.stringify(upload.scope) !== JSON.stringify(expected.scope) ||
-      upload.purpose !== "knowledge" ||
+      upload.purpose !== expected.purpose ||
+      upload.sourceSessionID !== expected.sourceSessionID ||
       upload.state !== "sealed" ||
       !upload.seal ||
       upload.fileCount !== expected.fileCount ||
