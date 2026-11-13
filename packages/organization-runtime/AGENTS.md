@@ -8,6 +8,8 @@ ProjectConfig uses an allowlist without personal fallback. Preserve Session bind
 
 Provision member/hosted Homes by organization/account/device or organization/host. Preserve keys; damaged credentials require recovery. Fence pre-Use readers; upgrade through frozen maintenance and the owning migration. Home/registration remain Node-compatible without Agent/Bun. Reuse HomeOwnershipFile, bounded reads and test-home guards. Install namespace identity through actual enrollment readers, never caller labels; verify namespace-identity tests. Tickets stay in memory; snapshots never authorize. Verify Node Home, workers, migrations and HTTPS enrollment without disabling TLS.
 
+Home reader four retains initial remote Working provenance. Advance an established format-two reader-three Home only through the original frozen maintenance migration, file fence before binding; preserve partial publication and keys. Verify `test/home-{reader-initial,fence,migration,restoration-node}.test.ts`.
+
 Public `org-runtime register/serve/cleanup` and `synergy-org-runtime register/serve/cleanup` use shared CLI/lifecycle and bounded private stdin. Keep composition in selected entrypoints, discovery in components, and existing supervisor entries. Member HTTP requires explicit loopback port/private bearer. Spawn through environment preparation, disable implicit loaders and preserve verified member installation pins. Verify source/installed launches.
 
 Local project defaults stay in Scope and WorkspaceCatalog. Bind with CAS and stable receipts; return safe labels only. Validate native defaults before signed creation's transaction and recheck revisions inside it. Native-only composition excludes personal profile resolution. Verify `test/local-project.test.ts`.

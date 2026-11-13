@@ -7,7 +7,7 @@ import { HomeOwnershipFile } from "@ericsanchezok/synergy-harness/lifecycle/home
 import { readCredentials } from "../src/credentials"
 
 for (const kind of ["member", "hosted"] as const)
-  for (const reader of ["legacy", "before-origin", "before-use"] as const)
+  for (const reader of ["legacy", "before-origin", "before-use", "before-initial"] as const)
     test(`new ${kind} Homes reject the ${reader} strict Node startup reader`, async () => {
       const directory = await fs.mkdtemp(path.join(process.env.SYNERGY_TEST_ROOT!, "native-reader-fence-"))
       try {
@@ -23,8 +23,9 @@ for (const kind of ["member", "hosted"] as const)
 
         if (!bundle.success) throw new Error("Legacy Home reader did not compile")
         const entry = path.join(directory, "legacy-reader.mjs")
+        const database = path.join(home.root, "previous-reader.sqlite")
         await fs.writeFile(entry, await bundle.outputs[0].text())
-        const child = Bun.spawn(["node", entry, home.home, JSON.stringify(home.identity), reader], {
+        const child = Bun.spawn(["node", entry, home.home, JSON.stringify(home.identity), reader, database], {
           env: { ...process.env },
           stdout: "pipe",
           stderr: "pipe",
@@ -37,6 +38,7 @@ for (const kind of ["member", "hosted"] as const)
         ])
         expect(status).not.toBe(0)
         expect(stdout).toBe("")
+        expect(await Bun.file(database).exists()).toBe(false)
         for (const filename of ["home-ownership.json", "organization.json"])
           expect(JSON.parse(await fs.readFile(path.join(home.root, filename), "utf8"))).toMatchObject({
             schemaVersion: 2,
@@ -47,7 +49,11 @@ for (const kind of ["member", "hosted"] as const)
       }
     })
 
-for (const previous of ["native-organization-ownership-v1", "native-organization-ownership-v2"] as const)
+for (const previous of [
+  "native-organization-ownership-v1",
+  "native-organization-ownership-v2",
+  "native-organization-ownership-v3",
+] as const)
   test.each(["member", "hosted"] as const)(
     `ordinary %s startup never upgrades the unpublished ${previous} reader`,
     async (kind) => {

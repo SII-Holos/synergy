@@ -8,12 +8,19 @@ import { MigrationRegistry } from "@ericsanchezok/synergy-harness/migration/regi
 import { runMigrations, type Migration } from "@ericsanchezok/synergy-harness/migration"
 import { withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
 import { readCredentials } from "./credentials"
-import { Binding, RuntimeIdentity, NativeHomeReaderContract, LegacyBinding } from "./home-schema"
+import {
+  Binding,
+  RuntimeIdentity,
+  NativeHomeReaderContract,
+  LegacyBinding,
+  BeforeInitialWorkspaceBinding,
+} from "./home-schema"
 import { runtimeHomeOrigin, runtimeIdentityDigest } from "./home"
 import { MemberHomeError, readRecord, writeRecord } from "./record"
 
 const domain = "organization-runtime-home"
-const schema = z.union([LegacyBinding, Binding])
+const previousReader = "native-organization-ownership-v3"
+const schema = z.union([LegacyBinding, BeforeInitialWorkspaceBinding, Binding])
 const configured = RuntimeContext.state(() => ({ identity: undefined as RuntimeIdentity | undefined }))
 const request = RuntimeContext.createAsyncContext<{
   home: string
@@ -54,9 +61,20 @@ async function records() {
     runtimeIdentityDigest(binding.identity) !== current.selected.identity
   )
     throw new MemberHomeError("Organization Home migration cannot adopt a missing or foreign identity")
-  if (ownership.schemaVersion === 2 && ownership.readerContract !== NativeHomeReaderContract)
+  if (
+    ownership.schemaVersion !== 1 &&
+    ((ownership.schemaVersion === 2 &&
+      ![previousReader, NativeHomeReaderContract].includes(ownership.readerContract)) ||
+      (ownership.schemaVersion === 3 && ownership.readerContract !== NativeHomeReaderContract) ||
+      ownership.schemaVersion === 4)
+  )
     throw new MemberHomeError("Organization Home reader contract is unsupported")
-  if (ownership.schemaVersion === 1 && binding.schemaVersion !== 1)
+  if (
+    (ownership.schemaVersion === 1 && binding.schemaVersion !== 1) ||
+    (ownership.schemaVersion === 2 &&
+      ownership.readerContract === previousReader &&
+      (binding.schemaVersion !== 2 || binding.readerContract !== previousReader))
+  )
     throw new MemberHomeError("Organization Home files have an inconsistent migration order")
   runtimeHomeOrigin(binding.origin)
   const credentials = await readCredentials(current.host.root)
@@ -121,7 +139,67 @@ export const organizationHomeMigration: Migration = {
   },
 }
 
-const migrations = [organizationHomeMigration]
+export const organizationInitialWorkspaceReaderMigration: Migration = {
+  id: "20261113-organization-initial-workspace-home-reader-v4",
+  scope: "global",
+  execution: "maintenance",
+  dependsOn: [organizationHomeMigration.id],
+  description: "Fence previous Runtime readers before retaining initial cloud Workspace provenance",
+  async isApplied() {
+    const current = await records()
+    return (
+      current.ownership.schemaVersion === 2 &&
+      current.ownership.readerContract === NativeHomeReaderContract &&
+      current.binding.schemaVersion === 2 &&
+      current.binding.readerContract === NativeHomeReaderContract
+    )
+  },
+  async up(progress) {
+    const { input, selected } = await assertRequest()
+    await withFileLock(
+      {
+        directory: path.join(selected.host.root, "state", ".locks"),
+        key: "organization-home-format",
+        signal: input.signal,
+      },
+      async () => {
+        await assertRequest()
+        const current = await records()
+        if (current.ownership.schemaVersion !== 2 || current.binding.schemaVersion !== 2)
+          throw new MemberHomeError("Organization initial Workspace reader requires its previous fenced Home")
+        const physical = await current.files.physicalHash()
+        await current.files.advanceReader(current.ownership, { signal: input.signal })
+        await assertRequest()
+        const retained = await records()
+        if (
+          (await current.files.physicalHash()) !== physical ||
+          JSON.stringify(retained.binding) !== JSON.stringify(current.binding)
+        )
+          throw new MemberHomeError("Organization initial Workspace reader lost its original Home binding")
+        if (current.binding.readerContract === previousReader)
+          await writeRecord(
+            path.join(current.host.root, "organization.json"),
+            Binding.parse({ ...current.binding, readerContract: NativeHomeReaderContract }),
+          )
+        await assertRequest()
+        if ((await current.files.physicalHash()) !== physical)
+          throw new MemberHomeError("Organization initial Workspace reader lost its original native Home")
+        const completed = await records()
+        if (
+          completed.ownership.schemaVersion !== 2 ||
+          completed.ownership.readerContract !== NativeHomeReaderContract ||
+          completed.binding.schemaVersion !== 2 ||
+          JSON.stringify(completed.binding) !==
+            JSON.stringify({ ...current.binding, readerContract: NativeHomeReaderContract })
+        )
+          throw new MemberHomeError("Organization initial Workspace reader did not retain its original identity")
+        progress(1, 1)
+      },
+    )
+  },
+}
+
+const migrations = [organizationHomeMigration, organizationInitialWorkspaceReaderMigration]
 export function registerOrganizationHomeMigration(input: RuntimeIdentity) {
   RuntimeContext.assertCompositionOpen("Organization Home migration")
   const identity = RuntimeIdentity.parse(input)
@@ -150,7 +228,12 @@ export async function upgradeOrganizationHome(input: {
           signal: input.signal,
         })
         const current = await records()
-        if (current.ownership.schemaVersion !== 2 || current.binding.schemaVersion !== 2)
+        if (
+          current.ownership.schemaVersion !== 2 ||
+          current.ownership.readerContract !== NativeHomeReaderContract ||
+          current.binding.schemaVersion !== 2 ||
+          current.binding.readerContract !== NativeHomeReaderContract
+        )
           throw new MemberHomeError("Organization Home migration receipt does not match its canonical files")
         return result
       }),
