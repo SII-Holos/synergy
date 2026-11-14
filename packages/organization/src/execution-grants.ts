@@ -646,32 +646,31 @@ export function createExecutionGrants(options: {
       fail("PROTOCOL_MISMATCH", "Retained execution grant count is inconsistent")
     const effective = grant.provenance?.control.permit
     const actor = effective?.actor ?? grant.actor
-    const activeActor = await Record.read(Record.Account, Keys.account(actor.subjectID))
-    if (
-      !activeActor ||
-      activeActor.orgID !== grant.orgID ||
-      actor.orgID !== grant.orgID ||
-      activeActor.state !== "active"
-    )
-      fail("PERMISSION_DENIED", "The original execution actor is no longer active")
-    if (actor.clientKind === "api" || actor.tokenID) {
-      const admission = effective
-        ? undefined
-        : await Record.read(Record.CommandAttempt, Keys.commandAttempt(grant.attemptID))
-      const permit = effective ?? admission?.authorization.permit
-      if (!permit) fail("PROTOCOL_MISMATCH", "Execution API authority has no original command")
-      if (
-        !same(permit.actor, actor) ||
-        permit.orgID !== grant.orgID ||
-        permit.projectID !== grant.projectID ||
-        permit.sessionID !== grant.sessionID ||
-        permit.runtimeID !== grant.runtimeID ||
-        permit.bindingEpoch !== grant.bindingEpoch
-      )
-        fail("PROTOCOL_MISMATCH", "Execution API authority has another original command")
-      await assertApiExecutionActor(permit)
+    if (actor.orgID !== grant.orgID)
+      fail("PERMISSION_DENIED", "The original execution actor belongs to another organization")
+    if (actor.clientKind === "api" || actor.tokenID || (grant.state === "bound" && grant.retention.state !== "held")) {
+      const activeActor = await Record.read(Record.Account, Keys.account(actor.subjectID))
+      if (!activeActor || activeActor.orgID !== grant.orgID || activeActor.state !== "active")
+        fail("PERMISSION_DENIED", "The original execution actor is no longer active")
+      if (actor.clientKind === "api" || actor.tokenID) {
+        const admission = effective
+          ? undefined
+          : await Record.read(Record.CommandAttempt, Keys.commandAttempt(grant.attemptID))
+        const permit = effective ?? admission?.authorization.permit
+        if (!permit) fail("PROTOCOL_MISMATCH", "Execution API authority has no original command")
+        if (
+          !same(permit.actor, actor) ||
+          permit.orgID !== grant.orgID ||
+          permit.projectID !== grant.projectID ||
+          permit.sessionID !== grant.sessionID ||
+          permit.runtimeID !== grant.runtimeID ||
+          permit.bindingEpoch !== grant.bindingEpoch
+        )
+          fail("PROTOCOL_MISMATCH", "Execution API authority has another original command")
+        await assertApiExecutionActor(permit)
+      }
+      await accountSession(activeActor, session.sessionID, "session.execute")
     }
-    await accountSession(activeActor, session.sessionID, "session.execute")
     const [project, membership] = await Promise.all([
       Record.read(Record.Project, Keys.project(session.projectID)),
       account ? Record.read(Record.ProjectMember, Keys.projectMember(session.projectID, account.accountID)) : undefined,

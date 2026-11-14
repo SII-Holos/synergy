@@ -28,7 +28,7 @@ The service verifies the registered machine and current connection before reconc
 
 ## Consequences
 
-Bound descriptors contain no upstream credentials or endpoints. Project archival permits already accepted work to bind; current member Runtime revocation, loss of project execution role, resource disablement and handoff/epoch changes deny binding. Removing the historical actor does not revoke a different valid Runtime owner.
+Bound descriptors contain no upstream credentials or endpoints. Project archival permits already accepted work to bind; current member Runtime revocation, loss of project execution role, resource disablement and handoff/epoch changes deny binding. The [accepted-root correction](../bug-fix/2026-11-14-preserve-accepted-root-authority-after-actor-removal.md) distinguishes historical interactive input attribution from canonical B while retaining current authorization for released-generation reacquisition and API tokens.
 
 A selection contains one model and up to 32 business connections. Per-call defaults are 8 MiB per request and 16 MiB per response. Bound grants retain their selection until a lifecycle owner proves release. Gateway dispatch, release and member execution activation remain separate integrations; the Agent execution source stays closed.
 

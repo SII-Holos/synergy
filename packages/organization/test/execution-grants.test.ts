@@ -489,27 +489,161 @@ test("a signed root proof reconciles a lost B receipt and binds once across conn
 })
 
 for (const removed of ["actor", "resource-owner"] as const)
-  test(`shared work retains original resources and rejects a removed ${removed}`, async () => {
-    await using f = await commandFixture()
-    await f.connect()
-    const prepared = await task(f, "bob")
-    await f.run(async () => {
-      expect((await Resources.available(f.credentials.bob, "project", { limit: 50 })).items).toEqual([])
-      const bound = await f.execution.bind(await proof(f, prepared.receipt))
-      expect(bound.actor.subjectID).toBe("bob")
-      expect(bound.selection.modelResourceID).toBe(prepared.resource.resourceID)
-      const accountID = removed === "actor" ? "bob" : "alice"
-      const account = (await Record.read(Record.Account, Keys.account(accountID)))!
-      await Storage.write(Keys.account(accountID), {
-        ...account,
-        state: "removed",
-        authRevision: account.authRevision + 1,
+  test(
+    removed === "actor"
+      ? "shared accepted work retains its original resources after the historical actor is removed"
+      : "shared accepted work rejects removal of its actual Runtime owner",
+    async () => {
+      await using f = await commandFixture()
+      await f.connect()
+      const prepared = await task(f, "bob")
+      await f.run(async () => {
+        expect((await Resources.available(f.credentials.bob, "project", { limit: 50 })).items).toEqual([])
+        const bound = await f.execution.bind(await proof(f, prepared.receipt))
+        expect(bound.actor.subjectID).toBe("bob")
+        expect(bound.selection.modelResourceID).toBe(prepared.resource.resourceID)
+        const accountID = removed === "actor" ? "bob" : "alice"
+        const account = (await Record.read(Record.Account, Keys.account(accountID)))!
+        await Storage.write(Keys.account(accountID), {
+          ...account,
+          state: "removed",
+          authRevision: account.authRevision + 1,
+        })
+        const request = await proof(f, prepared.receipt)
+        if (removed === "actor") {
+          expect(await f.execution.bind(request)).toEqual(bound)
+          const { rootID: _, purpose: __, ...received } = request.proof
+          const description = Execution.DescriptionProof.parse({
+            ...received,
+            purpose: "execution-resource-description",
+          })
+          expect(
+            (
+              await f.execution.describe({
+                proof: description,
+                signature: await Execution.signDescription(description, f.machineKeys.privateKey),
+              })
+            ).grant,
+          ).toEqual(bound)
+          expect((await Record.read(Record.RootGrant, Keys.rootGrant(f.sessionID, 1, bound.rootID)))?.grantID).toBe(
+            bound.grantID,
+          )
+          expect((await Record.read(Record.SessionDirectory, Keys.session(f.sessionID)))?.retainedExecutionGrants).toBe(
+            1,
+          )
+          expect(await Storage.count({ prefix: ["organization", "execution-grants"] })).toBe(1)
+        } else {
+          const outcome = await f.execution.bind(request).then(
+            () => ({ kind: "resolved" as const }),
+            (error: unknown) => ({ kind: "rejected" as const, error }),
+          )
+          expect(outcome.kind).toBe("rejected")
+          if (outcome.kind === "rejected") expect(outcome.error).toMatchObject({ data: { code: "PERMISSION_DENIED" } })
+        }
       })
-      await expect(f.execution.bind(await proof(f, prepared.receipt))).rejects.toMatchObject({
-        data: { code: "PERMISSION_DENIED" },
+    },
+  )
+
+test("a late exact accepted receipt binds after historical actor removal while absent receipt and fresh authority stay rejected", async () => {
+  await using f = await commandFixture()
+  await f.connect()
+  const prepared = await task(f, "bob")
+  const request = await proof(f, prepared.receipt)
+  await f.run(async () => {
+    const requestKey = Keys.commandRequest(prepared.permit.actor.subjectID, prepared.permit.requestID)
+    expect((await Record.read(Record.CommandRequest, requestKey))?.accepted).toBeUndefined()
+    expect(
+      (await Record.read(Record.ExecutionGrant, Keys.executionGrant(prepared.permit.provisionalGrantID!)))?.state,
+    ).toBe("provisional")
+    const missing = await f.execution
+      .bind({
+        ...request,
+        proof: { ...request.proof, receipt: { attempt: request.proof.receipt.attempt } },
       })
+      .then(
+        () => ({ kind: "resolved" as const }),
+        (error: unknown) => ({ kind: "rejected" as const, error }),
+      )
+    expect(missing.kind).toBe("rejected")
+    if (missing.kind === "rejected") expect(missing.error).toMatchObject({ name: "ZodError" })
+    expect((await Record.read(Record.CommandRequest, requestKey))?.accepted).toBeUndefined()
+    expect(await Record.read(Record.RootGrant, Keys.rootGrant(f.sessionID, 1, "msg_resource"))).toBeUndefined()
+    const actor = (await Record.read(Record.Account, Keys.account("bob")))!
+    await Storage.write(Keys.account(actor.accountID), {
+      ...actor,
+      state: "removed",
+      authRevision: actor.authRevision + 1,
     })
+    const fresh = await f.commands.input(f.credentials.bob, f.request("after-actor-removal")).then(
+      () => ({ kind: "resolved" as const }),
+      (error: unknown) => ({ kind: "rejected" as const, error }),
+    )
+    expect(fresh.kind).toBe("rejected")
+    if (fresh.kind === "rejected") expect(fresh.error).toMatchObject({ data: { code: "AUTHENTICATION_REQUIRED" } })
+    const bound = await f.execution.bind(request)
+    expect(bound.state).toBe("bound")
+    expect(bound.rootID).toBe(prepared.receipt.accepted!.effect.messageID)
+    expect(bound.actor).toEqual(prepared.permit.actor)
+    expect(bound.grantID).toBe(prepared.permit.provisionalGrantID!)
+    expect(bound.selection.modelResourceID).toBe(prepared.resource.resourceID)
+    expect((await Record.read(Record.CommandRequest, requestKey))?.accepted).toEqual(prepared.receipt.accepted)
+    expect(await f.execution.bind(await proof(f, prepared.receipt))).toEqual(bound)
+    const query = await Resources.available(f.credentials.bob, "project", { limit: 50 }).then(
+      () => ({ kind: "resolved" as const }),
+      (error: unknown) => ({ kind: "rejected" as const, error }),
+    )
+    expect(query.kind).toBe("rejected")
+    if (query.kind === "rejected") expect(query.error).toMatchObject({ data: { code: "AUTHENTICATION_REQUIRED" } })
+    expect((await Record.read(Record.SessionDirectory, Keys.session(f.sessionID)))?.retainedExecutionGrants).toBe(1)
+    expect(await Storage.count({ prefix: ["organization", "execution-grants"] })).toBe(1)
   })
+})
+
+test("released shared roots require current actor authority before reacquiring another retention generation", async () => {
+  await using f = await commandFixture()
+  await f.connect()
+  const prepared = await task(f, "bob")
+  const request = await proof(f, prepared.receipt)
+  const bound = await f.run(() => f.execution.bind(request))
+  const release = Execution.ReleaseProof.parse({
+    ...request.proof,
+    purpose: "execution-resources-release",
+    generation: 1,
+    outcome: "completed",
+  })
+  const signed = { proof: release, signature: await Execution.signRelease(release, f.machineKeys.privateKey) }
+  const released = await f.run(() => f.execution.release(signed))
+  expect(released.generation).toBe(1)
+  await f.run(async () => {
+    const actor = (await Record.read(Record.Account, Keys.account("bob")))!
+    await Storage.write(Keys.account(actor.accountID), {
+      ...actor,
+      state: "removed",
+      authRevision: actor.authRevision + 1,
+    })
+    const outcome = await f.execution.bind(await proof(f, prepared.receipt)).then(
+      () => ({ kind: "resolved" as const }),
+      (error: unknown) => ({ kind: "rejected" as const, error }),
+    )
+    expect(outcome.kind).toBe("rejected")
+    if (outcome.kind === "rejected") expect(outcome.error).toMatchObject({ data: { code: "PERMISSION_DENIED" } })
+    const retained = Execution.BoundGrant.parse(
+      await Record.read(Record.ExecutionGrant, Keys.executionGrant(bound.grantID)),
+    )
+    expect(retained.retention).toEqual({
+      state: "released",
+      generation: 1,
+      outcome: "completed",
+      releasedAt: released.releasedAt,
+    })
+    expect((await Record.read(Record.SessionDirectory, Keys.session(f.sessionID)))?.retainedExecutionGrants).toBe(0)
+    expect((await Record.read(Record.RootGrant, Keys.rootGrant(f.sessionID, 1, bound.rootID)))?.grantID).toBe(
+      bound.grantID,
+    )
+    expect(await f.execution.release(signed)).toEqual(released)
+    expect(await Storage.count({ prefix: ["organization", "execution-grants"] })).toBe(1)
+  })
+})
 
 for (const change of ["expiry", "connection"] as const)
   test(`root publication rolls back when ${change} changes after its writes`, async () => {
@@ -630,12 +764,36 @@ test("binding rejects altered proofs, unaccepted attempts, disabled resources an
     await Storage.write(Keys.projectMember("project", "alice"), { ...member, role: "reader" })
     await expect(f.execution.bind(original)).rejects.toMatchObject({ data: { code: "PERMISSION_DENIED" } })
     await Storage.write(Keys.projectMember("project", "alice"), member)
+    const provisional = Execution.Grant.parse(
+      await Record.read(Record.ExecutionGrant, Keys.executionGrant(prepared.permit.provisionalGrantID!)),
+    )
+    expect(provisional.state).toBe("provisional")
+    const usage = await Record.read(Record.ExecutionUsage, Keys.executionUsage(provisional.grantID))
     const project = (await Record.read(Record.Project, Keys.project("project")))!
     await Storage.write(Keys.project("project"), { ...project, state: "archived" })
-    await expect(f.execution.bind(original)).rejects.toMatchObject({ data: { code: "PERMISSION_DENIED" } })
-    expect(
-      (await Record.read(Record.ExecutionGrant, Keys.executionGrant(prepared.permit.provisionalGrantID!)))?.state,
-    ).toBe("provisional")
+    const bound = await f.execution.bind(original)
+    expect(bound).toEqual({
+      ...provisional,
+      state: "bound",
+      rootID: prepared.receipt.accepted!.effect.messageID,
+      boundAt: bound.boundAt,
+      retention: { state: "held", generation: 1 },
+    })
+    expect(await f.execution.bind(await proof(f, prepared.receipt))).toEqual(bound)
+    expect(await Record.read(Record.ExecutionUsage, Keys.executionUsage(bound.grantID))).toEqual(usage)
+    expect((await Record.read(Record.RootGrant, Keys.rootGrant(f.sessionID, 1, bound.rootID)))?.grantID).toBe(
+      bound.grantID,
+    )
+    const fresh = f.request("archived-fresh-input")
+    fresh.input.mode = "task"
+    const outcome = await f.commands.input(f.credentials.alice, fresh).then(
+      () => ({ kind: "resolved" as const }),
+      (error: unknown) => ({ kind: "rejected" as const, error }),
+    )
+    expect(outcome.kind).toBe("rejected")
+    if (outcome.kind === "rejected") expect(outcome.error).toMatchObject({ data: { code: "PERMISSION_DENIED" } })
+    expect((await Record.read(Record.SessionDirectory, Keys.session(f.sessionID)))?.retainedExecutionGrants).toBe(1)
+    expect(await Storage.count({ prefix: ["organization", "execution-grants"] })).toBe(1)
   })
   const browser = await fetch(new URL("/runtime/v1/execution/bind", f.baseUrl), {
     method: "POST",
