@@ -59,11 +59,16 @@ test("cold native field migration uses bounded writers while decoding canonical 
         expect((await Storage.readMany(value.keys.map(sourceHeader))).every((row) => row === undefined)).toBe(true)
         let writerTransactions = 0
         let bulkBodyReads = 0
+        let canonicalBodyReads = 0
         {
           using writers = spyOn(Storage, "transaction")
           using reads = spyOn(StoreTransaction.prototype, "readMany")
+          using canonical = spyOn(StoreTransaction.prototype, "versioned")
           await SessionPartFieldSource.migration.upSession!(value.owner, () => {})
           writerTransactions = writers.mock.calls.length
+          canonicalBodyReads = canonical.mock.calls.filter(
+            ([key]) => key.length === 7 && key[3] === "messages" && key[5] === "parts",
+          ).length
           bulkBodyReads = reads.mock.calls.filter(([keys]) =>
             keys.some((key) => key.length === 7 && key[3] === "messages" && key[5] === "parts"),
           ).length
@@ -71,6 +76,11 @@ test("cold native field migration uses bounded writers while decoding canonical 
         expect(writerTransactions).toBeGreaterThan(0)
         expect(writerTransactions).toBeLessThanOrEqual(3)
         expect(bulkBodyReads).toBe(0)
+        expect(canonicalBodyReads).toBe(value.parts.length)
+        console.info(
+          "NATIVE_FIELD_COLD_READ_WORK",
+          JSON.stringify({ parts: value.parts.length, canonicalBodyReads, writerTransactions, bulkBodyReads }),
+        )
         expect(await Storage.revisions(value.keys)).toEqual(revisions)
         expect(await Storage.readMany(value.keys)).toEqual(value.parts)
         for (let index = 0; index < value.keys.length; index++) {

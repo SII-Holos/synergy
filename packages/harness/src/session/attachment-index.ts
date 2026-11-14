@@ -261,13 +261,15 @@ export namespace SessionAttachmentIndex {
           return true
         })
       })
-      for (const key of pending) {
-        UpgradeWork.signal()?.throwIfAborted()
-        const record = await Storage.versioned<PartContent.Stored>(key)
+      if (pending.length) {
         const { SessionHistoryDisplay } = await import("./history-display")
         await Storage.transaction(async (tx) => {
-          await capture(tx, key, record.value, record.revision)
-          await SessionHistoryDisplay.refreshPart(owner.scopeID, record.value)
+          for (const key of pending) {
+            UpgradeWork.signal()?.throwIfAborted()
+            const record = await tx.versioned<PartContent.Stored>(key)
+            await capture(tx, key, record.value, record.revision)
+            await SessionHistoryDisplay.refreshPart(owner.scopeID, record.value)
+          }
         })
       }
       count += canonical.length

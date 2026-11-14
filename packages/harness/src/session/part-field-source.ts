@@ -354,6 +354,11 @@ export namespace SessionPartFieldSource {
     assertKey(key)
     if (producer.id !== key[6] || producer.messageID !== key[4] || producer.sessionID !== key[2])
       throw new StorageIntegrityError("Native field producer belongs to another canonical record")
+    return captureCurrent(tx, key, expectedRevision)
+  }
+
+  async function captureCurrent(tx: StoreTransaction, key: string[], expectedRevision?: bigint) {
+    assertKey(key)
     // Producer values can have stateful toJSON; only this transaction's encoded record is canonical.
     const record = await tx.versioned<unknown>(key)
     const revision = record.revision
@@ -481,8 +486,7 @@ export namespace SessionPartFieldSource {
         await Storage.transaction(async (tx) => {
           for (const key of pending) {
             UpgradeWork.signal()?.throwIfAborted()
-            const record = await tx.versioned(key)
-            await captureRecord(tx, key, record.value, record.revision)
+            await captureCurrent(tx, key)
           }
         })
       count += canonical.length

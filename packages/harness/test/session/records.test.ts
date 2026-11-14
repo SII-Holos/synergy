@@ -40,11 +40,18 @@ async function withRecords(
           ...(kind === "child" ? { parentID: seed.id } : {}),
         }))
         await Storage.transaction(async (tx) => {
-          for (const [index, record] of records.entries()) {
-            if (index >= 150)
-              await Storage.write(["workspace", record.workspaceID], { ...workspace, id: record.workspaceID })
-            await Storage.write(["sessions", scope.id, record.id, "info"], record)
-          }
+          const workspaces = records.slice(150).map((record) => ({
+            key: ["workspace", record.workspaceID],
+            value: { ...workspace, id: record.workspaceID },
+          }))
+          for (let offset = 0; offset < workspaces.length; offset += 128)
+            await tx.writeMany(workspaces.slice(offset, offset + 128))
+          const infos = records.map((record) => ({
+            key: ["sessions", scope.id, record.id, "info"],
+            value: record,
+          }))
+          for (let offset = 0; offset < infos.length; offset += 128)
+            await tx.writeMany(infos.slice(offset, offset + 128))
           await Session.rebuildStorageIndexes(Storage.current().store, tx)
         })
         await fn({ seed, workspace, records, scopeID: scope.id, directory: files.path })
