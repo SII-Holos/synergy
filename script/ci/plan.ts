@@ -64,6 +64,7 @@ export interface Task {
   diagnosticFiles?: string[]
   outputs?: Array<"junit" | "lcov" | "timing">
   isolation?: "batch-home" | "task-home" | "container" | "database"
+  heavy?: boolean
 }
 
 export interface Unit {
@@ -140,6 +141,7 @@ export function taskOrder(a: Task, b: Task) {
 
 function heavy(task: Task) {
   return (
+    task.heavy ||
     task.prerequisites?.includes("browser") ||
     task.prerequisites?.includes("desktop") ||
     ["typecheck", "desktop", "artifacts", "native-workspace"].includes(task.kind)
