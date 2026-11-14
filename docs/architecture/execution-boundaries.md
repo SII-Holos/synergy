@@ -155,6 +155,8 @@ Explicit denials and hard boundaries are not bypassed by preauthorization. Saved
 
 A multi-target permission request evaluates every target before creating a pending approval. Any denied target rejects the complete request without emitting an approval event, regardless of target order or mandatory-confirmation metadata. Otherwise, targets requiring confirmation share one pending request; its cancellation and reply apply to the complete target list.
 
+Native Bash submits its actual permission patterns after initial capability authorization. The resolver checks exact saved and configured denials before reusing the original call approval. All patterns must have explicit native allows to resolve a soft ask from saved rules; mandatory confirmation remains effective. Rules persist within their Runtime Home. See [saved Bash targets](../decisions/implemented/bug-fix/2026-11-14-evaluate-saved-native-bash-targets.md).
+
 In `guarded`, unresolved asks can be presented to the user. A response can authorize once, for the session, always, or reject. In `autonomous`, an ask is converted to a policy denial rather than waiting for a user who may never be present.
 
 ## Live Profile Transitions

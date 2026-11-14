@@ -56,6 +56,8 @@ For multi-target approvals, exercise both ask/deny target orders before publicat
 
 ## Implement and Verify
 
+When a native backend discovers exact permission targets after capability classification, verify every target against the original saved and Session rules before reusing an accepted-call approval. Test partial allows, exact denials on low-risk calls, mandatory high-risk confirmation and separate Runtime Homes. An always response must not become a capability wildcard, and a rejected tool callback must not be asserted as a completed model task.
+
 1. Write the failing behavioral test at the lowest owner: pure classifier, profile decision, permission layering, gate envelope, sandbox policy, or platform dispatch.
 2. When adding or changing a capability, update its shared definition, risk/non-bypassable metadata, every classifier and manifest mapping, permission presentation, and focused tests.
 3. When changing dispatch location or executor class, update `ToolExecutor.classify()`, per-executor admission tests, cancellation/failure containment tests, and the execution-boundary documentation. Executor classification is scheduling metadata and cannot replace capability classification.

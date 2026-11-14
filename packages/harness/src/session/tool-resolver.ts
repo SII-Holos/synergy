@@ -1335,6 +1335,53 @@ export namespace ToolResolver {
             return
           }
 
+          if (req.permission === "bash") {
+            const configured = PermissionNext.merge(
+              input.agent.permission,
+              PermissionNext.sessionRuleset(input.session),
+            )
+            const userRules = await PermissionRules.userRuleset()
+            const sessionRules = PermissionRules.sessionRuleset(ctx.sessionID)
+            const decisions = req.patterns.map((pattern) =>
+              PermissionRules.evaluate(req.permission, pattern, userRules, sessionRules),
+            )
+            if (
+              decisions.some((item) => item.action === "deny") ||
+              req.patterns.some(
+                (pattern) => PermissionNext.evaluate(req.permission, pattern, configured).action === "deny",
+              )
+            ) {
+              await setApprovalMetadata(ctx, {
+                ...ApprovalPolicy.metadata(profile.approval, decision, "auto_denied"),
+                source: "user",
+                reason: "Denied by an exact native Bash permission rule.",
+              })
+              throw new PermissionNext.DeniedError(PermissionNext.merge(configured, userRules, sessionRules))
+            }
+            const soft =
+              decision.risk !== "high" &&
+              !requestMetadata.nonBypassable &&
+              !requestMetadata.opaque &&
+              !requestMetadata.workspaceBoundary &&
+              !requestMetadata.outsideWorkspace &&
+              requestMetadata.resourcePolicy !== "ask"
+            if (soft && ctx.extra?.shellAuthorizationResolved === true) return
+            if (
+              soft &&
+              decision.action === "ask" &&
+              req.patterns.length > 0 &&
+              decisions.every((item) => item.action === "allow")
+            ) {
+              await setApprovalMetadata(ctx, {
+                ...ApprovalPolicy.metadata(profile.approval, decision, "auto_allowed"),
+                source: "user",
+                reason: "Allowed by saved permission rules for every requested target.",
+              })
+              rememberShellApproval(ctx, req.permission, requestMetadata)
+              return
+            }
+          }
+
           if (isFilePermission(req.permission)) {
             const rules = PermissionNext.merge(
               input.agent.permission,

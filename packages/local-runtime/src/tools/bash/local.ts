@@ -350,11 +350,9 @@ export namespace LocalBashBackend {
       throw new Error(detachedDaemonBlockMessage(detachedRisk))
     }
 
-    // The resolver already authorized this call. Asking again here would make
-    // authorization depend on the tool rather than on containment, and would
-    // double-prompt every contained command.
-    const authorizationResolved = (ctx.extra as any)?.shellAuthorizationResolved === true
-    if (patterns.size > 0 && !authorizationResolved) {
+    // The resolver checks exact native targets while retaining its original
+    // accepted call approval, so this does not prompt twice for the same effect.
+    if (patterns.size > 0) {
       await trace("bash.permission.ask", {
         patternCount: patterns.size,
       })
