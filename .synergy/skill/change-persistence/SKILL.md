@@ -87,6 +87,8 @@ Test artifact cancellation after a reader has acquired its pin and the canonical
 
 For PostgreSQL deletion plans, include a new namespace created after statistics were collected for unrelated history. Inspect actual row visits and loop counts for the emitted statement; indexed predicates alone do not prevent the planner from repeating an inlined candidate query. Keep the same transaction and deletion semantics when bounding repeated work.
 
+When raising a native Home reader floor, inspect retained operation witnesses as well as file bytes. An operation's recorded source, target, namespace and signing identity remain immutable across reader changes and cold retry. Targetless backup/restore holds cannot authorize reader advancement; require the original native target witness. A newer current-reader constant cannot retarget an accepted upgrade: finish with its original owner or reject while preserving the hold, then admit a separate upgrade. Test actual retained target publication, lost acknowledgement, cold reopening and refusal before new file effects.
+
 ### SQLite and other domain stores
 
 1. Keep fresh-install schema creation in the owning database initialization.

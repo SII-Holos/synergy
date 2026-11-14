@@ -7,13 +7,15 @@ import { readRecord } from "../../src/record"
 
 // The version-1 startup reader is retained to exercise the real previous strict file contract in Node.
 const ownerFields = { owner: z.string(), identity: z.string() }
-const fenced = ["before-origin", "before-use", "before-initial"].includes(process.argv[4] ?? "")
+const fenced = ["before-origin", "before-use", "before-initial", "before-durable-sync"].includes(process.argv[4] ?? "")
 const previousContract =
-  process.argv[4] === "before-initial"
-    ? "native-organization-ownership-v3"
-    : process.argv[4] === "before-use"
-      ? "native-organization-ownership-v2"
-      : "native-organization-ownership-v1"
+  process.argv[4] === "before-durable-sync"
+    ? "native-organization-ownership-v4"
+    : process.argv[4] === "before-initial"
+      ? "native-organization-ownership-v3"
+      : process.argv[4] === "before-use"
+        ? "native-organization-ownership-v2"
+        : "native-organization-ownership-v1"
 const Owner = fenced
   ? z.strictObject({
       ...ownerFields,

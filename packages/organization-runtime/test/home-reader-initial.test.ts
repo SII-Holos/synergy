@@ -4,15 +4,10 @@ import path from "node:path"
 import { createHash } from "node:crypto"
 import { RuntimeMaintenance } from "@ericsanchezok/synergy-harness/storage/runtime-maintenance"
 import { HomeOwnershipFile } from "@ericsanchezok/synergy-harness/lifecycle/home-ownership-file"
-import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
-import { TransactionalStore } from "@ericsanchezok/synergy-harness/storage/transactional-store"
-import { storageTestRuntime } from "@ericsanchezok/synergy-harness/test/support/storage-runtime"
 import { prepareHostedHome, prepareMemberHome, readRuntimeHome, type RuntimeIdentity } from "../src/home"
-import {
-  organizationHomeMigration,
-  registerOrganizationHomeMigration,
-  upgradeOrganizationHome,
-} from "../src/home-migration"
+import { organizationHomeMigration, upgradeOrganizationHome } from "../src/home-migration"
+
+import { selectedHomeUpgradeOwner } from "./support/home-upgrade"
 import { NativeHomeReaderContract } from "../src/home-schema"
 
 const previousReader = "native-organization-ownership-v3"
@@ -68,12 +63,7 @@ for (const identity of identities)
       ])
       return { code, stdout }
     }
-    const runtime = await storageTestRuntime({ home: home.home })
-    const store = await TransactionalStore.open({
-      backend: "sqlite",
-      filename: path.join(home.root, "authority.sqlite"),
-      namespace: "initial-workspace-home",
-    })
+    const owner = await selectedHomeUpgradeOwner(home)
     try {
       expect(await previousStartup()).toEqual({ code: 0, stdout: "ready" })
       expect(await Bun.file(previousDatabase).exists()).toBe(true)
@@ -82,93 +72,81 @@ for (const identity of identities)
       expect(await Promise.all([ownershipFile, bindingFile].map((file) => Bun.file(file).text()))).toEqual(
         previousFiles,
       )
-      await runtime.run(() =>
-        Storage.provide({ store, artifactDirectory: path.join(home.root, "data") }, async () => {
-          RuntimeMaintenance.configure({ required: ["fixture-writer"] })
-          RuntimeMaintenance.register("fixture-writer", {
-            version: 1,
-            async suspend() {},
-            async drain() {},
-            async inspect() {
-              return []
-            },
-            async release() {},
-          })
-          using legacyUpgrade = spyOn(organizationHomeMigration, "up")
-          registerOrganizationHomeMigration(identity)
-          const requestID = "initial-workspace-reader"
-          const lease = await RuntimeMaintenance.begin({
-            purpose: "organization-backup",
-            requestID,
-            actor: { kind: "system", subjectID: "operator", displayName: "Operator", clientKind: "system", requestID },
-          })
-          await expect(upgradeOrganizationHome({ home: home.home, identity, lease })).rejects.toThrow("frozen")
-          await RuntimeMaintenance.freeze(lease, await RuntimeMaintenance.drain(lease))
-          const open = fs.open
-          let lost = false
-          using lostAck = spyOn(fs, "open").mockImplementation(async (...args) => {
-            const file = await open(...args)
-            if (args[0] === ownershipFile && typeof args[1] === "number" && !lost) {
-              const sync = file.sync.bind(file)
-              spyOn(file, "sync").mockImplementationOnce(async () => {
-                await sync()
-                lost = true
-                throw new Error("Lost original reader-four marker acknowledgement")
-              })
-            }
-            return file
-          })
-          await expect(upgradeOrganizationHome({ home: home.home, identity, lease })).rejects.toThrow("Lost original")
-          lostAck.mockRestore()
-          expect(lost).toBe(true)
-          expect((await Bun.file(ownershipFile).json()).readerContract).toBe(NativeHomeReaderContract)
-          expect((await Bun.file(bindingFile).json()).readerContract).toBe(previousReader)
-          expect((await fs.stat(ownershipFile)).ino).toBe(originalMarker.ino)
-          await expect(readRuntimeHome(home.home, identity)).rejects.toThrow("unsupported")
-          expect((await previousStartup()).code).not.toBe(0)
-          expect(await Bun.file(previousDatabase).exists()).toBe(false)
-          await upgradeOrganizationHome({ home: home.home, identity, lease })
-          const completed = await Promise.all([ownershipFile, bindingFile].map((file) => Bun.file(file).text()))
-          await upgradeOrganizationHome({ home: home.home, identity, lease })
-          expect(await Promise.all([ownershipFile, bindingFile].map((file) => Bun.file(file).text()))).toEqual(
-            completed,
-          )
-          expect(await readRuntimeHome(home.home, identity)).toEqual(home)
-          expect((await RuntimeMaintenance.status())?.phase).toBe("frozen")
-          expect(legacyUpgrade).not.toHaveBeenCalled()
-          for (const readerContract of [
-            "native-organization-ownership-v1",
-            "native-organization-ownership-v2",
-            "future-reader",
-          ]) {
-            for (const [index, file] of [ownershipFile, bindingFile].entries())
-              await fs.writeFile(file, JSON.stringify({ ...JSON.parse(completed[index]!), readerContract }))
-            const unsupported = await Promise.all([ownershipFile, bindingFile].map((file) => Bun.file(file).text()))
-            await expect(upgradeOrganizationHome({ home: home.home, identity, lease })).rejects.toThrow("unsupported")
-            expect(await Promise.all([ownershipFile, bindingFile].map((file) => Bun.file(file).text()))).toEqual(
-              unsupported,
-            )
+      await owner.run(async () => {
+        using legacyUpgrade = spyOn(organizationHomeMigration, "up")
+        const requestID = "initial-workspace-reader"
+        const lease = await RuntimeMaintenance.begin({
+          purpose: "organization-home-upgrade",
+          requestID,
+          actor: { kind: "system", subjectID: "operator", displayName: "Operator", clientKind: "system", requestID },
+        })
+        await expect(upgradeOrganizationHome({ home: home.home, identity, lease })).rejects.toThrow("frozen")
+        await RuntimeMaintenance.freeze(lease, await RuntimeMaintenance.drain(lease))
+        const open = fs.open
+        let lost = false
+        using lostAck = spyOn(fs, "open").mockImplementation(async (...args) => {
+          const file = await open(...args)
+          if (args[0] === ownershipFile && typeof args[1] === "number" && !lost) {
+            const sync = file.sync.bind(file)
+            spyOn(file, "sync").mockImplementationOnce(async () => {
+              await sync()
+              lost = true
+              throw new Error("Lost original reader-four marker acknowledgement")
+            })
           }
-          const restored = HomeOwnershipFile.RestorationInfo.parse({
-            ...JSON.parse(completed[0]!),
-            schemaVersion: 3,
-            readerContract: previousReader,
-            installationID: crypto.randomUUID(),
-            incarnation: crypto.randomUUID(),
-          })
-          await fs.writeFile(ownershipFile, JSON.stringify(restored))
-          await fs.writeFile(
-            bindingFile,
-            JSON.stringify({ ...JSON.parse(completed[1]!), readerContract: previousReader }),
+          return file
+        })
+        await expect(upgradeOrganizationHome({ home: home.home, identity, lease })).rejects.toThrow("Lost original")
+        lostAck.mockRestore()
+        expect(lost).toBe(true)
+        expect((await Bun.file(ownershipFile).json()).readerContract).toBe(NativeHomeReaderContract)
+        expect((await Bun.file(bindingFile).json()).readerContract).toBe(previousReader)
+        expect((await fs.stat(ownershipFile)).ino).toBe(originalMarker.ino)
+        await expect(readRuntimeHome(home.home, identity)).rejects.toThrow("unsupported")
+        expect((await previousStartup()).code).not.toBe(0)
+        expect(await Bun.file(previousDatabase).exists()).toBe(false)
+        await upgradeOrganizationHome({ home: home.home, identity, lease })
+        const completed = await Promise.all([ownershipFile, bindingFile].map((file) => Bun.file(file).text()))
+        await upgradeOrganizationHome({ home: home.home, identity, lease })
+        expect(await Promise.all([ownershipFile, bindingFile].map((file) => Bun.file(file).text()))).toEqual(completed)
+        expect(await readRuntimeHome(home.home, identity)).toEqual(home)
+        expect((await RuntimeMaintenance.status())?.phase).toBe("frozen")
+        expect(legacyUpgrade).not.toHaveBeenCalled()
+        for (const readerContract of [
+          "native-organization-ownership-v1",
+          "native-organization-ownership-v2",
+          "future-reader",
+        ]) {
+          for (const [index, file] of [ownershipFile, bindingFile].entries())
+            await fs.writeFile(file, JSON.stringify({ ...JSON.parse(completed[index]!), readerContract }))
+          const unsupported = await Promise.all([ownershipFile, bindingFile].map((file) => Bun.file(file).text()))
+          await expect(upgradeOrganizationHome({ home: home.home, identity, lease })).rejects.toThrow(
+            "original or target marker",
           )
-          await expect(upgradeOrganizationHome({ home: home.home, identity, lease })).rejects.toThrow("unsupported")
-          expect(await Bun.file(ownershipFile).json()).toEqual(restored)
-          expect(await credentialHash()).toBe(beforeCredentials)
-        }),
-      )
+          expect(await Promise.all([ownershipFile, bindingFile].map((file) => Bun.file(file).text()))).toEqual(
+            unsupported,
+          )
+        }
+        const restored = HomeOwnershipFile.RestorationInfo.parse({
+          ...JSON.parse(completed[0]!),
+          schemaVersion: 3,
+          readerContract: previousReader,
+          installationID: crypto.randomUUID(),
+          incarnation: crypto.randomUUID(),
+        })
+        await fs.writeFile(ownershipFile, JSON.stringify(restored))
+        await fs.writeFile(
+          bindingFile,
+          JSON.stringify({ ...JSON.parse(completed[1]!), readerContract: previousReader }),
+        )
+        await expect(upgradeOrganizationHome({ home: home.home, identity, lease })).rejects.toThrow(
+          "original or target marker",
+        )
+        expect(await Bun.file(ownershipFile).json()).toEqual(restored)
+        expect(await credentialHash()).toBe(beforeCredentials)
+      })
     } finally {
-      await store.close()
-      await runtime.close()
+      await owner.close()
       await fs.rm(directory, { recursive: true, force: true })
     }
   })

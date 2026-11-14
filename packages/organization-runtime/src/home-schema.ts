@@ -4,12 +4,13 @@ import {
   OrganizationRuntimeProtocol as Protocol,
 } from "@ericsanchezok/synergy-organization-protocol"
 
-export const NativeHomeReaderContract = "native-organization-ownership-v4"
+export const NativeHomeReaderContract = "native-organization-ownership-v5"
 export const ArchivedHomeReaderContract = z.enum([
   "native-organization-ownership-v1",
   "native-organization-ownership-v2",
   "native-organization-ownership-v3",
   "native-organization-ownership-v4",
+  "native-organization-ownership-v5",
 ])
 export const MemberIdentity = z.strictObject({
   orgID: OrganizationIdentity.ID,
@@ -33,6 +34,11 @@ export const BeforeInitialWorkspaceBinding = binding({
   schemaVersion: z.literal(2),
   identity: RuntimeIdentity,
   readerContract: z.literal("native-organization-ownership-v3"),
+})
+export const BeforeDurableSyncBinding = binding({
+  schemaVersion: z.literal(2),
+  identity: RuntimeIdentity,
+  readerContract: z.literal("native-organization-ownership-v4"),
 })
 export const MemberBinding = binding({
   schemaVersion: z.literal(2),

@@ -14,13 +14,15 @@ import {
   NativeHomeReaderContract,
   LegacyBinding,
   BeforeInitialWorkspaceBinding,
+  BeforeDurableSyncBinding,
 } from "./home-schema"
 import { runtimeHomeOrigin, runtimeIdentityDigest } from "./home"
 import { MemberHomeError, readRecord, writeRecord } from "./record"
 
 const domain = "organization-runtime-home"
 const previousReader = "native-organization-ownership-v3"
-const schema = z.union([LegacyBinding, BeforeInitialWorkspaceBinding, Binding])
+const initialWorkspaceReader = "native-organization-ownership-v4"
+const schema = z.union([LegacyBinding, BeforeInitialWorkspaceBinding, BeforeDurableSyncBinding, Binding])
 const configured = RuntimeContext.state(() => ({ identity: undefined as RuntimeIdentity | undefined }))
 const request = RuntimeContext.createAsyncContext<{
   home: string
@@ -64,7 +66,7 @@ async function records() {
   if (
     ownership.schemaVersion !== 1 &&
     ((ownership.schemaVersion === 2 &&
-      ![previousReader, NativeHomeReaderContract].includes(ownership.readerContract)) ||
+      ![previousReader, initialWorkspaceReader, NativeHomeReaderContract].includes(ownership.readerContract)) ||
       (ownership.schemaVersion === 3 && ownership.readerContract !== NativeHomeReaderContract) ||
       ownership.schemaVersion === 4)
   )
@@ -72,8 +74,12 @@ async function records() {
   if (
     (ownership.schemaVersion === 1 && binding.schemaVersion !== 1) ||
     (ownership.schemaVersion === 2 &&
-      ownership.readerContract === previousReader &&
-      (binding.schemaVersion !== 2 || binding.readerContract !== previousReader))
+      ((ownership.readerContract !== NativeHomeReaderContract && binding.schemaVersion !== 2) ||
+        (binding.schemaVersion === 2 &&
+          ((ownership.readerContract === previousReader && binding.readerContract !== previousReader) ||
+            (ownership.readerContract === initialWorkspaceReader &&
+              binding.readerContract !== previousReader &&
+              binding.readerContract !== initialWorkspaceReader)))))
   )
     throw new MemberHomeError("Organization Home files have an inconsistent migration order")
   runtimeHomeOrigin(binding.origin)
@@ -95,6 +101,11 @@ async function assertRequest() {
   const info = await RuntimeMaintenance.assertHeld(input.lease)
   if (info.phase !== "frozen")
     throw new MemberHomeError("Organization Home migration requires its current frozen writer cohort")
+  if (
+    info.version !== 2 ||
+    JSON.stringify(info.native.target) !== JSON.stringify(HomeOwnershipFile.FencedInfo.parse(selected.selected))
+  )
+    throw new MemberHomeError("The retained native Home upgrade target is unsupported by this reader")
   input.signal?.throwIfAborted()
   return { input, selected }
 }
@@ -149,9 +160,9 @@ export const organizationInitialWorkspaceReaderMigration: Migration = {
     const current = await records()
     return (
       current.ownership.schemaVersion === 2 &&
-      current.ownership.readerContract === NativeHomeReaderContract &&
+      [initialWorkspaceReader, NativeHomeReaderContract].includes(current.ownership.readerContract) &&
       current.binding.schemaVersion === 2 &&
-      current.binding.readerContract === NativeHomeReaderContract
+      [initialWorkspaceReader, NativeHomeReaderContract].includes(current.binding.readerContract)
     )
   },
   async up(progress) {
@@ -176,7 +187,7 @@ export const organizationInitialWorkspaceReaderMigration: Migration = {
           JSON.stringify(retained.binding) !== JSON.stringify(current.binding)
         )
           throw new MemberHomeError("Organization initial Workspace reader lost its original Home binding")
-        if (current.binding.readerContract === previousReader)
+        if (current.binding.readerContract !== NativeHomeReaderContract)
           await writeRecord(
             path.join(current.host.root, "organization.json"),
             Binding.parse({ ...current.binding, readerContract: NativeHomeReaderContract }),
@@ -199,7 +210,29 @@ export const organizationInitialWorkspaceReaderMigration: Migration = {
   },
 }
 
-const migrations = [organizationHomeMigration, organizationInitialWorkspaceReaderMigration]
+export const organizationDurableSyncReaderMigration: Migration = {
+  id: "20261114-organization-durable-sync-home-reader-v5",
+  scope: "global",
+  execution: "maintenance",
+  dependsOn: [organizationInitialWorkspaceReaderMigration.id],
+  description: "Fence previous Runtime readers before accepting durable native sync delivery",
+  async isApplied() {
+    const current = await records()
+    return (
+      current.ownership.schemaVersion === 2 &&
+      current.ownership.readerContract === NativeHomeReaderContract &&
+      current.binding.schemaVersion === 2 &&
+      current.binding.readerContract === NativeHomeReaderContract
+    )
+  },
+  up: organizationInitialWorkspaceReaderMigration.up,
+}
+
+const migrations = [
+  organizationHomeMigration,
+  organizationInitialWorkspaceReaderMigration,
+  organizationDurableSyncReaderMigration,
+]
 export function registerOrganizationHomeMigration(input: RuntimeIdentity) {
   RuntimeContext.assertCompositionOpen("Organization Home migration")
   const identity = RuntimeIdentity.parse(input)

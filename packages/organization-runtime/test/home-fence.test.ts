@@ -7,7 +7,7 @@ import { HomeOwnershipFile } from "@ericsanchezok/synergy-harness/lifecycle/home
 import { readCredentials } from "../src/credentials"
 
 for (const kind of ["member", "hosted"] as const)
-  for (const reader of ["legacy", "before-origin", "before-use", "before-initial"] as const)
+  for (const reader of ["legacy", "before-origin", "before-use", "before-initial", "before-durable-sync"] as const)
     test(`new ${kind} Homes reject the ${reader} strict Node startup reader`, async () => {
       const directory = await fs.mkdtemp(path.join(process.env.SYNERGY_TEST_ROOT!, "native-reader-fence-"))
       try {
@@ -53,6 +53,7 @@ for (const previous of [
   "native-organization-ownership-v1",
   "native-organization-ownership-v2",
   "native-organization-ownership-v3",
+  "native-organization-ownership-v4",
 ] as const)
   test.each(["member", "hosted"] as const)(
     `ordinary %s startup never upgrades the unpublished ${previous} reader`,
