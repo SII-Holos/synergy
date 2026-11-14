@@ -646,7 +646,13 @@ export namespace EnvironmentExecutionSource {
     if (initial.state !== "submitted") fail("Original operation requires its actual committed native submission")
     const owner = { origin: frame.origin }
     frame.registration.operations.add(owner)
-    let open = true
+    let open = true,
+      callbacks = 0
+    const release = () => {
+      if (open || callbacks) return
+      frame.registration.operations.delete(owner)
+      frame.originalOperations.delete(selected.id)
+    }
     const assert = () => {
       assertOwner(frame)
       if (!open) fail("Original Environment operation has settled")
@@ -662,9 +668,35 @@ export namespace EnvironmentExecutionSource {
       return info
     }
     const invoke = async <T>(body: () => Promise<T>) => {
-      const value = await tracked(frame.registration, body)
       assert()
-      return value
+      callbacks++
+      let held = true
+      const settle = () => {
+        if (!held) return
+        held = false
+        callbacks--
+        release()
+      }
+      try {
+        return await tracked(frame.registration, async () => {
+          try {
+            assert()
+            const value = await body()
+            assertOwner(frame)
+            if (!open) {
+              const info = await EnvironmentExecution.get(selected.id, selected.scopeID)
+              assertOwner(frame)
+              if (info.state !== "completed" || identity(info) !== original)
+                fail("Accepted original operation lost its completed native receipt")
+            }
+            return value
+          } finally {
+            settle()
+          }
+        })
+      } finally {
+        settle()
+      }
     }
     const result = (info: EnvironmentExecutionSchema.Info | undefined) => {
       if (
@@ -728,8 +760,7 @@ export namespace EnvironmentExecutionSource {
         const info = await canonical(selected.id)
         if (info.state !== "completed") fail("Original operation completion is not committed")
         open = false
-        frame.registration.operations.delete(owner)
-        frame.originalOperations.delete(selected.id)
+        release()
       },
     })
     frame.originalOperations.set(selected.id, { identity: original, operation })
