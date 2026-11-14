@@ -1,3 +1,4 @@
+import { SessionPartCommit } from "./part-commit"
 import { z } from "zod"
 import { MARKDOWN_ASSET_REFERENCE_CHARS, markdownAssetReferences } from "@ericsanchezok/synergy-util/markdown-assets"
 import { reasoningItemKey } from "@ericsanchezok/synergy-util/reasoning-item"
@@ -10,17 +11,8 @@ import { SessionAttachmentIndex } from "./attachment-index"
 import { SessionPartFieldSource } from "./part-field-source"
 
 export namespace PartContent {
-  export const RecordCommitted = {
-    type: "message.part.committed" as const,
-    properties: z.strictObject({
-      scopeID: z.string(),
-      sessionID: z.string(),
-      messageID: z.string(),
-      partID: z.string(),
-      revision: z.string().regex(/^\d+$/),
-      removed: z.boolean(),
-    }),
-  }
+  export const RecordCommitted = SessionPartCommit.RecordCommitted
+
   export type Streaming = MessageV2.TextPart | MessageV2.ReasoningPart
   export type Header = Omit<MessageV2.TextPart, "text"> | Omit<MessageV2.ReasoningPart, "text">
   // Provenance: ../../test/session/streaming-persistence.test.ts, short-checkpoint work bound.

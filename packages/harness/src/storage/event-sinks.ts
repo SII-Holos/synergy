@@ -68,7 +68,9 @@ export namespace StorageEventSinks {
   }
 
   /** Hosts explicitly pump bounded batches before admission and while serving, then drain on shutdown. */
-  export async function flush(options: { limit?: number } = {}): Promise<{ delivered: number }> {
+  export async function flush(
+    options: { limit?: number; sinkID?: string; partition?: string } = {},
+  ): Promise<{ delivered: number }> {
     if (Storage.inTransaction()) throw new Error("Flush storage event sinks outside a transaction")
     const limit = z
       .number()
@@ -76,12 +78,24 @@ export namespace StorageEventSinks {
       .min(1)
       .max(1024)
       .parse(options.limit ?? 128)
+    const sinkID =
+      options.sinkID === undefined
+        ? undefined
+        : z
+            .string()
+            .regex(/^[a-zA-Z0-9._-]{1,128}$/)
+            .parse(options.sinkID)
+    const partition = options.partition === undefined ? undefined : z.string().min(1).max(256).parse(options.partition)
+    if (partition !== undefined && sinkID === undefined)
+      throw new Error("A delivery partition requires its sink identity")
+    const prefix =
+      sinkID === undefined ? undefined : ["event_delivery", sinkID, ...(partition === undefined ? [] : [partition])]
     const { store } = Storage.current()
     const current = state()
     const pending = (current.flushing.get(store) ?? Promise.resolve())
       .catch(() => {})
       .then(async () => {
-        const records = await Storage.query<Delivery>({ kind: "event_delivery", limit })
+        const records = await Storage.query<Delivery>({ kind: "event_delivery", prefix, limit })
         const accepted: typeof records = []
         try {
           function parse(record: (typeof records)[number]) {

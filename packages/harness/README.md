@@ -6,6 +6,8 @@ The public `storage/queue` scope propagates an operation's original cancellation
 
 `SessionInbox.RecordCommitted` exposes body-free item identities inside the original admission transaction. Durable event sinks can retain bounded public notification metadata before the item is consumed; failed capture rolls admission back. Verify `test/session/inbox-record-committed.test.ts`.
 
+Hosts import `SessionPartCommit` from `session/part-commit` without the private Part writer. `RolloutEvents.readCommitted` reads one exact original journal revision without recovery. An explicit `StorageEventSinks.flush({ sinkID, partition })` pumps only that selected queue and preserves other pending partitions. See [durable event sinks](../../docs/decisions/implemented/architecture/2026-10-01-durable-external-event-sinks.md).
+
 `Storage.afterFailure()` registers synchronous in-memory diagnostics on the original live write transaction. It observes the actual outer failure after writer exit, including unknown commit outcomes, without granting recovery effects or hiding the original error. See [durable event sinks](../../docs/decisions/implemented/architecture/2026-10-01-durable-external-event-sinks.md) and `test/storage/after-failure.test.ts`.
 
 Process sampling preserves an existing tracked close completion after physical child exit. The original close owner records terminal status after output and recording tails; stale-PID recovery applies only without that owner. Verify `test/process/registry.test.ts`; see [tracked completion](../../docs/decisions/implemented/bug-fix/2026-11-13-preserve-tracked-process-close-ownership-during-sampling.md).

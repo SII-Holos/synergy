@@ -5,6 +5,7 @@
   "private": false,
   "license": "MIT",
   "exports": {
+    "./session/part-commit": "./src/session/part-commit.ts",
     "./session/model-selection-schema": "./src/session/model-selection-schema.ts",
     "./session/context-snapshot": "./src/session/context-snapshot.ts",
     "./session/prompt-budgeter": "./src/session/prompt-budgeter.ts",

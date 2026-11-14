@@ -537,3 +537,46 @@ for (const backend of storageTestBackends()) {
     })
   })
 }
+
+test("a selected durable partition cannot consume another blocked partition or imply global drainage", async () => {
+  const accepted: string[] = []
+  await using runtime = await testRuntime({
+    register: () =>
+      StorageEventSinks.register({
+        id: "scoped-delivery",
+        capture,
+        async deliver(value) {
+          if (value.partition === "blocked") throw new Error("Original partition is frozen")
+          accepted.push(value.eventID)
+        },
+      }),
+  })
+  await runtime.run(() =>
+    ScopeContext.provide({
+      scope: Scope.home(),
+      fn: async () => {
+        await Storage.transaction(async () => {
+          await Bus.publish(Changed, { partition: "blocked", value: 1 })
+          await Bus.publish(Changed, { partition: "healthy", value: 2 })
+        })
+        const before = await Storage.query<StorageEventSinks.Delivery>({ kind: "event_delivery" })
+        const blocked = before.find((row) => row.value.partition === "blocked")!
+        const healthy = before.find((row) => row.value.partition === "healthy")!
+        expect(await StorageEventSinks.flush({ sinkID: "scoped-delivery", partition: "healthy" })).toEqual({
+          delivered: 1,
+        })
+        expect(accepted).toEqual([healthy.value.eventID])
+        expect(await Storage.query({ kind: "event_delivery" })).toEqual([blocked])
+        await expect(StorageEventSinks.flush({ sinkID: "scoped-delivery", partition: "blocked" })).rejects.toThrow(
+          "Original partition is frozen",
+        )
+        expect(await Storage.query({ kind: "event_delivery" })).toEqual([blocked])
+        expect(await StorageEventSinks.flush({ sinkID: "scoped-delivery", partition: "healthy" })).toEqual({
+          delivered: 0,
+        })
+        expect(await Storage.query({ kind: "event_delivery" })).toHaveLength(1)
+        await expect(StorageEventSinks.flush({ partition: "healthy" })).rejects.toThrow("requires its sink identity")
+      },
+    }),
+  )
+})
