@@ -598,7 +598,7 @@ export namespace Session {
     }
     if (Storage.inTransaction()) Storage.afterCommit(remember)
     else remember()
-    Bus.publish(event, { info, navEntry })
+    await Bus.publish(event, { info, navEntry })
   }
 
   export async function create(
@@ -1881,7 +1881,7 @@ export namespace Session {
       // frontend prefix-cut hides everything after the cut while canUnrollback is
       // true, so the new branch must never arrive ahead of its invalidation.
       await publishRollbackInvalidation(canonical, session.history)
-      Bus.publish(MessageV2.Event.Updated, {
+      await Bus.publish(MessageV2.Event.Updated, {
         info: canonical,
       })
       await SessionSearchIndex.markDirty(scopeID, asSessionID(canonical.sessionID))
@@ -1912,7 +1912,7 @@ export namespace Session {
       )
       const canonical = MessageV2.canonicalMessage(result)
       SessionMessageCache.upsertMessage(canonical.sessionID, canonical)
-      Bus.publish(MessageV2.Event.Updated, {
+      await Bus.publish(MessageV2.Event.Updated, {
         info: canonical,
       })
       return canonical as MessageV2.Assistant
@@ -1940,7 +1940,7 @@ export namespace Session {
           },
         )
         SessionMessageCache.upsertMessage(result.sessionID, result)
-        Bus.publish(MessageV2.Event.Updated, {
+        await Bus.publish(MessageV2.Event.Updated, {
           info: result,
         })
         return result
@@ -1969,7 +1969,7 @@ export namespace Session {
         Storage.afterCommit(() => partWriteBuffer().cancelWhere((part) => part.messageID === input.messageID))
         // Structural change: drop the cache and let the next read repopulate.
         SessionMessageCache.invalidate(input.sessionID)
-        Bus.publish(MessageV2.Event.Removed, {
+        await Bus.publish(MessageV2.Event.Removed, {
           sessionID: input.sessionID,
           messageID: input.messageID,
         })
@@ -2004,7 +2004,7 @@ export namespace Session {
         await SessionHistoryDisplay.partRemoved(scopeID, input.sessionID, input.messageID, input.partID)
         Storage.afterCommit(() => partWriteBuffer().cancel(input.partID))
         SessionMessageCache.invalidate(input.sessionID)
-        Bus.publish(MessageV2.Event.PartRemoved, {
+        await Bus.publish(MessageV2.Event.PartRemoved, {
           sessionID: input.sessionID,
           messageID: input.messageID,
           partID: input.partID,

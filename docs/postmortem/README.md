@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0199](0199-session-event-capture-outlived-its-native-callback.md)
+
 - [0198](0198-target-sandbox-missed-controlled-session-temporary-directory.md)
 
 - [0197](0197-native-message-order-repeated-full-history-work.md)
