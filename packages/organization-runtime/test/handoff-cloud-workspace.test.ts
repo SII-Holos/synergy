@@ -85,6 +85,7 @@ for (const scenario of [
     resources.defer("cloud objects", () => fs.rm(objects, { recursive: true, force: true }))
     let allocations = 0
     const f = await fixture({
+      connections: { heartbeatMs: 25 },
       cloud: {
         blobStores: {
           files: {

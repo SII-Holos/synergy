@@ -53,6 +53,7 @@ async function sharedFilesFixture() {
     let allocations = 0
     let beforePut: (() => Promise<void>) | undefined
     const service = await fixture({
+      connections: { heartbeatMs: 25 },
       cloud: {
         blobStores: {
           shared: {

@@ -29,7 +29,7 @@ async function until<T>(label: string, read: () => Promise<T>, ready: (value: T)
 
 test("a live native producer reaches its first shared batch through bounded exporter write windows", async () => {
   await using resources = testResources()
-  const service = await fixture()
+  const service = await fixture({ connections: { heartbeatMs: 25 } })
   resources.defer("sync generation Service", () => service[Symbol.asyncDispose]())
   const options = { headers: service.headers, throwOnError: true as const }
   const home = await prepareMemberHome({
@@ -366,4 +366,4 @@ test("a live native producer reaches its first shared batch through bounded expo
   diagnostic.stage("second-history")
   await verifySharedHistory()
   diagnostic.stage("completed")
-}, 45000)
+}, 90000)

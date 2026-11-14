@@ -2,12 +2,12 @@ import { expect, test } from "bun:test"
 import path from "node:path"
 import { z } from "zod"
 import { Session } from "@ericsanchezok/synergy-harness/session"
+import { Bus } from "@ericsanchezok/synergy-harness/bus"
+import { SessionEvent } from "@ericsanchezok/synergy-harness/session/event"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/ledger"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
-import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
-import { Flag } from "@ericsanchezok/synergy-harness/flag/flag"
 import { Question } from "@ericsanchezok/synergy-local-runtime/question"
 import {
   OrganizationCommandProtocol as Command,
@@ -23,33 +23,13 @@ import { OrganizationExecutionLeases } from "../src/execution-leases"
 import { OrganizationIntakePath } from "../src/storage/path"
 import { fixture } from "./support/organization"
 import { ModelRequest, modelResponse, runtimeContext, waitKnowledgeTask } from "./support/knowledge-task"
+import { observeTaskFailure } from "./support/task-failure"
 
 const ObservedModelRequest = ModelRequest.extend({
   tools: z.array(z.object({ function: z.object({ name: z.string() }) })).optional(),
 })
-const DiagnosticMetadata = z.object({
-  toolDiagnostic: z
-    .object({ code: z.enum(["tool_unavailable", "permission_denied", "unknown_tool", "invalid_arguments"]) })
-    .optional(),
-})
-
-function errorFlags(error: string | undefined) {
-  if (error === undefined) return []
-  return [
-    /unavailable tool|no such tool|tool .* not found|unknown tool|no.?such.?tool/i.test(error)
-      ? "unknown_tool"
-      : undefined,
-    /invalid.*(?:argument|input)|schema|validation|too (?:long|big)|maximum/i.test(error)
-      ? "invalid_arguments"
-      : undefined,
-    /permission|denied|unauthorized/i.test(error) ? "authorization" : undefined,
-    /abort|cancel|interrupt/i.test(error) ? "interruption" : undefined,
-    "error_present",
-  ].filter((value): value is string => value !== undefined)
-}
-
 test("actual Hosted questions retain private waiting and shared collaboration after the creator leaves", async () => {
-  await using service = await fixture()
+  await using service = await fixture({ connections: { heartbeatMs: 25 } })
   const ownerOptions = { headers: service.headers, throwOnError: true as const }
   const member = async (name: string) => {
     const invite = (await service.client.orgInvites.create({ orgInviteCreate: { role: "member" } }, ownerOptions)).data
@@ -141,8 +121,42 @@ test("actual Hosted questions retain private waiting and shared collaboration af
     ).data
     const registration = await enrollHostedRuntime({ home: home.home, identity: home.identity, ticket, ca: service.ca })
     const online = Promise.withResolvers<void>()
+    const connectionStarted = performance.now()
+    const wire = { handshakes: 0, heartbeats: 0, frames: 0, epoch: 0, sequence: 0, heartbeatAt: 0, closes: 0 }
+    let lastClose:
+      | {
+          code: number
+          epoch: number
+          pendingFrames: number
+          pendingBytes: number
+          leaseRemainingMs: number
+          elapsedMs: number
+          heartbeatAgeMs: number
+        }
+      | undefined
+    service.observeClose((value) => {
+      wire.closes++
+      lastClose = {
+        code: value.code,
+        epoch: value.epoch,
+        pendingFrames: value.pendingFrames,
+        pendingBytes: value.pendingBytes,
+        leaseRemainingMs: value.leaseRemainingMs,
+        elapsedMs: Math.round(performance.now() - connectionStarted),
+        heartbeatAgeMs: wire.heartbeatAt ? Math.round(performance.now() - wire.heartbeatAt) : -1,
+      }
+    })
     service.interceptFrames((_socket, raw) => {
-      if (Protocol.ClientFrame.parse(JSON.parse(String(raw))).type === "heartbeat") online.resolve()
+      const frame = Protocol.ClientFrame.parse(JSON.parse(String(raw)))
+      wire.frames++
+      if (frame.type === "handshake") wire.handshakes++
+      if (frame.type === "heartbeat") {
+        wire.heartbeats++
+        wire.epoch = frame.connectionEpoch
+        wire.sequence = frame.sequence
+        wire.heartbeatAt = performance.now()
+        online.resolve()
+      }
       return false
     })
     const probe = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() })
@@ -161,7 +175,6 @@ test("actual Hosted questions retain private waiting and shared collaboration af
         await online.promise
       } finally {
         clearTimeout(onlineTimer)
-        service.interceptFrames(undefined)
       }
       const target = {
         schemaVersion: 1 as const,
@@ -248,94 +261,101 @@ test("actual Hosted questions retain private waiting and shared collaboration af
             { headers, throwOnError: true },
           )
         ).data
-      const question = async (
-        accepted: Command.InputAccepted,
-      ): Promise<Extract<Interaction.Pending, { kind: "question" }>> => {
-        const sessionID = accepted.permit.sessionID
-        const deadline = Date.now() + 4000
-        for (;;) {
+      const question = async (sessionID: string, requestID: string) => {
+        type Ready = { kind: "asked"; requestID: string } | { kind: "failed"; error: unknown } | { kind: "completed" }
+        const ready = Promise.withResolvers<Ready>()
+        let accepted: Command.InputAccepted | undefined
+        const failure: { current?: { error: unknown } } = {}
+        const fail = (error: unknown) => {
+          failure.current ??= { error }
+          ready.resolve({ kind: "failed", error: failure.current.error })
+        }
+        const throwFailure = () => {
+          if (failure.current) throw failure.current.error
+        }
+        const before = requests.length
+        const unsubscribe = await runtime.run(() => [
+          Bus.subscribeGlobal(Question.Event.Asked, (event) => {
+            if (event.properties.sessionID === sessionID)
+              ready.resolve({ kind: "asked", requestID: event.properties.id })
+          }),
+          Bus.subscribeGlobal(MessageV2.Event.Updated, (event) => {
+            const info = event.properties.info
+            if (info.sessionID !== sessionID || info.role !== "assistant" || !info.error) return
+            if (accepted && info.rootID !== accepted.effect.messageID) return
+            fail(info.error)
+          }),
+          Bus.subscribeGlobal(SessionEvent.Error, (event) => {
+            if (event.properties.sessionID === sessionID && event.properties.error !== undefined)
+              fail(event.properties.error)
+          }),
+          Bus.subscribeGlobal(SessionEvent.RootCompleted, (event) => {
+            if (
+              event.properties.sessionID === sessionID &&
+              (!accepted || event.properties.rootID === accepted.effect.messageID)
+            )
+              ready.resolve({ kind: "completed" })
+          }),
+        ])
+        let reachedAsked = false
+        try {
+          accepted = await input(sessionID, creator.headers, requestID)
+          const observed = await ready.promise
+          reachedAsked = observed.kind === "asked"
+          throwFailure()
+          if (observed.kind === "failed") throw observed.error
+          if (observed.kind === "completed") throw new Error("The original Hosted task completed without its Question")
           const page = (
             await service.client.orgSessionInteractions.list(
               { sessionID, orgInteractionQuery: { operation: "pending", rootSessionID: sessionID, limit: 32 } },
               creatorOptions,
             )
           ).data
+          throwFailure()
           if (page.operation !== "pending") throw new Error("The original Hosted pending interaction page is required")
-          const pending = page.items.find((entry) => entry.kind === "question")
-          if (pending) return pending
-          if (Date.now() >= deadline) {
-            const diagnostic = await runtime.run(async () => {
-              const info = await Session.get(sessionID)
-              return ScopeContext.provide({
-                scope: info.scope,
-                workspace: null,
-                fn: async () => {
-                  const owner = { kind: "session" as const, scopeID: info.scope.id, sessionID }
-                  const rootID = accepted.effect.messageID
-                  const run = await RolloutLedger.getRun(owner, rootID).catch((error) => {
-                    if (error instanceof Storage.NotFoundError) return
-                    throw error
-                  })
-                  const calls = await RolloutLedger.calls(owner, rootID)
-                  const tools = await RolloutLedger.tools(owner, rootID)
-                  const parts = []
-                  let observed = 0
-                  for await (const message of MessageV2.stream({ sessionID })) {
-                    for (const part of message.parts) {
-                      if (part.type !== "tool") continue
-                      const metadata = DiagnosticMetadata.safeParse(part.state.metadata)
-                      parts.push({
-                        tool: part.tool,
-                        status: part.state.status,
-                        diagnosticCode: metadata.success ? metadata.data.toolDiagnostic?.code : undefined,
-                        errors: errorFlags(part.state.status === "error" ? part.state.error : undefined),
-                      })
-                    }
-                    if (++observed === 12) break
-                  }
-                  return {
-                    client: Flag.SYNERGY_CLIENT,
-                    questionProvider: ToolRegistry.toolProviderIDs().includes("question"),
-                    questionInNativeCatalog: (await ToolRegistry.ids()).includes("question"),
-                    interaction: info.interaction?.mode ?? "unspecified",
-                    paused: info.paused?.reason,
-                    rootStatus: run?.status ?? "missing",
-                    rootMatches:
-                      run?.owner.kind === "session" && run.owner.sessionID === sessionID && run.id === rootID,
-                    calls: calls.map((call) => ({
-                      purpose: call.purpose,
-                      usageRole: call.usageRole,
-                      status: call.status,
-                      transportCaptured: call.transportCaptured,
-                      errors: errorFlags(call.error),
-                    })),
-                    tools: tools.map((tool) => ({
-                      tool: tool.tool,
-                      status: tool.status,
-                      errors: errorFlags(tool.error),
-                    })),
-                    parts,
-                    upstream: requests.map(({ subject, request }) => ({
-                      subject,
-                      roles: request.messages.map((message) => message.role),
-                      conversationContext: runtimeContext(request) !== undefined,
-                      questionInSentCatalog: request.tools?.some((tool) => tool.function.name === "question") ?? false,
-                    })),
-                  }
-                },
-              })
+          const pending = page.items.find(
+            (entry): entry is Extract<Interaction.Pending, { kind: "question" }> =>
+              entry.kind === "question" && entry.requestID === observed.requestID,
+          )
+          if (!pending)
+            throw new Error("The original Asked Question is absent from its actual pending interaction page")
+          return { accepted, pending }
+        } catch (error) {
+          console.error("HOSTED_QUESTION_CONNECTION", {
+            observedAt: Date.now(),
+            elapsedMs: Math.round(performance.now() - connectionStarted),
+            reachedAsked,
+            inputAccepted: accepted !== undefined,
+            upstreamCalls: requests.length - before,
+            handshakes: wire.handshakes,
+            heartbeats: wire.heartbeats,
+            frames: wire.frames,
+            epoch: wire.epoch,
+            sequence: wire.sequence,
+            heartbeatAgeMs: wire.heartbeatAt ? Math.round(performance.now() - wire.heartbeatAt) : -1,
+            closes: wire.closes,
+            lastClose,
+          })
+          if (accepted)
+            await observeTaskFailure({
+              runtime,
+              accepted,
+              stage: "hosted-model-start",
+              upstreamCalls: requests.length - before,
             })
-            throw new Error(
-              `The actual Hosted QuestionTool did not enter its original wait: ${JSON.stringify(diagnostic)}`,
-            )
-          }
-          await new Promise<void>((resolve) => setTimeout(resolve, 5))
+          throw error
+        } finally {
+          for (const stop of unsubscribe) stop()
         }
       }
-      const privateInput = await input(privateSession.sessionID, creator.headers, "private-original-input")
-      const privateQuestion = await question(privateInput)
-      const sharedInput = await input(sharedSession.sessionID, creator.headers, "shared-original-input")
-      const sharedQuestion = await question(sharedInput)
+      const { accepted: privateInput, pending: privateQuestion } = await question(
+        privateSession.sessionID,
+        "private-original-input",
+      )
+      const { accepted: sharedInput, pending: sharedQuestion } = await question(
+        sharedSession.sessionID,
+        "shared-original-input",
+      )
       expect(privateQuestion.tool).toBeDefined()
       expect(sharedQuestion.tool).toBeDefined()
       const reply = (sessionID: string, requestID: string, questionID: string): Command.DecisionRequest => ({
@@ -641,9 +661,10 @@ test("actual Hosted questions retain private waiting and shared collaboration af
     } finally {
       service.interceptHTTP(undefined)
       service.interceptFrames(undefined)
+      service.observeClose(undefined)
       await runtime.close()
     }
   } finally {
     await upstream.stop(true)
   }
-})
+}, 30000)

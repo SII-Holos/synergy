@@ -50,7 +50,7 @@ const hash = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("h
 async function paired(mode: "lost-ack" | "absent") {
   const resources = testResources()
   try {
-    const service = await fixture()
+    const service = await fixture({ connections: { heartbeatMs: 25 } })
     resources.defer("paired Service", () => service[Symbol.asyncDispose]())
     const options = { headers: service.headers, throwOnError: true as const }
     const coordinator = new WorkspaceCoordinator({ directory: path.join(service.root, "claims") })

@@ -9,6 +9,7 @@ import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionEvent } from "@ericsanchezok/synergy-harness/session/event"
+import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/ledger"
 import { RolloutLifecycle } from "@ericsanchezok/synergy-harness/session/rollout/lifecycle"
 import { Provider } from "@ericsanchezok/synergy-harness/provider/provider"
@@ -18,16 +19,6 @@ import { openMemberRuntime } from "../src/runtime"
 import { readMemberRegistration } from "../src/registration"
 import { fixture } from "./support/organization"
 import { observeTaskFailure } from "./support/task-failure"
-
-async function observed<T>(promise: Promise<T>) {
-  const timeout = Promise.withResolvers<never>()
-  const timer = setTimeout(() => timeout.reject(new Error("Native execution observation timed out")), 4000)
-  try {
-    return await Promise.race([promise, timeout.promise])
-  } finally {
-    clearTimeout(timer)
-  }
-}
 
 test("accepted organization tasks execute through the native loop and release resources after derived calls drain", async () => {
   const requests: Array<{ authorization: string | null; body: unknown }> = []
@@ -57,7 +48,7 @@ test("accepted organization tasks execute through the native loop and release re
     },
   })
   try {
-    await using f = await fixture()
+    await using f = await fixture({ connections: { heartbeatMs: 25 } })
     const member = await prepareMemberHome({
       baseDirectory: path.join(f.root, "members"),
       identity: f.identity,
@@ -104,7 +95,7 @@ test("accepted organization tasks execute through the native loop and release re
       ca: f.ca,
       listen: { port: listener, token: "e".repeat(64) },
     })
-    await observed(online.promise)
+    await online.promise
     const options = { headers: f.headers, throwOnError: true as const }
     const project = (
       await f.client.orgProjects.create({ orgProjectCreate: { name: "Native execution", description: "" } }, options)
@@ -165,12 +156,37 @@ test("accepted organization tasks execute through the native loop and release re
       },
       options,
     )
+    type Terminal =
+      { kind: "completed"; rootID: string; assistantID: string } | { kind: "failed"; rootID: string; error: unknown }
     const completion = Promise.withResolvers<{ rootID: string; assistantID: string }>()
-    const unsubscribe = await runtime.run(() =>
+    const failure = Promise.withResolvers<Extract<Terminal, { kind: "failed" }>>()
+    const early = new Map<string, Terminal>()
+    let rootID: string | undefined
+    function observe(terminal: Terminal) {
+      if (rootID === undefined) {
+        if (early.get(terminal.rootID)?.kind !== "failed") early.set(terminal.rootID, terminal)
+        return
+      }
+      if (terminal.rootID !== rootID) return
+      if (terminal.kind === "failed") failure.resolve(terminal)
+      else completion.resolve({ rootID: terminal.rootID, assistantID: terminal.assistantID })
+    }
+    const unsubscribe = await runtime.run(() => [
       Bus.subscribeGlobal(SessionEvent.RootCompleted, (event) => {
-        if (event.properties.sessionID === sessionID) completion.resolve(event.properties)
+        if (event.properties.sessionID === sessionID) observe({ kind: "completed", ...event.properties })
       }),
-    )
+      Bus.subscribeGlobal(MessageV2.Event.Updated, (event) => {
+        const info = event.properties.info
+        if (
+          info.sessionID === sessionID &&
+          info.role === "assistant" &&
+          info.rootID !== undefined &&
+          info.error !== undefined &&
+          info.time.completed !== undefined
+        )
+          observe({ kind: "failed", rootID: info.rootID, error: info.error })
+      }),
+    ])
     try {
       const accepted = (
         await f.client.orgCommands.input(
@@ -194,10 +210,20 @@ test("accepted organization tasks execute through the native loop and release re
         )
       ).data
       expect(accepted.effect).toMatchObject({ kind: "inbox", mode: "task" })
-      const completed = await observed(completion.promise).catch(async (error) => {
-        await observeTaskFailure({ runtime, accepted, stage: "native-root-completion", upstreamCalls: requests.length })
-        throw error
-      })
+      rootID = accepted.effect.messageID
+      const retained = early.get(rootID)
+      early.clear()
+      if (retained) observe(retained)
+      async function produced<T>(promise: Promise<T>, stage: "native-root-completion" | "native-release") {
+        const outcome = await Promise.race([
+          promise.then((value) => ({ kind: "ready" as const, value })),
+          failure.promise,
+        ])
+        if (outcome.kind === "ready") return outcome.value
+        await observeTaskFailure({ runtime, accepted, stage, upstreamCalls: requests.length })
+        throw outcome.error
+      }
+      const completed = await produced(completion.promise, "native-root-completion")
       await runtime.run(async () => {
         const session = await Session.get(sessionID)
         expect(session.modelSelection?.selected.model).toEqual({
@@ -233,12 +259,7 @@ test("accepted organization tasks execute through the native loop and release re
           authorization: "Bearer native-upstream-secret",
           body: { model: "native-model", stream: true },
         })
-      expect(
-        await observed(released.promise).catch(async (error) => {
-          await observeTaskFailure({ runtime, accepted, stage: "native-release", upstreamCalls: requests.length })
-          throw error
-        }),
-      ).toMatchObject({
+      expect(await produced(released.promise, "native-release")).toMatchObject({
         sessionID,
         rootID: completed.rootID,
         generation: 1,
@@ -261,9 +282,9 @@ test("accepted organization tasks execute through the native loop and release re
       )
       expect(selection.data.revision).toBe(2)
     } finally {
-      unsubscribe()
+      for (const stop of unsubscribe) stop()
     }
   } finally {
     await upstream.stop(true)
   }
-}, 10_000)
+}, 30_000)

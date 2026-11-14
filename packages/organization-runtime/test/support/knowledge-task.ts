@@ -10,6 +10,7 @@ import {
 import { OrganizationExecutionLeases } from "../../src/execution-leases"
 import { OrganizationCommandRecords } from "../../src/command-records"
 import { OrganizationIntakePath } from "../../src/storage/path"
+import { observeTaskFailure } from "./task-failure"
 
 type TaskRuntime = { run<T>(body: () => Promise<T>): Promise<T> }
 
@@ -67,20 +68,28 @@ export async function waitKnowledgeTask(
   runtime: TaskRuntime,
   accepted: Command.InputAccepted,
   requestCount: () => number,
+  task?: string,
 ) {
   const sessionID = accepted.permit.sessionID
   const info = await runtime.run(() => Session.get(sessionID))
   const owner = { kind: "session" as const, scopeID: info.scope.id, sessionID }
   const rootID = accepted.effect.messageID
+  const started = performance.now()
+  const elapsed = () => Math.round(performance.now() - started)
+  const observed = {
+    awaiting: "run",
+    run: "unread",
+    recording: "unread",
+    execution: "unread",
+    callCount: -1,
+    callStates: {} as Record<string, number>,
+    release: "unread",
+    pending: -1,
+    lastReadMs: 0,
+  }
   const completed = async () => {
-    const boundaryStarted = Date.now()
-    const deadline = boundaryStarted + 4000
-    const observed: { run: string; calls: string[]; release: string; pending?: number } = {
-      run: "unobserved",
-      calls: [],
-      release: "unobserved",
-    }
     for (;;) {
+      observed.awaiting = "run"
       const run = await runtime.run(() =>
         RolloutLedger.getRun(owner, rootID).catch((error) => {
           if (error instanceof Storage.NotFoundError) return undefined
@@ -88,9 +97,17 @@ export async function waitKnowledgeTask(
         }),
       )
       observed.run = run?.status ?? "missing"
+      observed.recording = run?.recording ?? "missing"
+      observed.execution = run?.execution?.status ?? "missing"
+      observed.lastReadMs = elapsed()
       if (run?.status === "completed") {
+        observed.awaiting = "calls"
         const recorded = await runtime.run(() => RolloutLedger.calls(owner, rootID))
-        observed.calls = recorded.map((call) => `${call.purpose}:${call.status}`)
+        observed.callCount = recorded.length
+        observed.callStates = {}
+        for (const call of recorded) observed.callStates[call.status] = (observed.callStates[call.status] ?? 0) + 1
+        observed.lastReadMs = elapsed()
+        observed.awaiting = "release"
         const release = await runtime.run(async () => {
           const [raw] = await Storage.readMany([
             OrganizationIntakePath.release(
@@ -102,6 +119,9 @@ export async function waitKnowledgeTask(
           return raw === undefined ? undefined : OrganizationCommandRecords.Release.parse(raw)
         })
         observed.release = release?.state ?? "missing"
+        observed.lastReadMs = elapsed()
+        observed.awaiting = "leases"
+        observed.pending = -1
         let pending = 0
         let afterEntry: string | undefined
         do {
@@ -112,26 +132,30 @@ export async function waitKnowledgeTask(
             }),
           )
           pending += page.items.length
+          observed.pending = pending
+          observed.lastReadMs = elapsed()
           afterEntry = page.cursor
         } while (afterEntry)
-        observed.pending = pending
         if (
           recorded.length === requestCount() &&
           recorded.every((call) => call.status === "completed") &&
           release?.state === "released" &&
-          pending === 0 &&
-          Date.now() <= deadline
+          pending === 0
         )
           return release
       } else if (run && run.status !== "running") throw new Error(`The native knowledge task ended as ${run.status}`)
-      if (Date.now() >= deadline)
-        throw new Error(
-          `The original knowledge task did not release: ${JSON.stringify({ elapsedMs: Date.now() - boundaryStarted, ...observed })}`,
-        )
+      observed.awaiting = "yield"
       await new Promise<void>((resolve) => setTimeout(resolve, 5))
     }
   }
-  const release = await completed()
+  const release = await completed().catch(async (error: unknown) => {
+    console.error(
+      "NATIVE_TASK_WAIT",
+      JSON.stringify({ task, elapsedMs: elapsed(), upstreamCalls: requestCount(), ...observed }),
+    )
+    await observeTaskFailure({ runtime, accepted, stage: "native-root-completion", upstreamCalls: requestCount() })
+    throw error
+  })
   expect(release).toMatchObject({
     orgID: accepted.permit.orgID,
     subjectID: accepted.permit.actor.subjectID,

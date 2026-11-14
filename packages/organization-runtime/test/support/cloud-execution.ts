@@ -402,6 +402,7 @@ export async function cloudExecutionFixture(
     const objects = path.join(directory, "objects")
     await fs.mkdir(objects)
     const service = await fixture({
+      connections: { heartbeatMs: 25 },
       cloud: {
         blobStores: {
           shared: {

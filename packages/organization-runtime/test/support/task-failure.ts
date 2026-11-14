@@ -4,7 +4,10 @@ import { SessionTransferCore as Core } from "@ericsanchezok/synergy-harness/sess
 import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/ledger"
+import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
+import { LoopJob } from "@ericsanchezok/synergy-harness/session/loop-job"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { ObservabilityRedaction } from "@ericsanchezok/synergy-harness/observability/redaction"
 import {
   OrganizationCommandProtocol as Command,
   OrganizationSessionProtocol as Sessions,
@@ -45,7 +48,9 @@ const codes = z.enum([
 ])
 const failure = z.object({
   name: z.unknown(),
-  data: z.object({ code: z.unknown().optional(), errorName: z.unknown().optional() }).optional(),
+  data: z
+    .object({ code: z.unknown().optional(), errorName: z.unknown().optional(), message: z.string().optional() })
+    .optional(),
 })
 function safeName(value: unknown) {
   const parsed = names.safeParse(value)
@@ -59,7 +64,7 @@ function safeCode(value: unknown) {
 export async function observeTaskFailure(input: {
   runtime: Runtime
   accepted: Command.InputAccepted
-  stage: "hosted-model-start" | "native-root-completion" | "native-release"
+  stage: "hosted-model-start" | "member-tool-entry" | "native-root-completion" | "native-release"
   upstreamCalls: number
   contextCalls?: number
 }) {
@@ -71,6 +76,9 @@ export async function observeTaskFailure(input: {
     contextCalls: input.contextCalls,
     diagnostic: "pending",
     messagesRead: 0,
+    managerRunning: "unknown",
+    activeBackgroundCount: "unknown",
+    runExecutionStatus: "unknown",
   }
   const timer = setTimeout(() => {
     abort.abort()
@@ -93,6 +101,8 @@ export async function observeTaskFailure(input: {
           binding.data.orgID === input.accepted.permit.orgID &&
           binding.data.driverRuntimeID === input.accepted.permit.runtimeID &&
           binding.data.bindingEpoch === input.accepted.permit.bindingEpoch
+        observed.managerRunning = SessionManager.isRunning(session.id)
+        observed.activeBackgroundCount = LoopJob.activeBackgroundCount(session.id, input.accepted.effect.messageID)
         observed.profile = session.controlProfile
         observed.paused = session.paused?.reason
         const owner = { kind: "session" as const, scopeID: session.scope.id, sessionID: session.id }
@@ -103,7 +113,8 @@ export async function observeTaskFailure(input: {
         abort.signal.throwIfAborted()
         observed.run = run?.status ?? "missing"
         observed.recording = run?.recording
-        const errors: Array<{ name: string; code?: string; errorName?: string }> = []
+        observed.runExecutionStatus = run?.execution?.status ?? "unknown"
+        const errors: Array<{ name: string; code?: string; errorName?: string; message?: string }> = []
         observed.errors = errors
         for await (const info of MessageV2.readNewestInfos({
           scopeID: Identifier.asScopeID(session.scope.id),
@@ -117,6 +128,9 @@ export async function observeTaskFailure(input: {
           if (parsed.success)
             errors.push({
               name: safeName(parsed.data.name),
+              ...(parsed.data.name === "UnknownError" && parsed.data.data?.message !== undefined
+                ? { message: ObservabilityRedaction.text(parsed.data.data.message.slice(0, 4096), 512) }
+                : {}),
               ...(parsed.data.data?.code !== undefined ? { code: safeCode(parsed.data.data.code) } : {}),
               ...(parsed.data.data?.errorName !== undefined ? { errorName: safeName(parsed.data.data.errorName) } : {}),
             })

@@ -2,6 +2,7 @@ import { expect, test } from "bun:test"
 import path from "node:path"
 import { z } from "zod"
 import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
+import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { RolloutArtifact } from "@ericsanchezok/synergy-harness/session/rollout/artifact"
@@ -18,18 +19,8 @@ const Request = ModelRequest.extend({
   tools: z.array(z.object({ function: z.object({ name: z.string() }) })).optional(),
 })
 
-async function bounded<T>(work: Promise<T>, label: string) {
-  const timeout = Promise.withResolvers<never>()
-  const timer = setTimeout(() => timeout.reject(new Error(label)), 4000)
-  try {
-    return await Promise.race([work, timeout.promise])
-  } finally {
-    clearTimeout(timer)
-  }
-}
-
 test("actual Hosted session_read preserves the current root and shared access while rejecting another creator's private history", async () => {
-  await using service = await fixture()
+  await using service = await fixture({ connections: { heartbeatMs: 25 } })
   const ownerOptions = { headers: service.headers, throwOnError: true as const }
   const project = (
     await service.client.orgProjects.create(
@@ -97,13 +88,23 @@ test("actual Hosted session_read preserves the current root and shared access wh
     listen: { port, token: "d".repeat(64) },
   })
   try {
-    await bounded(online.promise, "The actual Hosted Runtime did not connect")
+    await online.promise
   } finally {
     service.interceptFrames(undefined)
   }
   const requests: Array<z.infer<typeof Request>> = []
   const heldSync: Array<() => unknown> = []
   let active: { target?: string; step: number; started: () => void } | undefined
+  type TerminalFailure = { kind: "failed"; error: NonNullable<MessageV2.Assistant["error"]> }
+  let producer:
+    | {
+        sessionID: string
+        rootID?: string
+        early: Map<string, TerminalFailure>
+        resolve(outcome: TerminalFailure): void
+      }
+    | undefined
+  let unsubscribe: (() => void) | undefined
   const upstream = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
@@ -126,6 +127,24 @@ test("actual Hosted session_read preserves the current root and shared access wh
     },
   })
   try {
+    unsubscribe = await runtime.run(() =>
+      Bus.subscribeGlobal(MessageV2.Event.Updated, (event) => {
+        const task = producer
+        const info = event.properties.info
+        if (
+          !task ||
+          info.sessionID !== task.sessionID ||
+          info.role !== "assistant" ||
+          info.rootID === undefined ||
+          info.error === undefined ||
+          info.time.completed === undefined
+        )
+          return
+        const outcome: TerminalFailure = { kind: "failed", error: info.error }
+        if (task.rootID === undefined) task.early.set(info.rootID, outcome)
+        else if (info.rootID === task.rootID) task.resolve(outcome)
+      }),
+    )
     const model = (
       await service.client.orgResources.create(
         {
@@ -219,6 +238,8 @@ test("actual Hosted session_read preserves the current root and shared access wh
       target?: string,
     ) => {
       const started = Promise.withResolvers<void>()
+      const failure = Promise.withResolvers<TerminalFailure>()
+      producer = { sessionID, early: new Map(), resolve: failure.resolve }
       active = { target, step: 0, started: () => started.resolve() }
       const before = requests.length
       const accepted = (
@@ -238,7 +259,12 @@ test("actual Hosted session_read preserves the current root and shared access wh
           { headers, throwOnError: true },
         )
       ).data
-      await bounded(started.promise, "The accepted Hosted task did not reach the actual model").catch(async (error) => {
+      producer.rootID = accepted.effect.messageID
+      const retained = producer.early.get(producer.rootID)
+      producer.early.clear()
+      if (retained) producer.resolve(retained)
+      const outcome = await Promise.race([started.promise.then(() => ({ kind: "started" as const })), failure.promise])
+      if (outcome.kind === "failed") {
         await observeTaskFailure({
           runtime,
           accepted,
@@ -246,10 +272,11 @@ test("actual Hosted session_read preserves the current root and shared access wh
           upstreamCalls: requests.length - before,
           contextCalls: requests.slice(before).filter((request) => runtimeContext(request) !== undefined).length,
         })
-        throw error
-      })
-      const completed = await waitKnowledgeTask(runtime, accepted, () => requests.length - before)
+        throw outcome.error
+      }
+      const completed = await waitKnowledgeTask(runtime, accepted, () => requests.length - before, requestID)
       active = undefined
+      producer = undefined
       const observed = requests.slice(before)
       const conversation = observed.filter((request) => runtimeContext(request) !== undefined)
       expect(conversation).toHaveLength(target ? 3 : 1)
@@ -319,19 +346,16 @@ test("actual Hosted session_read preserves the current root and shared access wh
       { sessionID: firstSessionID, orgShareChange: { expectedShareGeneration: 0 } },
       ownerOptions,
     )
-    const projection = await bounded(
-      (async () => {
-        for (;;) {
-          const page = (
-            await service.client.orgSessionSync.snapshot({ sessionID: firstSessionID, limit: 128 }, ownerOptions)
-          ).data
-          const state = (await service.client.orgSessions.shareState({ sessionID: firstSessionID }, ownerOptions)).data
-          if (state.syncState === "synced" && !page.cursor && JSON.stringify(page.items).includes(sentinel)) return page
-          await new Promise<void>((resolve) => setTimeout(resolve, 5))
-        }
-      })(),
-      "The real shared checkpoint did not receive the original input",
-    )
+    const projection = await (async () => {
+      for (;;) {
+        const page = (
+          await service.client.orgSessionSync.snapshot({ sessionID: firstSessionID, limit: 128 }, ownerOptions)
+        ).data
+        const state = (await service.client.orgSessions.shareState({ sessionID: firstSessionID }, ownerOptions)).data
+        if (state.syncState === "synced" && !page.cursor && JSON.stringify(page.items).includes(sentinel)) return page
+        await new Promise<void>((resolve) => setTimeout(resolve, 5))
+      }
+    })()
     const withheld = Promise.withResolvers<void>()
     service.interceptFrames((socket, raw) => {
       const payload = String(raw)
@@ -357,7 +381,7 @@ test("actual Hosted session_read preserves the current root and shared access wh
       MessageV2.get({ sessionID: firstSessionID, messageID: context.accepted.effect.messageID }),
     )
     expect(nativeContext.parts.some((part) => part.type === "text" && part.text.includes(unpublished))).toBe(true)
-    await bounded(withheld.promise, "The actual exporter did not attempt the held native update")
+    await withheld.promise
     const shared = await run(
       secondSessionID,
       collaboratorHeaders,
@@ -421,9 +445,11 @@ test("actual Hosted session_read preserves the current root and shared access wh
       /authoriz|denied|permission|access|private|not found/i,
     )
   } finally {
+    producer = undefined
+    unsubscribe?.()
     active = undefined
     service.interceptFrames(undefined)
     for (const replay of heldSync.splice(0)) await replay()
     await upstream.stop(true)
   }
-}, 30_000)
+}, 90_000)

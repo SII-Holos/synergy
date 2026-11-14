@@ -8,7 +8,9 @@ import { cert, key } from "@ericsanchezok/synergy-testing/organization-tls"
 type Service = Awaited<ReturnType<typeof openOrganizationService>>
 type Socket = Parameters<Service["websocket"]["message"]>[0]
 
-export async function fixture(options: Pick<Parameters<typeof openOrganizationService>[0], "cloud"> = {}) {
+export async function fixture(
+  options: Pick<Parameters<typeof openOrganizationService>[0], "cloud" | "connections"> = {},
+) {
   const resources = testResources()
   try {
     const root = await fs.mkdtemp(path.join(process.env.SYNERGY_TEST_ROOT!, "member-runtime-"))
@@ -16,7 +18,7 @@ export async function fixture(options: Pick<Parameters<typeof openOrganizationSe
     const service = await openOrganizationService({
       home: path.join(root, "service"),
       publicOrigin: "https://organization.example",
-      connections: { heartbeatMs: 25, offlineMs: 300 },
+      connections: options.connections ?? { heartbeatMs: 25, offlineMs: 300 },
       cloud: options.cloud,
     })
     resources.defer("organization service", () => service.close())

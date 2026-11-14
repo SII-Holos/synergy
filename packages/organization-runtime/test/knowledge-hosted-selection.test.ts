@@ -20,7 +20,7 @@ import { ModelRequest, SkillEvidence, runtimeContext, modelResponse, waitKnowled
 import { activeKnowledge } from "../src/knowledge"
 
 test("actual Hosted Sessions inherit their creators' collections once and isolate collaborator updates with stale CAS", async () => {
-  await using service = await fixture()
+  await using service = await fixture({ connections: { heartbeatMs: 25 } })
   const ownerOptions = { headers: service.headers, throwOnError: true as const }
   const project = (
     await service.client.orgProjects.create(

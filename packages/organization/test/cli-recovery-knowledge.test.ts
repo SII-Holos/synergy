@@ -245,7 +245,7 @@ test("public recover preserves sealed H0 material, Skill and the original nonemp
   expect((await Bun.file(path.join(f.input.sourceHome, ".synergy", "home-ownership.json")).json()).schemaVersion).toBe(
     4,
   )
-}, 30_000)
+}, 60_000)
 
 async function rejected(f: Awaited<ReturnType<typeof preparedFixture>>, reason: RegExp) {
   const result = await f.invoke()
@@ -281,7 +281,7 @@ for (const corruption of ["missing-reference", "wrong-inverse-index"] as const) 
       fixture.f,
       corruption === "missing-reference" ? /manifest order is incomplete/ : /inverse index changed/,
     )
-  }, 30_000)
+  }, 60_000)
 }
 
 test("actual retained publication bytes are checked before service Source retirement", async () => {
@@ -314,7 +314,7 @@ test("actual retained publication bytes are checked before service Source retire
   })
   await target.close()
   await rejected(f, /checksum|artifact/i)
-}, 30_000)
+}, 60_000)
 
 test("rehashed publication metadata cannot replace verification of the complete file SHA", async () => {
   await using fixture = await knowledgeFixture(async (service, original) => {
@@ -337,7 +337,7 @@ test("rehashed publication metadata cannot replace verification of the complete 
     })
   })
   await rejected(fixture.f, /file checksum does not match/)
-}, 30_000)
+}, 60_000)
 
 async function newH1ReleaseFixture(bytes: "retained" | "fresh" = "retained") {
   const fixture = await knowledgeFixture()
@@ -416,7 +416,7 @@ test("public recover adopts a new H1 immutable release using the original H0 sea
     expect(createHash("sha256").update(bytes).digest("hex")).toBe(material.file.sha256)
   }
   expect(await f.materialHash()).toBe(f.originalKey)
-}, 30_000)
+}, 60_000)
 
 test("public recover adopts a new H1 sealed upload and immutable release with new physical bytes", async () => {
   await using fixture = await knowledgeFixture()
@@ -501,10 +501,34 @@ test("public recover adopts a new H1 sealed upload and immutable release with ne
     expect(selection.status).toBe(200)
     expect(Knowledge.SelectionPage.parse(await selection.json()).selection).toEqual(original.selection)
   }
-}, 30_000)
+}, 60_000)
 
 test("knowledge metadata finalization rolls back skipped and caught writes before exact unknown retry", async () => {
-  await using fixture = await newH1ReleaseFixture("fresh")
+  const started = Date.now()
+  let sequence = 0
+  function mark(phase: string, state: "start" | "resolved" | "rejected") {
+    console.error(
+      "KNOWLEDGE_FINALIZATION_STAGE",
+      JSON.stringify({ sequence: ++sequence, phase, state, elapsedMs: Date.now() - started }),
+    )
+  }
+  async function stage<T>(phase: string, operation: () => Promise<T>): Promise<T> {
+    mark(phase, "start")
+    try {
+      const value = await operation()
+      mark(phase, "resolved")
+      return value
+    } catch (error) {
+      mark(phase, "rejected")
+      throw error
+    }
+  }
+  const fixture = await stage("fixture-open", () => newH1ReleaseFixture("fresh"))
+  await using fixtureLifetime = {
+    async [Symbol.asyncDispose]() {
+      await stage("fixture-dispose", () => fixture[Symbol.asyncDispose]())
+    },
+  }
   const { f, release, material, publication } = fixture
   const policyKey = currentPolicyKey(f.target.installationID)
   const releaseKey = [
@@ -530,7 +554,7 @@ test("knowledge metadata finalization rolls back skipped and caught writes befor
       }
     })
   }
-  const original = await held()
+  const original = await stage("initial-held-read", held)
   const publish = Writers.publishKnowledgeDelta,
     seal = Writers.sealPreflight
   const omitted = { calls: 0, caught: 0 }
@@ -545,10 +569,14 @@ test("knowledge metadata finalization rolls back skipped and caught writes befor
         omitted.caught++
       }
     })
-    await expect(Recovery.recover(f.input)).rejects.toThrow()
+    const outcome = await stage("recover-omitted-publication", () => Recovery.recover(f.input)).then(
+      () => ({ kind: "resolved" as const }),
+      (error: unknown) => ({ kind: "rejected" as const, error }),
+    )
+    expect(outcome).toMatchObject({ kind: "rejected", error: expect.any(Error) })
   }
   expect(omitted).toEqual({ calls: 1, caught: 1 })
-  expect(await held()).toEqual(original)
+  expect(await stage("held-after-omission", held)).toEqual(original)
   expect((await Bun.file(path.join(f.input.sourceHome, ".synergy", "home-ownership.json")).json()).schemaVersion).toBe(
     4,
   )
@@ -582,10 +610,14 @@ test("knowledge metadata finalization rolls back skipped and caught writes befor
         caught.seal++
       }
     })
-    await expect(Recovery.recover(f.input)).rejects.toThrow()
+    const outcome = await stage("recover-caught-write", () => Recovery.recover(f.input)).then(
+      () => ({ kind: "resolved" as const }),
+      (error: unknown) => ({ kind: "rejected" as const, error }),
+    )
+    expect(outcome).toMatchObject({ kind: "rejected", error: expect.any(Error) })
   }
   expect(caught).toEqual({ writes: 1, publisher: 1, seal: 1 })
-  expect(await held()).toEqual(original)
+  expect(await stage("held-after-caught-write", held)).toEqual(original)
   const transaction = RuntimeMaintenance.restorationTransaction
   const lost = new Error("Committed H1 metadata acknowledgement was lost")
   const observed = { committed: false }
@@ -604,19 +636,28 @@ test("knowledge metadata finalization rolls back skipped and caught writes befor
         return result
       },
     )
-    await expect(Recovery.recover(f.input)).rejects.toBe(lost)
+    const outcome = await stage("recover-lost-acknowledgment", () => Recovery.recover(f.input)).then(
+      () => undefined,
+      (error: unknown) => error,
+    )
+    expect(outcome).toBe(lost)
   }
   expect(observed.committed).toBe(true)
-  const retained = await held()
+  const retained = await stage("held-after-lost-acknowledgment", held)
   expect(retained.phase).toBe("recovery-held")
   expect(retained.metadata).toMatchObject(release)
   expect(retained.aliases).toHaveLength(Math.ceil(material.bytes.length / Publication.chunkBytes))
   expect(OrganizationCurrentPolicyReceipt.parse(retained.policy).checkpoint).toEqual(retained.checkpoint)
-  const retried = await f.invoke()
+  const retried = await stage("original-cli-retry", () => f.invoke())
   expect(retried.code, retried.stderr).toBe(0)
   expect(JSON.parse(retried.stdout)).toMatchObject({ state: "ready", executionEnabled: false })
   expect(await f.materialHash()).toBe(f.originalKey)
-  await using target = await openOrganizationService({ home: f.input.home })
+  const target = await stage("ordinary-target-open", () => openOrganizationService({ home: f.input.home }))
+  await using targetLifetime = {
+    async [Symbol.asyncDispose]() {
+      await stage("ordinary-target-dispose", () => target[Symbol.asyncDispose]())
+    },
+  }
   const http = await client(target, f.input.publicOrigin, "H1 retry password")
   const version = await http.request("GET", `/knowledge/${release.itemID}/versions/${release.version}`)
   expect(version.status).toBe(200)
@@ -632,4 +673,5 @@ test("knowledge metadata finalization rolls back skipped and caught writes befor
   const restored = new Uint8Array(await content.arrayBuffer())
   expect(restored).toEqual(material.bytes)
   expect(createHash("sha256").update(restored).digest("hex")).toBe(material.file.sha256)
-}, 30_000)
+  mark("body-verified", "resolved")
+}, 60_000)

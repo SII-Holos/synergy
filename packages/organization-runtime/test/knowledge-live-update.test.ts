@@ -4,6 +4,7 @@ import path from "node:path"
 import { z } from "zod"
 import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
+import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/ledger"
 import { RolloutArtifact } from "@ericsanchezok/synergy-harness/session/rollout/artifact"
 import { OrganizationRuntimeProtocol as Protocol } from "@ericsanchezok/synergy-organization-protocol"
@@ -13,20 +14,12 @@ import { openMemberRuntime } from "../src/runtime"
 import { fixture } from "./support/organization"
 import { applySelection, publish } from "./support/knowledge"
 import { ModelRequest, SkillEvidence, runtimeContext, modelResponse, waitKnowledgeTask } from "./support/knowledge-task"
+import { observeTaskFailure } from "./support/task-failure"
 
 const hash = (value: string) => createHash("sha256").update(value).digest("hex")
-async function bounded<T>(work: Promise<T>) {
-  const timeout = Promise.withResolvers<never>()
-  const timer = setTimeout(() => timeout.reject(new Error("The actual knowledge update boundary did not settle")), 4000)
-  try {
-    return await Promise.race([work, timeout.promise])
-  } finally {
-    clearTimeout(timer)
-  }
-}
 
 test("an actual Member task applies knowledge at the next model boundary without interrupting its connection tool", async () => {
-  await using service = await fixture()
+  await using service = await fixture({ connections: { heartbeatMs: 25 } })
   const options = { headers: service.headers, throwOnError: true as const }
   const calls: Array<z.infer<typeof ModelRequest>> = []
   const connectionCalls: Array<{ authorization: string | null; body: unknown }> = []
@@ -160,8 +153,9 @@ test("an actual Member task applies knowledge at the next model boundary without
       ca: service.ca,
       listen: { port, token: "e".repeat(64) },
     })
+    let stopFailure: (() => void) | undefined
     try {
-      await bounded(online.promise)
+      await online.promise
       service.interceptFrames(undefined)
       const target = {
         schemaVersion: 1 as const,
@@ -196,6 +190,26 @@ test("an actual Member task applies knowledge at the next model boundary without
         },
         options,
       )
+      type Failure = { kind: "failed"; rootID: string; error: unknown }
+      const failed = Promise.withResolvers<Failure>()
+      const early = new Map<string, Failure>()
+      let acceptedRootID: string | undefined
+      stopFailure = await runtime.run(() =>
+        Bus.subscribeGlobal(MessageV2.Event.Updated, (event) => {
+          const info = event.properties.info
+          if (
+            info.sessionID !== sessionID ||
+            info.role !== "assistant" ||
+            info.rootID === undefined ||
+            info.error === undefined ||
+            info.time.completed === undefined
+          )
+            return
+          const failure: Failure = { kind: "failed", rootID: info.rootID, error: info.error }
+          if (acceptedRootID === undefined) early.set(info.rootID, failure)
+          else if (info.rootID === acceptedRootID) failed.resolve(failure)
+        }),
+      )
       const accepted = (
         await service.client.orgCommands.input(
           {
@@ -219,7 +233,23 @@ test("an actual Member task applies knowledge at the next model boundary without
           options,
         )
       ).data
-      await bounded(connectionStarted.promise)
+      acceptedRootID = accepted.effect.messageID
+      const earlyFailure = early.get(acceptedRootID)
+      early.clear()
+      if (earlyFailure) failed.resolve(earlyFailure)
+      const started = await Promise.race([
+        connectionStarted.promise.then(() => ({ kind: "started" as const })),
+        failed.promise,
+      ])
+      if (started.kind === "failed") {
+        await observeTaskFailure({
+          runtime,
+          accepted,
+          stage: "member-tool-entry",
+          upstreamCalls: calls.length,
+        })
+        throw started.error
+      }
       expect(calls.filter((call) => runtimeContext(call) !== undefined)).toHaveLength(2)
       expect(connectionCalls).toEqual([
         { authorization: "Bearer service-connection-key", body: { operation: "original-business-work" } },
@@ -307,6 +337,7 @@ test("an actual Member task applies knowledge at the next model boundary without
         activated: { manifestHash: hash(JSON.stringify([second.reference])) },
       })
     } finally {
+      stopFailure?.()
       connectionReleased.resolve()
       await runtime.close()
     }

@@ -35,7 +35,7 @@ for (const [sessionCount, withAttachment] of [
 ] as const)
   test(`the same resident capacity child publishes a post-checkpoint native fact across ${sessionCount} Sessions and two Scopes with attachment ${withAttachment}`, async () => {
     await using resources = testResources()
-    const service = await fixture()
+    const service = await fixture({ connections: { heartbeatMs: 25 } })
     resources.defer("resident child organization Service", () => service[Symbol.asyncDispose]())
     const options = { headers: service.headers, throwOnError: true as const }
     const home = await prepareMemberHome({

@@ -50,7 +50,7 @@ test("ten authenticated clients replay a shared 10000-message history while thre
   }
   phase("setup")
   try {
-    const service = await fixture()
+    const service = await fixture({ connections: { heartbeatMs: 25 } })
     resources.defer("capacity organization service", () => service[Symbol.asyncDispose]())
     using serviceMetrics = measureCapacity()
     const owner = { headers: service.headers, throwOnError: true as const }
