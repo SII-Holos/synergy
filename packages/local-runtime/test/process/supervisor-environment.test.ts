@@ -2,7 +2,7 @@ import { expect, spyOn, test } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { text } from "node:stream/consumers"
-import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
+import { testRuntime } from "../support/runtime"
 import { ChildProcessClose } from "@ericsanchezok/synergy-harness/process/child-process-close"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { runtimeHome } from "@ericsanchezok/synergy-harness/test/support/runtime-home"
@@ -64,8 +64,10 @@ nativeTest(
   async () => {
     await using home = await runtimeHome()
     const marker = path.join(home.host.root, "supervisor.json")
-    const runtime = RuntimeContext.create({
-      ...home.host,
+    const coordinator = new WorkspaceCoordinator({ directory: path.join(home.host.root, "locks") })
+    await using runtime = await testRuntime({
+      home: home.host.home,
+      workspaceCoordinator: coordinator,
       env: {
         ...home.host.env,
         HOME: "unselected-home",
@@ -76,7 +78,7 @@ nativeTest(
         BASH_ENV: "private-shell-initializer",
       },
     })
-    const coordinator = new WorkspaceCoordinator({ directory: path.join(home.host.root, "locks") })
+    expect(await Bun.file(marker).exists()).toBe(false)
     const lease = await coordinator.acquire({
       id: crypto.randomUUID(),
       owner: "fixture",
@@ -85,8 +87,8 @@ nativeTest(
       roots: [home.host.root],
     })
     try {
-      const owned = await runtime.run(() =>
-        OwnedProcess.prepare({
+      await runtime.run(async () => {
+        const owned = await OwnedProcess.prepare({
           command: process.execPath,
           args: [
             "-e",
@@ -95,27 +97,26 @@ nativeTest(
           cwd: home.host.root,
           env: { HOME: "selected-command-home", COMMAND_VALUE: "command-only" },
           ownership: lease,
-        }),
-      )
-      const output = text(owned.child.stdout)
-      const errors = text(owned.child.stderr)
-      const closed = ChildProcessClose.wait(owned.child)
-      try {
-        await owned.activate()
-        expect((await closed).code, await errors).toBe(0)
-        expect(JSON.parse(await output)).toEqual({ home: "selected-command-home", value: "command-only" })
-        expect(await Bun.file(marker).exists()).toBe(true)
-        const snapshot = await Bun.file(marker).json()
-        expect(snapshot).toEqual({ cwd: snapshot.cwd, home: home.host.home, root: home.host.root })
-        expect(path.basename(snapshot.cwd)).toStartWith("sy-p-")
-        expect(await coordinator.inspect()).toHaveLength(0)
-      } finally {
-        await owned.stop()
-        await Promise.allSettled([output, errors, closed])
-      }
+        })
+        const output = text(owned.child.stdout)
+        const errors = text(owned.child.stderr)
+        const closed = ChildProcessClose.wait(owned.child)
+        try {
+          await owned.activate()
+          expect((await closed).code, await errors).toBe(0)
+          expect(JSON.parse(await output)).toEqual({ home: "selected-command-home", value: "command-only" })
+          expect(await Bun.file(marker).exists()).toBe(true)
+          const snapshot = await Bun.file(marker).json()
+          expect(snapshot).toEqual({ cwd: snapshot.cwd, home: home.host.home, root: home.host.root })
+          expect(path.basename(snapshot.cwd)).toStartWith("sy-p-")
+          expect(await coordinator.inspect()).toHaveLength(0)
+        } finally {
+          await owned.stop()
+          await Promise.allSettled([output, errors, closed])
+        }
+      })
     } finally {
       await lease.release()
-      runtime.dispose()
     }
   },
   20000,

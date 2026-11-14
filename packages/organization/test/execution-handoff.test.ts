@@ -1,6 +1,7 @@
 import { expect, spyOn, test } from "bun:test"
 import {
   OrganizationRuntimeProtocol as Runtime,
+  OrganizationSyncProtocol as Sync,
   OrganizationHandoffProtocol as Handoff,
   OrganizationExecutionProtocol as Execution,
   OrganizationGatewayProtocol as Gateway,
@@ -16,6 +17,12 @@ import { OrganizationSharing } from "../src/sharing"
 import { OrganizationExecutionIndex as Index } from "../src/execution-index"
 import { executionFixture } from "./support/execution"
 import { connection, keys } from "./support/runtime"
+
+const declaredEmptySyncCheckpoint = Handoff.SyncCheckpoint.parse({
+  version: 1,
+  closureHash: "9".repeat(64),
+  pendingBatch: null,
+})
 
 for (const mode of ["cancel", "transfer"] as const)
   for (const active of [false, true])
@@ -35,8 +42,12 @@ for (const mode of ["cancel", "transfer"] as const)
         },
       })
       try {
-        await using f = await executionFixture({ endpoint: new URL("/v1", upstream.url).href })
-        await f.connect(2, true, false, false, true)
+        await using f = await executionFixture({
+          endpoint: new URL("/v1", upstream.url).href,
+          sync: { receipt: (lease, query) => handoffs.syncBatchReceipt(lease, query) },
+        })
+        const handoffs = createHandoffs({ connections: f.connections, signing: f.signing })
+        await f.connect(2, true, false, false, true, Handoff.syncTransferBridge)
         const targetKeys = await keys()
         const target = await f.run(async () => {
           const record = (await Record.read(Record.RuntimeRegistration, Keys.runtime("runtime-bob")))!
@@ -63,9 +74,10 @@ for (const mode of ["cancel", "transfer"] as const)
             socket.onerror = reject
           })
           const authorization = await connection(target, targetKeys.privateKey, 1)
-          authorization.proof.handshake.capabilities.push("commands", "handoffs")
+          authorization.proof.handshake.capabilities.push("commands", "handoffs", "sync")
           authorization.proof.handshake.schemas.commands = 1
-          authorization.proof.handshake.schemas.handoffs = 1
+          authorization.proof.handshake.schemas.handoffs = Handoff.syncTransferBridge
+          authorization.proof.handshake.schemas.sync = Sync.observationVersion
           authorization.signature = await Runtime.sign(authorization.proof, targetKeys.privateKey)
           const connected = Promise.withResolvers<unknown>()
           socket.onmessage = (event) => connected.resolve(JSON.parse(String(event.data)))
@@ -87,7 +99,6 @@ for (const mode of ["cancel", "transfer"] as const)
               ),
             )
           }
-          const handoffs = createHandoffs({ connections: f.connections, signing: f.signing })
           const execution = createExecutionGrants({
             connections: f.connections,
             admissions: f.commands,
@@ -133,6 +144,7 @@ for (const mode of ["cancel", "transfer"] as const)
               workspaceMoveReceiptHash: null,
               paused: true,
               drained: true,
+              syncCheckpoint: declaredEmptySyncCheckpoint,
             })
             const prepared = Handoff.Proof.parse({
               ...tuple,
@@ -144,6 +156,7 @@ for (const mode of ["cancel", "transfer"] as const)
               fileClosureHash: null,
               workspaceMoveReceiptHash: null,
               paused: true,
+              syncCheckpointHash: await Handoff.syncCheckpointHash(declaredEmptySyncCheckpoint),
             })
             await handoffs.proof({
               proof: frozen,
@@ -582,6 +595,7 @@ for (const mode of ["cancel", "transfer"] as const)
                 workspaceMoveReceiptHash: null,
                 paused: true,
                 drained: true,
+                syncCheckpoint: declaredEmptySyncCheckpoint,
               })
               if (sealed.purpose !== "source-frozen") throw new Error("Expected the actual frozen source fact")
               const installed = Handoff.Proof.parse({
@@ -594,6 +608,7 @@ for (const mode of ["cancel", "transfer"] as const)
                 fileClosureHash: null,
                 workspaceMoveReceiptHash: null,
                 paused: true,
+                syncCheckpointHash: await Handoff.syncCheckpointHash(declaredEmptySyncCheckpoint),
               })
               await handoffs.proof({ proof: sealed, signature: await Handoff.signProof(sealed, currentKey) })
               await handoffs.proof({

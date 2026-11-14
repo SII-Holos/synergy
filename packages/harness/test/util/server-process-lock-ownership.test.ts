@@ -51,8 +51,10 @@ test("closing the actual Runtime permanently revokes its writer evidence", async
   await runtime.close()
   await using other = await testRuntime()
   await other.run(async () => {
-    expect(() => ServerProcessLock.assertCurrent(proof)).toThrow("Runtime")
-    await expect(ServerProcessLock.verifyOwnership(proof)).rejects.toThrow("Runtime")
+    expect(() => ServerProcessLock.assertCurrent(proof)).toThrow("Installed writer native ownership has been released")
+    await expect(ServerProcessLock.verifyOwnership(proof)).rejects.toThrow(
+      "Installed writer native ownership has been released",
+    )
   })
 })
 

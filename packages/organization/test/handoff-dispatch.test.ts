@@ -3,6 +3,7 @@ import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import {
   OrganizationHandoffProtocol as Handoff,
   OrganizationRuntimeProtocol as Runtime,
+  OrganizationSyncProtocol as Sync,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { commandFixture } from "./support/commands"
 import { connection, keys } from "./support/runtime"
@@ -13,8 +14,17 @@ import { OrganizationRecord as Record } from "../src/storage/records"
 import { OrganizationStoragePath as Keys } from "../src/storage/path"
 
 async function fixture(options: { sourceHandoffs?: boolean; targetHandoffs?: boolean; prepare?: boolean } = {}) {
-  const f = await commandFixture()
-  const sourceSocket = await f.connect(1, true, false, false, options.sourceHandoffs ?? true)
+  const f = await commandFixture({
+    sync: { receipt: (lease, query) => handoffs.syncBatchReceipt(lease, query) },
+  })
+  const sourceSocket = await f.connect(
+    1,
+    true,
+    false,
+    false,
+    options.sourceHandoffs ?? true,
+    Handoff.syncTransferBridge,
+  )
   const targetKeys = await keys()
   const target = await f.run(async () => {
     const current = (await Record.read(Record.RuntimeRegistration, Keys.runtime("runtime-bob")))!
@@ -35,8 +45,9 @@ async function fixture(options: { sourceHandoffs?: boolean; targetHandoffs?: boo
   signed.proof.handshake.capabilities.push("commands")
   signed.proof.handshake.schemas.commands = 1
   if (options.targetHandoffs ?? true) {
-    signed.proof.handshake.capabilities.push("handoffs")
-    signed.proof.handshake.schemas.handoffs = 1
+    signed.proof.handshake.capabilities.push("handoffs", "sync")
+    signed.proof.handshake.schemas.handoffs = Handoff.syncTransferBridge
+    signed.proof.handshake.schemas.sync = Sync.observationVersion
   }
   signed.signature = await Runtime.sign(signed.proof, targetKeys.privateKey)
   const connected = Promise.withResolvers<unknown>()

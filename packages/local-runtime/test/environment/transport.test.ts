@@ -119,7 +119,7 @@ test("authenticated execution transport uses the native handler and replays outp
   expect(await Bun.file(staged.paths["note.md"]).text()).toBe("A remote note")
   await expect(
     remote.prepareInputs({ id: "operation", files: [{ name: "note.md", data: "b3RoZXI=" }] }),
-  ).rejects.toThrow("different input")
+  ).rejects.toThrow("Native preparation cannot change or reuse its original input")
   expect((await fetch(new URL("/v1/status", host.url))).status).toBe(401)
   const mount = await remote.files.mount({
     id: "files",
@@ -148,7 +148,9 @@ test("authenticated execution transport uses the native handler and replays outp
   }
   const request = { id: "operation", target, command, digest: ExecutionProtocol.digest(command) }
   await remote.start(request)
-  await expect(remote.discardInputs(request.id)).rejects.toThrow("retained")
+  await expect(remote.discardInputs(request.id)).rejects.toThrow(
+    "Original execution retains its native preparation until saving completes",
+  )
   let status = await remote.status(request.id)
   for (let attempt = 0; status && !ExecutionProtocol.terminal(status) && attempt < 400; attempt++) {
     await Bun.sleep(10)

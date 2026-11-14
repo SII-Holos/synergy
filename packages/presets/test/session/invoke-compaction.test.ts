@@ -1,6 +1,7 @@
 import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { afterAll, beforeAll, describe, expect, test, mock, spyOn } from "bun:test"
 import { Session } from "@ericsanchezok/synergy-harness/session"
+import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { SessionHistory } from "@ericsanchezok/synergy-harness/session/history"
 import { SessionInvoke } from "@ericsanchezok/synergy-harness/session/invoke"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
@@ -1677,6 +1678,7 @@ describe.serial("SessionInvoke preflight compaction", () => {
     runtime.run(async () => {
       const release = Promise.withResolvers<void>()
       const settled = Promise.withResolvers<void>()
+      let attemptID: string | undefined
       using deadline = compactionDeadline()
       try {
         const observed = await runCompactionProcessCase({
@@ -1688,11 +1690,24 @@ describe.serial("SessionInvoke preflight compaction", () => {
             deadline.expire()
             return release.promise
           },
+          beforeAttemptWrite: async (message) => {
+            attemptID ??= message.id
+          },
           onProcessorSettled: () => settled.resolve(),
           afterProcess: async () => {
+            if (!attemptID) throw new Error("The original compaction attempt was not captured")
+            const restored = Promise.withResolvers<void>()
+            let lateWriteObserved = false
+            using updates = {
+              [Symbol.dispose]: Bus.subscribe(MessageV2.Event.Updated, ({ properties: { info } }) => {
+                if (info.id !== attemptID || info.role !== "assistant") return
+                if (info.finish === "stop") lateWriteObserved = true
+                if (lateWriteObserved && info.finish === "error") restored.resolve()
+              }),
+            }
             release.resolve()
             await settled.promise
-            await Bun.sleep(0)
+            await restored.promise
           },
         })
         expect(observed.thrown).toMatchObject({ name: "AbortError" })

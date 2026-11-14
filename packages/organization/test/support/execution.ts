@@ -13,8 +13,9 @@ export async function executionFixture(input: {
   protocol?: "openai-compatible" | "anthropic-compatible"
   connectionEndpoint?: string
   connectionProtocol?: "fixed-http" | "mcp-http" | "mcp-sse"
+  sync?: NonNullable<Parameters<typeof commandFixture>[0]>["sync"]
 }) {
-  const f = await commandFixture()
+  const f = await commandFixture(input.sync ? { sync: input.sync } : {})
   try {
     await f.connect()
     const { grant, binding, connection } = await f.run(async () => {

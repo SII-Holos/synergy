@@ -2,7 +2,10 @@ import { expect, test } from "bun:test"
 import path from "node:path"
 import { prepareHostedHome } from "../src/home"
 import { memberEnvironment } from "../src/environment"
-import { OrganizationRuntimeProtocol as Protocol } from "@ericsanchezok/synergy-organization-protocol"
+import {
+  OrganizationHandoffProtocol as Handoff,
+  OrganizationRuntimeProtocol as Protocol,
+} from "@ericsanchezok/synergy-organization-protocol"
 import { createSynergyClient } from "@ericsanchezok/synergy-sdk"
 import { fixture } from "./support/organization"
 
@@ -76,7 +79,7 @@ test("hosted-runtime privately enrolls a machine and reuses managed CLI shutdown
     try {
       const accepted = await connected.promise
       expect(accepted.capabilities).toContain("handoffs")
-      expect(accepted.schemas.handoffs).toBe(9)
+      expect(accepted.schemas.handoffs).toBe(Handoff.syncTransferBridge)
     } finally {
       clearTimeout(bridgeDeadline)
     }

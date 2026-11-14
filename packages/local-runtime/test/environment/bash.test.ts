@@ -1,3 +1,4 @@
+import { PermissionNext } from "@ericsanchezok/synergy-harness/permission/next"
 import { ProcessRegistry } from "@ericsanchezok/synergy-harness/process/registry"
 import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { expect, spyOn, test } from "bun:test"
@@ -16,6 +17,15 @@ import { EnvironmentExecution } from "@ericsanchezok/synergy-harness/environment
 import { EnvironmentProviders } from "@ericsanchezok/synergy-harness/environment/provider"
 import { SessionLifecycle } from "@ericsanchezok/synergy-harness/session/lifecycle"
 import { RolloutContext } from "@ericsanchezok/synergy-harness/session/rollout/context"
+
+function nativeBashPermission(sessionID: string, patterns: string[]) {
+  const ruleset = patterns.map((pattern) => ({ permission: "bash", pattern, action: "allow" as const }))
+  return async (input: Omit<PermissionNext.Request, "id" | "sessionID" | "tool">) => {
+    expect(input.permission).toBe("bash")
+    expect(input.patterns).toEqual(patterns)
+    await PermissionNext.ask({ ...input, sessionID, ruleset })
+  }
+}
 
 async function withBashOrigin<T>(session: Session.Info, callID: string, fn: (messageID: string) => Promise<T>) {
   const rootID = Identifier.ascending("message")
@@ -77,11 +87,9 @@ test("Bash uses the selected Environment without requiring a Workspace", async (
           agent: PrimaryAgentIdentity.names.general,
           abort: new AbortController().signal,
           environmentID: session.environmentID,
-          extra: { shellAuthorizationResolved: true, shellBypassSandbox: true, controlProfile: "full_access" },
+          extra: { shellBypassSandbox: true, controlProfile: "full_access" },
           metadata() {},
-          async ask() {
-            throw new Error("unexpected permission")
-          },
+          ask: nativeBashPermission(session.id, ["printf environment"]),
         }
         const result = await withBashOrigin(session, context.callID, (messageID) =>
           tool.execute(
@@ -147,11 +155,9 @@ test.skipIf(process.platform === "win32")(
                   agent: PrimaryAgentIdentity.names.general,
                   abort: new AbortController().signal,
                   environmentID: session.environmentID,
-                  extra: { shellAuthorizationResolved: true, shellBypassSandbox: true, controlProfile: "full_access" },
+                  extra: { shellBypassSandbox: true, controlProfile: "full_access" },
                   metadata() {},
-                  async ask() {
-                    throw new Error("unexpected permission")
-                  },
+                  ask: nativeBashPermission(session.id, [`"${process.execPath}" output.js`]),
                 },
                 workBrief: "Read split text",
               },
@@ -273,11 +279,13 @@ test.skipIf(process.platform === "win32")(
                 agent: PrimaryAgentIdentity.names.general,
                 abort: controller.signal,
                 environmentID: session.environmentID,
-                extra: { shellAuthorizationResolved: true, shellBypassSandbox: true, controlProfile: "full_access" },
+                extra: { shellBypassSandbox: true, controlProfile: "full_access" },
                 metadata() {},
-                async ask() {
-                  throw new Error("Unexpected permission request for the owned background fixture")
-                },
+                ask: nativeBashPermission(session.id, [
+                  "printf BACKGROUND_READY",
+                  "read original_input",
+                  `printf '%s' "$original_input"`,
+                ]),
               },
             ),
           )

@@ -476,7 +476,11 @@ export async function catalog(root = ROOT, timingInput?: Timings): Promise<Task[
             assets: ["watcher", "plugin"],
             prerequisites: [
               ...(browser ? ["browser" as const] : []),
-              ...(directory === "packages/organization-runtime" ? ["sandbox" as const] : []),
+              ...(directory === "packages/organization-runtime" ||
+              (directory === "packages/local-runtime" &&
+                group.includes("test/session/tool-resolver-saved-bash-rules.test.ts"))
+                ? ["sandbox" as const]
+                : []),
             ],
           },
         ),

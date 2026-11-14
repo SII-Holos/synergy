@@ -22,6 +22,10 @@ Library deletion waits for the complete dialog set to disappear within its exist
 
 Native tool fixtures create their actual Session, user root, assistant, Run and tool call through the original execution owners. Controlled resource observers instead use a composition-registered Host origin. Maintenance fixtures release their own resource admission before drainage unless that admission is the behavior under test. A roster mutation during Service drainage retains an operation accepted before admission closed and completes through that same captured tail. Derived reader versions, complete migration registries and public schema oracles follow the registered owners while retaining historical refusal and opaque-content checks.
 
+The Local Runtime suite containing the saved Bash rule controls declares the existing sandbox prerequisite, so its native exact-deny assertion reaches the permission owner with the required helper installed. Missing helper preparation remains an infrastructure failure; it cannot count as the expected permission denial, justify disabling the sandbox or change the selected control profile. Public CLI fixtures inspect the schema version accepted by the real Service handshake using the protocol's current bridge constant. Focused local passes establish these fixture and catalog behaviors; the original hosted platform jobs still own helper execution and complete CI acceptance.
+
+Modal browser fixtures observe refreshed background metadata through attached DOM while the confirmation surface owns accessibility and focus. They retain the revision captured when the confirmation opened; a correctly aria-hidden background cannot be awaited as an accessible action.
+
 ## Alternatives considered
 
 **Increase global timeouts or rerun failed tests automatically.** This hides ordering and ownership defects while raising feedback cost; it does not demonstrate a repaired invariant.

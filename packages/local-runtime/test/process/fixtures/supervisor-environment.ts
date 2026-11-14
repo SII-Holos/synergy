@@ -2,6 +2,10 @@ import fs from "node:fs/promises"
 import { runOwnedProcessWorker } from "../../../src/process/owned-worker"
 
 const [marker, runner, configuration] = process.argv.slice(2)
+if (runner === "__storage-worker-runner") {
+  await import("@ericsanchezok/synergy-harness/storage/sqlite-worker")
+  await new Promise(() => {})
+}
 await fs.writeFile(
   marker!,
   JSON.stringify({

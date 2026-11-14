@@ -3,7 +3,10 @@ import fs from "node:fs/promises"
 import path from "node:path"
 import { createHash } from "node:crypto"
 import { createSynergyClient } from "@ericsanchezok/synergy-sdk"
-import { OrganizationRuntimeProtocol as Protocol } from "@ericsanchezok/synergy-organization-protocol"
+import {
+  OrganizationHandoffProtocol as Handoff,
+  OrganizationRuntimeProtocol as Protocol,
+} from "@ericsanchezok/synergy-organization-protocol"
 import { memberEnvironment } from "../src/environment"
 import { readRuntimeHome } from "../src/home"
 import { readRuntimeRegistration } from "../src/registration"
@@ -217,7 +220,7 @@ test("public serve reuses the enrolled supervised lifecycle and graceful shutdow
     try {
       const accepted = await connected.promise
       expect(accepted.capabilities).toContain("handoffs")
-      expect(accepted.schemas.handoffs).toBe(9)
+      expect(accepted.schemas.handoffs).toBe(Handoff.syncTransferBridge)
     } finally {
       clearTimeout(bridgeDeadline)
     }

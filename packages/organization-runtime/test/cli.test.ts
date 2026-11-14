@@ -4,7 +4,10 @@ import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { createIsolatedTestEnv } from "@ericsanchezok/synergy-testing/env"
 import { createSynergyClient } from "@ericsanchezok/synergy-sdk"
-import { OrganizationRuntimeProtocol as Protocol } from "@ericsanchezok/synergy-organization-protocol"
+import {
+  OrganizationHandoffProtocol as Handoff,
+  OrganizationRuntimeProtocol as Protocol,
+} from "@ericsanchezok/synergy-organization-protocol"
 import { prepareMemberHome } from "../src/home"
 import { openMemberRuntime } from "../src/runtime"
 import { fixture } from "./support/organization"
@@ -131,7 +134,7 @@ test("a supervised member command enrolls from private input, serves its own Hom
         }
         const accepted = await handshake.promise
         expect(accepted.capabilities).toContain("handoffs")
-        expect(accepted.schemas.handoffs).toBe(9)
+        expect(accepted.schemas.handoffs).toBe(Handoff.syncTransferBridge)
         const capabilities = (await client.global.capabilities({ throwOnError: true })).data
         expect(capabilities.features.includes("browser")).toBe(restart)
         const current = capabilities.runtimeID

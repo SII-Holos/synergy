@@ -3,6 +3,7 @@ import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import {
   OrganizationHandoffProtocol as Handoff,
   OrganizationRuntimeProtocol as Runtime,
+  OrganizationSyncProtocol as Sync,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { OrganizationHandoffObjectProtocol as Objects } from "../../organization-protocol/src/handoff-object"
 import { createHandoffs, registerHandoffAuthorityHistory } from "../src/handoff"
@@ -14,9 +15,17 @@ import { commandFixture } from "./support/commands"
 import { connection, keys } from "./support/runtime"
 import { organizationApp, organizationOpenApi } from "../src/http"
 
+const declaredEmptySyncCheckpoint = Handoff.SyncCheckpoint.parse({
+  version: 1,
+  closureHash: "9".repeat(64),
+  pendingBatch: null,
+})
+
 async function fixture() {
-  const f = await commandFixture()
-  const sourceSocket = await f.connect(1, true, false, false, true)
+  const f = await commandFixture({
+    sync: { receipt: (lease, query) => handoffs.syncBatchReceipt(lease, query) },
+  })
+  const sourceSocket = await f.connect(1, true, false, false, true, Handoff.syncTransferBridge)
   const targetKeys = await keys()
   const target = await f.run(async () => {
     const current = (await Record.read(Record.RuntimeRegistration, Keys.runtime("runtime-bob")))!
@@ -30,8 +39,12 @@ async function fixture() {
     targetSocket.onerror = reject
   })
   const handshake = await connection(target, targetKeys.privateKey, 1)
-  handshake.proof.handshake.capabilities.push("commands", "handoffs")
-  Object.assign(handshake.proof.handshake.schemas, { commands: 1, handoffs: 1 })
+  handshake.proof.handshake.capabilities.push("commands", "handoffs", "sync")
+  Object.assign(handshake.proof.handshake.schemas, {
+    commands: 1,
+    handoffs: Handoff.syncTransferBridge,
+    sync: Sync.observationVersion,
+  })
   handshake.signature = await Runtime.sign(handshake.proof, targetKeys.privateKey)
   const connected = Promise.withResolvers<unknown>()
   targetSocket.onmessage = (event) => connected.resolve(JSON.parse(String(event.data)))
@@ -82,6 +95,7 @@ async function fixture() {
     workspaceMoveReceiptHash: null,
     paused: true,
     drained: true,
+    syncCheckpoint: declaredEmptySyncCheckpoint,
   })
   let requests = 0
   return {

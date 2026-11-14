@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test"
 import {
   OrganizationRuntimeProtocol as Runtime,
+  OrganizationSyncProtocol as Sync,
   OrganizationHandoffProtocol as Handoff,
   OrganizationExecutionProtocol as Execution,
   OrganizationCommandProtocol as Command,
@@ -32,8 +33,12 @@ for (const cleanup of [false, true])
         await upstream.stop(true)
       },
     }
-    await using f = await executionFixture({ endpoint: new URL("/v1", upstream.url).href })
-    await f.connect(2, true, false, false, true)
+    await using f = await executionFixture({
+      endpoint: new URL("/v1", upstream.url).href,
+      sync: { receipt: (lease, query) => handoffs.syncBatchReceipt(lease, query) },
+    })
+    const handoffs = createHandoffs({ connections: f.connections, signing: f.signing })
+    await f.connect(2, true, false, false, true, Handoff.syncTransferBridge)
     const targetKeys = await keys()
     const target = await f.run(async () => {
       const record = (await Record.read(Record.RuntimeRegistration, Keys.runtime("runtime-bob")))!
@@ -51,15 +56,15 @@ for (const cleanup of [false, true])
         socket.onerror = reject
       })
       const authorization = await connection(target, targetKeys.privateKey, 1)
-      authorization.proof.handshake.capabilities.push("commands", "handoffs")
+      authorization.proof.handshake.capabilities.push("commands", "handoffs", "sync")
       authorization.proof.handshake.schemas.commands = 1
-      authorization.proof.handshake.schemas.handoffs = 1
+      authorization.proof.handshake.schemas.handoffs = Handoff.syncTransferBridge
+      authorization.proof.handshake.schemas.sync = Sync.observationVersion
       authorization.signature = await Runtime.sign(authorization.proof, targetKeys.privateKey)
       const connected = Promise.withResolvers<unknown>()
       socket.onmessage = (event) => connected.resolve(JSON.parse(String(event.data)))
       socket.send(JSON.stringify(authorization))
       Runtime.Connected.parse(await connected.promise)
-      const handoffs = createHandoffs({ connections: f.connections, signing: f.signing })
       const execution = createExecutionGrants({
         connections: f.connections,
         admissions: f.commands,

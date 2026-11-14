@@ -613,7 +613,7 @@ test("a knowledge withdrawal retains the exact revision observed when its confir
     const dialog = page.getByRole("dialog")
     await dialog.getByRole("button", { name: "Withdraw publication", exact: true }).waitFor()
     release.resolve()
-    await page.getByRole("button", { name: /Updated policy/ }).waitFor()
+    await page.getByRole("button", { name: /Updated policy/, includeHidden: true }).waitFor({ state: "attached" })
     await dialog.getByRole("button", { name: "Withdraw publication", exact: true }).click()
     await dialog.waitFor({ state: "detached", timeout: 5000 })
     expect(writes).toHaveLength(1)

@@ -4,6 +4,7 @@ import {
   OrganizationCommandProtocol as Command,
   OrganizationHandoffProtocol as Handoff,
   OrganizationRuntimeProtocol as Runtime,
+  OrganizationSyncProtocol as Sync,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { OrganizationRecord as Record } from "../src/storage/records"
@@ -83,8 +84,17 @@ test("cleanup inspection returns the exact old generation receipt while current 
   ).rejects.toThrow()
 })
 
-async function continued(f: Fixture) {
-  await f.connect(2, true, false, false, true)
+async function continuationFixture() {
+  const f = await executionFixture({
+    endpoint: "https://provider.example/v1",
+    sync: { receipt: (lease, query) => handoffs.syncBatchReceipt(lease, query) },
+  })
+  const handoffs = createHandoffs({ connections: f.connections, signing: f.signing })
+  return { ...f, handoffs }
+}
+
+async function continued(f: Awaited<ReturnType<typeof continuationFixture>>) {
+  await f.connect(2, true, false, false, true, Handoff.syncTransferBridge)
   const targetKeys = await keys()
   const target = await f.run(async () => {
     const record = (await Record.read(Record.RuntimeRegistration, Keys.runtime("runtime-bob")))!
@@ -102,15 +112,16 @@ async function continued(f: Fixture) {
       socket.onerror = reject
     })
     const signed = await connection(target, targetKeys.privateKey, 1)
-    signed.proof.handshake.capabilities.push("commands", "handoffs")
+    signed.proof.handshake.capabilities.push("commands", "handoffs", "sync")
     signed.proof.handshake.schemas.commands = 1
-    signed.proof.handshake.schemas.handoffs = 1
+    signed.proof.handshake.schemas.handoffs = Handoff.syncTransferBridge
+    signed.proof.handshake.schemas.sync = Sync.observationVersion
     signed.signature = await Runtime.sign(signed.proof, targetKeys.privateKey)
     const connected = Promise.withResolvers<unknown>()
     socket.onmessage = (event) => connected.resolve(JSON.parse(String(event.data)))
     socket.send(JSON.stringify(signed))
     Runtime.Connected.parse(await connected.promise)
-    const handoffs = createHandoffs({ connections: f.connections, signing: f.signing })
+    const handoffs = f.handoffs
     const execution = createExecutionGrants({
       admissions: f.commands,
       connections: f.connections,
@@ -221,7 +232,7 @@ function description(proof: Execution.InspectionProof) {
 }
 
 test("canonical control inspection proves absence before minting and resolves the exact grant after description", async () => {
-  await using f = await executionFixture({ endpoint: "https://provider.example/v1" })
+  await using f = await continuationFixture()
   using c = await continued(f)
   const control = await c.control("first-control", 0)
   const request = await inspect(f, {
@@ -267,7 +278,7 @@ test("canonical control inspection proves absence before minting and resolves th
 })
 
 test("historical exact control grants and terminal receipts remain inspectable after the root pointer changes and storage restarts", async () => {
-  await using f = await executionFixture({ endpoint: "https://provider.example/v1" })
+  await using f = await continuationFixture()
   using c = await continued(f)
   await f.run(() => Index.controlMigration.up(() => {}))
   const firstControl = await c.control("old-control", 0)
@@ -449,7 +460,7 @@ test("mounted retention inspection reconciles an unknown committed bind without 
 })
 
 test("control locators rebuild across a page without collapsing historical controls into current root state", async () => {
-  await using f = await executionFixture({ endpoint: "https://provider.example/v1" })
+  await using f = await continuationFixture()
   using c = await continued(f)
   await f.run(() => Index.controlMigration.up(() => {}))
   const selected: Array<{ continuation: Execution.Continuation; grantID: string }> = []
@@ -508,7 +519,7 @@ test("control locators rebuild across a page without collapsing historical contr
 }, 15_000)
 
 test("control allocation and immutable locator roll back together and incomplete migration cannot report absence", async () => {
-  await using f = await executionFixture({ endpoint: "https://provider.example/v1" })
+  await using f = await continuationFixture()
   using c = await continued(f)
   const control = await c.control("rollback-control", 0)
   const inspection = await inspect(f, {
@@ -561,7 +572,7 @@ test("control allocation and immutable locator roll back together and incomplete
 test.each(["describe", "bind"] as const)(
   "a delayed %s cannot allocate after its original signed commit window closes",
   async (operation) => {
-    await using f = await executionFixture({ endpoint: "https://provider.example/v1" })
+    await using f = await continuationFixture()
     using c = await continued(f)
     await f.run(() => Index.controlMigration.up(() => {}))
     const control = await c.control("delayed-allocation", 0)
