@@ -27,7 +27,7 @@ The owner retains order only within its original live Store transaction, using e
 - [x] Machine check: `packages/harness/test/session/message-order-write-work.test.ts` verifies two scans for two native transaction batches, all Message/Part facts, same-count raw changes, original index removal, rollback, Store/Scope isolation and legal delimiter-bearing identities.
 - [x] Machine check: `packages/harness/test/session/message-order-concurrent-write.test.ts` verifies complete native headers and history after overlapping and sequential public writes in the same transaction.
 - [x] Machine check: native message read-error, stream-work, page, streaming-persistence, portable-index and turn-history suites preserve their original behavior.
-- [ ] Machine check: `packages/organization-runtime/test/capacity-sync.test.ts` must pass the original complete workload on the final source.
+- [x] Machine check: `packages/organization-runtime/test/capacity-sync.test.ts` passed the original complete workload after both native and downstream corrections; [shared-export acceptance](0196-shared-export-replayed-unchanged-history-through-writers.md) records the complete sample.
 
 ## Lessons
 

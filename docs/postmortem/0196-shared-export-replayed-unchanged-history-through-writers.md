@@ -22,6 +22,8 @@ The Service had a second replay path: signed batches already maintained their pr
 
 Two later costs remained in the original local owners: adding a redundant kind selector made a selected delivery query bypass the live subtree and revisit acknowledged rows, and each outbox event issued separate point reads and three writes that repeated the same native diagnostic binding lookup. Neither required another queue, an authorization cache or a schema change.
 
+The corrected complete workload passed with its original stage and total deadlines: native production completed in 129.1 seconds, the first held batch was reached at 196.5 seconds, the backlog drained by 277.9 seconds and all reads completed by 350.8 seconds. Ten authenticated clients each replayed the same 10,000 messages in 200 pages; all one hundred Sessions drained and the 8 MiB plus 17-byte attachment passed its full checksum. The held backlog contained 20,102 drafts and finished at zero. Actual OS sampling observed a 597,409,792-byte peak for the long Runtime and no process-identity changes. These are one complete regression sample and bounded page/work-window observations, not a constant total-memory bound or latency SLA.
+
 ## Guardrails
 
 Live native observations use one Session worker over original selectors, prepare payloads outside SQL and publish bounded windows through the same native outbox owner. Only unsequenced same-identity updates coalesce. Generation replay checks the original Runtime, Store, connection and current native Session/root/Scope/binding before reusing safe events. Changed values recheck that binding in their write transaction. Retained projections, drafts and order selectors use 128-record windows and retain the original outbox, acknowledgement, generation, artifact-pin and cleanup owners. Prepared native reads capture chronology IDs in one readonly snapshot and preserve existing header hydration, missing-record and storage-error behavior; inconsistent coverage still uses the owning repair path. Captured ID metadata remains proportional to history size, and pending native-selector and Session-tail collections are not represented as a total-RSS bound.
@@ -32,7 +34,7 @@ Live native observations use one Session worker over original selectors, prepare
 - [x] Machine check: `packages/organization/test/shared-projection-coverage.test.ts` verifies no replay for a genuinely covered fresh generation, original missing-coverage reconstruction, fixed watermarks and share revocation.
 - [x] Machine check: `packages/harness/test/storage/event-delivery-query-work.test.ts` verifies bounded actual SQLite query work with acknowledged history and foreign partitions; selected queue ordering and original acknowledgment checks remain unchanged.
 - [x] Machine check: `packages/organization-runtime/test/sync-native-binding-work.test.ts` verifies original transaction bulk publication, bounded adjacent diagnostic reads, complete message/Part projection and durable local acknowledgment; current binding and execution guards remain fresh.
-- [ ] Machine check: `packages/organization-runtime/test/capacity-sync.test.ts` records the complete ten-client, three-Runtime, hundred-Session workload, attachment integrity, backlog and process peak measurements.
+- [x] Machine check: `packages/organization-runtime/test/capacity-sync.test.ts` passed the complete ten-client, three-Runtime, hundred-Session workload with 6,082 assertions, including attachment integrity, backlog and process peak measurements.
 
 ## Lessons
 
