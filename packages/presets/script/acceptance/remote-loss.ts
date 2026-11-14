@@ -106,6 +106,7 @@ export function remoteLoss(input: unknown): Driver {
             }
             await modelTurn("before")
             const resources = await EnvironmentResources.resolve({
+              origin: host.origin(context.scenario.id),
               ...selection,
               needs: { workspace: true, execution: "exec" },
             })
@@ -125,6 +126,7 @@ export function remoteLoss(input: unknown): Driver {
               }
               try {
                 await EnvironmentExecution.start({
+                  origin: host.origin(context.scenario.id),
                   id,
                   ...selection,
                   command: { command: "/bin/cat", args: ["record.txt"], cwd: root, env: {}, useRoots: [] },
@@ -245,6 +247,7 @@ export function remoteLoss(input: unknown): Driver {
               let executionFailure = ""
               try {
                 await EnvironmentExecution.start({
+                  origin: host.origin(context.scenario.id),
                   id: `loss_${crypto.randomUUID().replaceAll("-", "")}`,
                   ...selection,
                   command: {
@@ -365,6 +368,7 @@ export function remoteLoss(input: unknown): Driver {
               }
               await modelTurn("after")
               await using healthy = await EnvironmentResources.resolve({
+                origin: host.origin(context.scenario.id),
                 scopeID: "home",
                 workspaceID: resumedWorkspace,
                 environmentID: resumedEnvironment,

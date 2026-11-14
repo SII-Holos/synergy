@@ -21,6 +21,99 @@ import type { DesktopSkinUpdateV2, DesktopThemeEvent, DesktopThemeSnapshot, Desk
 import type { DesktopServerStatus } from "./server-manager.js"
 import type { DesktopBadgeState } from "./ipc-contract.js"
 import type { DesktopPowerEvent, DesktopPowerSnapshot, DesktopPowerUpdate } from "./power-save.js"
+import { OrganizationDesktop } from "@ericsanchezok/synergy-organization-protocol"
+
+const notificationListeners = new Set<(event: OrganizationDesktop.NotificationEvent) => void | Promise<void>>()
+const notificationSubscriptions = new Map<string, OrganizationDesktop.NotificationStart>()
+ipcRenderer.on("desktop.organization.notification", (_event, input: unknown) => {
+  const parsed = OrganizationDesktop.NotificationEvent.safeParse(input)
+  if (!parsed.success) return
+  const event = parsed.data
+  const owned = notificationSubscriptions.get(event.requestID)
+  if (!owned || owned.connectionID !== event.connectionID || owned.revision !== event.revision) return
+  if (event.type === "closed") notificationSubscriptions.delete(event.requestID)
+  const ack =
+    event.type === "frame"
+      ? {
+          requestID: event.requestID,
+          connectionID: event.connectionID,
+          streamID: event.frame.streamID,
+          sequence: event.frame.sequence,
+        }
+      : undefined
+  void Promise.all([...notificationListeners].map(async (listener) => listener(structuredClone(event))))
+    .then(async () => {
+      if (!ack || notificationSubscriptions.get(event.requestID) !== owned) return
+      const result: OrganizationDesktop.Result<void> = await ipcRenderer.invoke(
+        "desktop.organization.notificationAck",
+        ack,
+      )
+      if (!result.ok)
+        await organization.notificationStop?.({ requestID: owned.requestID, connectionID: owned.connectionID })
+    })
+    .catch(async () => {
+      try {
+        await organization.notificationStop?.({ requestID: owned.requestID, connectionID: owned.connectionID })
+      } catch {}
+    })
+})
+
+const organization: OrganizationDesktop.Bridge = {
+  protocolVersion: 2,
+  notificationVersion: OrganizationDesktop.NotificationVersion,
+  async notificationStart(input) {
+    const parsed = OrganizationDesktop.NotificationStart.safeParse(input)
+    if (!parsed.success) return { ok: false, error: { code: "invalid_request" } }
+    const request = parsed.data
+    if (notificationSubscriptions.has(request.requestID)) return { ok: false, error: { code: "request_in_progress" } }
+    notificationSubscriptions.set(request.requestID, request)
+    try {
+      const result: OrganizationDesktop.Result<void> = await ipcRenderer.invoke(
+        "desktop.organization.notificationStart",
+        request,
+      )
+      if (!result.ok && notificationSubscriptions.get(request.requestID) === request)
+        notificationSubscriptions.delete(request.requestID)
+      return result
+    } catch {
+      if (notificationSubscriptions.get(request.requestID) === request)
+        notificationSubscriptions.delete(request.requestID)
+      void ipcRenderer
+        .invoke("desktop.organization.notificationStop", {
+          requestID: request.requestID,
+          connectionID: request.connectionID,
+        })
+        .catch(() => {})
+      return { ok: false, error: { code: "unavailable" } }
+    }
+  },
+  async notificationStop(input) {
+    const parsed = OrganizationDesktop.NotificationSubscription.safeParse(input)
+    if (!parsed.success) return { ok: false, error: { code: "invalid_request" } }
+    const request = parsed.data
+    const owned = notificationSubscriptions.get(request.requestID)
+    if (owned?.connectionID === request.connectionID) notificationSubscriptions.delete(request.requestID)
+    return ipcRenderer.invoke("desktop.organization.notificationStop", request)
+  },
+  onNotification(listener) {
+    notificationListeners.add(listener)
+    return () => notificationListeners.delete(listener)
+  },
+  list: () => ipcRenderer.invoke("desktop.organization.list"),
+  connect: (input) => ipcRenderer.invoke("desktop.organization.connect", input),
+  request: (input) => ipcRenderer.invoke("desktop.organization.request", input),
+  commandStream: (input) => ipcRenderer.invoke("desktop.organization.commandStream", input),
+  cancel: (input) => ipcRenderer.invoke("desktop.organization.cancel", input),
+  signOut: (input) => ipcRenderer.invoke("desktop.organization.signOut", input),
+  memberStatus: (input) => ipcRenderer.invoke("desktop.organization.memberStatus", input),
+  startMember: (input) => ipcRenderer.invoke("desktop.organization.startMember", input),
+  download: (input) => ipcRenderer.invoke("desktop.organization.download", input),
+  projectBinding: (input) => ipcRenderer.invoke("desktop.organization.projectBinding", input),
+  bindProject: (input) => ipcRenderer.invoke("desktop.organization.bindProject", input),
+  memberRequest: (input) => ipcRenderer.invoke("desktop.organization.memberRequest", input),
+  downloadContent: (input) => ipcRenderer.invoke("desktop.organization.downloadContent", input),
+  downloadAttachment: (input) => ipcRenderer.invoke("desktop.organization.downloadAttachment", input),
+}
 
 const browserNative = {
   fileAction(input: import("@ericsanchezok/synergy-browser-core").BrowserFileAction) {
@@ -219,6 +312,7 @@ const desktopPower = {
 }
 
 contextBridge.exposeInMainWorld("synergyDesktop", {
+  organization,
   platform: "desktop",
   openDirectoryPickerDialog,
   server,

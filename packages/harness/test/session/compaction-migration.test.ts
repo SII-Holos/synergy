@@ -1,8 +1,10 @@
-import { afterAll, expect, test } from "bun:test"
+import { afterAll, expect, spyOn, test } from "bun:test"
+import { AsyncLocalStorage } from "node:async_hooks"
 import { migrateCompactionCoverage, upgradeCompactionCoverage } from "../../src/session/compaction-migration"
 import { upgradeImportedRecord } from "../../src/migration/import"
 import { Storage } from "../../src/storage/storage"
 import { StoragePath } from "../../src/storage/path"
+import { StoreTransaction } from "../../src/storage/transactional-store"
 import { Identifier } from "../../src/id/id"
 import { Session } from "../../src/session"
 import { SessionHistory } from "../../src/session/history"
@@ -175,3 +177,130 @@ test("central coverage migration preserves legacy history and its receipt across
     }),
   )
 })
+
+test("owner coverage preparation uses bounded fresh writers while preserving ordinary headers and existing coverage", () =>
+  runtime.run(() =>
+    ScopeContext.provide({
+      scope: Scope.home(),
+      workspace: null,
+      fn: async () => {
+        const session = await Session.create({ workspace: null, environmentID: null })
+        const owner = { scopeID: Identifier.asScopeID(session.scope.id), sessionID: Identifier.asSessionID(session.id) }
+        const ids = Array.from({ length: 257 }, () => Identifier.ascending("message"))
+        const keys = ids.map((id) => StoragePath.messageInfo(owner.scopeID, owner.sessionID, id))
+        const values = ids.map((id, index) => ({
+          id,
+          sessionID: session.id,
+          role: index % 64 === 0 ? "assistant" : "user",
+          time: { created: index },
+          metadata: { original: index },
+          ...(index % 64 === 0 ? { summary: true, finish: "stop" } : {}),
+          ...(index === 128 ? { compaction: { coveredThrough: { created: 7, messageID: ids[0] } } } : {}),
+        }))
+        await Storage.transaction((tx) => tx.writeMany(values.map((value, index) => ({ key: keys[index], value }))))
+        const before = await Storage.revisions(keys)
+        let writers = 0
+        let windows: number[] = []
+        const migration = new AsyncLocalStorage<boolean>()
+        const store = Storage.current().store
+        const transaction = store.transaction.bind(store)
+        {
+          using _writes = spyOn(store, "transaction").mockImplementation(
+            <T>(
+              body: Parameters<typeof store.transaction<T>>[0],
+              options?: Parameters<typeof store.transaction<T>>[1],
+            ) => {
+              if (migration.getStore()) writers++
+              return transaction(body, options)
+            },
+          )
+          using reads = spyOn(StoreTransaction.prototype, "readMany")
+          using bodies = spyOn(Storage, "readBinary")
+          await migration.run(true, () => migrateCompactionCoverage(owner, () => {}))
+          windows = reads.mock.calls
+            .map(
+              ([selected]) =>
+                selected.filter((key) => key[0] === "sessions" && key[2] === session.id && key[3] === "messages")
+                  .length,
+            )
+            .filter((count) => count > 0)
+          expect(bodies).not.toHaveBeenCalled()
+        }
+        expect(writers).toBeGreaterThan(0)
+        expect(writers).toBeLessThanOrEqual(Math.ceil(ids.length / 128))
+        expect(windows.reduce((sum, count) => sum + count, 0)).toBe(ids.length)
+        expect(windows.every((count) => count <= 128)).toBe(true)
+        const expected = values.map((value, index) =>
+          index % 64 === 0 && index !== 128
+            ? { ...value, compaction: { coveredThrough: { created: index, messageID: value.id } } }
+            : value,
+        )
+        expect(await Storage.readMany(keys)).toEqual(expected)
+        const after = await Storage.revisions(keys)
+        expect(after.filter((_revision, index) => index % 64 !== 0 || index === 128)).toEqual(
+          before.filter((_revision, index) => index % 64 !== 0 || index === 128),
+        )
+        await migrateCompactionCoverage(owner, () => {})
+        expect(await Storage.revisions(keys)).toEqual(after)
+      },
+    }),
+  ))
+
+test("owner coverage preparation rereads the original header after another writer commits current coverage", () =>
+  runtime.run(() =>
+    ScopeContext.provide({
+      scope: Scope.home(),
+      workspace: null,
+      fn: async () => {
+        const session = await Session.create({ workspace: null, environmentID: null })
+        const owner = { scopeID: Identifier.asScopeID(session.scope.id), sessionID: Identifier.asSessionID(session.id) }
+        const id = Identifier.ascending("message")
+        const key = StoragePath.messageInfo(owner.scopeID, owner.sessionID, id)
+        const original = {
+          id,
+          sessionID: session.id,
+          role: "assistant",
+          summary: true,
+          finish: "stop",
+          time: { created: 99 },
+        }
+        await Storage.write(key, original)
+        const entered = Promise.withResolvers<void>()
+        const released = Promise.withResolvers<void>()
+        const store = Storage.current().store
+        const transaction = store.transaction.bind(store)
+        const migration = new AsyncLocalStorage<boolean>()
+        let held = false
+        using _barrier = spyOn(store, "transaction").mockImplementation(
+          <T>(
+            body: Parameters<typeof store.transaction<T>>[0],
+            options?: Parameters<typeof store.transaction<T>>[1],
+          ) => {
+            if (!migration.getStore() || held) return transaction(body, options)
+            held = true
+            entered.resolve()
+            return released.promise.then(() => transaction(body, options))
+          },
+        )
+        const migrating = migration.run(true, () => migrateCompactionCoverage(owner, () => {}))
+        void migrating.catch(() => {})
+        try {
+          await entered.promise
+          const current = {
+            ...original,
+            metadata: { current: "accepted before the original migration writer" },
+            compaction: { coveredThrough: { created: 7, messageID: id } },
+          }
+          await Storage.write(key, current)
+          const revisions = await Storage.revisions([key])
+          released.resolve()
+          await migrating
+          expect(await Storage.read(key)).toEqual(current)
+          expect(await Storage.revisions([key])).toEqual(revisions)
+        } finally {
+          released.resolve()
+          await migrating
+        }
+      },
+    }),
+  ))

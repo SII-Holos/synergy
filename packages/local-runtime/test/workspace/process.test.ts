@@ -7,7 +7,10 @@ import { ProcessInspection } from "@ericsanchezok/synergy-harness/process/inspec
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { WorktreeProcess } from "../../src/workspace/process"
 import { OwnedProcess } from "../../src/process/owned-process"
-import { testRuntime } from "../support/runtime"
+import { testRuntime as localRuntime } from "../support/runtime"
+import { testEnvironmentRuntime } from "@ericsanchezok/synergy-harness/test/support/environment-origin"
+
+const testRuntime = (options: Parameters<typeof localRuntime>[0] = {}) => testEnvironmentRuntime(options, localRuntime)
 
 test("worktree commands retain a supervisor error after activation even when the root exits successfully", async () => {
   await using runtime = await testRuntime()
@@ -121,6 +124,7 @@ test("logical Workspaces cannot run worktree preparation callbacks on the contro
           backend: { provider: "objects", spec: { blobStore: "local", settings: { namespace: "fixture" } } },
         })
         await using resources = await EnvironmentResources.resolve({
+          origin: runtime.origin("process-1"),
           scopeID: workspace.scopeID,
           workspaceID: workspace.id,
           needs: { workspace: true },

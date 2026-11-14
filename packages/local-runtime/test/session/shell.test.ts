@@ -12,6 +12,7 @@ import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { Shell } from "@ericsanchezok/synergy-harness/util/shell"
 import { SessionHistory } from "@ericsanchezok/synergy-harness/session/history"
 import { LoopJob } from "@ericsanchezok/synergy-harness/session/loop-job"
+import { EnvironmentExecution } from "@ericsanchezok/synergy-harness/environment/execution"
 const runtime = await testRuntime()
 
 test("user shell freezes its file checkpoint on exit", () =>
@@ -35,6 +36,22 @@ test("user shell freezes its file checkpoint on exit", () =>
         expect(checkpoints).toHaveLength(1)
         expect(checkpoints[0]?.type === "patch" && checkpoints[0].checkpoint?.status).toBe("complete")
         expect((await Session.diff(session.id)).map((file) => file.file)).toContain("changed.txt")
+        const operations: EnvironmentExecution.Info[] = []
+        for await (const operation of EnvironmentExecution.sessionEntries({
+          scopeID: session.scope.id,
+          sessionID: session.id,
+        }))
+          operations.push(operation)
+        expect(operations).toHaveLength(1)
+        expect(operations[0]).toMatchObject({
+          state: "completed",
+          origin: {
+            kind: "session",
+            sessionID: session.id,
+            rootID: history.find((message) => message.info.role === "user")?.info.id,
+            tool: "bash",
+          },
+        })
       },
     })
   }))

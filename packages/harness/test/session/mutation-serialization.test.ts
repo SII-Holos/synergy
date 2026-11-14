@@ -6,6 +6,7 @@ import { Session } from "../../src/session"
 import { SessionEvent } from "../../src/session/event"
 import { SessionNav } from "../../src/session/nav"
 import { SessionMutation } from "../../src/session/mutation"
+import { SessionChildIndex } from "../../src/session/child-index"
 import { StoragePath } from "../../src/storage/path"
 import { Storage } from "../../src/storage/storage"
 import { tmpdir } from "../support/fixture"
@@ -56,6 +57,22 @@ function pauseFirstIndexWrite(indexPath: string[]) {
     writes: () => writes,
     spy,
   }
+}
+
+function pauseFirstChildIndexWrite(parentID: string) {
+  const reached = Promise.withResolvers<void>()
+  const release = Promise.withResolvers<void>()
+  const original = SessionChildIndex.upsert
+  let writes = 0
+  const spy = spyOn(SessionChildIndex, "upsert").mockImplementation(async (...args) => {
+    const result = await original(...args)
+    if (args[1] === parentID && ++writes === 1) {
+      reached.resolve()
+      await release.promise
+    }
+    return result
+  })
+  return { reached: reached.promise, release: () => release.resolve(), writes: () => writes, spy }
 }
 
 describe("session mutation serialization", () => {
@@ -293,9 +310,7 @@ describe("session mutation serialization", () => {
           const parent = await Session.create({ title: "Parent" })
           const first = await Session.create({ title: "First child", parentID: parent.id })
           const second = await Session.create({ title: "Second child", parentID: parent.id })
-          const pause = pauseFirstIndexWrite(
-            StoragePath.sessionChildIndex(Identifier.asScopeID(scope.id), Identifier.asSessionID(parent.id)),
-          )
+          const pause = pauseFirstChildIndexWrite(parent.id)
           using _write = pause.spy
 
           try {

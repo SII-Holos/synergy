@@ -26,15 +26,17 @@ import { EnvironmentProviders } from "@ericsanchezok/synergy-harness/environment
 import { WorkspaceCoordinator } from "./workspace/coordinator"
 import { ResourceProfiles } from "./environment/profiles"
 import { registerImageInput } from "./attachment/image-input"
+import { Pty } from "./process/pty"
 
 const registration = RuntimeContext.state(() => ({ complete: false }))
 
 export function registerLocalRuntime(
-  options: { workers?: boolean; environment?: boolean; workspaceCoordinator?: WorkspaceCoordinator } = {},
+  options: { workers?: boolean; environment?: boolean | "native"; workspaceCoordinator?: WorkspaceCoordinator } = {},
 ) {
   const state = registration()
   if (state.complete) return
   registerHarness()
+  Pty.register()
   registerLocalEvents()
   WorkspaceObservation.register(() => FileWatcher.observe())
   registerConfig()
@@ -54,7 +56,7 @@ export function registerLocalRuntime(
     registerNativeEnvironment({ coordinator })
     EnvironmentProviders.setDefault({ provider: "native", spec: {}, reuse: "scope" })
   }
-  ResourceProfiles.register({ environment: options.environment })
+  ResourceProfiles.register({ environment: options.environment === "native" ? false : options.environment })
   registerSkillDomain()
   registerCommandDomain()
   Command.registerActions()

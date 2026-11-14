@@ -5,21 +5,16 @@ import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { LatticeTypes } from "./types"
+import { LatticeLegacyArchive as Archive } from "./legacy-archive"
+import { LatticeMigrationIndex as Retained } from "./migration-index"
+import { NoteTypes, NoteVersions } from "@ericsanchezok/synergy-note"
+import { z } from "zod"
 
 const log = Log.create({ service: "lattice.migration" })
 
 const ACTIVE_LOOP_STATUSES = new Set(["armed", "running", "auditing"])
 
-type StrictV2Index = {
-  runsByID: Map<string, LatticeTypes.Run>
-  loopOwners: Map<string, Set<string>>
-  pendingCreates: Array<{
-    runID: string
-    sessionID: string
-    noteID: string
-    sourceDigest: string
-  }>
-}
+type StrictV2Index = { scopeID: string }
 
 type LoopCandidate = {
   loopID: string
@@ -41,53 +36,10 @@ function strictV2Run(value: unknown): LatticeTypes.Run | undefined {
   return parsed.success ? parsed.data : undefined
 }
 
-function emptyStrictV2Index(): StrictV2Index {
-  return { runsByID: new Map(), loopOwners: new Map(), pendingCreates: [] }
-}
-
-function addLoopOwner(index: StrictV2Index, loopID: string, runID: string): void {
-  const owners = index.loopOwners.get(loopID) ?? new Set<string>()
-  owners.add(runID)
-  index.loopOwners.set(loopID, owners)
-}
-
-function indexStrictV2Run(index: StrictV2Index, run: LatticeTypes.Run): void {
-  index.runsByID.set(run.id, run)
-  for (const step of run.pathway) {
-    for (const attempt of step.loopHistory) addLoopOwner(index, attempt.loopID, run.id)
-  }
-  if (run.effect?.kind === "start_blueprint_loop") addLoopOwner(index, run.effect.loopID, run.id)
-  if (run.effect?.kind === "create_blueprint_loop") {
-    index.pendingCreates.push({
-      runID: run.id,
-      sessionID: run.sessionID,
-      noteID: run.effect.blueprintNoteID,
-      sourceDigest: run.effect.sourceDigest,
-    })
-  }
-}
-
 function addLoopCandidate(candidates: Map<string, LoopCandidate>, loopID: string, runID?: string): void {
   const candidate = candidates.get(loopID) ?? { loopID, runIDs: new Set<string>() }
   if (runID) candidate.runIDs.add(runID)
   candidates.set(loopID, candidate)
-}
-
-function ownedByStrictV2(loopID: string, loop: Record<string, unknown>, index: StrictV2Index): boolean {
-  if (index.loopOwners.has(loopID)) return true
-
-  const orchestration = asRecord(loop.orchestration)
-  const orchestrationRunID = orchestration?.kind === "lattice" ? asString(orchestration.runID) : undefined
-  if (orchestrationRunID && index.runsByID.has(orchestrationRunID)) return true
-  if (loop.source !== "lattice") return false
-
-  const sessionID = asString(loop.sessionID)
-  const noteID = asString(loop.noteID)
-  const sourceDigest = asString(loop.sourceDigest)
-  if (!sessionID || !noteID || !sourceDigest) return false
-  return index.pendingCreates.some(
-    (effect) => effect.sessionID === sessionID && effect.noteID === noteID && effect.sourceDigest === sourceDigest,
-  )
 }
 
 async function readCandidate(key: string[]): Promise<unknown | undefined> {
@@ -101,12 +53,14 @@ async function readCandidate(key: string[]): Promise<unknown | undefined> {
 
 async function removeFileVerified(key: string[], parent: string[], leaf: string, message: string): Promise<void> {
   await Storage.remove(key)
-  if ((await Storage.scan(parent)).includes(leaf)) throw new Error(message)
+  const [remaining] = await Storage.readMany([key])
+  if (remaining !== undefined) throw new Error(message)
 }
 
 async function removeTreeVerified(root: string[]): Promise<void> {
   await Storage.removeTree(root)
-  if ((await Storage.scan(root)).length > 0) throw new Error("Failed to remove legacy Lattice event records.")
+  for await (const _ of Storage.records({ prefix: root, limit: 1 }))
+    throw new Error("Failed to remove legacy Lattice event records.")
 }
 
 function loopIDsFromRun(run: Record<string, unknown> | undefined): Set<string> {
@@ -119,42 +73,44 @@ function loopIDsFromRun(run: Record<string, unknown> | undefined): Set<string> {
   return result
 }
 
-function bindingReferencesStrictV2Run(
+async function bindingReferencesStrictV2Run(
   binding: Record<string, unknown> | undefined,
   scopeID: string,
   sessionID: string,
   index: StrictV2Index,
-): boolean {
+): Promise<boolean> {
   if (!binding) return false
   const boundRunID = asString(binding.runID)
   if (!boundRunID) return false
-  const run = index.runsByID.get(boundRunID)
-  return !!run && run.scopeID === scopeID && run.sessionID === sessionID
+  const retained = await Retained.retained(index.scopeID, boundRunID)
+  return (
+    !!retained && retained.scopeID === scopeID && (retained.sessionID === undefined || retained.sessionID === sessionID)
+  )
 }
 
-function legacyBindingMatches(
+async function legacyBindingMatches(
   binding: Record<string, unknown> | undefined,
   runID: string | undefined,
   index: StrictV2Index,
-): boolean {
+): Promise<boolean> {
   if (!binding) return false
   const boundRunID = asString(binding.runID)
-  if (boundRunID && index.runsByID.has(boundRunID)) return false
+  if (boundRunID && (await Retained.retained(index.scopeID, boundRunID))) return false
   return runID ? boundRunID === runID : true
 }
 
-function exactLatticeLoop(
+async function exactLatticeLoop(
   loop: Record<string, unknown> | undefined,
   loopID: string,
   scopeID: string,
   sessionID: string,
   expectedRunIDs: Set<string>,
   index: StrictV2Index,
-): loop is Record<string, unknown> {
+): Promise<boolean> {
   const ownsExecutionSession = loop?.sessionID === sessionID
   const ownsAuditSession = loop?.auditSessionID === sessionID
   if (loop?.id !== loopID || loop.scopeID !== scopeID || (!ownsExecutionSession && !ownsAuditSession)) return false
-  if (ownedByStrictV2(loopID, loop, index)) return false
+  if (await Retained.ownsLoop(index.scopeID, loopID, loop)) return false
 
   const source = asString(loop.source)
   const orchestration = asRecord(loop.orchestration)
@@ -164,11 +120,16 @@ function exactLatticeLoop(
 
   const ownerRunID = orchestration?.kind === "lattice" ? asString(orchestration.runID) : undefined
   if (ownerRunID && !ownsAuditSession && (expectedRunIDs.size === 0 || !expectedRunIDs.has(ownerRunID))) return false
-  return !ownerRunID || !index.runsByID.has(ownerRunID)
+  return !ownerRunID || !(await Retained.retained(index.scopeID, ownerRunID))
 }
 
-async function cancelLoop(loopPath: string[], loop: Record<string, unknown>): Promise<boolean> {
+async function cancelLoop(
+  loopPath: string[],
+  loop: Record<string, unknown>,
+  archiveSessionID: string,
+): Promise<boolean> {
   if (!ACTIVE_LOOP_STATUSES.has(asString(loop.status) ?? "")) return false
+  await Archive.preserve(loopPath[1], archiveSessionID, loopPath, loop)
   const now = Date.now()
   const time = asRecord(loop.time) ?? {}
   loop.status = "cancelled"
@@ -180,7 +141,12 @@ async function cancelLoop(loopPath: string[], loop: Record<string, unknown>): Pr
   return true
 }
 
-async function clearNoteBinding(scopeID: string, loopID: string, loop: Record<string, unknown>): Promise<boolean> {
+async function clearNoteBinding(
+  scopeID: string,
+  loopID: string,
+  loop: Record<string, unknown>,
+  archiveSessionID: string,
+): Promise<boolean> {
   const noteID = asString(loop.noteID)
   if (!noteID) return false
   const scope = Identifier.asScopeID(scopeID)
@@ -188,10 +154,22 @@ async function clearNoteBinding(scopeID: string, loopID: string, loop: Record<st
   const note = asRecord(await readCandidate(notePath))
   const blueprint = asRecord(note?.blueprint)
   if (!note || blueprint?.activeLoopID !== loopID) return false
+  await Archive.preserve(scopeID, archiveSessionID, notePath, note)
+  const retained = NoteTypes.PersistedInfo.safeParse(note)
+  if (retained.success) await NoteVersions.capture(scopeID, note)
 
   delete blueprint.activeLoopID
   note.blueprint = blueprint
+  note.version =
+    z
+      .number()
+      .int()
+      .positive()
+      .safe()
+      .parse(note.version ?? 1) + 1
+  note.time = { ...(asRecord(note.time) ?? {}), updated: Date.now() }
   await Storage.write(notePath, note)
+  if (retained.success) await NoteVersions.capture(scopeID, note)
   await removeFileVerified(
     StoragePath.note(scope, "_index"),
     StoragePath.notesRoot(scope),
@@ -201,12 +179,18 @@ async function clearNoteBinding(scopeID: string, loopID: string, loop: Record<st
   return true
 }
 
-async function clearSessionLoopBinding(scopeID: string, sessionID: string, loopID: string): Promise<boolean> {
+async function clearSessionLoopBinding(
+  scopeID: string,
+  sessionID: string,
+  loopID: string,
+  archiveSessionID: string,
+): Promise<boolean> {
   const scope = Identifier.asScopeID(scopeID)
   const sessionPath = StoragePath.sessionInfo(scope, Identifier.asSessionID(sessionID))
   const session = asRecord(await readCandidate(sessionPath))
   const blueprint = asRecord(session?.blueprint)
   if (!session || blueprint?.loopID !== loopID) return false
+  await Archive.preserve(scopeID, archiveSessionID, sessionPath, session)
 
   delete blueprint.loopID
   delete blueprint.loopRole
@@ -236,15 +220,15 @@ async function cleanSession(input: {
   const legacy = asRecord(session.lattice)
   const workflowMatches =
     workflow?.kind === "lattice" &&
-    !bindingReferencesStrictV2Run(workflow, input.scopeID, input.sessionID, input.index) &&
-    legacyBindingMatches(workflow, input.runID, input.index)
-  const legacyMatches = legacyBindingMatches(legacy, input.runID, input.index)
+    !(await bindingReferencesStrictV2Run(workflow, input.scopeID, input.sessionID, input.index)) &&
+    (await legacyBindingMatches(workflow, input.runID, input.index))
+  const legacyMatches = await legacyBindingMatches(legacy, input.runID, input.index)
 
   if (workflowMatches) {
     delete session.workflow
     changed = true
   }
-  if (legacy) {
+  if (legacy && legacyMatches) {
     delete session.lattice
     changed = true
   }
@@ -267,7 +251,11 @@ async function cleanSession(input: {
     loopCandidate = { loopID: candidateLoopID, runIDs }
   }
 
-  if (changed && input.persist !== false) await Storage.write(sessionPath, session)
+  if (changed && input.persist !== false) {
+    const original = await Storage.read(sessionPath)
+    await Archive.preserve(input.scopeID, input.sessionID, sessionPath, original)
+    await Storage.write(sessionPath, session)
+  }
   return { changed, loopCandidate }
 }
 
@@ -281,13 +269,23 @@ async function cleanLegacyLoop(input: {
   const loopPath = StoragePath.blueprintLoop(scope, input.candidate.loopID)
   const loop = asRecord(await readCandidate(loopPath))
   if (
-    !exactLatticeLoop(loop, input.candidate.loopID, input.scopeID, input.sessionID, input.candidate.runIDs, input.index)
+    !loop ||
+    !(await exactLatticeLoop(
+      loop,
+      input.candidate.loopID,
+      input.scopeID,
+      input.sessionID,
+      input.candidate.runIDs,
+      input.index,
+    ))
   ) {
     return { loopCancelled: false, sessionChanged: false, noteChanged: false }
   }
 
-  const loopCancelled = await cancelLoop(loopPath, loop)
-  const noteChanged = await clearNoteBinding(input.scopeID, input.candidate.loopID, loop)
+  await Archive.preserve(input.scopeID, input.sessionID, loopPath, loop)
+
+  const loopCancelled = await cancelLoop(loopPath, loop, input.sessionID)
+  const noteChanged = await clearNoteBinding(input.scopeID, input.candidate.loopID, loop, input.sessionID)
   const sessionIDs = new Set<string>([input.sessionID])
   const executionSessionID = asString(loop.sessionID)
   const auditSessionID = asString(loop.auditSessionID)
@@ -296,7 +294,8 @@ async function cleanLegacyLoop(input: {
 
   let sessionChanged = false
   for (const sessionID of sessionIDs) {
-    if (await clearSessionLoopBinding(input.scopeID, sessionID, input.candidate.loopID)) sessionChanged = true
+    if (await clearSessionLoopBinding(input.scopeID, sessionID, input.candidate.loopID, input.sessionID))
+      sessionChanged = true
   }
   return { loopCancelled, sessionChanged, noteChanged }
 }
@@ -310,6 +309,11 @@ async function resetLegacyRun(input: {
   const run = asRecord(input.raw)
   const runID = asString(run?.id)
   const sessionID = asString(run?.sessionID) ?? input.recordKey
+  const scope = Identifier.asScopeID(input.scopeID)
+  const runPath = StoragePath.latticeLegacyRun(scope, input.recordKey)
+  if (input.raw === undefined)
+    throw new Error("Cannot reset unreadable Lattice history without retaining its original bytes")
+  await Archive.preserve(input.scopeID, sessionID, runPath, input.raw)
   const runLoopIDs = loopIDsFromRun(run)
   const sessionResult = await cleanSession({
     scopeID: input.scopeID,
@@ -339,7 +343,12 @@ async function resetLegacyRun(input: {
     if (result.noteChanged) noteChanged = true
   }
 
-  const scope = Identifier.asScopeID(input.scopeID)
+  for (const eventRoot of [
+    StoragePath.latticeLegacyEventsRoot(scope, input.recordKey),
+    ...(sessionID !== input.recordKey ? [StoragePath.latticeLegacyEventsRoot(scope, sessionID)] : []),
+  ])
+    for await (const row of Storage.records({ prefix: eventRoot, limit: 128 }))
+      await Archive.preserve(input.scopeID, sessionID, row.key, row.value)
   await removeTreeVerified(StoragePath.latticeLegacyEventsRoot(scope, input.recordKey))
   if (sessionID !== input.recordKey) {
     await removeTreeVerified(StoragePath.latticeLegacyEventsRoot(scope, sessionID))
@@ -355,113 +364,57 @@ async function resetLegacyRun(input: {
 }
 
 async function resetLatticeV1(progress: (current: number, total: number) => void): Promise<void> {
-  const scopeIDs = await Storage.scan(StoragePath.latticeRunsRoot())
-  const records: Array<{ scopeID: string; recordKey: string; raw: unknown | undefined }> = []
-  const indexes = new Map<string, StrictV2Index>()
-  for (const scopeID of scopeIDs) {
-    const recordKeys = await Storage.scan(StoragePath.latticeRunsRoot(Identifier.asScopeID(scopeID)))
-    const index = emptyStrictV2Index()
-    indexes.set(scopeID, index)
-    for (const recordKey of recordKeys) {
-      const raw = await readCandidate(StoragePath.latticeRun(Identifier.asScopeID(scopeID), recordKey))
-      records.push({ scopeID, recordKey, raw })
-      const run = strictV2Run(raw)
-      if (run) indexStrictV2Run(index, run)
-    }
-  }
-
-  const sessionScopeIDs = await Storage.scan(["sessions"])
-  const sessions: Array<{ scopeID: string; sessionID: string }> = []
-  for (const scopeID of sessionScopeIDs) {
-    const sessionIDs = await Storage.scan(StoragePath.sessionsRoot(Identifier.asScopeID(scopeID)))
-    for (const sessionID of sessionIDs) sessions.push({ scopeID, sessionID })
-    if (!indexes.has(scopeID)) indexes.set(scopeID, emptyStrictV2Index())
-  }
-
+  await Retained.rebuild()
   let reset = 0
   let preserved = 0
-  let loopsCancelled = 0
-  let sessionsChanged = 0
-  let notesChanged = 0
   let current = 0
-  const total = records.length + sessions.length
-
-  for (const record of records) {
-    if (strictV2Run(record.raw)) {
-      preserved++
-    } else {
-      const result = await resetLegacyRun({
-        ...record,
-        index: indexes.get(record.scopeID) ?? emptyStrictV2Index(),
-      })
-      reset++
-      if (result.loopCancelled) loopsCancelled++
-      if (result.sessionChanged) sessionsChanged++
-      if (result.noteChanged) notesChanged++
-    }
-    current++
-    progress(current, total)
-  }
-
-  for (const session of sessions) {
-    const index = indexes.get(session.scopeID) ?? emptyStrictV2Index()
-    const sessionInfo = asRecord(
-      await readCandidate(
-        StoragePath.sessionInfo(Identifier.asScopeID(session.scopeID), Identifier.asSessionID(session.sessionID)),
-      ),
-    )
-    const workflow = asRecord(sessionInfo?.workflow)
-    const hadLegacyBinding =
-      !!asRecord(sessionInfo?.lattice) ||
-      (workflow?.kind === "lattice" &&
-        !bindingReferencesStrictV2Run(workflow, session.scopeID, session.sessionID, index))
-    if (hadLegacyBinding) {
-      await removeTreeVerified(
-        StoragePath.latticeLegacyEventsRoot(Identifier.asScopeID(session.scopeID), session.sessionID),
+  for await (const row of Storage.records({ prefix: ["lattice", "runs"], limit: 128 })) {
+    if (row.key.length !== 4) continue
+    const scopeID = row.key[2]
+    const schemaVersion = asRecord(row.value)?.schemaVersion
+    if (strictV2Run(row.value) || (schemaVersion !== undefined && schemaVersion !== 1)) preserved++
+    else {
+      await Storage.transaction(() =>
+        resetLegacyRun({ scopeID, recordKey: row.key[3], raw: row.value, index: { scopeID } }),
       )
+      reset++
     }
-    const preview = await cleanSession({
-      scopeID: session.scopeID,
-      sessionID: session.sessionID,
-      runID: undefined,
-      runLoopIDs: new Set(),
-      index,
-      includeUnboundLatticeLoop: true,
-      persist: false,
-    })
-    let loopSessionChanged = false
-    if (preview.loopCandidate) {
-      const loopResult = await cleanLegacyLoop({
-        scopeID: session.scopeID,
-        sessionID: session.sessionID,
-        candidate: preview.loopCandidate,
-        index,
-      })
-      if (loopResult.loopCancelled) loopsCancelled++
-      if (loopResult.noteChanged) notesChanged++
-      loopSessionChanged = loopResult.sessionChanged
-    }
-    const result = await cleanSession({
-      scopeID: session.scopeID,
-      sessionID: session.sessionID,
-      runID: undefined,
-      runLoopIDs: new Set(),
-      index,
-    })
-    if (loopSessionChanged && !result.changed) sessionsChanged++
-    if (result.changed) sessionsChanged++
-    current++
-    progress(current, total)
+    progress(++current, 0)
   }
-
-  log.info("Lattice v2 reset migration complete", {
-    inspected: total,
-    reset,
-    preserved,
-    loopsCancelled,
-    sessionsChanged,
-    notesChanged,
-  })
+  for await (const row of Storage.records({ prefix: ["sessions"], limit: 128 })) {
+    if (row.key.length !== 4 || row.key[3] !== "info") continue
+    const scopeID = row.key[1]
+    const sessionID = row.key[2]
+    const index = { scopeID }
+    await Storage.transaction(async () => {
+      const sessionInfo = asRecord(await readCandidate(row.key))
+      const workflow = asRecord(sessionInfo?.workflow)
+      const legacy = asRecord(sessionInfo?.lattice)
+      const hadLegacyBinding =
+        (await legacyBindingMatches(legacy, undefined, index)) ||
+        (workflow?.kind === "lattice" && !(await bindingReferencesStrictV2Run(workflow, scopeID, sessionID, index)))
+      if (hadLegacyBinding) {
+        const events = StoragePath.latticeLegacyEventsRoot(Identifier.asScopeID(scopeID), sessionID)
+        for await (const event of Storage.records({ prefix: events, limit: 128 }))
+          await Archive.preserve(scopeID, sessionID, event.key, event.value)
+        await removeTreeVerified(events)
+      }
+      const preview = await cleanSession({
+        scopeID,
+        sessionID,
+        runID: undefined,
+        runLoopIDs: new Set(),
+        index,
+        includeUnboundLatticeLoop: true,
+        persist: false,
+      })
+      if (preview.loopCandidate) await cleanLegacyLoop({ scopeID, sessionID, candidate: preview.loopCandidate, index })
+      await cleanSession({ scopeID, sessionID, runID: undefined, runLoopIDs: new Set(), index })
+    })
+    progress(++current, 0)
+  }
+  progress(current, current)
+  log.info("Lattice v2 reset migration complete", { inspected: current, reset, preserved })
 }
 
 export const migrations: Migration[] = [
@@ -469,6 +422,16 @@ export const migrations: Migration[] = [
     id: "20260722-lattice-v2-reset",
     description: "Reset incompatible Lattice v1 runs before enabling the recoverable Lattice v2 model",
     domain: "lattice",
+    async up(progress) {
+      await resetLatticeV1(progress)
+    },
+  },
+  {
+    id: "20261111-lattice-retained-legacy-archive-v1",
+    description: "Retain available legacy Lattice records before reset and preserve unsupported schema data",
+    domain: "lattice",
+    scope: "global",
+    execution: "maintenance",
     async up(progress) {
       await resetLatticeV1(progress)
     },

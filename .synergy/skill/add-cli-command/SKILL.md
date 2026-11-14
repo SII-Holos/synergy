@@ -22,6 +22,18 @@ description: Add or modify a Synergy CLI command, command group, positional, opt
    Installation commands use Plugin Host's installation manager. Keep module trust separate from API4 grants, preserve activation journals, and verify both next-start selection and workers pinned to an older running generation.
 7. Regenerate the SDK with `./script/generate.ts` only if an API route or OpenAPI-visible schema changed.
 
+For an independent service with its own storage lifecycle, declare `CommandEntry.initialization: "owner"`. Validate its explicit Home and transport options before opening storage; do not initialize the ambient Agent Home or mirror parser errors into its telemetry. Verify missing/relative Home rejection leaves the ambient Home empty, command registration does not install service migrations in an Agent Runtime, private token output cannot be overwritten, and real child-process shutdown releases only the service's lock. Keep credentials out of arguments and stdout.
+
+For a command that receives a one-time secret without server idempotency, durably publish its new private output marker before dispatch. Verify the actual descriptor and retained path identity and permissions around secret writes; file fsync alone does not persist the directory entry. Refuse an existing output before HTTP, preserve known rejection versus unknown outcomes, and never automatically repeat uncertain issuance. Test actual TLS response loss and an actual output permission change; inject a directory-sync failure through the public filesystem owner and assert zero remote requests. Repeat the scenarios with the packed executable outside the checkout.
+
+Use the service's owning configuration schema and canonical domain file when its policy is persisted. Read only that explicit Home's service domain before creating output or acquiring storage; do not invoke Agent configuration discovery to obtain service settings. Verify a real child sees the configured policy, malformed settings preserve the file and leave service data absent, and error output omits submitted content.
+
+For a supervised service, validate a bounded, versioned private stdin or IPC request before opening storage. Keep transient credentials out of arguments, readiness and logs. Reuse the CLI server lifecycle through its runtime factory, including startup reporters and parent-death handling. Test absent/truncated input, identity mismatch, shutdown and restart, and preserve only the selected Home's verified installation metadata for workers.
+
+For administrative backup and restoration, compose the original native owners through the domain instead of implementing installation in the parser. Authenticate private input and archive inventories before target initialization. Keep scoped Runtimes alive until asynchronous capture/import settles, including `await using` return paths. Verify actual bytes, exact retries, held execution, competing locks and rejected archives through the packed executable. See [organization administration](../../../docs/decisions/implemented/feature/2026-11-13-install-organization-backups-through-original-native-owners.md).
+
+For core Agent and policy runners, register the pinned component composition before global path initialization. A dedicated Home's owner must be selected before its ownership guard runs; never bypass that guard for workers. Exercise a real marked Home and a mismatched identity through both CLI worker roles, then verify the packed launcher outside the checkout.
+
 ## Command Contract
 
 1. Separate the command kinds: discovery commands (list accounts, projects, or queues), resolve commands (name or URL to a stable ID), read commands (exact object fetch plus a bounded list/search with `--limit` or a cursor), and narrow write commands (one named action each; prefer `--dry-run` or draft mode when the service allows).
@@ -47,6 +59,8 @@ For startup, daemon, port, Web, Desktop, auth, or data movement changes, test th
 
 ## Installed component runner lifecycle
 
+For an independent service executable, reuse `runCli({ commandsOnly: true, name, register, commands, runtimeFactory })` with only owner-initialized contributions. Keep its authoritative command definitions in the service owner and supply a Runtime factory that rejects accidental Agent startup. Test help, unknown commands and rejected parameters without an ambient Home, then exercise the packed executable outside the checkout. This is an explicit embedding entry; managed component dispatch still requires the generation verification below.
+
 Use this workflow for metadata-owned subprocess runners. Read [Installable packages](../../../docs/reference/installable-packages.md#trusted-host-components), [Runtime and Scope](../../../docs/architecture/runtime-and-scope.md#composition-and-migration-registration), and the [bootstrap IPC decision](../../../docs/decisions/implemented/bug-fix/2026-10-07-replay-component-runner-bootstrap-ipc.md) before changing dispatch.
 
 1. Keep optional runners in the owning component's `synergy.runners` metadata. Verify the installed launcher selects the declared export from its parent's pinned, sealed generation; do not add an optional runner to `CORE_RUNNERS` or load full product composition to obtain dispatch.
@@ -66,7 +80,7 @@ The fixture checks shared launcher replay and context lifetime, not the componen
 
 ## Synchronize Documentation
 
-Run `bun script/gen/gen-cli-reference.ts` to update the generated [CLI reference](../../../docs/reference/cli.md); never hand-edit it. The generator follows both command catalogs, lazy contributions and component adapters’ `dataCommands`, `debugCommands` and `pluginCommands` contributions. Test both core and full help when changing availability or aliases. Also review `README.md`, configuration/storage references, affected help text, and `.synergy/command/` workflows. Keep migration history outside the current CLI reference.
+Run `bun script/gen/gen-cli-reference.ts` to update the generated [CLI reference](../../../docs/reference/cli.md); never hand-edit it. The generator follows actual builder registrations, lazy command sources and component adapters’ explicit `dataCommands`, `debugCommands` and `pluginCommands` exports without executing modules. Keep complete parent paths and verify identically named children retain their own options. Test both core and full help when changing availability or aliases. Also review `README.md`, configuration/storage references, affected help text, and `.synergy/command/` workflows. Keep migration history outside the current CLI reference.
 
 ## Handoff
 
@@ -75,3 +89,9 @@ Report the registered command path, domain API called, failure/exit behavior, ma
 ## Task execution commands
 
 Use the shared `RuntimeHandle` for a local writer and generated SDK methods for attached execution. Subscribe before submission, process interactions during command execution, and always remove signal listeners and drain cancellation in cleanup. Read durable run results instead of treating a session idle event as completion. Keep JSON stdout parseable and report unknown estimates separately from known cost. See [Rollout execution](../../../docs/reference/rollout.md).
+
+For explicit recovery after held installation, inspect the original actual SQL publication before reopening inactive material or entering a strict staging reader. Admit an exact completion-prefix repair only through its SQL-backed owning Publication permit. Await scoped Runtime callbacks through actual native completion and ordinary startup verification; preserve original work, request and keys across unknown results. Exercise real committed-response loss, a partial native completion frame and unsupported binary changes through the public command.
+
+For cleanup after ordinary machine admission is revoked, use a dedicated opener exposing only the original discovery, inspection and retirement operations. Read the retained enrollment and key through their owning Home, acquire its ordinary process lock and attach existing storage without initialization. Keep identity/deployment/CA and exact descriptors on bounded private stdin; never accept permits, keys or coordinator paths. Verify actual source command dispatch, lost acknowledgements, wrong identities and cold inspection without starting an ordinary Runtime. Isolated native tests may inject their original private coordinator through trusted handler composition, never through product input.
+
+For a public Home upgrade, reuse the original restricted native opener and domain migration with one stable request identifier. Report completion only after exact target bytes, central migration receipts and the original maintenance release agree; service readiness remains a separate startup. Keep failed or cancelled operations held for explicit same-request reconciliation. Exercise actual child exits after durable draining, reader publication, releasing and committed release through both shared and independent parsers, then verify the packed command outside the checkout.

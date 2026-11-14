@@ -105,8 +105,24 @@ export function buildCommands(root = ROOT) {
 
 type Bundle = "build" | "intermediate"
 
+const BUILD_SOURCE_IGNORED = [
+  "dist",
+  "node_modules",
+  ".turbo",
+  "coverage",
+  "test",
+  "target",
+  ".artifacts",
+  "sandbox-assets",
+  "messages.mjs",
+]
+
 function includesWeb(bundle: Bundle) {
   return bundle === "build" && process.env.SYNERGY_CI_WEB_BUILD === "true"
+}
+
+function sourceMode(mode: number) {
+  return mode & ~0o022
 }
 
 function buildPaths(root: string, web: boolean) {
@@ -131,11 +147,7 @@ export async function buildIdentity(root = ROOT, web = includesWeb("build")): Pr
   )
   const files = [...BUILD_INPUTS]
   for (const entry of buildWorkspaces(root, web)) {
-    for (const file of await filesIn(
-      path.join(root, entry.directory),
-      ["dist", "node_modules", ".turbo", "coverage", "test"],
-      root,
-    ))
+    for (const file of await filesIn(path.join(root, entry.directory), BUILD_SOURCE_IGNORED, root))
       files.push(path.relative(root, file))
   }
   for (const directory of [
@@ -151,7 +163,7 @@ export async function buildIdentity(root = ROOT, web = includesWeb("build")): Pr
     hash
       .update(file)
       .update((await lstat(source)).isSymbolicLink() ? await readlink(source) : "")
-      .update(String((await stat(source)).mode & 0o777))
+      .update(String(sourceMode((await stat(source)).mode & 0o777)))
       .update(await readFile(source))
   }
   return hash.digest("hex")

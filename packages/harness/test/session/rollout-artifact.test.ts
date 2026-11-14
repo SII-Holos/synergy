@@ -17,6 +17,53 @@ async function collect(input: AsyncIterable<Uint8Array>) {
 }
 
 describe("rollout artifacts", () => {
+  ;(test("validates empty and cancelled range requests before reading metadata", () =>
+    runtime.run(async () => {
+      const target = owner()
+      const empty = await RolloutArtifact.writeText(target, "")
+      await expect(RolloutArtifact.readRange({ ...target, scopeID: "../outside" }, empty, 0, 1)).rejects.toThrow()
+      expect(await RolloutArtifact.readRange(target, empty, 0, 1)).toEqual(Buffer.alloc(0))
+      const ref = await RolloutArtifact.writeText(target, "retained bytes")
+      const controller = new AbortController()
+      controller.abort()
+      using noRead = spyOn(Storage, "readMany").mockImplementation(() => {
+        throw new Error("Cancelled ranges cannot read metadata")
+      })
+      await expect(RolloutArtifact.readRange(target, ref, 0, 1, controller.signal)).rejects.toBeInstanceOf(DOMException)
+    })),
+    test(
+      "a small range bounds metadata reads across a large manifest of variable-sized checkpoints",
+      () =>
+        runtime.run(async () => {
+          const target = owner()
+          const writer = await RolloutArtifact.open(target, "application/octet-stream")
+          const expected: Buffer[] = []
+          for (let index = 0; index < 1001; index++) {
+            const bytes = Buffer.alloc((index % 3) + 1, index % 251)
+            expected.push(bytes)
+            await writer.append(bytes)
+            await writer.checkpoint()
+          }
+          const ref = await writer.finish()
+          const bytes = Buffer.concat(expected)
+          const readMany = Storage.readMany
+          let metadataKeys = 0
+          using reads = spyOn(Storage, "readMany").mockImplementation(async (keys) => {
+            metadataKeys += keys.length
+            return readMany(keys)
+          })
+          expect(await RolloutArtifact.readRange(target, ref, 0, 1)).toEqual(bytes.subarray(0, 1))
+          expect(metadataKeys).toBeLessThanOrEqual(256)
+          const offset = bytes.length - 20
+          expect(await RolloutArtifact.readRange(target, ref, offset, 7)).toEqual(bytes.subarray(offset, offset + 7))
+          metadataKeys = 0
+          expect(await RolloutArtifact.readRange(target, ref, offset + 7, 13)).toEqual(bytes.subarray(offset + 7))
+          expect(metadataKeys).toBeLessThanOrEqual(256)
+          expect(await RolloutArtifact.readRange(target, ref, 1, 9)).toEqual(bytes.subarray(1, 10))
+          await expect(RolloutArtifact.readRange(owner(), ref, 0, 1)).rejects.toThrow()
+        }),
+      15_000,
+    ))
   test("checkpoint publishes bytes, artifact metadata and caller evidence in one transaction", () =>
     runtime.run(async () => {
       const target = owner()

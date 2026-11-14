@@ -8,6 +8,7 @@ import { Storage } from "../../src/storage/storage"
 import { StoragePath } from "../../src/storage/path"
 import { tmpdir } from "../support/fixture"
 import { testRuntime } from "../support/runtime"
+import { measurePhase } from "../support/rollout"
 
 const runtime = await testRuntime()
 afterAll(() => runtime.close())
@@ -63,31 +64,46 @@ for (const count of [500, 5_000]) {
         fixture(async (session, root, reply) => {
           const scopeID = Identifier.asScopeID(session.scope.id)
           const sessionID = Identifier.asSessionID(session.id)
-          await Storage.transaction(async () => {
+          await measurePhase("turn-history.seed." + count, async () => {
+            const rows: Array<{ key: string[]; value: unknown }> = []
             for (let index = 0; index < count; index++) {
               const id = Identifier.ascending("message")
-              await Storage.write(StoragePath.messageInfo(scopeID, sessionID, id), {
-                ...root,
-                id,
-                rootID: id,
-                time: { created: index + 1 },
+              rows.push({
+                key: StoragePath.messageInfo(scopeID, sessionID, id),
+                value: {
+                  ...root,
+                  id,
+                  rootID: id,
+                  time: { created: index + 1 },
+                },
               })
               const partID = Identifier.ascending("part")
-              await Storage.write(StoragePath.messagePart(scopeID, sessionID, id, partID), {
-                id: partID,
-                sessionID,
-                messageID: id,
-                type: "text",
-                text: "Unrelated historical body",
+              rows.push({
+                key: StoragePath.messagePart(scopeID, sessionID, id, partID),
+                value: {
+                  id: partID,
+                  sessionID,
+                  messageID: id,
+                  type: "text",
+                  text: "Unrelated historical body",
+                },
               })
             }
+            await Storage.transaction(async (tx) => {
+              for (let offset = 0; offset < rows.length; offset += 256)
+                await tx.writeMany(rows.slice(offset, offset + 256))
+            })
           })
-          await SessionHistory.prepareDisplay(session.id)
+          await measurePhase("turn-history.prepare." + count, () => SessionHistory.prepareDisplay(session.id))
           using bodies = spyOn(MessageV2, "parts")
-          const infos = await SessionHistory.turnInfos({ sessionID, rootID: root.id })
+          const infos = await measurePhase("turn-history.infos." + count, () =>
+            SessionHistory.turnInfos({ sessionID, rootID: root.id }),
+          )
           expect(infos.map((info) => info.id)).toEqual([root.id, reply.id])
           expect(bodies).not.toHaveBeenCalled()
-          const messages = await SessionHistory.turnMessages({ sessionID, rootID: root.id })
+          const messages = await measurePhase("turn-history.bodies." + count, () =>
+            SessionHistory.turnMessages({ sessionID, rootID: root.id }),
+          )
           expect(messages.map((message) => message.info)).toEqual(infos)
           expect(bodies.mock.calls.map(([input]) => input.messageID)).toEqual([root.id, reply.id])
         }),

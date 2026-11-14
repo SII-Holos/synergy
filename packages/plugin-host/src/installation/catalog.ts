@@ -16,6 +16,8 @@ export const FULL_COMPONENTS = [
   "mcp",
   "media",
   "note",
+  "organization",
+  "organization-runtime",
   "plugin-kit",
   "presets",
   "server",

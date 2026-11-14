@@ -10,6 +10,8 @@ Affected frontend verification could select the Web integration task and its ful
 
 CI preparation includes sandbox assets when any selected task consumes a core/full distribution, requests the sandbox prerequisite or belongs to the existing sandbox/artifacts kinds. Unselected consumers cannot widen preparation. The existing verified build inventory and sandbox-sensitive cache identity carry the helper to distribution producers.
 
+Organization Runtime suites declare the sandbox prerequisite because their actual accepted commands execute native tools through the standard autonomous profile. Their selected execution units prepare the verified helper independently of browser prerequisites; a missing helper remains a runtime failure rather than a reason to bypass sandboxing.
+
 ## Alternatives considered
 
 **Making the helper optional in CI archives.** This would stop testing the required native package closure and weaken the installed distribution contract.
@@ -19,3 +21,5 @@ CI preparation includes sandbox assets when any selected task consumes a core/fu
 ## Consequences
 
 Standalone Web distribution verification prepares the same required native inputs as installation verification. Ordinary Web suites still avoid unnecessary sandbox preparation. A catalog-based regression checks independently selected Web integration, core installation and ordinary Web suite plans.
+
+The same catalog regression checks every Organization Runtime suite and its selected unit. Planner, revision-input and dependency tests preserve unrelated selection and preparation behavior.

@@ -42,7 +42,7 @@ test("default feature plan retains stable owners and excludes experimental modul
       .filter((item) => item.maturity === "experimental")
       .map((item) => item.id)
       .sort(),
-  ).toEqual(["boss", "kanban", "lattice", "session-long-term-memory"])
+  ).toEqual(["boss", "kanban", "lattice", "organization", "session-long-term-memory"])
   expect(
     FeatureSelection.status(plan, [], []).find((feature) => feature.id === "session-long-term-memory"),
   ).toMatchObject({

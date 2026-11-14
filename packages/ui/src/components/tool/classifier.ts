@@ -7,6 +7,7 @@ import {
 import type { IconName, IconSource } from "../icon"
 import { COMPUTER_TOOL_ICONS } from "./computer-icons"
 import { getWorkbenchViewInfo } from "./workbench-info"
+import { getOrganizationKnowledgeInfo } from "./organization-knowledge-info"
 import type { MessageDescriptor } from "@lingui/core"
 import { CLASSIFIER_LABEL_DESC, TOOL_LABEL_DESC, TOOL_TITLE_DESC } from "../tool-title-descriptors"
 
@@ -239,6 +240,18 @@ export function classifyTool(
   const category = classifySemanticCategory(toolName, input)
 
   const spec = CATEGORIES[category]
+
+  if (toolName === "organization_knowledge") {
+    const info = getOrganizationKnowledgeInfo(input, metadata)
+    return {
+      category,
+      spec,
+      title: info.title.message ?? toolName,
+      titleDescriptor: info.title,
+      subtitle: info.subtitle,
+      args: info.args,
+    }
+  }
 
   if (toolName === "workbench_view") {
     const info = getWorkbenchViewInfo(input, metadata)

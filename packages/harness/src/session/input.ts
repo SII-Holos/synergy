@@ -1,4 +1,5 @@
 import { InputAssistance } from "@ericsanchezok/synergy-util/input-assistance"
+import { ActorStamp } from "@ericsanchezok/synergy-util/actor-stamp"
 import { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
 import { WorkspaceCatalog } from "../workspace/catalog"
 import { RuntimeContext } from "../lifecycle/context"
@@ -167,6 +168,7 @@ export async function lastModel(sessionID: string) {
 }
 
 export type CreateUserMessageInput = InvokeInput & {
+  actor?: ActorStamp.Info
   referenceContext?: ResourceReference.Context
   origin?: MessageV2.OriginUser
 }
@@ -177,6 +179,7 @@ export async function createUserMessage(
   commitOptions?: SessionUserMessageMaterialization.CommitOptions,
   admittedExecution?: MessageV2.RootExecution | null,
 ) {
+  input = { ...input, actor: ActorStamp.Info.optional().parse(input.actor) }
   if (input.noReply === true) {
     if (input.experiment) throw new Error("Experiment configuration requires a new root task")
     return materializeUserMessage(input, rootIDOverride, commitOptions)
@@ -307,6 +310,7 @@ async function materializeUserMessage(
 
   const info: MessageV2.Info = {
     id: messageID,
+    actor: input.actor,
     role: "user",
     referenceContext: input.referenceContext ?? ResourceReference.capture(ScopeContext.current.workspace),
     sessionID: input.sessionID,

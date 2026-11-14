@@ -45,7 +45,7 @@ async function withRecords(
               await Storage.write(["workspace", record.workspaceID], { ...workspace, id: record.workspaceID })
             await Storage.write(["sessions", scope.id, record.id, "info"], record)
           }
-          await Session.rebuildStorageIndexes(tx)
+          await Session.rebuildStorageIndexes(Storage.current().store, tx)
         })
         await fn({ seed, workspace, records, scopeID: scope.id, directory: files.path })
       },
@@ -104,8 +104,24 @@ test("pages more Workspace-backed child sessions than storage admission capacity
       if (keys.some((key) => key[0] === "session_transfer_out")) transferReads++
       return readTransfers<T>(keys)
     })
-    expect((await Session.childPage({ parentID: seed.id })).items).toHaveLength(records.length)
+    const first = await Session.childPage({ parentID: seed.id })
+    expect(first.items).toHaveLength(50)
+    expect(first.total).toBe(records.length)
     expect(transferReads).toBe(1)
+    const found = new Set(first.items.map((session) => session.id))
+    let cursor = first.nextCursor
+    while (cursor) {
+      const page = await Session.childPage({ parentID: seed.id, cursor })
+      expect(page.items.length).toBeLessThanOrEqual(50)
+      expect(page.total).toBe(records.length)
+      for (const session of page.items) {
+        expect(found.has(session.id)).toBeFalse()
+        found.add(session.id)
+      }
+      cursor = page.nextCursor
+    }
+    expect(found.size).toBe(records.length)
+    expect(transferReads).toBe(Math.ceil(records.length / 50))
   }, "child")
 }, 30_000)
 

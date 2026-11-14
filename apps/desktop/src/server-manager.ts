@@ -1,18 +1,27 @@
 import type { ChildProcess } from "node:child_process"
 import { spawn } from "node:child_process"
+import { randomBytes } from "node:crypto"
 import fs from "node:fs"
 import fsp from "node:fs/promises"
 import net from "node:net"
 import os from "node:os"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
+import { z } from "zod"
 import { DESKTOP_SERVER_SHUTDOWN_TIMEOUT_MS } from "@ericsanchezok/synergy-util/runtime-shutdown"
+import { readMemberHome, type MemberHome } from "@ericsanchezok/synergy-organization-runtime/home"
+import { MemberLaunchRequest } from "@ericsanchezok/synergy-organization-runtime/launch"
+import { memberEnvironment } from "@ericsanchezok/synergy-organization-runtime/environment"
 import type { DesktopChannel, DesktopServerMode } from "./identity.js"
 import { loadServerPort, saveServerPort } from "./server-port-state.js"
 import { DesktopShellEnvironment, type DesktopShellEnvironmentDiagnostics } from "./shell-environment.js"
 import { ManagedServerOutput } from "./server-output.js"
 import { DesktopServerStartup } from "./server-startup.js"
 import type { DesktopStartupStatus } from "./startup-page.js"
+
+const MemberProfile = MemberLaunchRequest.omit({ version: true, port: true, token: true, desktop: true }).extend({
+  home: z.string().refine(path.isAbsolute),
+})
 
 export type DesktopServerState = "stopped" | "starting" | "running" | "failed" | "external"
 
@@ -48,8 +57,10 @@ export interface DesktopServerManagerOptions {
   userDataPath: string
   externalUrl?: string
   shellEnvironment?: DesktopShellEnvironment
+  member?: z.infer<typeof MemberProfile>
   onStartupStatus?: (status: DesktopStartupStatus) => void
   onMaintenanceStatus?: (status: DesktopMaintenanceStatus) => void
+  onExit?: () => void
 }
 
 type ManagedServerLaunch = { ok: true } | { ok: false; portConflict: boolean; detail: string; error: unknown }
@@ -72,6 +83,8 @@ export class DesktopServerManager {
   private state: DesktopServerState
   private port: number | null = null
   private url: string | null = null
+  private credential: string | null = null
+  private browserCredential: string | null = null
   private lastError: string | null = null
   private logFile: string | null = null
   private startPromise: Promise<string> | null = null
@@ -85,9 +98,22 @@ export class DesktopServerManager {
   private readonly shellEnvironmentPromise: Promise<DesktopShellEnvironmentDiagnostics | null>
 
   constructor(private options: DesktopServerManagerOptions) {
+    if (options.member) {
+      if (options.mode !== "managed") throw new Error("A member Runtime requires managed Desktop ownership")
+      const parsed = MemberProfile.safeParse(options.member)
+      if (!parsed.success) throw new Error("Invalid member Runtime launch profile")
+      const member = { ...parsed.data, home: path.resolve(parsed.data.home) }
+      const root = path.join(member.home, ".synergy")
+      this.options = {
+        ...options,
+        member,
+        logDir: path.join(root, "log", "desktop"),
+        userDataPath: path.join(root, "state", "desktop"),
+      }
+    }
     this.state = options.mode === "external" ? "external" : "stopped"
     this.url = options.mode === "external" ? (options.externalUrl ?? null) : null
-    if (options.mode === "external") {
+    if (options.mode === "external" || (options.member && !options.shellEnvironment)) {
       this.shellEnvironmentPromise = Promise.resolve(null)
     } else {
       const shellEnvironment = options.shellEnvironment ?? new DesktopShellEnvironment()
@@ -112,6 +138,18 @@ export class DesktopServerManager {
     }
   }
 
+  connection(): { url: string; headers: Record<string, string> } | undefined {
+    if (this.state !== "running" || !this.url) return
+    return { url: this.url, headers: this.credential ? { authorization: `Bearer ${this.credential}` } : {} }
+  }
+
+  browserConnection() {
+    const connection = this.connection()
+    const authorization = connection?.headers.authorization
+    if (!connection || !authorization || !this.browserCredential) return
+    return { url: connection.url, headers: { authorization }, token: this.browserCredential }
+  }
+
   async start(): Promise<string> {
     if (this.options.mode === "external") {
       if (!this.url) throw new Error("SYNERGY_DESKTOP_APP_URL is required when using external desktop server mode")
@@ -127,12 +165,19 @@ export class DesktopServerManager {
     this.startPromise = this.startManaged()
     try {
       return await this.startPromise
+    } catch (error) {
+      if (this.state === "starting") {
+        this.state = "failed"
+        this.lastError = error instanceof Error ? error.message : String(error)
+      }
+      throw error
     } finally {
       this.startPromise = null
     }
   }
 
   async runMaintenance(operation: "format" | "prune" = "format"): Promise<string> {
+    if (this.options.member) throw new Error("Storage maintenance is not available for a member Runtime")
     if (this.options.mode === "external")
       throw new Error("Storage maintenance must run on the machine hosting the Synergy server")
     if (this.maintenancePromise) return this.maintenancePromise
@@ -156,6 +201,7 @@ export class DesktopServerManager {
   }
 
   async createDiagnostics(): Promise<string> {
+    if (this.options.member) throw new Error("Startup diagnostics is not available for a member Runtime")
     this.diagnosticsPromise ??= this.createDiagnosticsManaged().finally(() => {
       this.diagnosticsPromise = null
     })
@@ -219,6 +265,8 @@ export class DesktopServerManager {
 
   private async stopServer(): Promise<void> {
     if (!this.child) {
+      this.credential = null
+      this.browserCredential = null
       if (this.state !== "failed") {
         this.state = this.options.mode === "external" ? "external" : "stopped"
       }
@@ -232,6 +280,8 @@ export class DesktopServerManager {
       return
     }
     if (this.child === child) this.child = null
+    this.credential = null
+    this.browserCredential = null
     this.state = "stopped"
     this.port = null
     this.url = null
@@ -241,27 +291,32 @@ export class DesktopServerManager {
     const generation = this.generation
     this.state = "starting"
     this.lastError = null
+    const member = this.options.member
+      ? await readMemberHome(this.options.member.home, this.options.member.identity)
+      : undefined
+    this.assertGeneration(generation)
     await fsp.mkdir(this.options.logDir, { recursive: true })
     const logFile = path.join(this.options.logDir, "server.log")
     this.logFile = logFile
     const shellEnvironment = await this.shellEnvironmentPromise
-    const candidates = managedServerPortCandidates({
-      envPort: managedServerPortFromEnv(process.env),
-      stickyPort: await loadServerPort(this.options.userDataPath, this.options.channel),
-    })
+    const stickyPort = await loadServerPort(this.options.userDataPath, this.options.channel)
+    const candidates = member
+      ? stickyPort
+        ? [stickyPort]
+        : []
+      : managedServerPortCandidates({ envPort: managedServerPortFromEnv(process.env), stickyPort })
 
     for (const port of candidates) {
       if (!(await isPortAvailable(port))) continue
-      const launch = await this.launchManagedServer(port, logFile, shellEnvironment, generation)
+      const launch = await this.launchManagedServer(port, logFile, shellEnvironment, generation, member)
       if (launch.ok) return await this.acceptManagedServer(port, true, generation)
       if (!launch.portConflict) this.rejectManagedServer(launch)
     }
 
-    // A random port keeps Desktop usable when every deterministic candidate is taken, but it is
-    // never persisted so the next launch retries the stable chain first.
+    // Personal startup retries the stable chain next time; members retain their independently assigned port.
     const fallbackPort = await findAvailablePort()
-    const fallback = await this.launchManagedServer(fallbackPort, logFile, shellEnvironment, generation)
-    if (fallback.ok) return await this.acceptManagedServer(fallbackPort, false, generation)
+    const fallback = await this.launchManagedServer(fallbackPort, logFile, shellEnvironment, generation, member)
+    if (fallback.ok) return await this.acceptManagedServer(fallbackPort, !!member, generation)
     this.rejectManagedServer(fallback)
   }
 
@@ -270,6 +325,9 @@ export class DesktopServerManager {
       await saveServerPort(this.options.userDataPath, this.options.channel, port).catch(() => undefined)
     }
     this.assertGeneration(generation)
+    if (!this.child || this.child.exitCode !== null || this.child.signalCode !== null)
+      throw new Error(this.lastError ?? "Synergy server exited before startup completed")
+    if (this.options.member) this.options.member.ticket = undefined
     this.state = "running"
     this.lastError = null
     this.port = port
@@ -292,24 +350,51 @@ export class DesktopServerManager {
     logFile: string,
     shellEnvironment: DesktopShellEnvironmentDiagnostics | null,
     generation: number,
+    member?: MemberHome,
   ): Promise<ManagedServerLaunch> {
     const url = `http://127.0.0.1:${port}`
-    const command = await this.resolveServerCommand(port)
+    const command = await this.resolveServerCommand(port, member)
+    const request = member
+      ? MemberLaunchRequest.parse({
+          version: 1,
+          identity: member.identity,
+          deploymentIncarnation: this.options.member!.deploymentIncarnation,
+          ticket: this.options.member!.ticket,
+          ca: this.options.member!.ca,
+          port,
+          token: randomBytes(32).toString("hex"),
+          desktop: { browserToken: randomBytes(32).toString("hex") },
+        })
+      : undefined
     this.assertGeneration(generation)
     const logStream = fs.createWriteStream(logFile, { flags: "a" })
     logStream.write(`\n[${new Date().toISOString()}] starting ${command.command} ${command.args.join(" ")}\n`)
 
     const child = spawn(command.command, command.args, {
       cwd: command.cwd,
-      env: buildManagedServerEnv(process.env, shellEnvironment, {
-        channel: this.options.channel,
-        parentPid: process.pid,
-        cwd: process.env.SYNERGY_CWD ?? os.homedir(),
-      }),
-      stdio: ["ignore", "pipe", "pipe"],
+      env: member
+        ? {
+            ...memberEnvironment(member, {
+              ...process.env,
+              ...(shellEnvironment ? { PATH: shellEnvironment.path } : {}),
+            }),
+            SYNERGY_DESKTOP_CHANNEL: this.options.channel,
+            SYNERGY_DESKTOP_PARENT_PID: String(process.pid),
+            SYNERGY_DESKTOP_STARTUP_PROGRESS: "1",
+            SYNERGY_RUNTIME_ENTRY:
+              process.env.SYNERGY_RUNTIME_ENTRY === "dev-desktop-managed" ? "dev-desktop-managed" : "desktop-managed",
+          }
+        : buildManagedServerEnv(process.env, shellEnvironment, {
+            channel: this.options.channel,
+            parentPid: process.pid,
+            cwd: process.env.SYNERGY_CWD ?? os.homedir(),
+          }),
+      stdio: [member ? "pipe" : "ignore", "pipe", "pipe"],
       windowsHide: true,
     })
     this.child = child
+    this.credential = request?.token ?? null
+    this.browserCredential = request?.desktop?.browserToken ?? null
     const startup = new DesktopServerStartup({ onStatus: this.options.onStartupStatus })
     const output = new ManagedServerOutput((text) => startup.receive(text))
     const onOutput = (chunk: Buffer) => output.receive("stdout", chunk)
@@ -321,13 +406,26 @@ export class DesktopServerManager {
     attachManagedServerExitHandlers(child, logStream, (details) => {
       if (this.child === child) {
         this.child = null
+        this.credential = null
+        this.browserCredential = null
         this.state = "failed"
         this.lastError = `Synergy server ${details}`
+        this.options.onExit?.()
       }
     })
 
     try {
-      await waitForHealth(`${url}${HEALTH_PATH}`, child, startup)
+      if (request) {
+        child.stdin?.on("error", () => {})
+        child.stdin?.end(JSON.stringify(request))
+      }
+      await waitForHealth(
+        `${url}${HEALTH_PATH}`,
+        child,
+        startup,
+        HEALTH_POLL_INTERVAL_MS,
+        request ? { authorization: `Bearer ${request.token}` } : undefined,
+      )
       return { ok: true }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
@@ -359,7 +457,25 @@ export class DesktopServerManager {
     })
   }
 
-  private resolveServerCommand(port: number) {
+  private resolveServerCommand(port: number, member?: MemberHome) {
+    if (member) {
+      const packaged = packagedServerBinary(this.options.resourcesPath)
+      if (packaged && fs.existsSync(packaged))
+        return Promise.resolve({ command: packaged, args: ["member-runtime"], cwd: member.home })
+      const sourceRoot = sourceProductRoot()
+      if (!sourceRoot) throw new Error("Packaged Synergy runtime was not found and source fallback is unavailable")
+      return Promise.resolve({
+        command: process.env.BUN_BIN ?? "bun",
+        args: [
+          "--no-env-file",
+          "--no-bunfig",
+          "--conditions=browser",
+          path.join(sourceRoot, "src/index.ts"),
+          "member-runtime",
+        ],
+        cwd: member.home,
+      })
+    }
     return this.resolveProductCommand(managedServerArgs(port))
   }
 
@@ -609,6 +725,7 @@ export async function waitForHealth(
   child: ChildProcess,
   startup: DesktopServerStartup,
   pollIntervalMs = HEALTH_POLL_INTERVAL_MS,
+  headers?: Record<string, string>,
 ): Promise<void> {
   const remaining = () => startup.remainingMs()
   let lastError: unknown
@@ -621,7 +738,7 @@ export async function waitForHealth(
       const requestController = new AbortController()
       try {
         const response = await raceWithChildFailure(
-          fetchWithTimeout(url, Math.min(remainingMs, 1000), requestController.signal),
+          fetchWithTimeout(url, Math.min(remainingMs, 1000), requestController.signal, { headers }),
           childFailure.promise,
           failureReason,
           () => requestController.abort(),

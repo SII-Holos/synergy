@@ -5,6 +5,7 @@ import path from "node:path"
 import { SnapshotStore } from "../../src/session/snapshot-store"
 import { SnapshotGit } from "../../src/session/snapshot-git"
 import { storedSnapshots } from "../../src/session/stored-snapshots"
+import { StoredSnapshotContent } from "../../src/session/stored-snapshot-content"
 import { SnapshotLifecycle } from "../../src/session/snapshot-lifecycle"
 import { SnapshotLease } from "../../src/session/snapshot-lease"
 import { fileLockPath } from "@ericsanchezok/synergy-util/fs-lock"
@@ -14,6 +15,7 @@ import { StoragePath } from "../../src/storage/path"
 import { TransactionalStore } from "../../src/storage/transactional-store"
 import { storageTestRuntime } from "../support/storage-runtime"
 import { storageTestOptions } from "../support/storage-backends"
+import { StorageMutationGuard } from "../../src/storage/mutation-guard"
 
 async function fixture() {
   const root = await fs.mkdtemp(path.join(process.env.SYNERGY_TEST_ROOT!, "stored-snapshots-"))
@@ -22,7 +24,7 @@ async function fixture() {
   let runtime = await storageTestRuntime()
   const objects = new Map<string, Uint8Array>()
   let failed = false
-  let onUpload: (() => void) | undefined
+  let onUpload: (() => void | Promise<void>) | undefined
   runtime.run(() => SnapshotStore.registerStorage(storedSnapshots()))
   const handle = {
     store,
@@ -33,7 +35,7 @@ async function fixture() {
         async put(id: string, value: Uint8Array) {
           if (failed) throw new Error("object service unavailable")
           objects.set(id, value)
-          onUpload?.()
+          await onUpload?.()
         },
         async get(id: string) {
           const value = objects.get(id)
@@ -74,7 +76,7 @@ async function fixture() {
     failUploads() {
       failed = true
     },
-    onUpload(fn: () => void) {
+    onUpload(fn: () => void | Promise<void>) {
       onUpload = fn
     },
     async reopen(external = true) {
@@ -94,6 +96,101 @@ async function fixture() {
     },
   }
 }
+
+test("a deleted logical Snapshot owner cannot publish late content through its private retention alias", async () => {
+  await using f = await fixture()
+  await f.run(async () => {
+    const operation = await SnapshotStore.resolveRepository(f.scope, f.session)
+    await SnapshotStore.initialize(operation)
+    await Storage.write(StoragePath.snapshotOwner(f.scope, f.session), {
+      version: 3,
+      backend: "shared",
+      retentionID: "private-retention",
+    })
+    let deleted = false
+    f.onUpload(async () => {
+      if (deleted) return
+      deleted = true
+      await SnapshotLifecycle.scheduleDelete(f.scope, f.session)
+    })
+  })
+  await expect(f.capture("Must not publish after logical owner deletion")).rejects.toThrow("owner")
+  await f.run(async () => {
+    expect((await SnapshotStore.owner(f.scope, f.session))?.backend).toBe("deleted")
+    expect(
+      await Storage.queryKeys({ prefix: ["snapshot-v2", f.scope, "content", "private-retention"], limit: 1 }),
+    ).toEqual([])
+  })
+})
+
+test("Snapshot publication checks the native mutation guard for the logical owner behind a retention alias", async () => {
+  await using f = await fixture()
+  const reason = new Error("logical owner is frozen")
+  let fenced = false
+  await f.run(async () => {
+    const operation = await SnapshotStore.resolveRepository(f.scope, f.session)
+    await SnapshotStore.initialize(operation)
+    await Storage.write(StoragePath.snapshotOwner(f.scope, f.session), {
+      version: 3,
+      backend: "shared",
+      retentionID: "private-retention",
+    })
+    StorageMutationGuard.register("logical-snapshot-fixture", async (_tx, keys) => {
+      if (
+        fenced &&
+        keys.some((key) => JSON.stringify(key) === JSON.stringify(StoragePath.snapshotOwner(f.scope, f.session)))
+      )
+        throw reason
+    })
+    f.onUpload(() => {
+      fenced = true
+    })
+  })
+  await expect(f.capture("No late Snapshot root after the logical Session fence")).rejects.toBe(reason)
+  await f.run(async () => {
+    expect(
+      await Storage.queryKeys({ prefix: ["snapshot-v2", f.scope, "content", "private-retention"], limit: 1 }),
+    ).toEqual([])
+  })
+})
+
+test("valid chunk hashes cannot grant a Snapshot tree absent from the retained Git graph", async () => {
+  await using f = await fixture()
+  const expected = await f.capture("expected graph")
+  const other = await f.capture("different graph")
+  await f.run(async () => {
+    const source = StoredSnapshotContent.Header.parse(await StoredSnapshotContent.read(f.scope, f.session, other))
+    const writer = new StoredSnapshotContent.Writer(f.scope, f.session, expected, "wrong-graph", "chunks-v2")
+    for await (const ref of StoredSnapshotContent.references({
+      scopeID: f.scope,
+      retentionID: f.session,
+      manifest: source,
+    })) {
+      await Storage.transaction(async (tx) => {
+        const location = await tx.artifact(ref.key)
+        if (!location) throw new Error("Fixture pack is missing")
+        await tx.writeArtifacts([
+          {
+            key: StoredSnapshotContent.chunkKey(
+              f.scope,
+              f.session,
+              { ...source, root: expected, contentID: "wrong-graph" },
+              ref,
+            ),
+            location,
+          },
+        ])
+      })
+      await writer.append({ pack: ref.pack, index: ref.index, bytes: ref.bytes, sha256: ref.sha256 })
+    }
+    await Storage.write([...StoredSnapshotContent.key(f.scope, f.session, expected), "manifest"], await writer.seal())
+    await fs.rm(SnapshotStore.repository(f.scope), { recursive: true, force: true })
+    await expect(SnapshotStore.owns(f.scope, f.session, expected)).rejects.toThrow()
+    expect(
+      await SnapshotStore.command(SnapshotStore.repository(f.scope), ["for-each-ref", "--format=%(refname)"]),
+    ).not.toContain(expected)
+  })
+})
 
 test("a comparison verifies the shared object graph once without granting unrelated ownership", async () => {
   await using f = await fixture()
@@ -258,7 +355,7 @@ test("missing remote snapshot content fails closed after cache loss", async () =
   f.objects.clear()
   await f.run(async () => {
     await expect(SnapshotStore.owns(f.scope, f.session, hash)).rejects.toThrow("object missing")
-    expect(await Storage.read(["sessions", f.scope, f.session, "snapshot_content", hash, "manifest"])).toBeDefined()
+    expect(await StoredSnapshotContent.read(f.scope, f.session, hash)).toBeDefined()
   })
 })
 
@@ -288,15 +385,8 @@ test("multi-chunk snapshot capture is bounded and cancellation cannot publish a 
   const root = await f.capture(value)
   await f.reopen()
   await f.run(async () => {
-    const manifest = await Storage.read<{ packs: { chunks: unknown[] }[] }>([
-      "sessions",
-      f.scope,
-      f.session,
-      "snapshot_content",
-      root,
-      "manifest",
-    ])
-    expect(manifest.packs.flatMap((pack) => pack.chunks).length).toBeGreaterThan(1)
+    const manifest = StoredSnapshotContent.Header.parse(await StoredSnapshotContent.read(f.scope, f.session, root))
+    expect(manifest.chunkCount).toBeGreaterThan(1)
     expect(await SnapshotStore.owns(f.scope, f.session, root)).toBe(true)
     expect(await SnapshotStore.command(SnapshotStore.repository(f.scope), ["show", `${root}:file.txt`])).toBe(value)
   })
@@ -304,7 +394,7 @@ test("multi-chunk snapshot capture is bounded and cancellation cannot publish a 
   f.onUpload(() => abort.abort(new Error("capture cancelled")))
   await expect(f.capture(value, "session-cancelled", abort.signal)).rejects.toThrow("capture cancelled")
   await f.run(async () => {
-    expect(await Storage.list(["sessions", f.scope, "session-cancelled", "snapshot_content"])).toEqual([])
+    expect(await Storage.list(["snapshot-v2", f.scope, "content", "session-cancelled"])).toEqual([])
     expect(await SnapshotStore.owns(f.scope, "session-cancelled", root)).toBe(false)
   })
 })

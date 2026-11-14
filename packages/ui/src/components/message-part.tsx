@@ -1,4 +1,5 @@
 import { getToolIcon, isBlueprintToolKind } from "./tool/icons"
+import { getOrganizationKnowledgeInfo } from "./tool/organization-knowledge-info"
 import { ResourceReferenceProvider } from "../context/resource-open"
 import { getComputerToolPresentation } from "./tool/classifier"
 import {
@@ -377,6 +378,8 @@ function getToolDescription(tool: string, input: any = {}, metadata: any = {}): 
   if (isScholightToolName(tool)) return getScholightToolInfo(tool, input, metadata)
 
   switch (tool) {
+    case "organization_knowledge":
+      return getOrganizationKnowledgeInfo(input, metadata)
     case "read":
       return {
         objectKind: "path",

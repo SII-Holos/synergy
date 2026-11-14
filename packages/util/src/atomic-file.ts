@@ -50,7 +50,7 @@ export namespace AtomicFile {
             await file.close()
           }
         } else {
-          await Bun.write(tmp, content)
+          await fs.writeFile(tmp, content)
         }
         await fs.rename(tmp, target)
         if (options?.durable) await syncDirectories(path.dirname(target))

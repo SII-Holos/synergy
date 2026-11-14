@@ -73,3 +73,5 @@ For full setup instructions, configuration, development workflow, and the comple
 ## License
 
 MIT
+
+Embedded task and HTTP Runtimes accept typed `additionalComponents` through `PresetRuntimeHandle`; the existing component resolver composes their native owners before registration seals. Acceptance controllers select their Host component there and forward opaque origins through Resources, direct Execution and allocation probes. Model tools retain their actual Session provenance. Verify `test/server/runtime-additional-components.test.ts` and `test/acceptance/runtime.test.ts`; see [acceptance ownership](../../docs/decisions/implemented/architecture/2026-11-12-compose-explicit-native-owners-for-preset-acceptance.md).

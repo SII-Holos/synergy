@@ -232,11 +232,13 @@ export namespace ConfigExtensions {
     return retained
   }
 
-  type Field<K extends string> = K extends keyof ConfigExtensionShape
-    ? ConfigExtensionShape[K] extends z.ZodType
-      ? ConfigExtensionShape[K]
-      : z.ZodUnknown
-    : z.ZodUnknown
+  type Field<K extends string> = string extends K
+    ? z.ZodUnknown
+    : K extends keyof ConfigExtensionShape
+      ? ConfigExtensionShape[K] extends z.ZodType
+        ? ConfigExtensionShape[K]
+        : z.ZodNever
+      : z.ZodNever
 
   export function field<K extends string>(key: K): z.ZodOptional<Field<K>> {
     return dynamicSchema(() => {

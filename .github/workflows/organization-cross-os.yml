@@ -1,0 +1,259 @@
+name: Organization cross-OS native roundtrip
+
+on:
+  pull_request:
+    branches: [dev, main]
+    paths:
+      - ".github/workflows/organization-cross-os.yml"
+      - "packages/organization-runtime/test/handoff-cross-os.test.ts"
+      - "packages/organization-runtime/test/support/cross-os-*.ts"
+  workflow_dispatch:
+    inputs:
+      native_run_id:
+        description: Successful Build Native Runtime Assets run at this exact ref
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: organization-cross-os-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  assets:
+    name: Resolve exact-head native assets
+    runs-on: ubuntu-24.04
+    timeout-minutes: 11
+    outputs:
+      run: ${{ steps.resolve.outputs.run }}
+    steps:
+      - name: Resolve the original successful native build at the tested head
+        id: resolve
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TESTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          REQUESTED_RUN: ${{ inputs.native_run_id }}
+        run: |
+          python3 - <<'PY'
+          import json, os, time, urllib.request
+          repository = os.environ['GITHUB_REPOSITORY']
+          sha, requested = os.environ['TESTED_SHA'], os.environ.get('REQUESTED_RUN', '')
+          def request(suffix):
+            query = urllib.request.Request(f'https://api.github.com/repos/{repository}/actions/{suffix}', headers={
+              'Authorization': 'Bearer ' + os.environ['GITHUB_TOKEN'],
+              'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28'})
+            with urllib.request.urlopen(query, timeout=15) as response:
+              return json.load(response)
+          deadline = time.monotonic() + 600
+          while time.monotonic() < deadline:
+            candidates = [request('runs/' + requested)] if requested else request('workflows/build-helpers.yml/runs?head_sha=' + sha + '&per_page=20')['workflow_runs']
+            completed = [value for value in candidates if value['head_sha'] == sha and value['path'] == '.github/workflows/build-helpers.yml' and value['conclusion'] == 'success']
+            if completed:
+              selected = max(completed, key=lambda value: value['id'])
+              with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+                output.write('run=' + str(selected['id']) + '\n')
+              break
+            if requested and candidates[0]['status'] == 'completed':
+              raise SystemExit('Requested Native Assets run did not succeed at the tested head')
+            time.sleep(5)
+          else:
+            raise SystemExit('Exact-head Native Assets were not available within the finite preparation budget')
+          PY
+  peer:
+    name: Actual ${{ matrix.role }} native peer
+    needs: assets
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - role: darwin
+            runner: macos-15
+          - role: linux
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 17
+    env:
+      SYNERGY_CROSS_OS_ROLE: ${{ matrix.role }}
+      SYNERGY_CROSS_OS_NATIVE_RUN: ${{ needs.assets.outputs.run }}
+      SYNERGY_CROSS_OS_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      MODELS_DEV_API_JSON: ${{ github.workspace }}/packages/testing/fixtures/models-api.json
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - name: Select task-owned runner paths
+        shell: bash
+        run: |
+          echo "SYNERGY_CROSS_OS_STATE=$RUNNER_TEMP/synergy-cross-os-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-$SYNERGY_CROSS_OS_ROLE" >> "$GITHUB_ENV"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: "1.4.3"
+      - run: bun install --frozen-lockfile
+      - name: Verify exact-head native provenance and create runner-local keys
+        run: |
+          bun packages/organization-runtime/test/support/cross-os-transport.ts native-run
+          bun packages/organization-runtime/test/support/cross-os-transport.ts identity "$SYNERGY_CROSS_OS_ROLE"
+      - name: Publish only run-bound public keys
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cross-os-${{ matrix.role }}-public-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.SYNERGY_CROSS_OS_STATE }}/public.json
+          if-no-files-found: error
+          retention-days: 1
+      - name: Restore actual Darwin SQLite
+        if: matrix.role == 'darwin'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: sqlite-assets-darwin
+          path: packages/harness/.artifacts/sqlite
+          run-id: ${{ needs.assets.outputs.run }}
+          github-token: ${{ github.token }}
+      - name: Restore actual PTY library
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: pty-assets-${{ matrix.role == 'darwin' && 'darwin' || 'linux-arm64' }}
+          path: packages/local-runtime/.artifacts/pty
+          run-id: ${{ needs.assets.outputs.run }}
+          github-token: ${{ github.token }}
+      - name: Restore actual Linux watcher
+        if: matrix.role == 'linux'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: watcher-assets-linux-arm64
+          path: packages/local-runtime/.artifacts/watcher
+          run-id: ${{ needs.assets.outputs.run }}
+          github-token: ${{ github.token }}
+      - name: Restore actual Linux sandbox
+        if: matrix.role == 'linux'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: sandbox-assets-linux-arm64
+          path: packages/local-runtime/sandbox-assets
+          run-id: ${{ needs.assets.outputs.run }}
+          github-token: ${{ github.token }}
+      - name: Install the original Linux native sandbox dependencies
+        if: matrix.role == 'linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bubblewrap apparmor
+          cat <<'PROFILE' | sudo tee /etc/apparmor.d/synergy-bwrap
+          abi <abi/4.0>,
+          include <tunables/global>
+          profile synergy-bwrap /usr/bin/bwrap flags=(unconfined) {
+            userns,
+            include if exists <local/bwrap>
+          }
+          PROFILE
+          sudo apparmor_parser -r /etc/apparmor.d/synergy-bwrap
+          mkdir -p packages/local-runtime/src/sandbox/helper-linux/target/release
+          install -m 0755 packages/local-runtime/sandbox-assets/linux-arm64/synergy-sandbox-linux packages/local-runtime/src/sandbox/helper-linux/target/release/synergy-sandbox-linux
+      - name: Install the pinned temporary test transport
+        if: matrix.role == 'darwin'
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import hashlib, os, pathlib, platform, tarfile, urllib.request
+          identity = {
+            'arm64': ('arm64', '8c2f90277ef06a6080bb40b964d33f09f1188102f8798f2e344174b6cf41accf'),
+            'x86_64': ('amd64', '8a59d51120cebbe902f0a8d6e1b7a7fd4f9a5bb4dcb3e0f05872483e75e7db6b'),
+          }
+          arch, expected = identity[platform.machine()]
+          root = pathlib.Path(os.environ['SYNERGY_CROSS_OS_STATE'])
+          with urllib.request.urlopen(f'https://github.com/cloudflare/cloudflared/releases/download/2026.11.0/cloudflared-darwin-{arch}.tgz', timeout=60) as response:
+            data = response.read(64 * 1024 * 1024)
+          if hashlib.sha256(data).hexdigest() != expected:
+            raise SystemExit('Pinned test transport digest changed')
+          archive = root / 'cloudflared.tgz'
+          archive.write_bytes(data)
+          with tarfile.open(archive) as source:
+            member = source.getmember('cloudflared')
+            if not member.isfile() or member.size > 128 * 1024 * 1024:
+              raise SystemExit('Unexpected test transport archive')
+            (root / 'cloudflared').write_bytes(source.extractfile(member).read())
+          (root / 'cloudflared').chmod(0o755)
+          PY
+      - name: Start the original native peer and keep its process alive
+        shell: bash
+        run: |
+          python3 - <<'PY_REPORT'
+          import json, os, pathlib, re
+          try:
+            run = {
+              'repository': os.environ['GITHUB_REPOSITORY'],
+              'id': os.environ['GITHUB_RUN_ID'],
+              'attempt': os.environ['GITHUB_RUN_ATTEMPT'],
+              'sha': os.environ['SYNERGY_CROSS_OS_SHA'],
+            }
+            role = os.environ['SYNERGY_CROSS_OS_ROLE']
+            if not re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', run['repository']):
+              raise ValueError('Invalid public run identity')
+            if not re.fullmatch(r'[0-9]+', run['id']) or not re.fullmatch(r'[0-9]+', run['attempt']):
+              raise ValueError('Invalid public run identity')
+            if not re.fullmatch(r'[a-f0-9]{40}', run['sha']) or role not in ('darwin', 'linux'):
+              raise ValueError('Invalid public peer identity')
+            directory = pathlib.Path(os.environ['SYNERGY_CROSS_OS_STATE'])
+            if not directory.is_absolute() or not directory.is_dir():
+              raise ValueError('Task-owned peer state is unavailable')
+            (directory / 'report.json').write_text(json.dumps({
+              'version': 1, 'run': run, 'role': role, 'passed': False,
+              'phase': 'peer-import', 'status': 'pending',
+            }))
+          except Exception as error:
+            raise SystemExit('Cross-OS pre-import diagnostic failed: ' + type(error).__name__)
+          PY_REPORT
+          (
+            set +e
+            cd packages/organization-runtime
+            bun test test/handoff-cross-os.test.ts > "$SYNERGY_CROSS_OS_STATE/private-test.log" 2>&1
+            result=$?
+            printf '%s' "$result" > "$SYNERGY_CROSS_OS_STATE/exit-code"
+          ) &
+          printf '%s' "$!" > "$SYNERGY_CROSS_OS_STATE/owner-pid"
+          if [ "$SYNERGY_CROSS_OS_ROLE" = darwin ]; then
+            deadline=$((SECONDS + 120))
+            until [ -f "$SYNERGY_CROSS_OS_STATE/bootstrap.json" ]; do
+              if [ -f "$SYNERGY_CROSS_OS_STATE/exit-code" ] || [ "$SECONDS" -ge "$deadline" ]; then
+                echo 'Darwin Service/tunnel bootstrap failed before any cross-OS acceptance'
+                exit 1
+              fi
+              sleep 0.2
+            done
+          fi
+      - name: Publish the public TLS endpoint while both native owners remain alive
+        if: matrix.role == 'darwin'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cross-os-darwin-bootstrap-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.SYNERGY_CROSS_OS_STATE }}/bootstrap.json
+          if-no-files-found: error
+          retention-days: 1
+      - name: Wait for actual peer acceptance and original-owner cleanup
+        shell: bash
+        run: |
+          deadline=$((SECONDS + 900))
+          until [ -f "$SYNERGY_CROSS_OS_STATE/exit-code" ]; do
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              echo 'The finite cross-OS fixture did not finish its real owners'
+              exit 1
+            fi
+            sleep 0.2
+          done
+          result=$(cat "$SYNERGY_CROSS_OS_STATE/exit-code")
+          if [ "$result" -ne 0 ]; then
+            echo 'Actual cross-OS fixture failed; see bounded redacted phase report'
+            exit "$result"
+          fi
+      - name: Upload only sanitized cross-OS facts and phase costs
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cross-os-${{ matrix.role }}-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.SYNERGY_CROSS_OS_STATE }}/report.json
+          if-no-files-found: warn
+          retention-days: 7

@@ -3,6 +3,8 @@ import { Identifier } from "../id/id"
 import { SessionCortexContract } from "../session/cortex-contract"
 
 export namespace CortexTypes {
+  export const TransferHold = SessionCortexContract.TransferHold
+  export const MaintenanceHold = SessionCortexContract.MaintenanceHold
   export const TaskStatus = z.enum(["queued", "running", "completed", "error", "cancelled", "interrupted"])
   export type TaskStatus = z.infer<typeof TaskStatus>
   export type TerminalTaskStatus = Exclude<TaskStatus, "queued" | "running">

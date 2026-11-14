@@ -1,0 +1,60 @@
+.organization-auth {
+  min-height: 100dvh;
+  display: grid;
+  align-items: center;
+  padding: 48px 24px;
+  background: var(--background-base);
+  color: var(--text-base);
+  font-family: var(--font-family-sans);
+
+  .organization-auth-content {
+    width: 100%;
+    max-width: 400px;
+    margin: auto;
+    display: grid;
+    gap: 24px;
+    overflow-wrap: anywhere;
+  }
+
+  .organization-auth-brand {
+    color: var(--text-weak);
+    font-size: 14px;
+  }
+
+  h1 {
+    color: var(--text-strong);
+    font-size: 24px;
+    font-weight: 600;
+    line-height: 1.3;
+  }
+
+  p {
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  .organization-auth-origin,
+  .organization-auth-account > div > p {
+    color: var(--text-weak);
+  }
+
+  form,
+  fieldset,
+  .organization-auth-account {
+    display: grid;
+    gap: 20px;
+    min-width: 0;
+  }
+
+  fieldset {
+    border: 0;
+    padding: 0;
+    margin: 0;
+  }
+
+  .organization-auth-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+}

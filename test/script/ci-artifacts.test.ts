@@ -114,6 +114,21 @@ test("build identity follows newly added transitive workspace inputs", async () 
   }
 })
 
+test("build identity ignores package-manager group and other write-bit changes", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ci-build-mode-"))
+  try {
+    await inputs(root)
+    const executable = path.join(root, "packages/plugin/bin/synergy")
+    await Bun.write(executable, "fixture executable")
+    await chmod(executable, 0o755)
+    const before = await buildIdentity(root)
+    await chmod(executable, 0o777)
+    expect(await buildIdentity(root)).toBe(before)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
 test("shared preparation compiles the committed SDK without regenerating its inputs", () => {
   const recipes = buildCommands()
   expect(recipes.find((command) => command.cwd.endsWith("packages/sdk/js"))!.args).toContain("--compile-only")
@@ -142,6 +157,12 @@ test("the shared Web build is restored once and rejects changed source or output
     await Bun.write(path.join(root, "packages/local-runtime/.artifacts/watcher/watcher"), "verified watcher")
     process.env.SYNERGY_CI_WEB_BUILD = "true"
     await publishBuild(root)
+    const beforeGeneratedLocale = await buildIdentity(root)
+    await Bun.write(path.join(root, "apps/web/src/locales/en/messages.mjs"), "generated locale")
+    await Bun.write(path.join(root, "packages/local-runtime/.artifacts/pty/generated"), "generated native asset")
+    await Bun.write(path.join(root, "packages/local-runtime/src/process/native-pty/target/generated"), "native target")
+    await Bun.write(path.join(root, "packages/local-runtime/sandbox-assets/linux-x64/generated"), "sandbox asset")
+    expect(await buildIdentity(root)).toBe(beforeGeneratedLocale)
     await Bun.write(path.join(root, "apps/web/dist/index.html"), "damaged Web")
     await restoreBuild(root)
     expect(await Bun.file(path.join(root, "apps/web/dist/index.html")).text()).toBe("verified Web")

@@ -5,6 +5,8 @@ import { NoteMarkdown, NoteStore } from "@ericsanchezok/synergy-note"
 import { registerNoteVirtualFileSource } from "@ericsanchezok/synergy-note/virtual-file-source"
 import { ProcessRegistry } from "@ericsanchezok/synergy-harness/process/registry"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { Session } from "@ericsanchezok/synergy-harness/session"
+import { withToolRun } from "@ericsanchezok/synergy-harness/test/support/rollout"
 import { BashTool } from "@ericsanchezok/synergy-local-runtime/tools/bash"
 import { BashVirtualFile } from "@ericsanchezok/synergy-local-runtime/tools/bash/virtual-file"
 import { Shell } from "@ericsanchezok/synergy-harness/util/shell"
@@ -14,6 +16,18 @@ import { testRuntime } from "../support/runtime"
 import { NativeExecutor } from "@ericsanchezok/synergy-local-runtime/environment/native-executor"
 import { WorkspaceCoordinator } from "@ericsanchezok/synergy-local-runtime/workspace/coordinator"
 const runtime = await testRuntime()
+
+async function bashTool() {
+  const tool = await BashTool.init()
+  const session = await Session.create({})
+  return {
+    ...tool,
+    execute: (params: Parameters<typeof tool.execute>[0], context: Parameters<typeof tool.execute>[1]) =>
+      withToolRun({ session, tool: "bash", args: params }, (identity) =>
+        tool.execute(params, { ...context, ...identity }),
+      ),
+  }
+}
 
 const baseContext = {
   sessionID: "test",
@@ -55,7 +69,7 @@ describe("bash note virtual paths", () => {
       await withNote(
         "safe\n$(touch should-not-run)\n`touch should-not-run-either`\n; touch still-not-code",
         async (noteID, root) => {
-          const bash = await BashTool.init()
+          const bash = await bashTool()
           const result = await bash.execute(
             {
               command: `cat /synergy/note/${noteID}`,
@@ -80,7 +94,7 @@ describe("bash note virtual paths", () => {
         fn: async () => {
           const left = await NoteStore.create({ title: "Left", content: NoteMarkdown.fromMarkdown("left") })
           const right = await NoteStore.create({ title: "Right", content: NoteMarkdown.fromMarkdown("right") })
-          const bash = await BashTool.init()
+          const bash = await bashTool()
           const result = await bash.execute(
             {
               command:
@@ -100,7 +114,7 @@ describe("bash note virtual paths", () => {
   test("preserves non-ASCII command text before a virtual path", () =>
     runtime.run(async () => {
       await withNote("reviewed", async (noteID) => {
-        const bash = await BashTool.init()
+        const bash = await bashTool()
         const result = await bash.execute(
           {
             command: `printf '你好\\n' && cat /synergy/note/${noteID}`,
@@ -120,7 +134,7 @@ describe("bash note virtual paths", () => {
       await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
-          const bash = await BashTool.init()
+          const bash = await bashTool()
           const result = await bash.execute(
             {
               command: "printf ok # /synergy/note/nte_missing",
@@ -141,7 +155,7 @@ describe("bash note virtual paths", () => {
       await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
-          const bash = await BashTool.init()
+          const bash = await bashTool()
           const marker = `${tmp.path}/spawned`
           const tempRoot = path.join(tmp.path, "staging")
           await mkdir(tempRoot)
@@ -181,7 +195,7 @@ describe("bash note virtual paths", () => {
   test("removes private materialized files after foreground execution", () =>
     runtime.run(async () => {
       await withNote("reviewed", async (noteID) => {
-        const bash = await BashTool.init()
+        const bash = await bashTool()
         const result = await bash.execute(
           {
             command: `printf %s /synergy/note/${noteID}`,
@@ -242,7 +256,7 @@ describe("bash note virtual paths", () => {
   test("isolates concurrent materializations of the same note", () =>
     runtime.run(async () => {
       await withNote("reviewed", async (noteID) => {
-        const bash = await BashTool.init()
+        const bash = await bashTool()
         const execute = () =>
           bash.execute(
             {
@@ -263,7 +277,7 @@ describe("bash note virtual paths", () => {
   test("keeps files for background consumers and removes them on process exit", () =>
     runtime.run(async () => {
       await withNote("reviewed", async (noteID) => {
-        const bash = await BashTool.init()
+        const bash = await bashTool()
         const result = await bash.execute(
           {
             command: `printf '%s\\n' /synergy/note/${noteID}; sleep 0.2`,
@@ -294,7 +308,7 @@ describe("bash note virtual paths", () => {
   test("reads the latest user-edited note after command approval", () =>
     runtime.run(async () => {
       await withNote("draft", async (noteID) => {
-        const bash = await BashTool.init()
+        const bash = await bashTool()
         const result = await bash.execute(
           {
             command: `cat /synergy/note/${noteID}`,
@@ -330,7 +344,7 @@ describe("bash note virtual paths", () => {
   test("prepares the sandbox from the materialized command and read-only staging root", () =>
     runtime.run(async () => {
       await withNote("sandboxed", async (noteID) => {
-        const bash = await BashTool.init()
+        const bash = await bashTool()
         let prepared: { command: string; extraReadRoots: string[] } | undefined
         const result = await bash.execute(
           {
@@ -365,7 +379,7 @@ describe("bash note virtual paths", () => {
   test("cleans staged files when setup fails before the child is spawned", () =>
     runtime.run(async () => {
       await withNote("reviewed", async (noteID) => {
-        const bash = await BashTool.init()
+        const bash = await bashTool()
         let stagingRoot: string | undefined
 
         await expect(

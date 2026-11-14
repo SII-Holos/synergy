@@ -1,0 +1,58 @@
+.organization-device-disclosure > summary {
+  min-height: 44px;
+  padding-block: 10px;
+  cursor: pointer;
+}
+.organization-device-disclosure > summary h3 {
+  display: inline;
+}
+.organization-devices,
+.organization-device-moves {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+.organization-devices p,
+.organization-device-list span {
+  color: var(--text-weak);
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 0;
+}
+.organization-device-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.organization-device-list > li {
+  display: flex;
+  align-items: start;
+  gap: 16px;
+  padding-block: 16px;
+  border-bottom: 1px solid var(--border-weaker-base);
+}
+.organization-device-list > li > div {
+  display: grid;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.organization-device-list dl {
+  margin: 8px 0 0;
+  font-size: 12px;
+}
+.organization-device-list dd {
+  margin: 4px 0 12px;
+  overflow-wrap: anywhere;
+}
+.organization-device-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+@media (max-width: 600px) {
+  .organization-device-list > li {
+    flex-direction: column;
+  }
+}

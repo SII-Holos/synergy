@@ -44,6 +44,7 @@ beforeAll(async () => {
           capabilities: { has: () => false, current: () => undefined },
           connected: () => true,
           url: "http://fixture",
+          cacheKey: "personal-fixture",
           scopeID: "scope-one",
           scopeKey: "scope-one",
           event: { on: () => () => {} },
@@ -145,6 +146,10 @@ beforeAll(async () => {
 
         if (new URLSearchParams(location.search).has("multiple")) questionRequest.questions[0].multiple = true
         if (new URLSearchParams(location.search).has("multi")) questionRequest.questions.push({ ...questionRequest.questions[0], header: "Second question" })
+        if (new URLSearchParams(location.search).has("password")) {
+          questionRequest.questions[0].input_type = "password"
+          questionRequest.questions[0].options = []
+        }
         const [currentQuestion, setQuestion] = createSignal(questionRequest)
         window.currentQuestion = questionRequest
         window.setQuestion = (id) => {
@@ -216,18 +221,27 @@ beforeAll(async () => {
         const [snapshot, setSnapshot] = createSignal()
         const scopeID = new URLSearchParams(location.search).get("scope") ?? "scope-one"
         const decisions = createSessionDecisionState({
-          serverURL: new URLSearchParams(location.search).get("server") ?? "http://fixture",
+          connectionKey: new URLSearchParams(location.search).get("server") ?? "http://fixture",
           scopeID,
-          client: useSDK().client,
           questions: () => Object.values(questions()).flat(),
           permissions: () => Object.values(permissions()).flat(),
           questionSnapshot: snapshot,
-          captureQuestionSnapshot: () => gate.capture(scopeID),
-          seedQuestions: (requests, headers, token) => {
-            if (!gate.accept(token)) return false
-            setQuestions({ s1: requests }); setSnapshot(token); return true
+          replyQuestion: (request, answers) => answers
+            ? useSDK().client.question.reply({ requestID: request.id, answers })
+            : useSDK().client.question.reject({ requestID: request.id }),
+          replyPermission: (request, reply) => useSDK().client.permission.reply({ requestID: request.id, reply }),
+          async questionPending(request) {
+            const token = gate.capture(scopeID)
+            const result = await useSDK().client.question.list()
+            if (!gate.accept(token)) throw new Error("Obsolete fixture snapshot")
+            setQuestions({ s1: result.data }); setSnapshot(token)
+            return result.data.some((item) => item.id === request.id && item.sessionID === request.sessionID)
           },
-          seedPermissions: (id, requests) => setPermissions({ [id]: requests }),
+          async permissionPending(request) {
+            const result = await useSDK().client.permission.list()
+            setPermissions({ [request.sessionID]: result.data })
+            return result.data.some((item) => item.id === request.id && item.sessionID === request.sessionID)
+          },
         })
         window.confirmSnapshot = () => {
           setQuestions({}); setSnapshot(gate.capture(scopeID))
@@ -584,6 +598,18 @@ test("draft survives refresh, isolates server and Scope, and waits for an author
   await page.evaluate(() => (window as unknown as DecisionWindow).confirmSnapshot())
   await page.reload()
   expect(await page.getByRole("textbox").inputValue()).toBe("")
+})
+
+test("password drafts remain volatile while an ordinary step restores across refresh", async () => {
+  await page.goto(`${baseUrl}?mode=question&outlet&multi&password`)
+  await page.locator('input[type="password"]').fill("Never persist this password", { timeout: 1500 })
+  await page.getByRole("button", { name: "Next", exact: true }).click()
+  await page.getByRole("textbox").fill("Keep the ordinary answer")
+  expect(await page.evaluate(() => Object.values(localStorage).join(" "))).not.toContain("Never persist this password")
+  await page.reload()
+  expect(await page.getByRole("textbox").inputValue()).toBe("Keep the ordinary answer")
+  await page.getByRole("button", { name: "Previous", exact: true }).click()
+  expect(await page.locator('input[type="password"]').inputValue()).toBe("")
 })
 
 test("new requests preserve the active draft and its focus", async () => {

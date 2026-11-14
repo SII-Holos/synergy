@@ -31,6 +31,7 @@
     "./component": "./src/component.ts",
     "./config-schema": "./src/config-schema.ts",
     "./http": "./src/http.ts",
+    "./maintenance": "./src/maintenance.ts",
     "./prompts/boss-synergy.txt": "./src/prompts/boss-synergy.txt",
     "./reload": "./src/reload.ts",
     "./session-schema": "./src/session-schema.ts",
@@ -74,6 +75,7 @@
     },
     "apiVersion": 1,
     "entry": "./dist/component.js",
+    "maintenance": "./dist/maintenance.js",
     "export": "boss",
     "requires": {
       "local-runtime": "1.1.26",

@@ -18,7 +18,8 @@ import { isPathContained } from "@ericsanchezok/synergy-harness/util/path-contai
 import { SensitivePathPolicy } from "@ericsanchezok/synergy-harness/enforcement/sensitive-path"
 import os from "node:os"
 import { NativeFileEntry } from "../file/entry-core"
-import { NativeWorkspaceTree } from "../workspace/tree"
+import { NativeWorkspacePortableTree } from "../workspace/portable-tree"
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 
 const DEFAULT_CHILDREN_LIMIT = 200
 const NODE_CONCURRENCY = 16
@@ -284,7 +285,7 @@ export namespace WorkspaceFileService {
           entryOperation(async () => {
             await validateEntry(to, "write")
             if (!input.operationID && (await FileView.stat(to))) throw new WriteConflictError()
-            const staging = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-transfer-"))
+            const staging = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), "synergy-transfer-")))
             await fs.chmod(staging, 0o700)
             try {
               await WorkspaceAccess.write(
@@ -310,7 +311,13 @@ export namespace WorkspaceFileService {
               )
               await FileView.importTree(
                 to,
-                (store) => NativeWorkspaceTree.capture(staging, store, signal),
+                (store) =>
+                  NativeWorkspacePortableTree.checkpoint({
+                    root: staging,
+                    directory: path.join(RuntimeContext.current().host.root, "cache", "workspace-imports"),
+                    store,
+                    signal,
+                  }),
                 signal,
                 input.operationID,
               )

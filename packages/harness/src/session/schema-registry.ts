@@ -1,14 +1,46 @@
 import { RuntimeContext } from "../lifecycle/context"
-import z from "zod"
+import { z } from "zod"
 import { ConfigExtensions } from "../config/extensions"
 import type { SessionExtensionShape } from "./types"
 import { WorkflowKindRegistry } from "./workflow-kind-registry"
 
 export namespace SessionSchemaRegistry {
+  const SourceID = z.string().min(1).max(256)
+  const SourceScalar = z.union([z.string().max(512), z.number().finite(), z.boolean(), z.null()])
+  export const NotificationReference = z.strictObject({
+    version: z.number().int().positive().max(65_535),
+    fields: z.record(SourceID, SourceScalar).refine((value) => Object.keys(value).length <= 32),
+  })
+  export type NotificationReference = z.infer<typeof NotificationReference>
+  export const NotificationSource = z
+    .strictObject({
+      scopeID: SourceID,
+      sessionID: SourceID,
+      parentID: SourceID.optional(),
+      references: z.record(SourceID, NotificationReference).refine((value) => Object.keys(value).length <= 16),
+    })
+    .refine((value) => new TextEncoder().encode(JSON.stringify(value)).byteLength <= 8192)
+    .meta({ ref: "SessionNotificationSource" })
+  export type NotificationSource = z.infer<typeof NotificationSource>
+  export interface TransferMutation {
+    source: Readonly<Record<string, unknown>>
+    previous?: Readonly<Record<string, unknown>>
+    parent?: Readonly<Record<string, unknown>>
+    sessionID: string
+    rootSessionID: string
+    handoffID: string
+  }
   type ComposedShape<S extends z.ZodRawShape> = Omit<S, keyof SessionExtensionShape | "workflow"> &
     Omit<SessionExtensionShape, "workflow"> & { workflow: z.ZodOptional<z.ZodType<WorkflowKindRegistry.Workflow>> }
   export interface Contribution {
     shape: z.ZodRawShape
+    transferOwner?: string
+    inherit?: readonly string[]
+    validateMutation?(input: {
+      previous?: Readonly<Record<string, unknown>>
+      next: Readonly<Record<string, unknown>>
+      parent?: Readonly<Record<string, unknown>>
+    }): void | Promise<void>
     project?(fields: Record<string, unknown>): void
     projectionKey?(): string
     isBackground?(input: Record<string, unknown>): boolean
@@ -18,7 +50,10 @@ export namespace SessionSchemaRegistry {
      * synchronously inside session transactions, so it may only read the
      * already-parsed session. */
     navIdentity?(input: Record<string, unknown>): Record<string, unknown> | undefined
+    notificationReference?(input: Readonly<Record<string, unknown>>): NotificationReference | undefined
     normalizeImport?(input: Record<string, unknown>, mode: "transcript" | "archive"): void
+    adoptTransfer?(input: TransferMutation): Record<string, unknown> | Promise<Record<string, unknown>>
+    validateTransfer?(input: TransferMutation & { next: Readonly<Record<string, unknown>> }): void | Promise<void>
   }
   const state = RuntimeContext.state(() => ({
     owners: new Map<string, Contribution>(),
@@ -31,6 +66,13 @@ export namespace SessionSchemaRegistry {
     if (existing === contribution) return
     if (existing) throw new Error(`Session domain ${id} is already registered`)
     ConfigExtensions.assertRegistrationOpen(id)
+    if (contribution.transferOwner) z.string().min(1).max(256).parse(contribution.transferOwner)
+    if (!!contribution.adoptTransfer !== !!contribution.validateTransfer)
+      throw new Error(`Session domain ${id} must own both transfer adoption and validation`)
+    for (const key of contribution.inherit ?? []) {
+      if (!Object.hasOwn(contribution.shape, key))
+        throw new Error(`Session domain ${id} cannot inherit unowned field ${key}`)
+    }
     for (const [otherID, other] of state().owners) {
       if (otherID === id) continue
       for (const key of Object.keys(contribution.shape)) {
@@ -112,6 +154,34 @@ export namespace SessionSchemaRegistry {
     return result
   }
 
+  export function captureNotificationSource(input: object): NotificationSource | undefined {
+    const references = new Map<string, NotificationReference>()
+    for (const [id, owner] of state().owners) {
+      const reference = owner.notificationReference?.(input as Readonly<Record<string, unknown>>)
+      if (reference !== undefined) references.set(id, NotificationReference.parse(reference))
+    }
+    if (!references.size) return
+    const identity = z
+      .object({ id: SourceID, parentID: SourceID.optional(), scope: z.object({ id: SourceID }) })
+      .parse(input)
+    return snapshotNotificationSource({
+      scopeID: identity.scope.id,
+      sessionID: identity.id,
+      ...(identity.parentID ? { parentID: identity.parentID } : {}),
+      references: Object.fromEntries(references),
+    })
+  }
+
+  export function snapshotNotificationSource(input: unknown): NotificationSource {
+    const captured = NotificationSource.parse(input)
+    for (const reference of Object.values(captured.references)) {
+      Object.freeze(reference.fields)
+      Object.freeze(reference)
+    }
+    Object.freeze(captured.references)
+    return Object.freeze(captured)
+  }
+
   export async function created(input: object): Promise<void> {
     for (const owner of state().owners.values()) await owner.created?.(input as Record<string, unknown>)
   }
@@ -120,14 +190,64 @@ export namespace SessionSchemaRegistry {
     for (const owner of state().owners.values()) owner.normalizeImport?.(input as Record<string, unknown>, mode)
   }
 
-  export function creationFields(input: object | undefined): Record<string, unknown> {
-    if (!input) return {}
-    const raw = input as Record<string, unknown>
+  export async function validateMutation(input: { previous?: object; next: object; parent?: object }) {
+    for (const owner of state().owners.values()) {
+      if (owner.validateMutation)
+        await owner.validateMutation(
+          structuredClone(input) as Parameters<NonNullable<Contribution["validateMutation"]>>[0],
+        )
+    }
+  }
+
+  export function transferOwners(input: unknown) {
+    if (!input || typeof input !== "object" || Array.isArray(input)) return []
+    const fields = input as Record<string, unknown>
+    return [
+      ...new Set(
+        [...state().owners.values()].flatMap((owner) =>
+          owner.transferOwner && Object.keys(owner.shape).some((key) => fields[key] !== undefined)
+            ? [owner.transferOwner]
+            : [],
+        ),
+      ),
+    ].sort()
+  }
+
+  export async function adoptTransfer(input: TransferMutation) {
+    const { SessionTransferEpochs } = await import("./transfer-epochs")
+    const binding = SessionTransferEpochs.assertActivation({ sessionID: input.sessionID, handoffID: input.handoffID })
+    const identity = z
+      .object({ id: z.literal(input.sessionID), scope: z.object({ id: z.literal(binding.scopeID) }) })
+      .safeParse(input.source)
+    if (!identity.success || (binding.rootSessionID ?? binding.sessionID) !== input.rootSessionID)
+      throw new Error("Session transfer adoption changed its reserved identity, Scope or aggregate root")
+    const next: Record<string, unknown> = { ...structuredClone(input.source) }
+    for (const [id, owner] of state().owners) {
+      if (!owner.adoptTransfer) continue
+      const fields = await owner.adoptTransfer(structuredClone(input))
+      for (const key of Object.keys(fields))
+        if (!Object.hasOwn(owner.shape, key)) throw new Error(`Session domain ${id} cannot adopt unowned field ${key}`)
+      for (const key of Object.keys(owner.shape)) {
+        if (Object.hasOwn(fields, key)) next[key] = structuredClone(fields[key])
+        else delete next[key]
+      }
+    }
+    for (const owner of state().owners.values()) {
+      const mutation = structuredClone({ ...input, next })
+      if (owner.validateTransfer) await owner.validateTransfer(mutation)
+      else await owner.validateMutation?.(mutation)
+    }
+    return next
+  }
+
+  export function creationFields(input: object | undefined, parent?: object): Record<string, unknown> {
+    const raw = (input ?? {}) as Record<string, unknown>
+    const inherited = (parent ?? {}) as Record<string, unknown>
     return Object.fromEntries(
       [...state().owners.values()].flatMap((owner) =>
         Object.keys(owner.shape)
-          .filter((key) => key in raw)
-          .map((key) => [key, raw[key]]),
+          .filter((key) => key in raw || (owner.inherit?.includes(key) && key in inherited))
+          .map((key) => [key, structuredClone(key in raw ? raw[key] : inherited[key])]),
       ),
     )
   }

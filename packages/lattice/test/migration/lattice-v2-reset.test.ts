@@ -5,6 +5,7 @@ import { LatticeTypes } from "@ericsanchezok/synergy-lattice/lattice/types"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { NoteVersions } from "@ericsanchezok/synergy-note"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
@@ -29,6 +30,126 @@ function resetMigration() {
 }
 
 describe("Lattice v2 reset migration", () => {
+  test("archives original legacy runs, events, document and execution bindings before resetting them", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = (await Scope.fromDirectory(tmp.path)).scope
+      const scopeID = Identifier.asScopeID(scope.id)
+      const sessionID = Identifier.ascending("session")
+      const runID = Identifier.ascending("lattice_run")
+      const loopID = Identifier.ascending("blueprint_loop")
+      const noteID = Identifier.ascending("note")
+      const records = [
+        {
+          key: legacyRunPath(scope.id, sessionID),
+          value: {
+            schemaVersion: 1,
+            id: runID,
+            scopeID: scope.id,
+            sessionID,
+            pathway: [{ blueprintLoopID: loopID }],
+            future: { retain: [1, 2] },
+          },
+        },
+        {
+          key: legacyEventPath(scope.id, sessionID, "event-original"),
+          value: { opaque: { original: "Native event bytes" } },
+        },
+        {
+          key: StoragePath.sessionInfo(scopeID, sessionID),
+          value: {
+            id: sessionID,
+            scope: { id: scope.id },
+            workflow: { kind: "lattice", runID, mode: "auto" },
+            blueprint: { loopID, loopRole: "execution" },
+          },
+        },
+        {
+          key: StoragePath.blueprintLoop(scopeID, loopID),
+          value: {
+            id: loopID,
+            scopeID: scope.id,
+            sessionID,
+            noteID,
+            status: "running",
+            source: "lattice",
+            orchestration: { kind: "lattice", runID },
+            time: { created: 1, updated: 2 },
+          },
+        },
+        {
+          key: StoragePath.note(scopeID, noteID),
+          value: {
+            id: noteID,
+            title: "Original authoring",
+            kind: "blueprint",
+            content: { type: "doc", content: [] },
+            blueprint: { activeLoopID: loopID, unknown: { nested: true } },
+            version: 7,
+            pinned: false,
+            global: false,
+            archived: false,
+            tags: [],
+            time: { created: 1, updated: 2 },
+          },
+        },
+      ]
+      for (const record of records) await Storage.write(record.key, record.value)
+      await NoteVersions.capture(scope.id, records[4].value)
+      await resetMigration().up(() => {})
+      const archived = []
+      for await (const row of Storage.records<{ key: string[]; value: unknown }>({
+        prefix: ["lattice_legacy_archive", scope.id, sessionID],
+        limit: 2,
+      }))
+        archived.push(row.value)
+      for (const record of records) expect(archived).toContainEqual(expect.objectContaining(record))
+      const changedNote = await Storage.read<{ version: number }>(records[4].key)
+      expect(changedNote.version).toBe(8)
+      expect(await NoteVersions.read(scope.id, noteID, 7)).toMatchObject(records[4].value)
+      expect(await NoteVersions.read(scope.id, noteID, 8)).toMatchObject(changedNote)
+      await expect(Storage.read(records[0].key)).rejects.toBeInstanceOf(Storage.NotFoundError)
+      await resetMigration().up(() => {})
+      const replay = []
+      for await (const row of Storage.records({ prefix: ["lattice_legacy_archive", scope.id, sessionID], limit: 2 }))
+        replay.push(row.value)
+      expect(replay).toEqual(archived)
+    }))
+
+  test("preserves unsupported schema records and their bindings without guessing a destructive upgrade", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = (await Scope.fromDirectory(tmp.path)).scope
+      const scopeID = Identifier.asScopeID(scope.id)
+      const sessionID = Identifier.ascending("session")
+      const runID = Identifier.ascending("lattice_run")
+      const records = [
+        {
+          key: StoragePath.latticeRun(scopeID, runID),
+          value: {
+            schemaVersion: 99,
+            id: runID,
+            scopeID: scope.id,
+            sessionID,
+            future: { exact: ["Keep all unknown state"] },
+          },
+        },
+        { key: StoragePath.latticeEvent(scopeID, runID, "event-future"), value: { opaque: "Future native event" } },
+        {
+          key: StoragePath.sessionInfo(scopeID, sessionID),
+          value: {
+            id: sessionID,
+            scope: { id: scope.id },
+            workflow: { kind: "lattice", runID, mode: "auto" },
+            lattice: { runID },
+          },
+        },
+      ]
+      for (const record of records) await Storage.write(record.key, record.value)
+      await resetMigration().up(() => {})
+      for (const record of records) expect(await Storage.read(record.key)).toEqual(record.value)
+    }))
+
   test("preserves a strict v2 run, its events, and its current Session binding", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })
@@ -300,7 +421,7 @@ describe("Lattice v2 reset migration", () => {
 
       const note = await Storage.read<Record<string, unknown>>(StoragePath.note(scopeID, noteID))
       expect(note.content).toEqual(content)
-      expect(note.version).toBe(4)
+      expect(note.version).toBe(5)
       expect(note.blueprint).toEqual({ description: "Preserve metadata" })
 
       await migration.up(() => {})
@@ -553,7 +674,7 @@ describe("Lattice v2 reset migration", () => {
       ).toBeUndefined()
       const note = await Storage.read<Record<string, unknown>>(StoragePath.note(scopeID, noteID))
       expect(note.content).toEqual(content)
-      expect(note.version).toBe(3)
+      expect(note.version).toBe(4)
       expect(note.blueprint).toEqual({ description: "Keep metadata" })
 
       await migration.up(() => {})
@@ -561,7 +682,7 @@ describe("Lattice v2 reset migration", () => {
       expect(await Storage.read<Record<string, unknown>>(StoragePath.note(scopeID, noteID))).toEqual(note)
     }))
 
-  test("finishes audit binding cleanup after its first Storage write fails", () =>
+  test("rolls back original bindings and archive writes together when cleanup fails, then retries", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })
       const scope = (await Scope.fromDirectory(tmp.path)).scope
@@ -613,7 +734,11 @@ describe("Lattice v2 reset migration", () => {
       await expect(migration.up(() => {})).rejects.toThrow("injected audit Session write failure")
       expect(
         (await Storage.read<Record<string, unknown>>(StoragePath.sessionInfo(scopeID, sessionID))).blueprint,
-      ).toBeUndefined()
+      ).toEqual({ loopID, loopRole: "execution" })
+      const uncommitted = []
+      for await (const row of Storage.records({ prefix: ["lattice_legacy_archive", scope.id, sessionID], limit: 2 }))
+        uncommitted.push(row)
+      expect(uncommitted).toEqual([])
       expect(await Storage.read<Record<string, unknown>>(auditSessionPath)).toMatchObject({
         blueprint: { loopID, loopRole: "audit" },
       })

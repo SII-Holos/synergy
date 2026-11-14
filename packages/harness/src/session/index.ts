@@ -5,13 +5,14 @@ import { ResourceReference } from "@ericsanchezok/synergy-util/resource-referenc
 import { attachmentPurpose } from "@ericsanchezok/synergy-util/attachment-presentation"
 import { WorkspaceBinding } from "../workspace/binding"
 import { WorkspaceCatalog } from "../workspace/catalog"
+import { WorkspaceFileSource } from "../workspace/file-source"
 import { Environment } from "../environment"
 import { WorkspaceMounts } from "../workspace/mount"
 import { SessionRecords } from "./records"
 import { ModelSelection } from "./model-selection-schema"
 import { WorkspaceAccess } from "../workspace/access"
 import { RuntimeContext } from "../lifecycle/context"
-import type { StoreTransaction } from "../storage/transactional-store"
+import type { StoreTransaction, TransactionalStore } from "../storage/transactional-store"
 import { StorageIntegrityError } from "../storage/errors"
 import { SessionStaging } from "./staging"
 import { RolloutAttachment } from "./rollout/attachment"
@@ -48,6 +49,10 @@ import { PartContent } from "./part-content"
 import { SessionLastExchange } from "./last-exchange"
 import { SnapshotEvidence } from "./snapshot-evidence"
 import { SessionCompat } from "./compat-import"
+import { SessionChildIndex } from "./child-index"
+import { SessionCortexIndex } from "./cortex-index"
+import { SessionTransferGate } from "./transfer-gate"
+import { StorageCompat } from "../storage/compat"
 import { Config } from "../config/config"
 import { ControlProfileCompiler } from "../control-profile/compiler"
 import type { ProfileId } from "../control-profile/types"
@@ -182,19 +187,20 @@ export namespace Session {
     })
   }
 
-  export async function rebuildStorageIndexes(tx: StoreTransaction) {
+  export async function rebuildStorageIndexes(store: TransactionalStore, tx: StoreTransaction) {
+    store.assertWriteTransaction(tx)
     for (const root of [
       "session_index",
       "endpoint_session",
       "sessions_page_index",
       "session_child_index",
+      "session_cortex_index",
       "session_nav_v2",
     ])
       await tx.removeTree([root])
     const scopes = await tx.scan(["sessions"])
     for (const scopeID of scopes) {
       const page: PageIndex = { entries: [] }
-      const children = new Map<string, ChildIndex>()
       const nav: SessionNavEntry[] = []
       let after: string[] | undefined
       for (;;) {
@@ -212,6 +218,7 @@ export namespace Session {
           if (index.scopeID !== scopeID || session.id !== record.key[2])
             throw new Error("Session identity does not match its storage owner")
           await tx.write(["session_index", session.id], index)
+          await SessionCortexIndex.rebuildItem(store, tx, session)
           if (session.endpoint)
             await tx.write(
               StoragePath.endpointSession(SessionEndpoint.toKey(session.endpoint), asSessionID(session.id)),
@@ -219,17 +226,8 @@ export namespace Session {
             )
           page.entries.push(toPageIndexEntry(session))
           nav.push(toNavEntry(session))
-          if (session.parentID) {
-            const child = children.get(session.parentID) ?? {
-              version: 1,
-              scopeID,
-              parentID: session.parentID,
-              updatedAt: Date.now(),
-              entries: [],
-            }
-            child.entries.push(toChildIndexEntry(session))
-            children.set(session.parentID, child)
-          }
+          if (session.parentID)
+            await SessionChildIndex.rebuildItem(store, tx, scopeID, session.parentID, toChildIndexEntry(session))
         }
         after = batch.at(-1)!.key
       }
@@ -243,10 +241,7 @@ export namespace Session {
         updatedAt: Date.now(),
         entries: nav,
       })
-      for (const [parentID, child] of children) {
-        sortChildIndexEntries(child.entries)
-        await tx.write(["session_child_index", scopeID, parentID], child)
-      }
+      await SessionCortexIndex.completeRebuild(store, tx, scopeID)
     }
     await tx.remove(StoragePath.rolloutRecoveryPending())
   }
@@ -267,21 +262,9 @@ export namespace Session {
     }>
   }
 
-  export type ChildIndexEntry = {
-    id: string
-    title: string
-    updated: number
-    created: number
-    archived: boolean
-  }
+  export type ChildIndexEntry = SessionChildIndex.Entry
 
-  export type ChildIndex = {
-    version: 1
-    scopeID: string
-    parentID: string
-    updatedAt: number
-    entries: ChildIndexEntry[]
-  }
+  export type ChildIndex = SessionChildIndex.Header & { entries: ChildIndexEntry[] }
 
   export const ChildCursor = z
     .object({
@@ -386,54 +369,56 @@ export namespace Session {
     }
   }
 
-  function sortChildIndexEntries(entries: ChildIndexEntry[]) {
-    entries.sort((a, b) => b.updated - a.updated || b.id.localeCompare(a.id))
-  }
-
-  async function readStoredChildIndex(scopeID: string, parentID: string): Promise<ChildIndex> {
-    const index = await Storage.read<ChildIndex>(
-      StoragePath.sessionChildIndex(asScopeID(scopeID), asSessionID(parentID)),
-    ).catch((error): ChildIndex => {
-      if (error instanceof Storage.NotFoundError) return { version: 1, scopeID, parentID, updatedAt: 0, entries: [] }
-      throw error
-    })
-    return index
-  }
-
   export async function readChildIndex(scopeID: string, parentID: string): Promise<ChildIndex> {
-    return SessionCompat.mergeChildIndex(scopeID, parentID, await readStoredChildIndex(scopeID, parentID))
+    const header = await SessionChildIndex.ensure(scopeID, parentID)
+    const entries: ChildIndexEntry[] = []
+    for await (const entry of SessionChildIndex.entries(scopeID, parentID)) entries.push(entry)
+    for await (const entry of SessionCompat.pendingChildEntries(scopeID, parentID))
+      if (!(await SessionChildIndex.contains(scopeID, parentID, entry.id))) entries.push(entry)
+    entries.sort((a, b) => b.updated - a.updated || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0))
+    return {
+      ...header,
+      total: entries.length,
+      active: entries.reduce((count, entry) => count + Number(!entry.archived), 0),
+      entries,
+    }
   }
 
   export async function writeChildIndex(scopeID: string, parentID: string, index: ChildIndex) {
-    sortChildIndexEntries(index.entries)
-    await Storage.write(StoragePath.sessionChildIndex(asScopeID(scopeID), asSessionID(parentID)), {
-      ...index,
-      updatedAt: Date.now(),
-    })
+    return Storage.transaction((tx) => SessionChildIndex.replace(tx, scopeID, parentID, index.entries))
   }
 
   export async function upsertChildIndexEntry(scopeID: string, parentID: string, entry: ChildIndexEntry) {
-    return Storage.transaction(async () => {
-      const index = await readStoredChildIndex(scopeID, parentID)
-      const existing = index.entries.findIndex((e) => e.id === entry.id)
-      if (existing >= 0) index.entries.splice(existing, 1)
-      index.entries.push(entry)
-      await writeChildIndex(scopeID, parentID, index)
-    })
+    return SessionChildIndex.upsert(scopeID, parentID, entry)
   }
 
   export async function removeChildIndexEntry(scopeID: string, parentID: string, sessionID: string) {
-    return Storage.transaction(async () => {
-      const index = await readStoredChildIndex(scopeID, parentID)
-      const nextEntries = index.entries.filter((e) => e.id !== sessionID)
-      if (nextEntries.length === index.entries.length) return
-      index.entries = nextEntries
-      await writeChildIndex(scopeID, parentID, index)
-    })
+    return SessionChildIndex.remove(scopeID, parentID, sessionID)
   }
 
   export async function removeChildIndex(scopeID: string, parentID: string) {
-    await Storage.remove(StoragePath.sessionChildIndex(asScopeID(scopeID), asSessionID(parentID)))
+    await Storage.transaction(async () => {
+      await SessionTransferGate.assertOwnerMutation(parentID)
+      await Storage.removeTree(StoragePath.sessionChildIndex(asScopeID(scopeID), asSessionID(parentID)))
+    })
+  }
+
+  export async function* childEntries(parentID: string, signal?: AbortSignal): AsyncGenerator<ChildIndexEntry> {
+    signal?.throwIfAborted()
+    const parent = await SessionManager.requireSession(parentID)
+    yield* childIndexEntries(parent.scope.id, parentID, signal)
+  }
+
+  export async function* childIndexEntries(
+    scopeID: string,
+    parentID: string,
+    signal?: AbortSignal,
+  ): AsyncGenerator<ChildIndexEntry> {
+    for await (const entry of SessionChildIndex.entries(scopeID, parentID, signal)) yield entry
+    for await (const entry of SessionCompat.pendingChildEntries(scopeID, parentID)) {
+      signal?.throwIfAborted()
+      if (!(await SessionChildIndex.contains(scopeID, parentID, entry.id))) yield entry
+    }
   }
 
   export function toNavEntry(session: Info): SessionNavEntry {
@@ -561,6 +546,19 @@ export namespace Session {
     return workMap(LIST_ENRICH_CONCURRENCY, sessions, (session) => withClientInfo(session, runtimeRecords))
   }
 
+  async function withClientMetadataInfos(sessions: Info[]) {
+    const locators = await Storage.readMany<StorageCompat.Locator>(
+      sessions.map((session) => StorageCompat.locatorKey(session.id)),
+    )
+    const indices = sessions.flatMap((_, index) =>
+      !locators[index] || locators[index].status === "imported" ? [index] : [],
+    )
+    const published = await withClientInfos(indices.map((index) => sessions[index]))
+    const result = sessions.slice()
+    for (const [index, session] of published.entries()) result[indices[index]] = session
+    return result
+  }
+
   // Dedup redundant session.updated publishes: a diff limited to time.updated
   // (or a byte-identical payload) is throttled to a heartbeat, while any real
   // field change publishes immediately (issue #319, defense in depth).
@@ -600,7 +598,7 @@ export namespace Session {
     }
     if (Storage.inTransaction()) Storage.afterCommit(remember)
     else remember()
-    Bus.publish(event, { info, navEntry })
+    await Bus.publish(event, { info, navEntry })
   }
 
   export async function create(
@@ -676,7 +674,7 @@ export namespace Session {
     })
 
     const result: Info = {
-      ...SessionSchemaRegistry.creationFields(input),
+      ...SessionSchemaRegistry.creationFields(input, parent),
       id: Identifier.descending("session", input?.id),
       tags: normalizeSessionTags(input?.tags),
       version: Installation.VERSION,
@@ -705,7 +703,8 @@ export namespace Session {
     log.info("created", result)
 
     await Storage.transaction(async () => {
-      if (result.parentID && !(await SessionManager.getSession(result.parentID)))
+      const currentParent = result.parentID ? await SessionManager.getSession(result.parentID) : undefined
+      if (result.parentID && !currentParent)
         throw new Storage.NotFoundError({ message: "Parent Session no longer exists" })
       if (result.workspaceID != null) await WorkspaceCatalog.assertActive(result.workspaceID, scope.id)
       const environment = await Environment.select({
@@ -721,12 +720,15 @@ export namespace Session {
               : undefined,
       })
       result.environmentID = environment?.id ?? null
+      await SessionSchemaRegistry.validateMutation({ next: result, parent: currentParent })
       await Storage.write(
         StoragePath.sessionInfo(asScopeID(scope.id), asSessionID(result.id)),
         SessionRecords.serialize(result),
       )
       await Storage.write(StoragePath.sessionIndex(asSessionID(result.id)), toIndex(result))
       await SessionHistoryDisplay.initialize(scope.id, result.id)
+      await SessionCortexIndex.initialize(scope.id, result.id, true)
+      await SessionCortexIndex.sync(result)
       await writeEndpointIndex(result)
       await upsertPageIndexEntry(scope.id, toPageIndexEntry(result))
       if (result.parentID) await upsertChildIndexEntry(scope.id, result.parentID, toChildIndexEntry(result))
@@ -1035,6 +1037,12 @@ export namespace Session {
     const session = await get(sessionID)
     const { workspace } = session
     if (session.workspaceID) {
+      const record = await WorkspaceCatalog.get(session.workspaceID, session.scope.id)
+      if (record.backend && !["directory", "objects"].includes(record.backend.provider)) {
+        if (workspace) throw new Error("Remote Workspace cannot carry a native Session directory")
+        await WorkspaceFileSource.inspectBinding({ workspaceID: record.id, scopeID: session.scope.id })
+        return
+      }
       await WorkspaceBinding.validate(session.workspaceID, session.scope.id, workspace?.generation)
       return
     }
@@ -1061,6 +1069,7 @@ export namespace Session {
         const reference =
           options?.reference ??
           (workspace?.id ? { workspaceID: workspace.id, workspaceGeneration: workspace.generation } : undefined)
+        let remoteWorkspace: WorkspaceCatalog.Info | undefined
         const resolve = async () => {
           if (!reference) return WorkspaceBinding.adopt(workspace, session.scope.id)
           const record = await WorkspaceCatalog.get(reference.workspaceID, session.scope.id)
@@ -1074,9 +1083,22 @@ export namespace Session {
             reference.workspaceGeneration !== record.binding.generation
           )
             throw new WorkspaceCatalog.BindingChanged({ workspaceID: record.id, message: "Workspace binding changed" })
-          return record.backend?.provider === "objects"
-            ? null
-            : WorkspaceBinding.validate(record.id, session.scope.id, reference.workspaceGeneration)
+          if (record.backend?.provider === "objects") return null
+          if (record.backend && !["directory", "objects"].includes(record.backend.provider)) {
+            const inspected = await WorkspaceFileSource.inspectBinding({
+              workspaceID: record.id,
+              scopeID: session.scope.id,
+              generation: reference.workspaceGeneration,
+            })
+            if (remoteWorkspace && JSON.stringify(inspected) !== JSON.stringify(remoteWorkspace))
+              throw new WorkspaceCatalog.BindingChanged({
+                workspaceID: record.id,
+                message: "Remote Workspace changed before Session binding",
+              })
+            remoteWorkspace = inspected
+            return null
+          }
+          return WorkspaceBinding.validate(record.id, session.scope.id, reference.workspaceGeneration)
         }
         workspace = await resolve()
         const workspaceID = reference?.workspaceID ?? workspace?.id ?? null
@@ -1106,7 +1128,7 @@ export namespace Session {
               draft.workspace = workspace
               draft.workspaceID = workspaceID
             },
-            { ...options, workspaceChange: true },
+            { ...options, workspaceChange: true, remoteWorkspace },
           )
         }
         return owns
@@ -1419,7 +1441,24 @@ export namespace Session {
     return acknowledgeCompletionNotice(id, Number.MAX_SAFE_INTEGER)
   }
 
-  export async function recordCompletionNotice(id: string, options?: { publishEvent?: boolean }) {
+  export function notificationSource(info: Info) {
+    try {
+      return SessionSchemaRegistry.captureNotificationSource(info)
+    } catch {
+      log.warn("Session notification source is unavailable")
+      return undefined
+    }
+  }
+
+  export async function recordCompletionNotice(
+    id: string,
+    options?: { publishEvent?: boolean; source?: SessionSchemaRegistry.NotificationSource },
+  ) {
+    const publishEvent = options?.publishEvent
+    const hasSource = !!options && Object.hasOwn(options, "source")
+    const capturedSource = options?.source
+      ? SessionSchemaRegistry.snapshotNotificationSource(options.source)
+      : undefined
     await SessionCompat.requireImported(id)
     return serializeCompletionNoticeMutation(id, () =>
       Storage.transaction(async () => {
@@ -1432,8 +1471,9 @@ export namespace Session {
           draft.completionNotice.unreadCount = next
           if (next !== current) unreadCount = next
         })
-        if (unreadCount !== undefined && options?.publishEvent !== false) {
-          await Bus.publish(SessionEvent.Completion, { sessionID: id, unreadCount })
+        if (unreadCount !== undefined && publishEvent !== false) {
+          const source = hasSource ? capturedSource : notificationSource(result)
+          await Bus.publish(SessionEvent.Completion, { sessionID: id, unreadCount, ...(source ? { source } : {}) })
         }
         return result
       }),
@@ -1448,6 +1488,7 @@ export namespace Session {
       forcePublish?: boolean
       workspaceChange?: boolean
       environmentChange?: boolean
+      remoteWorkspace?: WorkspaceCatalog.Info
     },
   ) {
     await SessionCompat.requireImported(id)
@@ -1460,6 +1501,7 @@ export namespace Session {
       const before = structuredClone(session)
       const result = structuredClone(session)
       editor(result)
+      await SessionSchemaRegistry.validateMutation({ previous: before, next: result })
       if (result.title !== before.title && result.forkedFrom) delete result.forkedFrom.generatedTitle
       if (!options?.environmentChange && result.environmentID !== before.environmentID)
         throw new Error("Environment bindings cannot be changed through Session.update")
@@ -1475,6 +1517,19 @@ export namespace Session {
       }
       if (result.workspaceID != null && (options?.workspaceChange || result.workspaceID !== before.workspaceID))
         await WorkspaceCatalog.assertActive(result.workspaceID, scope.id)
+      if (options?.remoteWorkspace) {
+        const selected = options.remoteWorkspace
+        const actual = await WorkspaceFileSource.inspectBinding({
+          workspaceID: selected.id,
+          scopeID: scope.id,
+          generation: selected.binding.generation,
+        })
+        if (result.workspace || result.workspaceID !== actual.id || JSON.stringify(actual) !== JSON.stringify(selected))
+          throw new WorkspaceCatalog.BindingChanged({
+            workspaceID: selected.id,
+            message: "Remote Workspace changed before Session publication",
+          })
+      }
       if (result.workspaceID != null && before.time.archived && !result.time.archived) {
         const workspace = await WorkspaceCatalog.get(result.workspaceID, scope.id)
         if (workspace.lifecycle === "deleting")
@@ -1485,6 +1540,7 @@ export namespace Session {
       }
       if (!options?.preserveActivityAt) result.time.updated = Date.now()
       await Storage.write(StoragePath.sessionInfo(scopeID, sessionID), SessionRecords.serialize(result))
+      await SessionCortexIndex.sync(result, before)
 
       await Storage.write(StoragePath.sessionIndex(asSessionID(result.id)), toIndex(result))
       await upsertPageIndexEntry(scope.id, toPageIndexEntry(result))
@@ -1670,40 +1726,19 @@ export namespace Session {
   }): Promise<ChildrenPage> {
     const parent = await SessionManager.requireSession(input.parentID)
     const scope = parent.scope as Scope
-    const index = await readChildIndex(scope.id, input.parentID)
-    let entries = index.entries
-
-    if (!input.includeArchived) entries = entries.filter((entry) => !entry.archived)
-
-    const search = input.search?.trim().toLowerCase()
-    if (search) {
-      entries = entries.filter((entry) => entry.title.toLowerCase().includes(search))
-    }
-
-    const total = entries.length
-    let startIdx = 0
-    if (input.cursor) {
-      const cursor = input.cursor
-      startIdx = entries.findIndex(
-        (entry) =>
-          entry.updated < cursor.lastActivityAt || (entry.updated === cursor.lastActivityAt && entry.id < cursor.id),
-      )
-      if (startIdx === -1) startIdx = entries.length
-    }
-
-    const limit = input.limit ?? total
-    const slice = entries.slice(startIdx, startIdx + limit)
-    const hasMore = startIdx + slice.length < total
-    const last = slice.at(-1)
-    const nextCursor = hasMore && last ? { lastActivityAt: last.updated, id: last.id } : null
+    const page = await SessionChildIndex.page(scope.id, input.parentID, {
+      ...input,
+      extras: SessionCompat.pendingChildEntries(scope.id, input.parentID),
+    })
+    const slice = page.items
 
     const keys = slice.map((entry) => StoragePath.sessionInfo(asScopeID(scope.id), asSessionID(entry.id)))
-    const sessions = await SessionRecords.readMany(keys)
-    const items = await withClientInfos(
+    const sessions = await SessionRecords.readMetadataMany(keys)
+    const items = await withClientMetadataInfos(
       sessions.filter((session): session is Info => session != null && !!session.scope),
     )
 
-    return { items, nextCursor, total }
+    return { items, nextCursor: page.nextCursor, total: page.total }
   }
 
   export const childPage = fn(
@@ -1718,8 +1753,12 @@ export namespace Session {
   )
 
   export const children = fn(Identifier.schema("session"), async (parentID) => {
-    const page = await queryChildren({ parentID, includeArchived: true })
-    return page.items
+    const parent = await SessionManager.requireSession(parentID)
+    const keys: string[][] = []
+    for await (const entry of childEntries(parentID))
+      keys.push(StoragePath.sessionInfo(asScopeID(parent.scope.id), asSessionID(entry.id)))
+    const sessions = await SessionRecords.readMetadataMany(keys)
+    return withClientMetadataInfos(sessions.filter((session): session is Info => session != null && !!session.scope))
   })
 
   export const remove = fn(Identifier.schema("session"), async (sessionID) => {
@@ -1753,6 +1792,7 @@ export namespace Session {
         await MessageV2.removeOrderIndex(scopeID, sid)
         await SessionNav.removeNavEntry(scope.id, id)
         await Storage.removeTree(StoragePath.sessionRoot(scopeID, sid))
+        await SessionCortexIndex.remove(session)
         await Storage.remove(StoragePath.sessionIndex(sid))
         await removePageIndexEntry(scope.id, id)
         if (session.parentID) await removeChildIndexEntry(scope.id, session.parentID, id)
@@ -1814,10 +1854,18 @@ export namespace Session {
       const canonical = MessageV2.canonicalMessage(msg)
       const session = await SessionManager.requireSession(msg.sessionID)
       const scopeID = asScopeID((session.scope as Scope).id)
-      if (!canonical.referenceContext) {
-        const [existing] = await Storage.readMany<MessageV2.Info>([
-          StoragePath.messageInfo(scopeID, asSessionID(canonical.sessionID), Identifier.asMessageID(canonical.id)),
+      const [existing] = await Storage.readMany<MessageV2.Info>([
+        StoragePath.messageInfo(scopeID, asSessionID(canonical.sessionID), Identifier.asMessageID(canonical.id)),
+      ])
+      if (existing) canonical.actor = existing.actor
+      else if (canonical.role === "assistant") {
+        const rootID = canonical.rootID ?? canonical.parentID
+        const [root] = await Storage.readMany<MessageV2.Info>([
+          StoragePath.messageInfo(scopeID, asSessionID(canonical.sessionID), Identifier.asMessageID(rootID)),
         ])
+        canonical.actor = root?.role === "user" && root.isRoot === true ? root.actor : undefined
+      }
+      if (!canonical.referenceContext) {
         canonical.referenceContext = existing?.referenceContext ?? ResourceReference.capture(session.workspace)
       }
       // Invalidate the search index BEFORE the content write so a crash between
@@ -1833,7 +1881,7 @@ export namespace Session {
       // frontend prefix-cut hides everything after the cut while canUnrollback is
       // true, so the new branch must never arrive ahead of its invalidation.
       await publishRollbackInvalidation(canonical, session.history)
-      Bus.publish(MessageV2.Event.Updated, {
+      await Bus.publish(MessageV2.Event.Updated, {
         info: canonical,
       })
       await SessionSearchIndex.markDirty(scopeID, asSessionID(canonical.sessionID))
@@ -1864,7 +1912,7 @@ export namespace Session {
       )
       const canonical = MessageV2.canonicalMessage(result)
       SessionMessageCache.upsertMessage(canonical.sessionID, canonical)
-      Bus.publish(MessageV2.Event.Updated, {
+      await Bus.publish(MessageV2.Event.Updated, {
         info: canonical,
       })
       return canonical as MessageV2.Assistant
@@ -1892,7 +1940,7 @@ export namespace Session {
           },
         )
         SessionMessageCache.upsertMessage(result.sessionID, result)
-        Bus.publish(MessageV2.Event.Updated, {
+        await Bus.publish(MessageV2.Event.Updated, {
           info: result,
         })
         return result
@@ -1921,7 +1969,7 @@ export namespace Session {
         Storage.afterCommit(() => partWriteBuffer().cancelWhere((part) => part.messageID === input.messageID))
         // Structural change: drop the cache and let the next read repopulate.
         SessionMessageCache.invalidate(input.sessionID)
-        Bus.publish(MessageV2.Event.Removed, {
+        await Bus.publish(MessageV2.Event.Removed, {
           sessionID: input.sessionID,
           messageID: input.messageID,
         })
@@ -1956,7 +2004,7 @@ export namespace Session {
         await SessionHistoryDisplay.partRemoved(scopeID, input.sessionID, input.messageID, input.partID)
         Storage.afterCommit(() => partWriteBuffer().cancel(input.partID))
         SessionMessageCache.invalidate(input.sessionID)
-        Bus.publish(MessageV2.Event.PartRemoved, {
+        await Bus.publish(MessageV2.Event.PartRemoved, {
           sessionID: input.sessionID,
           messageID: input.messageID,
           partID: input.partID,

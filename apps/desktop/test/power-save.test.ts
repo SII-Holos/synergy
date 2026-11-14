@@ -4,6 +4,7 @@ import { tmpdir } from "node:os"
 import path from "node:path"
 import {
   createDesktopActivityWatcher,
+  createDesktopActivityGroup,
   createDesktopPowerGuard,
   defaultDesktopPowerState,
   desktopPowerFilePath,
@@ -11,6 +12,7 @@ import {
   parseDesktopActivity,
   parseDesktopPowerUpdate,
   saveDesktopPower,
+  fetchDesktopActivity,
   type PowerSaveBlockerLike,
 } from "../src/power-save.js"
 
@@ -117,6 +119,142 @@ function blockerFixture(options: { externallyStopped?: boolean } = {}) {
   }
   return { blocker, starts, stops, stopped }
 }
+
+test("activity from independent members shares one assertion and respects global opt-in", async () => {
+  const { blocker, starts, stops, stopped } = blockerFixture()
+  const guard = createDesktopPowerGuard(blocker)
+  let requests = 0
+  const group = createDesktopActivityGroup({
+    intervalMs: 60_000,
+    failureGraceMs: 0,
+    releaseDebounceMs: 0,
+    onDesiredChange: (desired) => guard.apply(desired),
+    onError: (error) => {
+      throw error
+    },
+  })
+  const source = () =>
+    group.add({
+      resolveBaseUrl: () => "http://member.invalid",
+      fetchActivity: async () => {
+        requests++
+        return { active: true, sessions: 1, backgroundJobs: 0 }
+      },
+    })
+  const removeA = source()
+  const removeB = source()
+  try {
+    expect(requests).toBe(0)
+    expect(guard.active()).toBe(false)
+    group.start()
+    await waitFor(() => requests === 2 && guard.active())
+    expect(starts).toHaveLength(1)
+    removeA()
+    expect(guard.active()).toBe(true)
+    expect(stops).toEqual([])
+    stopped.add(starts[0].id)
+    group.recheck()
+    await waitFor(() => guard.active())
+    expect(starts).toHaveLength(2)
+    group.stop()
+    expect(guard.active()).toBe(false)
+    const before = requests
+    const removeC = source()
+    expect(requests).toBe(before)
+    group.start()
+    await waitFor(() => guard.active() && requests === before + 2)
+    removeB()
+    expect(guard.active()).toBe(true)
+    removeC()
+    expect(guard.active()).toBe(false)
+    expect(starts).toHaveLength(3)
+  } finally {
+    removeA()
+    removeB()
+    group.stop()
+    guard.release()
+  }
+})
+
+test("removing a member cancels its activity request and ignores the late response", async () => {
+  const desired: boolean[] = []
+  const held = Promise.withResolvers<unknown>()
+  let request: AbortSignal | undefined
+  const group = createDesktopActivityGroup({
+    intervalMs: 60_000,
+    failureGraceMs: 0,
+    releaseDebounceMs: 0,
+    onDesiredChange: (value) => desired.push(value),
+    onError: (error) => {
+      throw error
+    },
+  })
+  const remove = group.add({
+    resolveBaseUrl: () => "http://member.invalid",
+    fetchActivity: (_url, signal) => {
+      request = signal
+      return held.promise
+    },
+  })
+  try {
+    group.start()
+    await waitFor(() => !!request)
+    remove()
+    expect(request!.aborted).toBe(true)
+    held.resolve({ active: true, sessions: 1, backgroundJobs: 0 })
+    await Bun.sleep(5)
+    expect(desired).not.toContain(true)
+    group.recheck()
+    expect(desired).not.toContain(true)
+  } finally {
+    held.resolve({ active: false, sessions: 0, backgroundJobs: 0 })
+    remove()
+    group.stop()
+  }
+})
+
+test("activity requests use each member's private credential and refuse redirects", async () => {
+  const received: Array<{ path: string; authorization: string | null }> = []
+  let redirected = 0
+  const trap = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch: () => {
+      redirected++
+      return Response.json({ active: true, sessions: 1, backgroundJobs: 0 })
+    },
+  })
+  const server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch: (request) => {
+      const pathname = new URL(request.url).pathname
+      received.push({ path: pathname, authorization: request.headers.get("authorization") })
+      if (pathname === "/redirect/global/activity") return Response.redirect(String(trap.url))
+      return Response.json({ active: true, sessions: 1, backgroundJobs: 0 })
+    },
+  })
+  try {
+    const base = String(server.url).replace(/\/$/, "")
+    const signal = new AbortController().signal
+    for (const member of ["a", "b"]) {
+      expect(await fetchDesktopActivity(base + "/" + member, signal, { authorization: "Bearer " + member })).toEqual({
+        active: true,
+        sessions: 1,
+        backgroundJobs: 0,
+      })
+    }
+    expect(received).toEqual([
+      { path: "/a/global/activity", authorization: "Bearer a" },
+      { path: "/b/global/activity", authorization: "Bearer b" },
+    ])
+    await expect(fetchDesktopActivity(base + "/redirect", signal, { authorization: "Bearer a" })).rejects.toBeDefined()
+    expect(redirected).toBe(0)
+  } finally {
+    await server.stop(true)
+    await trap.stop(true)
+  }
+})
 
 describe("desktop power guard", () => {
   test("holds a single prevent-app-suspension assertion and never stacks duplicates", () => {
@@ -285,11 +423,11 @@ describe("desktop activity watcher", () => {
     fixture.watcher.stop()
   })
 
-  test("requests the global activity endpoint and raises intent immediately", async () => {
+  test("polls the resolved server and raises intent immediately", async () => {
     const fixture = watcherFixture({ resolve: () => ({ active: true, sessions: 1, backgroundJobs: 0 }) })
     fixture.watcher.start()
     await waitFor(() => fixture.desired.length > 0)
-    expect(fixture.scheduled[0]).toBe("http://127.0.0.1:4096/global/activity")
+    expect(fixture.scheduled[0]).toBe("http://127.0.0.1:4096")
     expect(fixture.desired).toEqual([true])
     await waitFor(() => fixture.calls >= 3)
     expect(fixture.desired).toEqual([true])

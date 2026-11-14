@@ -2,6 +2,7 @@ import { SessionExecutionOwners } from "./execution-owners"
 import { independentExecutionInfo } from "./types"
 import { SessionPauseRecovery } from "./pause-recovery"
 import { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
+import { ActorStamp } from "@ericsanchezok/synergy-util/actor-stamp"
 import z from "zod"
 import { ModelSelection } from "./model-selection-schema"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
@@ -10,6 +11,7 @@ import { BusEvent } from "../bus/bus-event"
 import { Identifier } from "../id/id"
 import { Scope } from "../scope"
 import { Storage } from "../storage/storage"
+import { RuntimeMaintenance } from "../storage/runtime-maintenance"
 import { StorageIntegrityError } from "../storage/errors"
 import { StoragePath } from "../storage/path"
 import { Lock } from "../util/lock"
@@ -93,6 +95,7 @@ export namespace SessionInbox {
       message: z
         .object({
           role: z.enum(["user", "assistant"]).default("user"),
+          actor: ActorStamp.Info.optional(),
           referenceContext: ResourceReference.Context.optional(),
           parts: z.array(PayloadPart),
           agent: z.string().optional(),
@@ -164,6 +167,7 @@ export namespace SessionInbox {
       message: z.object({
         parts: z.array(PayloadPart),
         role: z.enum(["user", "assistant"]).default("user"),
+        actor: ActorStamp.Info.optional(),
         agent: z.string().optional(),
         model: z
           .object({
@@ -191,6 +195,16 @@ export namespace SessionInbox {
       messageID: Identifier.schema("message"),
       created: z.boolean().optional(),
     })
+  }
+
+  export const RecordCommitted = {
+    type: "session.inbox.item.committed" as const,
+    properties: z.strictObject({
+      scopeID: z.string(),
+      sessionID: Item.shape.sessionID,
+      itemID: Item.shape.id,
+      revision: z.string().regex(/^\d+$/),
+    }),
   }
 
   export const Event = {
@@ -303,10 +317,23 @@ export namespace SessionInbox {
         }
         const session = await readSession(item.sessionID)
         const scopeID = Identifier.asScopeID((session.scope as Scope).id)
-        await Storage.write(
-          StoragePath.sessionInboxItem(scopeID, Identifier.asSessionID(item.sessionID), item.id),
-          item,
-        )
+        const key = StoragePath.sessionInboxItem(scopeID, Identifier.asSessionID(item.sessionID), item.id)
+        await Storage.write(key, item)
+        const [revision] = await Storage.revisions([key])
+        if (revision === undefined) throw new StorageIntegrityError("Committed Inbox item has no native revision")
+        await Storage.capture({
+          id: crypto.randomUUID(),
+          scopeID,
+          type: RecordCommitted.type,
+          payload: {
+            properties: RecordCommitted.properties.parse({
+              scopeID,
+              sessionID: item.sessionID,
+              itemID: item.id,
+              revision: String(revision),
+            }),
+          },
+        })
         await SessionPauseRecovery.mark({ scopeID, sessionID: item.sessionID })
       }
       await publish(item.sessionID)
@@ -600,6 +627,7 @@ export namespace SessionInbox {
     input: z.infer<typeof Deliver.Input>,
     ids: { itemID: string; messageID: string },
   ): Promise<StoredItem> {
+    const actor = ActorStamp.Info.optional().parse(input.message.actor)
     const summarized = summarizeParts(input.message.parts)
     const mode = input.mode
     const origin =
@@ -619,6 +647,7 @@ export namespace SessionInbox {
       mode,
       message: {
         referenceContext: ResourceReference.capture((await Session.get(input.sessionID)).workspace),
+        actor,
         parts: input.message.parts as any,
         role: input.message.role,
         agent: input.message.agent,
@@ -699,9 +728,20 @@ export namespace SessionInbox {
     },
     persistItem: (item: StoredItem) => Promise<unknown>,
   ): Promise<{ itemID: string; messageID: string; created: boolean }> {
-    const itemID = stableDeliveryItemID(input.sessionID, input.deliveryKey)
     using _ = await Lock.write(`session-inbox-delivery:${input.sessionID}:${input.deliveryKey}`)
+    return deliverUniqueLocked(input, persistItem)
+  }
 
+  async function deliverUniqueLocked(
+    input: {
+      sessionID: string
+      deliveryKey: string
+      mode: z.infer<typeof Deliver.Input>["mode"]
+      prepareMessage: (messageID: string) => Promise<z.infer<typeof Deliver.Input>["message"]>
+    },
+    persistItem: (item: StoredItem) => Promise<unknown>,
+  ): Promise<{ itemID: string; messageID: string; created: boolean }> {
+    const itemID = stableDeliveryItemID(input.sessionID, input.deliveryKey)
     const existing = await findExistingDelivery(input.sessionID, input.deliveryKey)
     if (existing) return { ...existing, created: false }
 
@@ -724,15 +764,36 @@ export namespace SessionInbox {
   export async function deliverUnique(
     input: z.infer<typeof Deliver.Input> & { deliveryKey: string },
   ): Promise<{ itemID: string; messageID: string; created: boolean }> {
-    return deliverUniqueWithPreparedMessage(
-      {
-        sessionID: input.sessionID,
-        deliveryKey: input.deliveryKey,
-        mode: input.mode,
-        prepareMessage: async () => input.message,
-      },
-      persistDelivery,
-    )
+    return withUniqueDelivery(input, (deliver) => deliver())
+  }
+
+  /** Acquire uniqueness before a caller enters its own receipt or Rollout transaction. */
+  export async function withUniqueDelivery<T>(
+    input: z.infer<typeof Deliver.Input> & { deliveryKey: string },
+    body: (deliver: () => Promise<{ itemID: string; messageID: string; created: boolean }>) => Promise<T>,
+    signal?: AbortSignal,
+  ): Promise<T> {
+    input = { ...input, message: { ...input.message, actor: ActorStamp.Info.optional().parse(input.message.actor) } }
+    const key = `session-inbox-delivery:${input.sessionID}:${input.deliveryKey}`
+    using lock = signal ? await Lock.writeWithSignal(key, signal) : await Lock.write(key)
+    signal?.throwIfAborted()
+    let active = true
+    try {
+      return await body(() => {
+        if (!active) throw new Error("Inbox delivery admission has ended")
+        return deliverUniqueLocked(
+          {
+            sessionID: input.sessionID,
+            deliveryKey: input.deliveryKey,
+            mode: input.mode,
+            prepareMessage: async () => input.message,
+          },
+          persistDelivery,
+        )
+      })
+    } finally {
+      active = false
+    }
   }
 
   export async function deliverUniquePrepared(input: {
@@ -746,8 +807,9 @@ export namespace SessionInbox {
 
   export async function enqueueUser(
     input: InvokeInput,
-    options?: { mode: "task" | "steer"; admission?: "idle_no_reply" },
+    options?: { mode?: "task" | "steer"; admission?: "idle_no_reply"; actor?: ActorStamp.Info },
   ): Promise<Item> {
+    const actor = ActorStamp.Info.optional().parse(options?.actor)
     if (input.agent !== undefined && !(await Agent.get(input.agent))) throw new Error(`Agent not found: ${input.agent}`)
     const messageID = input.messageID ?? Identifier.ascending("message")
     const itemID = stableDeliveryItemID(input.sessionID, `user:${messageID}`)
@@ -774,6 +836,7 @@ export namespace SessionInbox {
       mode,
       message: {
         role: "user",
+        actor,
         referenceContext: ResourceReference.capture((await Session.get(input.sessionID)).workspace),
         parts: input.parts as any,
         agent: input.agent,
@@ -828,6 +891,7 @@ export namespace SessionInbox {
         })
         if (run && ["cancelled", "completed", "failed"].includes(run.status)) return item
       }
+      await RuntimeMaintenance.assertAdmission()
       const stored = await writeItem(item)
       await Session.recordActivity(input.sessionID)
       return stored
@@ -1247,6 +1311,7 @@ export namespace SessionInbox {
         return createUserMessage(
           {
             ...item.input,
+            actor: payload.actor,
             referenceContext: item.message?.referenceContext ?? { state: "unresolved" },
             sessionID: item.sessionID,
             messageID,
@@ -1304,6 +1369,7 @@ export namespace SessionInbox {
       // no noReply/guided metadata flags are written.
       const info: MessageV2.User = {
         id: messageID,
+        actor: payload.actor,
         role: "user",
         referenceContext: payload.referenceContext ?? { state: "unresolved" },
         sessionID: item.sessionID,

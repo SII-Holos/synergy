@@ -34,14 +34,23 @@ export function resolvePolicyWorkerCommand(): string[] {
   if (installed) return installed
   const entrypoint = state().entrypoint
   if (!entrypoint) throw new Error("No policy worker host is registered")
-  if (fs.existsSync(entrypoint)) return [process.execPath, "run", entrypoint]
+  if (fs.existsSync(entrypoint))
+    return [
+      process.execPath,
+      "run",
+      "--no-env-file",
+      `--config=${process.platform === "win32" ? "NUL" : "/dev/null"}`,
+      entrypoint,
+    ]
   return [process.execPath, "__policy-worker-runner"]
 }
 
 export function spawnPolicyWorkerProcess(options: SpawnPolicyWorkerProcessOptions): PolicyWorkerProcess {
   const owner = RuntimeContext.current()
+  const exitCallback = Promise.withResolvers<void>()
   const processHandle = Bun.spawn({
     cmd: resolvePolicyWorkerCommand(),
+    cwd: owner.host.root,
     env: {
       ...owner.host.env,
       ...state().environment,
@@ -64,7 +73,14 @@ export function spawnPolicyWorkerProcess(options: SpawnPolicyWorkerProcessOption
     stdout: "ignore",
     stderr: "ignore",
     onExit(_process, exitCode, signalCode) {
-      owner.run(() => options.onExit(exitCode, signalCode?.toString() ?? null))
+      try {
+        Promise.resolve(owner.run(() => options.onExit(exitCode, signalCode?.toString() ?? null))).then(
+          exitCallback.resolve,
+          exitCallback.reject,
+        )
+      } catch (error) {
+        exitCallback.reject(error)
+      }
     },
   })
 
@@ -75,12 +91,17 @@ export function spawnPolicyWorkerProcess(options: SpawnPolicyWorkerProcessOption
       processHandle.send(message)
     },
     async stop(graceMs) {
-      if (processHandle.exitCode !== null) return
+      void exitCallback.promise.catch(() => {})
+      if (processHandle.exitCode !== null) {
+        await exitCallback.promise
+        return
+      }
       try {
         processHandle.send({ type: "shutdown" } satisfies PolicyWorkerProtocol.HostToWorker)
       } catch {
         processHandle.kill()
         await processHandle.exited.catch(() => undefined)
+        await exitCallback.promise
         return
       }
       let timeout: ReturnType<typeof setTimeout> | undefined
@@ -94,6 +115,7 @@ export function spawnPolicyWorkerProcess(options: SpawnPolicyWorkerProcessOption
         processHandle.kill()
         await processHandle.exited.catch(() => undefined)
       }
+      await exitCallback.promise
     },
   }
 }

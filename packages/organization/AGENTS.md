@@ -1,0 +1,33 @@
+# Organization Service
+
+Own identity/authorization/resources/publications/projections/forwarding/handoff/backup/recovery. `synergy-org` reuses CLI. Never run Agents/import Runtime presets; preserve native Execution/Workspace/Environment owners. See [organization architecture](../../docs/architecture/organization.md).
+
+Use isolated Storage Handles/central migrations/owner-local keys. Commit admission authorization; Runtime acceptance stays separate. Prepare binaries before transactions; reauthorize downloads/receipts. Runtime owns private member bodies.
+
+Route actions through `authorization.ts`; resolve stored ownership before roles, deny unknown actions. Pending handoffs block archive; archived projects permit stopping. `auth/` owns authentication/one-time consumption; never duplicate role matrices in routes/Runtime adapters.
+
+Invitation reads use authorized indexes, excluding secrets/receipts. Keep consume/revoke CAS atomic; migrate indexes centrally. CLI invites need durable private output before HTTPS; never retry unknown issuance. Verify `test/cli-invite.test.ts`. Self-leave uses account removal/last-owner guards; verify invite/auth suites.
+
+Page authorized creator/shared Session indexes before records. Expose capacity counts only. Creation reserves directory metadata atomically with admission; metadata never grants execution. Verify `test/session-directory.test.ts` rollback/revocation/mixed-owner pagination.
+
+Logins bind actual deployments; grants bind logins/callbacks/deployments. Consume codes atomically; revoke refresh replay before error. API tokens bind project/operations/expiry/current authority. Routes supply purposes; receipts never redisclose secrets. Preserve signed token attribution/current stream authorization. Verify auth-login-incarnation/client-auth/api-tokens suites/generated contracts.
+
+Register config/CLI/history/Home/reader fences. Upgrade through original native witnesses; recovery/preparation skips migrations/auth/transports. Preflight history/H1/target before reconciliation. Reserve before fencing; cold completion grants no authority. Reconstruct recovery-held with existing keys. Release requires native completion/writer proofs; unknown readers/history block. Backup authenticates; restore holds; recover publishes explicitly. Verify service-{home,environment-reader,recovery}, backup/{authority,writers,writer-reconciliation,current-authority,source-retirement,pending-retirement}, cli-{home-upgrade,backup,recovery,recovery-retry,recovery-artifact,recovery-knowledge} and history/configuration/CLI/signing.
+
+Machine sockets keep registration/account/connection guards through batch/blob/cleanup COMMIT. Fresh durable identity/admission checks precede heartbeat echoes; accepted presence writes retain original drainage. Verify sync-storage-observation/runtime-connection/service-maintenance and Runtime connection suites. Permits bind Directory ownership. Relays recheck signatures/consent/participants without retaining content. Proofs acknowledge original facts; native recovery grants no reads. Hosted/member fences differ. Notifications recheck binding/recipient ACLs. Verify hosted/notifications/`handoff{,-dispatch,-openapi}`/object suites.
+
+Environment mapping requires bridge eight or newer and complete confirmed plans/original machine facts; native-existing requires nine before Source freeze. Preserve canonical resource revisions/one selection CAS for both roles; pure native/none preserves absent contracts. Own paged Environment catalogs/central index migration. Verify handoff-environment contracts/native migration/catalog/resource recovery suites.
+
+Commands derive actors from validated credentials; capture live connections during admission. Preserve metadata attempts/unresolved receipts/skip proofs across reconnect without replay. Bounded exchanges distinguish dropped/enqueued/unknown sends; observe cancellation independently, recheck binding/access after replies. Verify command-admission/command-forwarding suites and Presets integration.
+
+Separate resource secrets. Infrastructure loads through `./infrastructure`, never personal profiles. Distinguish terminal/nonterminal closure receipts. Continue preserves original input/root/actor with fresh provenance. Index retained grants atomically; canonical grants/counts remain authoritative. Gateways commit before dispatch; retain drainage capacity/budgets. Verify resource/grant/retention/release/handoff/index/migration suites.
+
+Sharing owns creator CAS/generations/visibility; Runtimes commit projections. Sync-two status never acknowledges content; preserve driver/checkpoint/COMMIT fences. Stored-five shared handoffs require closed checkpoints/exact markers before surrender/binding COMMIT; legacy facts never gain empty proofs. Precommit Target metadata retains current participant authority. Opt-in DTOs/references exclude private bodies/paths/credentials/permanent URLs. Task pages seek fixed-watermark canonical versions/catch-up writes. Authorize projection/blob reads; preserve host receipts/generation/native pins. Verify retention/sharing/transcript/shared-tasks/shared-history* suites; regenerate SDKs.
+
+Creator-only history/collaborative pending reads use distinct signed transient queries/exact bindings/post-response authorization; never persist bodies. Replies use command admission/current roles; archived projects allow confirmations. Verify session-read/interactions/decision-forwarding suites.
+
+Verify publication chunks/authorized receipts. Knowledge commits one authorized CAS, preserving member/project/hosted collection owners. Machine reads require exact versions/grants. Page/verify blob receipts before completion; browser uploads require creators. Artifacts retain project access independently of source Session visibility. Abandon only unsealed uploads; collection rechecks terminal/deployment transactionally, retaining receipts/pins. Reuse ConfigMarkdown/SkillManifest/Storage binaries. Verify publication/publication-retention/knowledge/shared-blob/{artifacts,artifact-history} suites.
+
+Cloud locators own attribution. Public file results retain logical Workspace references; native receipts stay physical. Signed pre-freeze source capture uses original save/detach/current participant guards. File CAS preserves root/namespace commit guards/drainage. Verify cloud/Runtime workspace-files suites.
+
+Drain accepted completions/freeze rosters; incomplete segments block completion. Installations bind native/Snapshot; guard adoption commits. Preflight completed history before retirement. Verify service-maintenance/cohort/service-native*/service-snapshot-install and backup/writer-reconciliation.

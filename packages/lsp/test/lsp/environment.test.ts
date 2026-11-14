@@ -12,13 +12,16 @@ import { WorkspaceOperations } from "@ericsanchezok/synergy-harness/workspace/op
 import { WorkspaceTree } from "@ericsanchezok/synergy-harness/workspace/tree"
 import { Environment } from "@ericsanchezok/synergy-harness/environment"
 import { EnvironmentResources } from "@ericsanchezok/synergy-harness/environment/resources"
+import { EnvironmentOrigin } from "@ericsanchezok/synergy-harness/environment/origin"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { registerLocalRuntime } from "@ericsanchezok/synergy-local-runtime/register"
 import { WorkspaceCoordinator } from "@ericsanchezok/synergy-local-runtime/workspace/coordinator"
 import { registerConfig } from "../../src/config-schema"
 import { LSP } from "../../src"
+import { LSPProcess } from "../../src/process"
 
 test("LSP uses a logical Workspace's Environment, coexists with writes, and survives allocation relocation", async () => {
+  let origin: ReturnType<typeof EnvironmentOrigin.registerHost> | undefined
   await using runtime = await testRuntime({
     composition: {
       register() {
@@ -27,6 +30,8 @@ test("LSP uses a logical Workspace's Environment, coexists with writes, and surv
             directory: path.join(RuntimeContext.current().host.root, "claims"),
           }),
         })
+        LSPProcess.register()
+        origin = EnvironmentOrigin.registerHost("lsp-environment-fixture")
       },
     },
     register() {
@@ -42,6 +47,7 @@ test("LSP uses a logical Workspace's Environment, coexists with writes, and surv
       scope: Scope.home(),
       workspace: null,
       fn: async () => {
+        if (!origin) throw new Error("Fixture origin is unavailable")
         await Config.updateGlobal({
           lsp: { fixture: { command: [process.execPath, "server.cjs"], extensions: [".fixture"] } },
         })
@@ -63,6 +69,7 @@ test("LSP uses a logical Workspace's Environment, coexists with writes, and surv
         for (const iteration of [0, 1]) {
           await using resources = await EnvironmentResources.resolve({
             ...selection,
+            origin: origin.capture(`lsp-${iteration}`),
             environmentID: environment.id,
             needs: { execution: "exec", workspace: true },
           })

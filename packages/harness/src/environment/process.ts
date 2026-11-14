@@ -9,7 +9,7 @@ import { Environment } from "."
 import { EnvironmentExecution } from "./execution"
 import { ExecutionProtocol } from "./executor"
 import { WorkspaceErrors } from "../workspace/errors"
-import type { EnvironmentResources } from "./resources"
+import { EnvironmentResources } from "./resources"
 import { RuntimeContext } from "../lifecycle/context"
 
 export namespace EnvironmentProcess {
@@ -58,15 +58,27 @@ export namespace EnvironmentProcess {
   export async function prepare(input: Input) {
     input.signal?.throwIfAborted()
     const environment = input.resources.environment
-    if (!environment || !input.resources.runtime)
+    const source = input.resources.source
+    const selectedOrigin = input.resources.origin
+    if (!selectedOrigin)
+      throw new Environment.Unavailable({
+        environmentID: environment?.id ?? "",
+        message: "Process requires an owned execution origin",
+      })
+    const origin = selectedOrigin
+    origin.assertCurrent()
+    if ((!environment && !source) || !input.resources.runtime)
       throw new Environment.Unavailable({ environmentID: "", message: "Process requires resolved execution resources" })
     const command = ExecutionProtocol.Command.parse(input.command)
     const mount = input.resources.workspace?.activeMount
-    command.useRoots = [...new Set([command.cwd, ...command.useRoots, ...(mount ? [mount.path] : [])])]
+    command.useRoots = [
+      ...new Set([command.cwd, ...command.useRoots, ...(mount ? [mount.path] : []), ...(source?.useRoots ?? [])]),
+    ]
     const workspaces = [
       ...new Map(
         [
-          ...(input.resources.workspace ? [WorkspaceMounts.reference(input.resources.workspace)] : []),
+          ...(input.resources.workspace?.activeMount ? [WorkspaceMounts.reference(input.resources.workspace)] : []),
+          ...(source?.workspaces ?? []),
           ...(input.workspaces ?? []),
         ].map((reference) => [reference.id, reference]),
       ).values(),
@@ -78,6 +90,7 @@ export namespace EnvironmentProcess {
     let activation: Promise<void> | undefined
     let submission: Promise<EnvironmentExecution.Info> | undefined
     let stopping: Promise<void> | undefined
+    let releasePreparation: (() => Promise<void>) | undefined
     let finished = false
     let physicalExit = false
     let active = false
@@ -113,7 +126,7 @@ export namespace EnvironmentProcess {
       if (finished) return
       const error = new Error({
         id: input.id,
-        environmentID: environment!.id,
+        environmentID: source?.target.environmentID ?? environment!.id,
         stage,
         message: reason instanceof globalThis.Error ? reason.message : String(reason),
         failure: WorkspaceErrors.failure(reason),
@@ -179,6 +192,7 @@ export namespace EnvironmentProcess {
         if (terminal && cursor >= info.status!.cursor) {
           stage = "saving"
           const result = await EnvironmentExecution.complete(input.id, input.scopeID)
+          await releasePreparation?.()
           if (info.status!.error)
             throw info.status!.failure
               ? WorkspaceErrors.restore(info.status!.failure)
@@ -230,13 +244,16 @@ export namespace EnvironmentProcess {
           submission = EnvironmentExecution.start({
             id: input.id,
             scopeID: input.scopeID,
-            environmentID: environment!.id,
+            environmentID: source?.target.environmentID ?? environment!.id,
+            source,
+            origin,
             command,
             intentDigest: input.intentDigest,
             workspaces,
             signal: input.signal,
           })
-          await submission
+          const submitted = await submission
+          releasePreparation = await EnvironmentResources.retainExecution(input.resources, submitted)
           void stream().catch(fail)
           if (!(await running.promise)) {
             const info = await EnvironmentExecution.get(input.id, input.scopeID)

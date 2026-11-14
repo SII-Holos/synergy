@@ -322,41 +322,43 @@ describe("session inbox enqueue admission", () => {
       })
     }))
 
-  test("cancellation settles a shell that appears after the initial run lookup", () =>
-    runtime.run(async () => {
-      await using tmp = await tmpdir({ git: true })
-      await ScopeContext.provide({
-        scope: await tmp.scope(),
-        fn: async () => {
-          const session = await Session.create({})
-          const owner = RolloutLifecycle.owner(session)
-          const cancelStarted = Promise.withResolvers<void>()
-          const releaseCancel = Promise.withResolvers<void>()
-          const cancelUnopenedRun = RolloutLedger.cancelUnopenedRun
-          using cancellation = spyOn(RolloutLedger, "cancelUnopenedRun").mockImplementation(async (...args) => {
-            cancelStarted.resolve()
-            await releaseCancel.promise
-            return cancelUnopenedRun(...args)
-          })
-          const item = await enqueueTask(session.id)
-          const runID = item.messageID
-          const cancel = RolloutLifecycle.cancel(session.id, runID)
-          try {
-            await cancelStarted.promise
-            await RolloutLedger.beginRun(owner, runID)
-            releaseCancel.resolve()
-            expect((await cancel).status).toBe("cancelled")
-            const run = await RolloutLedger.getRun(owner, runID)
-            expect(run.status).toBe("cancelled")
-            expect(run.ended).toBeNumber()
-            expect(await SessionInbox.hasRunnableItem(session.id)).toBeFalse()
-          } finally {
-            releaseCancel.resolve()
-            await Promise.allSettled([cancel])
-          }
-        },
-      })
-    }))
+  for (const status of ["running", "interrupted"] as const)
+    test(`cancellation settles a ${status} shell that appears after the initial run lookup`, () =>
+      runtime.run(async () => {
+        await using tmp = await tmpdir({ git: true })
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            const session = await Session.create({})
+            const owner = RolloutLifecycle.owner(session)
+            const cancelStarted = Promise.withResolvers<void>()
+            const releaseCancel = Promise.withResolvers<void>()
+            const cancelUnopenedRun = RolloutLedger.cancelUnopenedRun
+            using cancellation = spyOn(RolloutLedger, "cancelUnopenedRun").mockImplementation(async (...args) => {
+              cancelStarted.resolve()
+              await releaseCancel.promise
+              return cancelUnopenedRun(...args)
+            })
+            const item = await enqueueTask(session.id)
+            const runID = item.messageID
+            const cancel = RolloutLifecycle.cancel(session.id, runID)
+            try {
+              await cancelStarted.promise
+              await RolloutLedger.beginRun(owner, runID)
+              if (status === "interrupted") await RolloutLedger.finishRun(owner, runID, "interrupted")
+              releaseCancel.resolve()
+              expect((await cancel).status).toBe("cancelled")
+              const run = await RolloutLedger.getRun(owner, runID)
+              expect(run.status).toBe("cancelled")
+              expect(run.ended).toBeNumber()
+              expect(await SessionInbox.hasRunnableItem(session.id)).toBeFalse()
+            } finally {
+              releaseCancel.resolve()
+              await Promise.allSettled([cancel])
+            }
+          },
+        })
+      }))
 
   test("non-cancellation DOM exceptions remain visible to the caller", () =>
     runtime.run(async () => {

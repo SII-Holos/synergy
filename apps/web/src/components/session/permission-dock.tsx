@@ -1,4 +1,4 @@
-import { createMemo, createSignal, For, Show } from "solid-js"
+import { createMemo, createSignal, For, Show, type Accessor } from "solid-js"
 import { Dynamic } from "solid-js/web"
 import { useLingui } from "@lingui/solid"
 import type { MessageDescriptor } from "@lingui/core"
@@ -59,8 +59,12 @@ export function permissionInfo(request: PermissionRequest, view: SessionDataView
   return getToolInfo(part?.tool ?? request.permission, part?.state.input ?? {}, request.metadata)
 }
 
-export function PermissionDock(props: { request: PermissionRequest }) {
-  const view = useSessionDataView()
+export function PermissionDock(props: {
+  request: PermissionRequest
+  view?: Accessor<SessionDataView>
+  persistentScope?: MessageDescriptor
+}) {
+  const view = props.view ?? useSessionDataView()
   const decisions = useSessionDecision()
   const { _ } = useLingui()
   const toolTitle = (title: string | MessageDescriptor) => (typeof title === "string" ? title : _(title))
@@ -192,7 +196,9 @@ export function PermissionDock(props: { request: PermissionRequest }) {
           </button>
           <button type="button" class="decision-menu-row" disabled={locked()} onClick={() => respond("always")}>
             <span>{_(copy.always)}</span>
-            <span class="decision-secondary">{_(copy.persistentScope)}</span>
+            <span class="decision-secondary">
+              {props.persistentScope ? _(props.persistentScope) : _(copy.persistentScope)}
+            </span>
           </button>
         </Popover>
         <Button

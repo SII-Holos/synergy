@@ -1,4 +1,5 @@
 import { SessionTransferGate } from "./transfer-gate"
+import { SessionResume } from "./resume"
 import { RuntimeResources } from "../resources/runtime"
 import { sessionResourceOwner } from "../resources/owner"
 import { ResourceCosts } from "../resources/costs"
@@ -378,6 +379,7 @@ export namespace SessionInvoke {
     return SessionManager.run(
       input.sessionID,
       async (runLease) => {
+        const notificationSource = Session.notificationSource(await Session.get(input.sessionID))
         // An explicit human prompt is the user taking the session back. Without
         // this the turn starts against the latched pause, aborts on its first
         // iteration, and reports the *previous* turn's terminal error as this
@@ -402,7 +404,12 @@ export namespace SessionInvoke {
         try {
           return await loopBodyWithIncident(input.sessionID, runLease)
         } catch (error) {
-          await writeErrorAssistantIfMissing(input.sessionID, message.info as MessageV2.User, error).catch((err) => {
+          await writeErrorAssistantIfMissing(
+            input.sessionID,
+            message.info as MessageV2.User,
+            error,
+            notificationSource,
+          ).catch((err) => {
             log.error("failed to persist invocation error", { sessionID: input.sessionID, error: err })
           })
           throw error
@@ -427,6 +434,7 @@ export namespace SessionInvoke {
     return SessionManager.run(
       input.sessionID,
       async (runLease) => {
+        const notificationSource = Session.notificationSource(await Session.get(input.sessionID))
         const item = await SessionInbox.getStored(input.sessionID, input.itemID)
         const message = await SessionInbox.materializeItem(item)
         if (!message || message.info.role !== "user") {
@@ -437,7 +445,7 @@ export namespace SessionInvoke {
         try {
           return await loopBodyWithIncident(input.sessionID, runLease)
         } catch (error) {
-          await writeErrorAssistantIfMissing(input.sessionID, message.info, error).catch((err) => {
+          await writeErrorAssistantIfMissing(input.sessionID, message.info, error, notificationSource).catch((err) => {
             log.error("failed to persist inbox invocation error", { sessionID: input.sessionID, error: err })
           })
           throw error
@@ -449,6 +457,36 @@ export namespace SessionInvoke {
 
   export async function invokeInternal(input: InternalInvokeInput) {
     return invokeWithInternalTools({ ...input, origin: input.origin ?? { type: "system" } })
+  }
+
+  export async function resumeInternal(input: {
+    sessionID: string
+    rootID: string
+    requestID: string
+    ephemeralTools?: ToolResolver.EphemeralTool[]
+    maxOutputTokens?: number
+  }) {
+    const root = await SessionHistory.effectiveMessageInfos(await Session.get(input.sessionID)).then((messages) =>
+      messages.findLast((message) => message.role === "user" && message.isRoot),
+    )
+    if (root?.id !== input.rootID) throw new Error("The delegated task root changed before native continuation")
+    const state = runtimeState()
+    if (input.ephemeralTools?.length) state.ephemeralToolsByMessage.set(root.id, input.ephemeralTools)
+    if (input.maxOutputTokens) state.maxOutputTokensByMessage.set(root.id, input.maxOutputTokens)
+    try {
+      const admitted = await SessionResume.request({ sessionID: input.sessionID, requestID: input.requestID })
+      if (!admitted.handled && admitted.outcome !== "idle")
+        throw new Error(admitted.reason ?? "Native task continuation is blocked")
+      if (admitted.outcome !== "idle") await SessionManager.wake(input.sessionID, { force: true })
+      const message = (await SessionHistory.modelMessages({ sessionID: input.sessionID })).findLast(
+        (message) => message.info.role === "assistant" && message.info.rootID === root.id,
+      )
+      if (!message) throw new Error("Native task continuation has no assistant result")
+      return message
+    } finally {
+      state.ephemeralToolsByMessage.delete(root.id)
+      state.maxOutputTokensByMessage.delete(root.id)
+    }
   }
 
   async function recallMemory(
@@ -636,6 +674,7 @@ export namespace SessionInvoke {
 
     while (true) {
       session = await Session.get(sessionID)
+      const notificationSource = Session.notificationSource(session)
       const rootInfo = (await SessionHistory.modelMessageInfos({ sessionID })).findLast(
         (message) => message.role === "user" && message.isRoot === true,
       )
@@ -976,6 +1015,7 @@ export namespace SessionInvoke {
                 const deliveryMetadata = channelDeliveryMetadata(msgs, lastFinishedIndex)
                 const toolDisplayByName = new Map<string, ToolDisplay>()
                 const processor = SessionProcessor.create({
+                  notificationSource,
                   imageAttachments: msgs.flatMap((message) =>
                     message.parts.flatMap((part) => {
                       if (part.type !== "tool" || part.state.status !== "completed") return []
@@ -1067,6 +1107,7 @@ export namespace SessionInvoke {
                     agent: agent.name,
                     signal: abort,
                   })
+                  session = await SessionExecutionOwners.currentSession(await Session.get(sessionID))
                   await Plugin.trigger("experimental.chat.messages.transform", {}, { messages: sessionMessages })
                 } catch (error) {
                   await completeAssistantWithError({ sessionID, processor, model, error, abort })
@@ -1775,7 +1816,11 @@ export namespace SessionInvoke {
                     processor.message.finish = "error"
                     processor.message.time.completed = Date.now()
                     await Session.updateMessage(processor.message)
-                    Bus.publish(SessionEvent.Error, { sessionID, error: processor.message.error })
+                    Bus.publish(SessionEvent.Error, {
+                      sessionID,
+                      error: processor.message.error,
+                      ...(notificationSource ? { source: notificationSource } : {}),
+                    })
                     Bus.publish(SessionEvent.TurnEnd, {
                       sessionID,
                       messageID: processor.message.id,
@@ -1969,7 +2014,10 @@ export namespace SessionInvoke {
                 const messages = await SessionHistory.modelMessages({ sessionID })
                 const terminalReply = SessionProgress.findTerminalReply(messages, processedRootID)
                 if (terminalReply?.info.role === "assistant" && terminalReply.info.id !== previousTerminalReplyID) {
-                  await Session.recordCompletionNotice(sessionID, { publishEvent: !terminalReply.info.error })
+                  await Session.recordCompletionNotice(sessionID, {
+                    publishEvent: !terminalReply.info.error,
+                    source: notificationSource,
+                  })
                 }
                 if (terminalReply?.info.role === "assistant" && terminalReply.info.error) {
                   throw terminalError(terminalReply.info.error)
@@ -2327,6 +2375,7 @@ export namespace SessionInvoke {
     abort: AbortSignal
   }): Promise<void> {
     const message = input.processor.message
+    const notificationSource = input.processor.notificationSource
     if (message.time.completed != null) return
 
     // A user stop pauses the session; it does not fail it. Writing the turn's
@@ -2355,7 +2404,11 @@ export namespace SessionInvoke {
     message.finish = "error"
     message.time.completed = Date.now()
     await Session.updateMessage(message)
-    Bus.publish(SessionEvent.Error, { sessionID: input.sessionID, error: message.error })
+    Bus.publish(SessionEvent.Error, {
+      sessionID: input.sessionID,
+      error: message.error,
+      ...(notificationSource ? { source: notificationSource } : {}),
+    })
     Session.updateLastExchange(input.sessionID).catch((error) =>
       log.warn("failed to update lastExchange", { sessionID: input.sessionID, error }),
     )
@@ -2382,7 +2435,12 @@ export namespace SessionInvoke {
     })
   }
 
-  async function writeErrorAssistantIfMissing(sessionID: string, user: MessageV2.User, error: unknown): Promise<void> {
+  async function writeErrorAssistantIfMissing(
+    sessionID: string,
+    user: MessageV2.User,
+    error: unknown,
+    notificationSource: ReturnType<typeof Session.notificationSource>,
+  ): Promise<void> {
     const messages = await SessionHistory.modelMessages({ sessionID })
     if (SessionProgress.findTerminalReply(messages, user.id)) return
 
@@ -2416,7 +2474,11 @@ export namespace SessionInvoke {
       sessionID,
     })) as MessageV2.Assistant
 
-    Bus.publish(SessionEvent.Error, { sessionID, error: assistant.error })
+    Bus.publish(SessionEvent.Error, {
+      sessionID,
+      error: assistant.error,
+      ...(notificationSource ? { source: notificationSource } : {}),
+    })
     Session.updateLastExchange(sessionID).catch((err) =>
       log.warn("failed to update lastExchange", { sessionID, error: err }),
     )
@@ -2802,6 +2864,7 @@ export namespace SessionInvoke {
   export async function command(input: CommandInput) {
     const messageID = input.messageID ?? Identifier.ascending("message")
     const session = await Session.get(input.sessionID)
+    const notificationSource = Session.notificationSource(session)
     const configuration = await RolloutLifecycle.configuration(
       session,
       messageID,
@@ -2817,7 +2880,9 @@ export namespace SessionInvoke {
     let status: "completed" | "failed" = "failed"
     try {
       const result = await Experiment.provide(configuration, () =>
-        RolloutExecution.provide({ owner, runID: messageID }, () => runCommand({ ...input, messageID }, segment)),
+        RolloutExecution.provide({ owner, runID: messageID }, () =>
+          runCommand({ ...input, messageID }, segment, notificationSource),
+        ),
       )
       status = "completed"
       return result
@@ -2847,7 +2912,11 @@ export namespace SessionInvoke {
     }
   }
 
-  async function runCommand(input: CommandInput, segment: RolloutSchema.ExecutionSegment) {
+  async function runCommand(
+    input: CommandInput,
+    segment: RolloutSchema.ExecutionSegment,
+    notificationSource: ReturnType<typeof Session.notificationSource>,
+  ) {
     log.info("command", input)
     const command = await SessionCommandRuntime.require(input.command)
     if (command.kind === "action") {
@@ -2898,6 +2967,7 @@ export namespace SessionInvoke {
         const hint = suggestions?.length ? ` Did you mean: ${suggestions.join(", ")}?` : ""
         Bus.publish(SessionEvent.Error, {
           sessionID: input.sessionID,
+          ...(notificationSource ? { source: notificationSource } : {}),
           error: new NamedError.Unknown({ message: `Model not found: ${providerID}/${modelID}.${hint}` }).toObject(),
         })
       }
@@ -2910,6 +2980,7 @@ export namespace SessionInvoke {
       const error = new NamedError.Unknown({ message: `Agent not found: "${agentName}".${hint}` })
       Bus.publish(SessionEvent.Error, {
         sessionID: input.sessionID,
+        ...(notificationSource ? { source: notificationSource } : {}),
         error: error.toObject(),
       })
       throw error
@@ -3011,7 +3082,7 @@ export namespace SessionInvoke {
     const sessionIDs = await SessionManager.listInterruptedCortexDelegations(scopeID)
     for (const sessionID of sessionIDs) {
       const session = await SessionManager.getSession(sessionID)
-      if (!session?.cortex) continue
+      if (!session?.cortex || session.cortex.transfer || session.cortex.maintenance) continue
       if (session.cortex.status !== "queued" && session.cortex.status !== "running") continue
       if (SessionManager.isRunning(sessionID)) continue
 

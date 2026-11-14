@@ -83,8 +83,9 @@ export class BrowserDataContexts {
     if (context) this.release(contextId, context.epoch, context.ownerKey)
   }
 
-  async drain(partition: string): Promise<void> {
-    await this.tails.get(partition)?.catch(() => undefined)
+  async drain(partition?: string): Promise<void> {
+    const pending = partition === undefined ? [...this.tails.values()] : [this.tails.get(partition)]
+    await Promise.allSettled(pending)
   }
 
   disconnect(): void {

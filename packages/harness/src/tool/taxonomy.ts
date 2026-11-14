@@ -95,6 +95,7 @@ const REGISTRY: Record<string, ToolTaxonomyEntry> = {
   note_search: entry("search.note"),
   memory_search: entry("search.memory"),
   memory_get: entry("search.memory"),
+  organization_knowledge: entry("knowledge.wiki", { externalIO: true }),
 
   // code
   read: entry("code.read"),

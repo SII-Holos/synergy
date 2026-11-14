@@ -115,6 +115,13 @@ async function parseDomains(): Promise<Domain[]> {
   for (const file of files) {
     const source = ts.createSourceFile(file, await readFile(file, "utf8"), ts.ScriptTarget.Latest, true)
     const constants: Record<string, string> = {}
+    for (const statement of source.statements) {
+      if (!ts.isVariableStatement(statement) || !(statement.declarationList.flags & ts.NodeFlags.Const)) continue
+      for (const declaration of statement.declarationList.declarations) {
+        if (ts.isIdentifier(declaration.name) && declaration.initializer && ts.isStringLiteral(declaration.initializer))
+          constants[declaration.name.text] = declaration.initializer.text
+      }
+    }
     const referenced = new Set(
       [...source.text.matchAll(/\b(?:id|filename|label|mergePolicy)\s*:\s*([A-Za-z_$][\w$]*)/g)].map(
         (match) => match[1],
@@ -156,7 +163,11 @@ async function parseDomains(): Promise<Domain[]> {
           : ts.isCallExpression(entry)
             ? parseDefCall(entry.arguments.map((arg) => arg.getText(source)).join(", "))
             : null
-        if (!domain) continue
+        if (!domain) {
+          if (ts.isObjectLiteralExpression(entry))
+            throw new Error(`Cannot resolve configuration domain in ${path.relative(REPO_ROOT, file)}`)
+          continue
+        }
         const current = domains.get(domain.id)
         if (current) {
           if (current.filename !== domain.filename)

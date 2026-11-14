@@ -104,7 +104,7 @@ test("startup rebuild preserves archived retired endpoints and nullable Channel 
         expect(await Storage.read<typeof legacy>(key)).toEqual(legacy)
         expect(await Storage.read<typeof current>(currentKey)).toEqual(current)
         expect((await runMigrations({ targetDomain: "session", output: "silent" })).completed).toBe(0)
-        await Storage.transaction((tx) => Session.rebuildStorageIndexes(tx))
+        await Storage.transaction((tx) => Session.rebuildStorageIndexes(Storage.current().store, tx))
         expect(await Storage.read<typeof legacy>(key)).toEqual(legacy)
       } finally {
         await Storage.write(key, archived)
@@ -126,9 +126,9 @@ test("index rebuild rejects an active retired endpoint and rolls back existing p
       const legacy = { ...session, endpoint: { kind: "holos", agentId: "active-agent" } }
       try {
         await Storage.write(key, legacy)
-        await expect(Storage.transaction((tx) => Session.rebuildStorageIndexes(tx))).rejects.toThrow(
-          "Retired Session endpoint must be archived before rebuilding indexes",
-        )
+        await expect(
+          Storage.transaction((tx) => Session.rebuildStorageIndexes(Storage.current().store, tx)),
+        ).rejects.toThrow("Retired Session endpoint must be archived before rebuilding indexes")
         expect(await Storage.read<typeof legacy>(key)).toEqual(legacy)
         expect(await Storage.read<Record<string, unknown>>(["session_index", session.id])).toEqual(index)
       } finally {

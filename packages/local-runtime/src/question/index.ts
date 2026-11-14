@@ -8,6 +8,10 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { ScopedState } from "@ericsanchezok/synergy-harness/scope/scoped-state"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { ToolTimeout } from "@ericsanchezok/synergy-harness/tool/timeout"
+import { SessionDecisionReceipts as Decisions } from "@ericsanchezok/synergy-harness/session/decision-receipts"
+import { SessionPendingWindow } from "@ericsanchezok/synergy-harness/session/pending-window"
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { ActorStamp } from "@ericsanchezok/synergy-util/actor-stamp"
 import z from "zod"
 
 export const DEFAULT_TIMEOUT = ToolTimeout.DEFAULTS.questionMs / 1_000
@@ -81,6 +85,7 @@ export namespace Question {
         sessionID: z.string(),
         requestID: z.string(),
         answers: z.array(Answer),
+        actor: ActorStamp.Info.optional(),
       }),
     ),
     Rejected: BusEvent.define(
@@ -88,6 +93,7 @@ export namespace Question {
       z.object({
         sessionID: z.string(),
         requestID: z.string(),
+        actor: ActorStamp.Info.optional(),
       }),
     ),
     TimedOut: BusEvent.define(
@@ -104,8 +110,10 @@ export namespace Question {
       string,
       {
         info: Request
+        ordinal: number
         resolve: (answers: Answer[]) => void
         reject: (e: any) => void
+        decision?: { receipt: Decisions.Receipt; settle: () => Promise<void> }
       }
     > = {}
 
@@ -143,6 +151,7 @@ export namespace Question {
 
       s.pending[id] = {
         info,
+        ordinal: SessionPendingWindow.next(),
         resolve,
         reject,
       }
@@ -238,25 +247,90 @@ export namespace Question {
       log.warn("reply for unknown request", { requestID: input.requestID })
       return false
     }
-    delete s.pending[input.requestID]
+    const result = await decide({ ...input, sessionID: existing.info.sessionID, reply: "answer" })
+    return result.status === "resolved"
+  }
 
-    const answers = redactAnswers(existing.info.questions, input.answers)
-    log.info("replied", { requestID: input.requestID, answers })
-
-    Bus.publish(Event.Replied, {
-      sessionID: existing.info.sessionID,
-      requestID: existing.info.id,
-      answers,
+  export async function decide(input: {
+    sessionID: string
+    requestID: string
+    reply: "answer" | "reject"
+    answers?: Answer[]
+    actor?: ActorStamp.Info
+  }): Promise<Decisions.Result> {
+    const s = await state()
+    const scope = ScopeContext.current.scope
+    return Storage.transaction(async () => {
+      const prior = await reconcile(input)
+      if (prior) return { status: "already_resolved", receipt: prior }
+      const existing = s.pending[input.requestID]
+      if (!existing || existing.info.sessionID !== input.sessionID) return { status: "expired" }
+      const original = input.reply === "answer" ? z.array(Answer).parse(input.answers) : undefined
+      const answers = original && redactAnswers(existing.info.questions, original)
+      const receipt = await Decisions.record({
+        sessionID: input.sessionID,
+        requestID: input.requestID,
+        actor: input.actor,
+        outcome: { kind: "question", reply: input.reply, ...(answers ? { answers } : {}) },
+      })
+      const settle = () =>
+        ScopeContext.provide({
+          scope,
+          workspace: null,
+          fn: () => {
+            if (s.pending[input.requestID] !== existing) return
+            delete s.pending[input.requestID]
+            if (original && answers) {
+              existing.resolve(original)
+              log.info("replied", { requestID: input.requestID, answers })
+              Bus.publish(Event.Replied, {
+                sessionID: input.sessionID,
+                requestID: input.requestID,
+                answers,
+                actor: input.actor,
+              })
+            } else {
+              existing.reject(new RejectedError())
+              log.info("rejected", { requestID: input.requestID })
+              Bus.publish(Event.Rejected, {
+                sessionID: input.sessionID,
+                requestID: input.requestID,
+                actor: input.actor,
+              })
+            }
+          },
+        })
+      existing.decision = { receipt, settle }
+      await Storage.transaction(
+        async () => {
+          Storage.afterCommit(settle)
+        },
+        {
+          commitGuard() {
+            if (s.pending[input.requestID] !== existing)
+              throw new DOMException("Native question expired before commit", "AbortError")
+          },
+        },
+      )
+      return { status: "resolved", receipt }
     })
-
-    existing.resolve(input.answers)
-    return true
   }
 
   export function redactAnswers(questions: readonly Info[], answers: readonly Answer[]): Answer[] {
     return answers.map((answer, index) =>
       questions[index]?.input_type === "password" ? answer.map(() => "[redacted]") : [...answer],
     )
+  }
+
+  export async function reconcile(input: { sessionID: string; requestID: string }) {
+    const s = await state()
+    return Storage.transaction(async () => {
+      const prior = await Decisions.read({ ...input, kind: "question" })
+      const candidate = s.pending[input.requestID]?.decision
+      if (prior && candidate && JSON.stringify(candidate.receipt) === JSON.stringify(prior))
+        Storage.afterCommit(candidate.settle)
+      return prior
+    })
   }
 
   export async function reject(requestID: string): Promise<void> {
@@ -266,14 +340,7 @@ export namespace Question {
       log.warn("reject for unknown request", { requestID })
       return
     }
-    delete s.pending[requestID]
-
-    log.info("rejected", { requestID })
-    Bus.publish(Event.Rejected, {
-      sessionID: existing.info.sessionID,
-      requestID: existing.info.id,
-    })
-    existing.reject(new RejectedError())
+    await decide({ sessionID: existing.info.sessionID, requestID, reply: "reject" })
   }
 
   export class RejectedError extends Error {
@@ -300,5 +367,21 @@ export namespace Question {
 
   export async function list() {
     return state().then((x) => Object.values(x.pending).map((x) => x.info))
+  }
+
+  export async function pendingPage(input: SessionPendingWindow.Input) {
+    const s = await state()
+    const page = SessionPendingWindow.page(
+      input,
+      (function* () {
+        for (const id in s.pending) if (Object.hasOwn(s.pending, id)) yield s.pending[id]!
+      })(),
+    )
+    return { ...page, items: page.items.map((entry) => ({ ordinal: entry.ordinal, info: Request.parse(entry.info) })) }
+  }
+
+  export async function hasPending(input: { sessionID: string; requestID: string }) {
+    const entry = (await state()).pending[input.requestID]
+    return entry?.info.sessionID === input.sessionID
   }
 }

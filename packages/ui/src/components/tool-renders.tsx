@@ -104,6 +104,7 @@ export * from "./tool/renders/agent-config"
 
 export * from "./tool/renders/file-ops"
 export * from "./tool/renders/standard"
+export * from "./tool/renders/organization-knowledge"
 export * from "./tool/renders/task"
 export * from "./tool/renders/dag"
 export * from "./tool/renders/browser"

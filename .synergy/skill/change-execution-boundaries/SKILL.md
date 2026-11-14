@@ -5,7 +5,15 @@ description: Add, modify, or review Synergy capability classification, control p
 
 # Change Execution Boundaries
 
+For a new credential store, register its actual directory in both sensitive-path classification and the shared sandbox credential policy before exposing execution. Test read and write classification plus a real sandboxed read against a private fixture, with an ordinary-file positive control. A `0600` mode alone cannot prevent tools running as the same OS account from reading the credential.
+
+Verify native supervisor environment changes through real child execution on each platform. Keep the supervisor's selected bootstrap variables separate from the command's explicit environment, including empty environments and Unicode values. Exercise source-loader files, installed launcher selection, cancellation, process-tree ownership and stream drainage; a prepared environment object cannot prove that launchd or CreateProcess replaced inherited settings.
+
 For Environment execution, retain selected Workspace use until checkpoint publication. Verify Linux completion evidence before supervisor cleanup removes its receipt, then persist that proof in the coordinator. Test container destruction and reallocation after a failed upload, cancellation before activation, and file-host shutdown while writes are queued. Native provider tests must inject an isolated coordinator into both Workspace access and the Environment provider; never migrate the host-wide coordination ledger from a test fixture.
+
+Publish a valid result from an already accepted provider request through its original request and generation checks before rechecking admission for a new Use or Execution. Hold provider ownership through both steps. Test pause and epoch drainage while the response is held, proving the actual receipt is retained without another allocation, inspection or execution; unknown responses must still block final freezing.
+
+A native background result ends tool observation before process completion. Transfer only the original resolved preparation's cleanup to the actual committed process, close new preparation immediately, and release policy/admission after saved completion. Require original private resource identity at both preparation and retention; test copied objects after close, a real held stdin child, policy/Use drainage and unknown completion without weakening the preparation guard.
 
 Bundled Execution Host images must retain local module resolution for every supervisor subprocess. Keep native libraries in immutable image paths and private state `noexec`; verify real Docker command, PTY and recovery tests after native package publication. A parent's `--no-install` flag does not propagate to separately spawned Bun workers.
 
@@ -13,9 +21,17 @@ For unavailable directory recovery, distinguish receipt release from filesystem 
 
 Declare execution needs separately from Workspace needs. Resolve the target before requesting its containment verdict, and use the common process completion promise through saving. Test queued cancellation before activation and background ownership after foreground abort listeners detach. Real Bash resolver fixtures must carry the execution declaration so they exercise target-side preparation. Local Runtime's fixture supplies one private coordinator to both file admission and native execution.
 
+For remote sandbox preparation, carry an approved temporary path with a controller PID different from the Executor. Verify directory creation through the original target operation and anchored filesystem owner, symbolic-parent rejection and absence of effects on unrelated writable roots. Preserve the carried path and prepared-retry checks. A prepared receipt does not replace actual Linux helper execution; see [native operation origins](../../../docs/decisions/implemented/architecture/2026-11-12-retain-native-environment-operation-origins.md).
+
+For Linux temporary-mount changes, test a real temporary cwd with writable `/` and `/tmp` ancestors, direct and aliased host-TMP sentinel isolation, effective read-only and deny rules, and the deeper-writable exception. Pure Rust policy tests do not prove Linux execution; see [the temporary-cwd record](../../../docs/postmortem/0201-linux-controlled-tmp-hid-admitted-workspace.md).
+
 Native stream greetings do not prove cancellation readiness. Wait for the worker's prepared acknowledgement before binding its process claim, and send it only after cancellation and activation handlers are installed. Exercise a binding failure with a real worker delayed after its greetings; verify the original cause, no command effects and released ownership.
 
 Do not forward a queued stdin EOF after the native worker confirms whole-tree drainage. Exercise a late EOF against a real drained worker, retaining output bytes, exit status and lease release; keep pre-completion transport failures observable and preserve byte-counted EOF for live readers.
+
+For organization Skill loads, retain the immutable version selected at the load boundary while obtaining fresh accepted authority for deferred content and references. Do not infer revocation from a newer desired collection or authorize from cached bytes alone. Test a permission wait with public application of a new collection, overlapping activation without pointer rollback, and real withdrawal before content is returned. Reuse the original verifier and activated-selection owner; retained revalidation must not write pointers or seals.
+
+For registered execution sources, retain the composing Runtime, actual primary/artifact ports and original native origin before awaiting. Supply the actual release-only cleanup facet immediately after acquisition, retain it through unknown cleanup, and preserve both resolution and cleanup failures. Test held preparation, owner replacement, lost replies and final Host revocation with native Use/receipt evidence. Exercise every remote read under actual transactions and snapshots; pure metadata guards must remain usable in publishing transactions. Verify that an actual readonly primary rejects producer entry while retained inspection remains readable. Distinguish inspection-only startup from ordinary allocation resume and test both against the same durable request.
 
 ## Trace the Whole Decision
 
@@ -43,6 +59,10 @@ For multi-target approvals, exercise both ask/deny target orders before publicat
 13. **A shape that only affects the filesystem is out of contract and belongs to the sandbox.** bash is this repository's only inexact input, so it contributes only the capabilities the OS sandbox cannot express — host-level and irreversible destruction, privilege escalation, and remote state mutation. It predicts no path: `workdir`, redirect targets, absolute paths, directory changes, and `find -delete` / `find -exec` are all sandbox-owned. There is no read-only shell tier and no `shell_read` capability; a filesystem-only command sits at the risk floor (`shell`). Do not re-add path prediction, a command-name catalog, or a per-shape whitelist for filesystem shapes — extend the sandbox or the regression corpus instead.
 
 ## Implement and Verify
+
+When physical completion closes an original operation before an accepted control callback returns, retain that callback through its original tracked finalizer. Refuse new controls immediately, and validate the accepted return against its exact canonical completed identity plus the original Runtime, Store, source and origin. Hold the real callback across completion in a regression; do not weaken a settled-operation guard or wait on that callback from its own completion path.
+
+When a native backend discovers exact permission targets after capability classification, verify every target against the original saved and Session rules before reusing an accepted-call approval. Test partial allows, exact denials on low-risk calls, mandatory high-risk confirmation and separate Runtime Homes. An always response must not become a capability wildcard, and a rejected tool callback must not be asserted as a completed model task.
 
 1. Write the failing behavioral test at the lowest owner: pure classifier, profile decision, permission layering, gate envelope, sandbox policy, or platform dispatch.
 2. When adding or changing a capability, update its shared definition, risk/non-bypassable metadata, every classifier and manifest mapping, permission presentation, and focused tests.
@@ -90,4 +110,14 @@ Public subprocess entrypoints, including plugin Host Services, must enter native
 
 Treat formatter discovery commands as executable processes, not read-only declarations. Test stale edit versions both before and after admission, cancellation while queued, Workspace-specific subscriptions, and detached formatter descendants. Preserve the publisher Task across the full formatter sequence, and never start a second Task that can wait on its own publisher’s write reservation.
 
+For shared Host processes, hold real provider preparation, pause the initiating native Task and verify refusal before any command marker. An existing resource frame without provenance must never become a fresh Host admission. Verify that an accepted server or human terminal remains usable after the initiating Task pauses and is absent from that Task's drainage. Snapshot selectors, commands, environment values and displayed Session identity before the first await; test caller mutations while native or Session reads wait. Preserve an explicitly empty selected Workspace rather than borrowing the ambient Scope directory.
+
 For persistent permission replies, inject a storage failure before commit and verify both the pending request and the effective rule set. Do not remove the request or publish a cached allow before persistence succeeds. Exercise a multi-pattern grant atomically and serialize sibling replies that can cancel one another.
+
+For attributed native decisions, commit the unique winner, rules and admission receipt in one Storage transaction. Test concurrent actors, rejected siblings, outer transaction rollback, cancellation at the final commit guard, lost replies and restart; settle native promises only after commit. Question receipts must redact private answers while preserving the original for the native caller. Avoid acquiring an in-memory rules lock beneath an existing SQL writer when another path takes those locks in reverse order.
+
+Capture Scope as well as Runtime for deferred native settlement. An outer unscoped admission runs after-commit callbacks after an inner Scope context has exited. Verify notifications and original promise settlement through the actual signed member bridge, including receipt-only reconciliation after an uncertain commit.
+
+For a multi-account Runtime, trace the target object separately from the accepted task. A machine or task proof does not authorize arbitrary native histories, catalogs or processes. Exercise real model → deferred tool → model private rejection, current-root success, and explicitly shared projection success; hold actual exporter frames and verify unsynchronized native bytes cannot fill a shared read. Enforce the same composition policy during discovery and direct execution.
+
+For native process controls, retain the original tracked close owner after physical exit. Verify same-Runtime sibling rejection and current-caller authorization around controls; test post-dispatch cancellation as unknown instead of replay. Resolve process ownership descriptors against canonical producer records before granting access.

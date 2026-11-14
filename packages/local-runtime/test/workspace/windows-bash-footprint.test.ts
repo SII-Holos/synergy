@@ -6,6 +6,7 @@ import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { LocalBashBackend } from "../../src/tools/bash/local"
 import { testRuntime } from "../support/runtime"
 import { Session } from "@ericsanchezok/synergy-harness/session"
+import { withToolRun } from "@ericsanchezok/synergy-harness/test/support/rollout"
 import { shell } from "../../src/session/shell"
 
 test.skipIf(process.platform !== "win32")(
@@ -56,16 +57,15 @@ test.skipIf(process.platform !== "win32")(
         scope: await directory.scope(),
         fn: async () => {
           const filename = path.join(directory.path, "quoted file.txt")
-          const result = await LocalBashBackend.execute(
-            {
-              command: `for %i in (one two) do @echo %i>>"${filename}"`,
-
-              yieldSeconds: 10,
-            },
-            {
+          const session = await Session.create({})
+          const params = {
+            command: `for %i in (one two) do @echo %i>>"${filename}"`,
+            yieldSeconds: 10,
+          }
+          const result = await withToolRun({ session, tool: "bash", args: params }, (identity) =>
+            LocalBashBackend.execute(params, {
               ...{
-                sessionID: "cmd-owner",
-                messageID: "message",
+                ...identity,
                 agent: PrimaryAgentIdentity.names.general,
                 abort: new AbortController().signal,
                 metadata() {},
@@ -73,7 +73,7 @@ test.skipIf(process.platform !== "win32")(
                 extra: { shellBypassSandbox: true },
               },
               workBrief: "cmd quoting probe",
-            },
+            }),
           )
           expect(result.metadata.exit).toBe(0)
           expect((await Bun.file(filename).text()).trim().split(/\r?\n/)).toEqual(["one", "two"])

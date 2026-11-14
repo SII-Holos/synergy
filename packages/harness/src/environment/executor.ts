@@ -27,11 +27,18 @@ export namespace ExecutionProtocol {
       shell: z.string().min(1),
       directory: z.string().min(1),
       env: z.record(z.string(), z.string()),
+      preparationVersion: z.literal(1).optional(),
     })
     .meta({ ref: "ExecutorDescription" })
   export type Description = z.infer<typeof Description>
+  export const ID = z
+    .string()
+    .min(1)
+    .max(256)
+    .regex(/^[a-zA-Z0-9_-][a-zA-Z0-9_.:-]*$/)
   export const SandboxInput = z
     .object({
+      operationID: ID.optional(),
       command: z.string(),
       args: z.array(z.string()),
       workspace: z.string().min(1),
@@ -64,11 +71,6 @@ export namespace ExecutionProtocol {
       .optional(),
   })
   export type Sandbox = z.infer<typeof Sandbox>
-  export const ID = z
-    .string()
-    .min(1)
-    .max(256)
-    .regex(/^[a-zA-Z0-9_-][a-zA-Z0-9_.:-]*$/)
   export const Inputs = z
     .object({
       id: ID,
@@ -91,6 +93,15 @@ export namespace ExecutionProtocol {
   export type Inputs = z.infer<typeof Inputs>
   export const PreparedInputs = z.object({ paths: z.record(z.string(), z.string()), digest: z.string().length(64) })
   export type PreparedInputs = z.infer<typeof PreparedInputs>
+  export const Preparation = z.strictObject({
+    version: z.literal(1),
+    id: ID,
+    target: EnvironmentSchema.Target,
+    state: z.enum(["absent", "preparing", "prepared", "released"]),
+    inputs: PreparedInputs.nullable(),
+    sandboxes: z.array(Sandbox.extend({ released: z.boolean() })).max(128),
+  })
+  export type Preparation = z.infer<typeof Preparation>
   export const Command = z
     .object({
       command: z.string().min(1).max(32768),
@@ -150,10 +161,17 @@ export namespace ExecutionProtocol {
     })
     .meta({ ref: "EnvironmentExecutionStatus" })
   export type Status = z.infer<typeof Status>
+  const maxChunkDataLength = 90_000
   export const Chunk = z.object({
     cursor: z.number().int().positive(),
     stream: z.enum(["stdout", "stderr"]),
-    data: z.string().max(90_000),
+    data: z
+      .string()
+      .max(maxChunkDataLength)
+      .refine(
+        (data) => data.length <= maxChunkDataLength && Buffer.from(data, "base64").toString("base64") === data,
+        "Native output must be canonical base64",
+      ),
   })
   export type Chunk = z.infer<typeof Chunk>
 
@@ -183,10 +201,12 @@ export namespace ExecutionProtocol {
 }
 
 export interface Executor {
+  inspectPreparation?(id: string): Promise<ExecutionProtocol.Preparation>
+  releasePreparation?(id: string): Promise<void>
   prepareInputs?(input: ExecutionProtocol.Inputs): Promise<ExecutionProtocol.PreparedInputs>
   discardInputs?(id: string): Promise<void>
   prepareSandbox?(input: ExecutionProtocol.SandboxInput): Promise<ExecutionProtocol.Sandbox>
-  releaseSandbox?(id: string): Promise<void>
+  releaseSandbox?(id: string, operationID?: string): Promise<void>
   /** Direct native adapters only; remote process IDs must never become controller OS identities. */
   localPID?(id: string): number | undefined
   describe?(): Promise<ExecutionProtocol.Description>

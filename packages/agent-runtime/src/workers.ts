@@ -3,6 +3,7 @@ import { ComponentWorkerPlan } from "@ericsanchezok/synergy-util/worker-plan"
 import { Features } from "@ericsanchezok/synergy-harness/lifecycle/features"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { ConfigExtensions } from "@ericsanchezok/synergy-harness/config/extensions"
+import { HomeOwnership } from "@ericsanchezok/synergy-harness/lifecycle/home-ownership"
 import { registerHarness, RuntimeComponents, type RuntimeComponent } from "@ericsanchezok/synergy-harness/lifecycle"
 import { registerAgentWorkerEntrypoint } from "@ericsanchezok/synergy-harness/session/agent-turn/process-host"
 import { registerPolicyWorkerEntrypoint } from "@ericsanchezok/synergy-harness/enforcement/policy-worker/process-host"
@@ -47,4 +48,5 @@ export async function registerWorkerComponents(role: "agent" | "policy") {
   ConfigExtensions.completeRegistration()
   ConfigExtensions.lock()
   RuntimeContext.sealComposition()
+  await HomeOwnership.assert({ required: true })
 }

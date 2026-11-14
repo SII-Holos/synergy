@@ -258,7 +258,7 @@ function createWorkspaceFiles(workspace: FileWorkspace | null) {
   const params = useParams()
   const workbench = useWorkbenchPanels()
   const directory = workspace?.path
-  const resourceKey = fileWorkspaceKey(sdk.url, sdk.scopeID, workspace)
+  const resourceKey = fileWorkspaceKey(sdk.cacheKey, sdk.scopeID, workspace)
   let disposed = false
   const reference = () => {
     if (disposed || !workspace) throw new Error("No active Workspace file binding")
@@ -1486,7 +1486,7 @@ const { use: useFileManager, provider: FileProvider } = createSimpleContext({
           ? fileWorkspace(sync.data.path.workspace)
           : (taskWorkspace() ?? undefined),
     )
-    const selectedKey = () => fileWorkspaceKey(sdk.url, sdk.scopeID, fileWorkspace(selected()) ?? null)
+    const selectedKey = () => fileWorkspaceKey(sdk.cacheKey, sdk.scopeID, fileWorkspace(selected()) ?? null)
     const prune = (keep?: string) => {
       for (const [key, entry] of entries) {
         if (entries.size <= 16) break
@@ -1497,7 +1497,7 @@ const { use: useFileManager, provider: FileProvider } = createSimpleContext({
     }
     const getEntry = (workspace: FileWorkspace | null) => {
       if (workspace && workspace.scopeID !== sdk.scopeID) throw new Error("File Workspace belongs to another Scope")
-      const key = fileWorkspaceKey(sdk.url, sdk.scopeID, workspace)
+      const key = fileWorkspaceKey(sdk.cacheKey, sdk.scopeID, workspace)
       let entry = entries.get(key)
       if (!entry) {
         entry = createRoot(
@@ -1524,7 +1524,7 @@ const { use: useFileManager, provider: FileProvider } = createSimpleContext({
           setClipboard(value ? { ...value, workspace: { ...value.workspace }, node: { ...value.node } } : undefined),
       },
       peek: (workspace: FileWorkspace, path: string) =>
-        entries.get(fileWorkspaceKey(sdk.url, sdk.scopeID, workspace))?.value.get(path),
+        entries.get(fileWorkspaceKey(sdk.cacheKey, sdk.scopeID, workspace))?.value.get(path),
       async canClose(tab: WorkbenchPanelTab) {
         if (!tab.resourceId) return true
         const workspace = workspaceFileOwner(tab)

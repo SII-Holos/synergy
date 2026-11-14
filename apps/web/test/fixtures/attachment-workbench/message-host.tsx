@@ -52,11 +52,13 @@ export const usePluginHost = () => ({ resources: { register: () => () => {} } })
 const selection = { features: [] }
 export const useGlobalSDK = () => ({
   url: location.origin,
+  cacheKey: "personal-fixture",
   capabilities: { current: () => selection, has: () => false },
   event: { listen: () => () => {} },
 })
 export const useSDK = () => ({
   url: location.origin,
+  cacheKey: "personal-fixture",
   scopeKey: "fixture",
   client: createSynergyClient({ baseUrl: location.origin }),
 })

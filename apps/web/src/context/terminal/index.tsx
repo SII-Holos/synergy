@@ -29,7 +29,7 @@ type TerminalCacheEntry = {
 
 function createTerminalSession(sdk: ReturnType<typeof useSDK>, sessionID: string | undefined) {
   const [store, setStore, _, ready] = persisted(
-    Persist.scoped(Persist.scopeKey(sdk.url, sdk.scopeID), sessionID, "terminal"),
+    Persist.scoped(Persist.scopeKey(sdk.cacheKey, sdk.scopeID), sessionID, "terminal"),
     createStore<{
       active?: string
       all: LocalPTY[]

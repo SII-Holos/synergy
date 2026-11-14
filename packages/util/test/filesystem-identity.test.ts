@@ -6,8 +6,27 @@ import {
   filesystemObjectID,
   identifyDirectory,
   readOrCreateIdentityFile,
+  readExistingIdentityFile,
   matchesLegacyFilesystemIdentity,
 } from "../src/filesystem-identity"
+
+test("reading an existing host identity never provisions a missing or malformed identity", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-identity-existing-"))
+  try {
+    const file = path.join(root, "missing", "identity")
+    await expect(readExistingIdentityFile(file)).rejects.toMatchObject({ code: "ENOENT" })
+    expect(await fs.stat(path.dirname(file)).catch(() => undefined)).toBeUndefined()
+    await fs.mkdir(path.dirname(file))
+    await fs.writeFile(file, "invalid")
+    await expect(readExistingIdentityFile(file)).rejects.toThrow("Invalid local filesystem namespace identity")
+    expect(await fs.readFile(file, "utf8")).toBe("invalid")
+    const identity = crypto.randomUUID()
+    await fs.writeFile(file, identity)
+    expect(await readExistingIdentityFile(file)).toBe(identity)
+  } finally {
+    await fs.rm(root, { recursive: true, force: true })
+  }
+})
 
 test("legacy remount compatibility requires the same inode and known birth time", () => {
   expect(matchesLegacyFilesystemIdentity("10:42:123456789", "11:42:123456789", true)).toBe(true)

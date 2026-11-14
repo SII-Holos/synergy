@@ -1,5 +1,6 @@
 import { BROWSER_PROTOCOL_VERSION } from "@ericsanchezok/synergy-browser-core"
 import { describe, expect, test } from "bun:test"
+import { OrganizationDesktop } from "@ericsanchezok/synergy-organization-protocol"
 import { electronMockState, registerElectronMock } from "./electron-mock"
 
 registerElectronMock()
@@ -25,6 +26,28 @@ await import("../src/preload.js")
 
 type SynergyDesktop = {
   platform: string
+  organization: Record<
+    | "list"
+    | "connect"
+    | "request"
+    | "cancel"
+    | "signOut"
+    | "memberStatus"
+    | "startMember"
+    | "commandStream"
+    | "download"
+    | "projectBinding"
+    | "bindProject"
+    | "memberRequest"
+    | "downloadContent"
+    | "downloadAttachment"
+    | "notificationStart"
+    | "notificationStop",
+    (input?: unknown) => Promise<unknown>
+  > & {
+    protocolVersion: number
+    notificationVersion: number
+  }
   openDirectoryPickerDialog: (opts?: { title?: string; multiple?: boolean }) => Promise<unknown>
   server: {
     status(): Promise<unknown>
@@ -84,6 +107,75 @@ function expectInvoke<T>(channel: string, args: unknown[], result: T) {
 }
 
 describe("desktop preload bridge", () => {
+  test("exposes organization connection actions without a credential getter", async () => {
+    expect(Object.keys(desktop.organization).sort()).toEqual([
+      "bindProject",
+      "cancel",
+      "commandStream",
+      "connect",
+      "download",
+      "downloadAttachment",
+      "downloadContent",
+      "list",
+      "memberRequest",
+      "memberStatus",
+      "notificationStart",
+      "notificationStop",
+      "notificationVersion",
+      "onNotification",
+      "projectBinding",
+      "protocolVersion",
+      "request",
+      "signOut",
+      "startMember",
+    ])
+    expect(desktop.organization.protocolVersion).toBe(OrganizationDesktop.BridgeVersion)
+    expect(desktop.organization.notificationVersion).toBe(OrganizationDesktop.NotificationVersion)
+    expect(typeof Reflect.get(desktop.organization, "onNotification")).toBe("function")
+    expect(Object.hasOwn(desktop.organization, "credentials")).toBe(false)
+    expect(Object.hasOwn(desktop.organization, "getCredentials")).toBe(false)
+    const notification = OrganizationDesktop.NotificationStart.parse({
+      connectionID: "a".repeat(64),
+      requestID: "00000000-0000-4000-8000-000000000001",
+      revision: "00000000-0000-4000-8000-000000000002",
+    })
+    const subscription = OrganizationDesktop.NotificationSubscription.parse({
+      connectionID: notification.connectionID,
+      requestID: notification.requestID,
+    })
+    for (const action of [
+      "list",
+      "connect",
+      "request",
+      "cancel",
+      "signOut",
+      "memberStatus",
+      "startMember",
+      "commandStream",
+      "download",
+      "projectBinding",
+      "bindProject",
+      "memberRequest",
+      "downloadContent",
+      "downloadAttachment",
+      "notificationStart",
+      "notificationStop",
+    ] as const) {
+      const input =
+        action === "list"
+          ? []
+          : [
+              action === "notificationStart"
+                ? notification
+                : action === "notificationStop"
+                  ? subscription
+                  : { requestID: "organization-request" },
+            ]
+      const result = { ok: false, error: { code: "signed_out" } }
+      expectInvoke(`desktop.organization.${action}`, input, result)
+      expect(await desktop.organization[action](...input)).toEqual(result)
+    }
+  })
   test("exposes the desktop platform with server and shell surfaces", async () => {
     expect(desktop.platform).toBe("desktop")
 

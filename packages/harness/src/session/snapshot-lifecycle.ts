@@ -10,9 +10,14 @@ import { SnapshotProtection } from "./snapshot-protection"
 import { SnapshotLease } from "./snapshot-lease"
 import { SnapshotTransfer } from "./snapshot-transfer"
 import { SnapshotGit } from "./snapshot-git"
+import { upgradeAccessRecord } from "../migration/import"
 
 export namespace SnapshotLifecycle {
-  const Deletion = z.object({ version: z.literal(2), backend: z.enum(["legacy", "shared"]) })
+  const Deletion = z.object({
+    version: z.literal(3),
+    backend: z.enum(["legacy", "shared"]),
+    retentionID: z.string().regex(/^[a-zA-Z0-9_-]+$/),
+  })
 
   async function locked<T>(scopeID: string, sessions: string[], fn: () => Promise<T>) {
     const ids = [...new Set(sessions)].sort().map(SnapshotStore.component)
@@ -69,7 +74,7 @@ export namespace SnapshotLifecycle {
       if (sourceOwner?.backend === "legacy") {
         await using catalog = await SnapshotTransfer.Catalog.create(target.repository)
         const imported = await catalog.import(source, { roots: retained })
-        await catalog.protect(input.targetSessionID, retained)
+        await catalog.protect(await SnapshotStore.retentionID(input.scopeID, input.targetSessionID), retained)
         await SnapshotStore.retainMany(input.scopeID, input.targetSessionID, retained)
         await catalog.releaseKeep(imported.keep)
       } else {
@@ -89,17 +94,20 @@ export namespace SnapshotLifecycle {
     return Storage.transaction(async () => {
       const key = StoragePath.snapshotDeletion(scopeID, sessionID)
       const previous = await SnapshotStore.optional<unknown>(key)
-      if (previous !== undefined) Deletion.parse(previous)
+      if (previous !== undefined) Deletion.parse(upgradeAccessRecord(key, previous))
       else {
         const owner = await SnapshotStore.owner(scopeID, sessionID)
         if (owner?.backend === "deleted") return
-        await SnapshotStore.write(key, { version: 2, backend: owner?.backend ?? "shared" } satisfies z.infer<
-          typeof Deletion
-        >)
+        await SnapshotStore.write(key, {
+          version: 3,
+          backend: owner?.backend ?? "shared",
+          retentionID: owner?.retentionID ?? sessionID,
+        } satisfies z.infer<typeof Deletion>)
       }
       await SnapshotStore.write(StoragePath.snapshotOwner(scopeID, sessionID), {
-        version: 2,
+        version: 3,
         backend: "deleted",
+        retentionID: Deletion.parse(upgradeAccessRecord(key, await Storage.read(key))).retentionID,
       } satisfies SnapshotStore.Owner)
     })
   }
@@ -109,7 +117,7 @@ export namespace SnapshotLifecycle {
       const key = StoragePath.snapshotDeletion(scopeID, sessionID)
       const stored = await SnapshotStore.optional<unknown>(key)
       if (stored === undefined) return
-      const job = Deletion.parse(stored)
+      const job = Deletion.parse(upgradeAccessRecord(key, stored))
       const canonical = path.join(
         Storage.current().artifactDirectory,
         ...StoragePath.sessionRoot(Identifier.asScopeID(scopeID), Identifier.asSessionID(sessionID)),
@@ -121,7 +129,7 @@ export namespace SnapshotLifecycle {
         throw new SnapshotStore.StorageError("Cannot release snapshots before permanent session deletion")
       const repo = SnapshotStore.repository(scopeID)
       if (await Bun.file(path.join(repo, "HEAD")).exists()) {
-        const prefix = `refs/synergy/snapshots/${SnapshotStore.component(sessionID)}/`
+        const prefix = `refs/synergy/snapshots/${SnapshotStore.component(job.retentionID)}/`
         const directory = SnapshotStore.cache(scopeID, sessionID)
         await fs.mkdir(directory, { recursive: true })
         const file = path.join(directory, "delete-refs")
@@ -142,6 +150,7 @@ export namespace SnapshotLifecycle {
       if (job.backend === "legacy" && !(await SnapshotProtection.active(Storage.current().artifactDirectory)))
         await fs.rm(SnapshotStore.legacyRepository(scopeID, sessionID), { recursive: true, force: true })
       await fs.rm(SnapshotStore.cache(scopeID, sessionID), { recursive: true, force: true })
+      await SnapshotStore.releaseContent(scopeID, job.retentionID, sessionID)
       await fs.rm(canonical, { recursive: true, force: true })
       await Storage.collectArtifactGarbage()
       await Storage.remove(StoragePath.snapshotMigration(scopeID, sessionID))

@@ -9,6 +9,7 @@ import { WorkspaceOperations } from "./operations"
 import { WorkspaceCatalog } from "./catalog"
 import { RuntimeContext } from "../lifecycle/context"
 import { matchesLegacyFilesystemIdentity } from "@ericsanchezok/synergy-util/filesystem-identity"
+import { WorkspaceMove } from "./move"
 
 async function upgradeVolumeIdentities(progress: Parameters<Migration["up"]>[0], allowRemount = false) {
   const source = RuntimeContext.current().host.workspaceLocation
@@ -48,6 +49,9 @@ async function upgradeVolumeIdentities(progress: Parameters<Migration["up"]>[0],
 }
 
 export const workspaceMigrations: Migration[] = [
+  WorkspaceMove.migration,
+  WorkspaceMove.namespaceMigration,
+  WorkspaceMove.downloadMigration,
   {
     id: "20260927-workspace-storage-backend",
     emptyInput: [["workspace"]],

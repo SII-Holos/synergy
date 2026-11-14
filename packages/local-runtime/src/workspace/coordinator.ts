@@ -232,8 +232,8 @@ export class WorkspaceCoordinator {
       throw new Error("Invalid Workspace admission timeout")
     if (input.retainAfterExit && input.kind !== "process")
       throw new Error("Only process claims can retain finalization ownership")
-    if (input.durable && (input.kind !== "process" || !input.retainAfterExit))
-      throw new Error("Durable claims require retained process ownership")
+    if (input.durable && input.kind !== "exclusive" && (input.kind !== "process" || !input.retainAfterExit))
+      throw new Error("Durable claims require native exclusive or retained process ownership")
     if (input.cooperative && input.kind !== "process")
       throw new Error("Only process claims support cooperative retirement")
     const finalizerIdentity = input.retainAfterExit ? await processStartIdentity(process.pid) : undefined
@@ -432,6 +432,30 @@ export class WorkspaceCoordinator {
     return this.lease(reference.id, reference.token, true)
   }
 
+  async recoverExclusive(reference: { id: string; token: string }) {
+    const input = await this.update(async (ledger) => {
+      const claim = ledger.claims.find((claim) => claim.id === reference.id && claim.token === reference.token)
+      if (!claim?.durable || claim.kind !== "exclusive" || claim.state !== "active" || !claim.roots || claim.finalizing)
+        throw new Error("Original retained exclusive Workspace claim is unavailable")
+      for (const root of claim.roots) {
+        const current = await identifyFilesystemObject(root.path)
+        if (!root.physicalID || current.physicalID !== root.physicalID)
+          throw new Error("Original retained exclusive Workspace root identity changed")
+      }
+      return {
+        id: claim.id,
+        owner: claim.owner,
+        ancestors: [...claim.ancestors],
+        kind: "exclusive" as const,
+        roots: claim.roots.map((root) => root.path),
+        useRoots: claim.useRoots.map((root) => root.path),
+        parentClaim: claim.parentClaim,
+        durable: true,
+      }
+    })
+    return { input, lease: this.lease(reference.id, reference.token, true) }
+  }
+
   async confirmDrained(reference: { id: string; token: string }) {
     // OwnedProcess removes its Linux receipt during cleanup; preserve the verified result before checkpoint I/O.
     await this.update((ledger) => {
@@ -479,6 +503,12 @@ export class WorkspaceCoordinator {
       id,
       recovery: durable ? { id, token } : undefined,
       isolated: () => this.isolated({ id, token }),
+      isReleased: () =>
+        this.update((ledger) => {
+          const claim = ledger.claims.find((claim) => claim.id === id)
+          if (claim && claim.token !== token) throw new Error("Workspace claim identity was replaced")
+          return claim === undefined
+        }),
       release: (beforeRelease?: () => Promise<void>) =>
         (releasing ??= this.release(id, token, beforeRelease).finally(() => {
           releasing = undefined

@@ -111,6 +111,52 @@ describe("deny-default compiler read model", () => {
 })
 
 describe("real sandbox-exec read deny-list behavior (darwin)", () => {
+  test.skipIf(process.platform !== "darwin" || !fs.existsSync("/usr/bin/sandbox-exec"))(
+    "a selected Runtime's machine key stays unreadable while ordinary files remain readable",
+    () =>
+      runtime.run(() => {
+        const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "synergy-machine-key-")))
+        const credential = path.join(runtime.host.root, "auth", "organization-runtime.json")
+        try {
+          const workspace = path.join(root, "workspace")
+          fs.mkdirSync(workspace)
+          fs.mkdirSync(path.dirname(credential), { recursive: true })
+          fs.writeFileSync(credential, "fixture machine credential", { mode: 0o600, flag: "wx" })
+          const plain = path.join(root, "plain.txt")
+          fs.writeFileSync(plain, "ordinary host file")
+          const profile = buildPermissionProfile({
+            workspace,
+            executionCwd: workspace,
+            sandboxMode: "workspace_write",
+            approvedReadPaths: [],
+            approvedWritePaths: [],
+            approvedNetwork: false,
+            approvedUnixSockets: [],
+          })
+          const filename = path.join(root, "profile.sb")
+          fs.writeFileSync(filename, MacOSPolicy.compileProfile(profile))
+          const params = Object.entries(MacOSPolicy.generateParams(profile)).flatMap(([key, value]) => [
+            "-D",
+            `${key}=${value}`,
+          ])
+          const read = (target: string) =>
+            Bun.spawnSync(["/usr/bin/sandbox-exec", "-f", filename, ...params, "/bin/cat", target], {
+              stdout: "pipe",
+              stderr: "pipe",
+            })
+          const publicResult = read(plain)
+          expect(publicResult.exitCode, publicResult.stderr.toString()).toBe(0)
+          expect(publicResult.stdout.toString()).toBe("ordinary host file")
+          const privateResult = read(credential)
+          expect(privateResult.exitCode).not.toBe(0)
+          expect(privateResult.stdout.toString()).not.toContain("fixture machine credential")
+        } finally {
+          fs.rmSync(credential, { force: true })
+          fs.rmSync(root, { recursive: true, force: true })
+        }
+      }),
+  )
+
   test("host read allowed, denied path unreadable, host write blocked, workspace write allowed", () =>
     runtime.run(() => {
       if (process.platform !== "darwin") return

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
+import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test"
 import fs from "fs/promises"
 import path from "path"
 import type { Argv } from "yargs"
@@ -29,6 +29,11 @@ import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { StorageBootstrap } from "@ericsanchezok/synergy-harness/storage/bootstrap"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
+import { SnapshotArchive } from "@ericsanchezok/synergy-harness/session/snapshot-archive"
+import { ServerProcessLock } from "@ericsanchezok/synergy-harness/util/server-process-lock"
+import type { TransactionalStore } from "@ericsanchezok/synergy-harness/storage/transactional-store"
+import { WorkspaceCoordinator } from "@ericsanchezok/synergy-local-runtime/workspace/coordinator"
+import { createLocalHost } from "@ericsanchezok/synergy-local-runtime/host"
 let fixture: Awaited<ReturnType<typeof runtimeHome>>
 let runtime: RuntimeContext.Instance
 
@@ -38,17 +43,24 @@ const clackState = {
   selectFirst: true,
   textValue: "",
   passwordValue: "secret",
+  errors: [] as string[],
 }
 
 const clackModuleURL = import.meta.resolve("@clack/prompts")
 mock.module(clackModuleURL, () => ({
   intro: () => {},
   outro: () => {},
-  log: { info: () => {}, success: () => {}, warn: () => {}, error: () => {}, message: () => {} },
+  log: {
+    info: () => {},
+    success: () => {},
+    warn: () => {},
+    error: (message: string) => clackState.errors.push(message),
+    message: () => {},
+  },
   cancel: () => {},
   note: () => {},
   isCancel: (value: unknown) => value === "cancel" || value === undefined,
-  spinner: () => ({ start: () => {}, message: () => {}, stop: () => {} }),
+  spinner: () => ({ start: () => {}, message: () => {}, stop: () => {}, error: () => {} }),
   text: async (opts?: { initialValue?: string }) => clackState.textValue || opts?.initialValue || "value",
   password: async () => clackState.passwordValue,
   confirm: async () => clackState.confirmResult,
@@ -80,6 +92,7 @@ afterEach(async () => {
   clackState.multiselectResult = []
   clackState.selectFirst = true
   clackState.textValue = ""
+  clackState.errors.length = 0
 })
 
 function handlerArgs<T extends Record<string, unknown>>(partial: T) {
@@ -226,6 +239,205 @@ describe("data shared helpers", () => {
 })
 
 describe("data move command", () => {
+  test.each(["completed", "failed"] as const)(
+    "offline move holds both Home locks until its target attachment %s",
+    (outcome) =>
+      runtime.run(async () => {
+        const { executeMove } = await import("../../src/cli/data/move")
+        await using destination = await tmpdir()
+        const sourceRoot = Global.Path.root
+        const targetRoot = path.join(destination.path, ".synergy")
+        const source = await StorageBootstrap.prepare({ root: sourceRoot })
+        try {
+          await source.store.write(["offline-move-lock", "source"], { preserved: true })
+          await source.activate()
+        } finally {
+          await source.store.close()
+        }
+        const entered = Promise.withResolvers<void>()
+        const release = Promise.withResolvers<void>()
+        const attachmentFailure = new Error("Original target attachment rejected")
+        const lockHomes = SnapshotArchive.lockHomes
+        let originalDisposal: Promise<void> | undefined
+        using locking = spyOn(SnapshotArchive, "lockHomes").mockImplementation(async (roots) => {
+          const homes = await lockHomes(roots)
+          return {
+            async [Symbol.asyncDispose]() {
+              originalDisposal = homes[Symbol.asyncDispose]()
+              await originalDisposal
+            },
+          }
+        })
+        const openExisting = StorageBootstrap.openExisting
+        let attached: Awaited<ReturnType<typeof StorageBootstrap.openExisting>> | undefined
+        using opening = spyOn(StorageBootstrap, "openExisting").mockImplementation(async (root) => {
+          const handle = await openExisting(root)
+          if (path.resolve(root) !== targetRoot) return handle
+          attached = handle
+          entered.resolve()
+          await release.promise
+          if (outcome === "failed") {
+            await handle.store.close()
+            throw attachmentFailure
+          }
+          return handle
+        })
+        const settled = executeMove({ target: destination.path, removeOriginal: false, dryRun: false }).then(
+          () => ({ kind: "completed" as const }),
+          (error: unknown) => ({ kind: "failed" as const, error }),
+        )
+        let competitors: unknown[] = []
+        let result: Awaited<typeof settled>
+        try {
+          await Promise.race([
+            entered.promise,
+            settled.then(() => {
+              throw new Error("Move settled before opening its actual target Store")
+            }),
+          ])
+          if (originalDisposal) await originalDisposal
+          competitors = await Promise.all(
+            [sourceRoot, targetRoot].map(async (root) => {
+              try {
+                await using homes = await lockHomes([root])
+                return undefined
+              } catch (error) {
+                return error
+              }
+            }),
+          )
+        } finally {
+          release.resolve()
+          result = await settled
+        }
+        for (const competitor of competitors) expect(competitor).toBeInstanceOf(ServerProcessLock.AlreadyRunningError)
+        expect(result.kind).toBe(outcome)
+        if (result.kind === "failed") expect(result.error).toBe(attachmentFailure)
+        expect(attached?.store.readiness.readerReady).toBe(false)
+        expect(await dirExists(sourceRoot)).toBe(true)
+        await using reacquired = await lockHomes([sourceRoot, targetRoot])
+        expect(reacquired).toBeDefined()
+      }),
+  )
+  test("offline move retains its actual destination Store and native claims through source removal", () =>
+    runtime.run(async () => {
+      const { executeMove } = await import("../../src/cli/data/move")
+      await using destination = await tmpdir()
+      const sourceRoot = Global.Path.root
+      const targetRoot = path.join(destination.path, ".synergy")
+      const original = Buffer.from([0, 255, 17, 0, 64, 128])
+      const source = await StorageBootstrap.prepare({ root: sourceRoot })
+      try {
+        await source.store.write(["offline-move", "source"], { retained: true })
+        await Bun.write(path.join(sourceRoot, "data", "original.bin"), original)
+        await source.activate()
+      } finally {
+        await source.store.close()
+      }
+      const target = await StorageBootstrap.prepare({ root: targetRoot })
+      const directory = path.join(targetRoot, "config", "existing-workspace")
+      const targetHost = createLocalHost({ root: targetRoot })
+      await fs.mkdir(directory, { recursive: true })
+      let workspace: WorkspaceCatalog.Info | undefined
+      try {
+        await Storage.provide({ store: target.store, artifactDirectory: path.join(targetRoot, "data") }, async () => {
+          workspace = await WorkspaceCatalog.register({
+            scopeID: "foreign-scope",
+            type: "directory",
+            hostID: await targetHost.workspaceLocation!.hostID(),
+            ...(await targetHost.workspaceLocation!.identify(directory)),
+          })
+        })
+        await target.activate()
+      } finally {
+        await target.store.close()
+      }
+      if (!workspace) throw new Error("Expected the actual destination Workspace")
+      const retained = workspace
+      const expectedSourceRoot = await fs.realpath(sourceRoot)
+      const sourceStores: TransactionalStore[] = []
+      const targetStores: TransactionalStore[] = []
+      const coordinators = new Set<WorkspaceCoordinator>()
+      const inspect = StorageBootstrap.inspect
+      const existing = StorageBootstrap.openExisting
+      const acquire = WorkspaceCoordinator.prototype.acquire
+      const remove = fs.rm
+      let removal:
+        | {
+            actualTarget: boolean
+            targetReady: boolean
+            catalogPreserved: boolean
+            importedRecord: boolean
+            sourceReadersClosed: boolean
+            physicalClaimHeld: boolean
+          }
+        | undefined
+      let removalError: unknown
+      using inspecting = spyOn(StorageBootstrap, "inspect").mockImplementation(async (root) => {
+        const handle = await inspect(root)
+        if (path.resolve(root) === sourceRoot && handle) sourceStores.push(handle.store)
+        return handle
+      })
+      using opening = spyOn(StorageBootstrap, "openExisting").mockImplementation(async (root) => {
+        const handle = await existing(root)
+        if (path.resolve(root) === targetRoot) targetStores.push(handle.store)
+        return handle
+      })
+      using claiming = spyOn(WorkspaceCoordinator.prototype, "acquire").mockImplementation(async function (
+        this: WorkspaceCoordinator,
+        input,
+      ) {
+        coordinators.add(this)
+        return acquire.call(this, input)
+      })
+      using removing = spyOn(fs, "rm").mockImplementation(async (filename, options) => {
+        if (String(filename) === sourceRoot && options?.recursive) {
+          try {
+            const primary = Storage.current()
+            const catalog = WorkspaceCatalog.Info.parse(await primary.store.read(["workspace", retained.id]))
+            const imported = await primary.store.read<{ retained: boolean }>(["offline-move", "source"])
+            const claims = (await Promise.all([...coordinators].map((coordinator) => coordinator.inspect()))).flat()
+            removal = {
+              actualTarget: targetStores.includes(primary.store),
+              targetReady: primary.store.readiness.writerReady,
+              catalogPreserved: JSON.stringify(catalog) === JSON.stringify(WorkspaceCatalog.Info.parse(retained)),
+              importedRecord: imported.retained,
+              sourceReadersClosed:
+                sourceStores.length > 0 && sourceStores.every((store) => !store.readiness.readerReady),
+              physicalClaimHeld: claims.some(
+                (claim) =>
+                  claim.kind === "exclusive" &&
+                  claim.state === "active" &&
+                  claim.roots?.some((root) => root.path === expectedSourceRoot),
+              ),
+            }
+          } catch (error) {
+            removalError = error
+            throw error
+          }
+        }
+        return remove(filename, options)
+      })
+      expect(Storage.available()).toBe(false)
+      await executeMove({ target: destination.path, removeOriginal: true, dryRun: false })
+      if (removalError) throw removalError
+      expect(removal).toEqual({
+        actualTarget: true,
+        targetReady: true,
+        catalogPreserved: true,
+        importedRecord: true,
+        sourceReadersClosed: true,
+        physicalClaimHeld: true,
+      })
+      expect(Storage.available()).toBe(false)
+      expect(targetStores.every((store) => !store.readiness.readerReady)).toBe(true)
+      expect(await dirExists(sourceRoot)).toBe(false)
+      expect(Buffer.from(await Bun.file(path.join(targetRoot, "data", "original.bin")).arrayBuffer())).toEqual(original)
+      ObservabilityMetrics.stop()
+      await ObservabilityStore.stop()
+      await Log.close()
+      expect(await dirExists(sourceRoot)).toBe(false)
+    }))
   test("copies selected folders before publishing bindings to their new locations", () =>
     runtime.run(async () => {
       const { executeMove } = await import("../../src/cli/data/move")
@@ -394,6 +606,9 @@ describe("data command registrations", () => {
         await runHandler(DataMergeCommand)(handlerArgs({ source: source.path }) as never)
         expect(await Bun.file(path.join(root, "data", "file.txt")).text()).toBe("payload")
         expect(await Bun.file(ledger).exists()).toBe(false)
+      } catch (error) {
+        console.error("data-merge-directory-original-error", { messages: clackState.errors })
+        throw error
       } finally {
         await Bun.file(path.join(root, "data", "file.txt"))
           .delete()
@@ -441,6 +656,9 @@ describe("data command registrations", () => {
         await runHandler(DataMergeCommand)(handlerArgs({ source: packed }) as never)
         expect(await Bun.file(file).text()).toBe("original archived payload")
         expect(await Bun.file(existing).text()).toBe("new destination")
+      } catch (error) {
+        console.error("data-merge-archive-original-error", { messages: clackState.errors })
+        throw error
       } finally {
         await fs.rm(file, { force: true })
         await fs.rm(existing, { force: true })

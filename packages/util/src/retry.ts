@@ -1,4 +1,4 @@
-import { classifyNetworkError } from "./network-error"
+import { classifyNetworkError } from "./network-error.js"
 
 export interface RetryOptions {
   attempts?: number

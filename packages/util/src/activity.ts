@@ -139,6 +139,7 @@ const TOOL_CATEGORIES: Record<string, SemanticCategory> = {
   process: "shell",
   lsp: "analyze",
   memory_search: "memory",
+  organization_knowledge: "file-read",
   memory_get: "memory",
   memory_write: "memory",
   memory_edit: "memory",
@@ -374,6 +375,7 @@ export function resolveActivityDisplay(value: unknown): ActivityDisplayMode {
 }
 
 export function classifySemanticCategory(toolName: string, input: Record<string, unknown> = {}): SemanticCategory {
+  if (toolName === "organization_knowledge" && record(input.input).operation === "search") return "search"
   const exact = semanticCategoryForKnownTool(toolName)
   if (exact) return exact
 

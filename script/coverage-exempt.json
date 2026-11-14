@@ -1533,6 +1533,46 @@
         {
           "glob": "src/components/sidebar/space-switcher.tsx",
           "reason": "Rendered in Chromium by test/components/sidebar/space-switcher.dom.test.tsx and test/components/app-shell/mobile-drawer-drag-region.test.tsx, including keyboard focus, localized labels and nested settings; browser-bundled execution does not contribute Bun coverage."
+        },
+        {
+          "glob": "src/organization/entry.tsx",
+          "reason": "The standalone authorization bootstrap is exercised against real HTTPS organization and client origins by test/organization/authorization.browser.test.ts. Chromium execution does not contribute Bun LCOV; authorization.ts and approval.ts remain directly measured."
+        },
+        {
+          "glob": "src/organization/messages.ts",
+          "reason": "Static organization authorization descriptors are checked by Lingui extraction and strict catalog compilation, with English and Chinese presentation exercised by test/organization/authorization.browser.test.ts. The module contains no authorization decisions."
+        },
+        {
+          "glob": "src/organization/page.tsx",
+          "reason": "Real login, consent, cookie recovery, logout, isolated callback, narrow layout, keyboard focus and light/dark Chinese rendering are exercised by test/organization/authorization.browser.test.ts in Chromium. The authorization and approval state machines retain direct behavioral coverage."
+        },
+        {
+          "glob": "src/context/space.tsx",
+          "reason": "The actual App provider is exercised by test/organization/space.browser.test.ts and authorization.browser.test.ts for offline personal startup, identity switching, stale replies, deep links, reload and explicit logout. Vite/Chromium execution does not contribute Bun LCOV; connection and route state remain directly measured."
+        },
+        {
+          "glob": "src/organization/space-messages.ts",
+          "reason": "Static descriptors are checked by Lingui extraction and strict compilation; test/organization/space.browser.test.ts exercises English and Chinese recovery and project presentation. This module contains no authorization decisions."
+        },
+        {
+          "glob": "src/organization/space-page.tsx",
+          "reason": "Real App project navigation, recovery, offline logout, successor requests, late-response isolation, narrow keyboard navigation and Chinese dark rendering run in test/organization/space.browser.test.ts; authorization.browser.test.ts covers real cross-origin HTTPS login and logout. Browser execution is outside Bun LCOV, while connection authority has direct behavioral coverage."
+        },
+        {
+          "glob": "src/organization/handoff.tsx",
+          "reason": "test/organization/handoff.browser.test.ts exercises actual Chromium move controls, original request recovery, cancellation acknowledgement, scope replacement, focus and English/Chinese narrow layouts; sessions.browser.test.ts retains the existing Composer geometry checks. Browser execution does not contribute Bun LCOV; handoff-state.ts retains directly measured persistence and outcome rules."
+        },
+        {
+          "glob": "src/organization/handoff-messages.ts",
+          "reason": "Static semantic descriptors are checked by official Lingui extraction, strict compilation and localization contracts, and actual English/Chinese catalogs render in test/organization/handoff.browser.test.ts. This module contains no authorization or transition decisions."
+        },
+        {
+          "glob": "src/organization/handoff-environment.tsx",
+          "reason": "test/organization/handoff.browser.test.ts renders actual paged Environment selection, complete consent DTOs, cloud-return defaults and explicit native download choices in Chromium, including narrow English and Chinese light/dark layouts. Chromium execution does not contribute Bun LCOV; handoff-environment-state.ts remains directly measured."
+        },
+        {
+          "glob": "src/organization/handoff-environment-messages.ts",
+          "reason": "Static Environment choice descriptors are checked by official Lingui extraction, strict catalog compilation and actual English/Chinese rendering in test/organization/handoff.browser.test.ts. This module contains no authorization or transition decisions."
         }
       ]
     },
@@ -2049,6 +2089,66 @@
         {
           "glob": "src/gen/sdk.gen.ts",
           "reason": "generated OpenAPI SDK code (script/generate.ts output)"
+        },
+        {
+          "glob": "src/organization-gen/client/client.gen.ts",
+          "reason": "Generated organization OpenAPI SDK output from script/generate.ts; real HTTP transport is covered by test/organization.test.ts."
+        },
+        {
+          "glob": "src/organization-gen/client/index.ts",
+          "reason": "Generated organization OpenAPI SDK output from script/generate.ts; real HTTP transport is covered by test/organization.test.ts."
+        },
+        {
+          "glob": "src/organization-gen/client/types.gen.ts",
+          "reason": "Generated organization OpenAPI SDK output from script/generate.ts; real HTTP transport is covered by test/organization.test.ts."
+        },
+        {
+          "glob": "src/organization-gen/client/utils.gen.ts",
+          "reason": "Generated organization OpenAPI SDK output from script/generate.ts; real HTTP transport is covered by test/organization.test.ts."
+        },
+        {
+          "glob": "src/organization-gen/client.gen.ts",
+          "reason": "Generated organization OpenAPI SDK output from script/generate.ts; real HTTP transport is covered by test/organization.test.ts."
+        },
+        {
+          "glob": "src/organization-gen/core/auth.gen.ts",
+          "reason": "Generated organization OpenAPI SDK output from script/generate.ts; real HTTP transport is covered by test/organization.test.ts."
+        },
+        {
+          "glob": "src/organization-gen/core/bodySerializer.gen.ts",
+          "reason": "Generated organization OpenAPI SDK output from script/generate.ts; real HTTP transport is covered by test/organization.test.ts."
+        },
+        {
+          "glob": "src/organization-gen/core/params.gen.ts",
+          "reason": "Generated organization OpenAPI SDK output from script/generate.ts; real HTTP transport is covered by test/organization.test.ts."
+        },
+        {
+          "glob": "src/organization-gen/core/pathSerializer.gen.ts",
+          "reason": "Generated organization OpenAPI SDK output from script/generate.ts; real HTTP transport is covered by test/organization.test.ts."
+        },
+        {
+          "glob": "src/organization-gen/core/queryKeySerializer.gen.ts",
+          "reason": "Generated organization OpenAPI SDK output from script/generate.ts; real HTTP transport is covered by test/organization.test.ts."
+        },
+        {
+          "glob": "src/organization-gen/core/serverSentEvents.gen.ts",
+          "reason": "Generated organization OpenAPI SDK output from script/generate.ts; real HTTP transport is covered by test/organization.test.ts."
+        },
+        {
+          "glob": "src/organization-gen/core/types.gen.ts",
+          "reason": "Generated organization OpenAPI SDK output from script/generate.ts; real HTTP transport is covered by test/organization.test.ts."
+        },
+        {
+          "glob": "src/organization-gen/core/utils.gen.ts",
+          "reason": "Generated organization OpenAPI SDK output from script/generate.ts; real HTTP transport is covered by test/organization.test.ts."
+        },
+        {
+          "glob": "src/organization-gen/sdk.gen.ts",
+          "reason": "Generated organization OpenAPI SDK output from script/generate.ts; real HTTP transport is covered by test/organization.test.ts."
+        },
+        {
+          "glob": "src/organization-gen/types.gen.ts",
+          "reason": "Generated organization OpenAPI SDK output from script/generate.ts; real HTTP transport is covered by test/organization.test.ts."
         }
       ]
     },
@@ -3156,6 +3256,33 @@
       "lcov": "coverage/lcov.info",
       "thresholds": {
         "lines": 75,
+        "functions": 75
+      },
+      "exempt": []
+    },
+    "packages/organization": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 80,
+        "functions": 75
+      },
+      "exempt": []
+    },
+    "packages/organization-protocol": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 80,
+        "functions": 75
+      },
+      "exempt": []
+    },
+    "packages/organization-runtime": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 80,
         "functions": 75
       },
       "exempt": []

@@ -14,6 +14,14 @@ export namespace WorkspaceCheckpoints {
   const Record = z.object({ attempts: z.array(Attempt).min(1) })
   export type Attempt = z.infer<typeof Attempt> & { key: string[] }
 
+  export async function inspect(workspace: Pick<WorkspaceCatalog.Info, "scopeID" | "id">, operationID: string) {
+    const key = StoragePath.workspaceCheckpoint(workspace.scopeID, workspace.id, operationID)
+    const [raw] = await Storage.readMany<unknown>([key])
+    if (raw === undefined) return
+    const attempt = Record.parse(raw).attempts.at(-1)!
+    return { ...attempt, key }
+  }
+
   export async function begin(workspace: WorkspaceCatalog.Info, operationID: string): Promise<Attempt> {
     const key = StoragePath.workspaceCheckpoint(workspace.scopeID, workspace.id, operationID)
     return Storage.transaction(async () => {

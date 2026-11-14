@@ -17,7 +17,9 @@ import type {
 } from "../src/browser-native-page-pool"
 import { DEFAULT_DESKTOP_SHELL_SKIN } from "../src/default-shell-skin.generated"
 import { desktopThemeSnapshot } from "../src/theme"
-import { registerElectronMock } from "./electron-mock"
+import { BrowserDataContexts } from "../src/browser-data-contexts"
+import type { BrowserHostBrokerOptions } from "../src/browser-host-broker"
+import { electronMock, registerElectronMock } from "./electron-mock"
 
 registerElectronMock()
 const { BrowserHostBrokerClient } = await import("../src/browser-host-broker")
@@ -61,19 +63,32 @@ function command(requestId: string, pageId: string, command: BrowserBackendComma
   return BrowserHostMessageSchema.parse({ type: "page.command", protocolVersion, requestId, ownerKey, pageId, command })
 }
 
-async function fixture() {
+async function fixture(
+  options: Pick<BrowserHostBrokerOptions, "runtimeKey" | "dataContexts" | "clearSavedData" | "headers"> = {},
+) {
   const messages: BrowserHostMessage[] = []
   const inputs: BrowserNativePageInput[] = []
   const executed: Array<{ pageId: string; command: BrowserBackendCommand }> = []
   const destroyed: string[] = []
   const status: string[] = []
+  const requests: Array<{ url: string; authorization: string | null; origin: string | null; cookie: string | null }> =
+    []
   let socket: ServerWebSocket<undefined> | undefined
   let beforeCreate: () => Promise<void> = async () => undefined
+  let beforeDestroy: () => Promise<void> = async () => undefined
   let execute: (command: BrowserBackendCommand) => Promise<void> = async () => undefined
   const server = Bun.serve<undefined>({
     hostname: "127.0.0.1",
     port: 0,
     fetch(request, server) {
+      requests.push({
+        url: request.url,
+        authorization: request.headers.get("authorization"),
+        origin: request.headers.get("origin"),
+        cookie: request.headers.get("cookie"),
+      })
+      if (options.headers?.authorization && request.headers.get("authorization") !== options.headers.authorization)
+        return new Response(null, { status: 401 })
       return server.upgrade(request) ? undefined : new Response(null, { status: 404 })
     },
     websocket: {
@@ -89,6 +104,7 @@ async function fixture() {
     },
   })
   const nativePool = {
+    async drain() {},
     async create(input: BrowserNativePageInput): Promise<BrowserNativePageHandle> {
       inputs.push(input)
       await beforeCreate()
@@ -96,6 +112,7 @@ async function fixture() {
         state: () => input.page,
         isAlive: () => !destroyed.includes(input.page.id),
         async destroy() {
+          await beforeDestroy()
           destroyed.push(input.page.id)
         },
         async execute(command) {
@@ -111,6 +128,7 @@ async function fixture() {
     token,
     theme,
     nativePool,
+    ...options,
     onStatus: (value) => status.push(value),
   })
   cleanups.push(async () => {
@@ -126,8 +144,12 @@ async function fixture() {
     executed,
     destroyed,
     status,
+    requests,
     blockCreation(value: () => Promise<void>) {
       beforeCreate = value
+    },
+    blockDestruction(value: () => Promise<void>) {
+      beforeDestroy = value
     },
     interceptExecution(value: typeof execute) {
       execute = value
@@ -148,11 +170,191 @@ async function fixture() {
   }
 }
 
+test("member broker sends its private listener credential only in the local upgrade headers", async () => {
+  const authorization = "Bearer " + "b".repeat(64)
+  const f = await fixture({ runtimeKey: "member-a", headers: { authorization } })
+  expect(f.requests[0]).toMatchObject({ authorization, cookie: null, origin: null })
+  expect(new URL(f.requests[0].url).search).toBe(`?protocolVersion=${protocolVersion}`)
+  expect(f.messages[0]).toMatchObject({ type: "host.register", token })
+  expect(JSON.stringify(f.messages)).not.toContain(authorization)
+  f.disconnect()
+  await until(() => f.requests.length === 2 && f.status.filter((value) => value === "ready").length === 2)
+  expect(f.requests[1].authorization).toBe(authorization)
+})
+
+test("concurrent broker close callers all wait for owned native pages to drain", async () => {
+  const f = await fixture()
+  f.send(create("closing-page"))
+  await f.result("closing-page")
+  let release!: () => void
+  const pending = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  f.blockDestruction(() => pending)
+  let closed = 0
+  const first = f.client.close().then(() => closed++)
+  const second = f.client.close().then(() => closed++)
+  try {
+    await Bun.sleep(10)
+    expect(closed).toBe(0)
+  } finally {
+    release()
+    await Promise.all([first, second])
+  }
+  expect(closed).toBe(2)
+  expect(f.destroyed).toEqual(["closing-page"])
+})
+
+test("broker close revokes profile writes immediately and drains an already-running physical write", async () => {
+  const contexts = new BrowserDataContexts({ session: () => ({}) as Electron.Session })
+  const f = await fixture({ runtimeKey: "member-a", dataContexts: contexts })
+  const contextId = crypto.randomUUID()
+  f.send({
+    type: "profile.data.prepare",
+    protocolVersion,
+    requestId: "prepare",
+    ownerKey,
+    contextId,
+    epoch: crypto.randomUUID(),
+    expiresAt: Date.now() + 60_000,
+    profile: { id: "personal", revision: 1, partition: "persist:synergy-browser-shared" },
+  })
+  await f.result("prepare")
+  const target = contexts.target(contextId)
+  let entered = false,
+    release!: () => void
+  const waiting = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const writing = target.write(async () => {
+    entered = true
+    await waiting
+  })
+  await until(() => entered)
+  let closed = false
+  const closing = f.client.close().then(() => {
+    closed = true
+  })
+  try {
+    expect(target.signal.aborted).toBe(true)
+    await Bun.sleep(10)
+    expect(closed).toBe(false)
+  } finally {
+    release()
+    await Promise.all([writing, closing])
+  }
+  expect(() => contexts.target(contextId)).toThrow("expired")
+})
+
 test("broker rejects remote or credential-bearing servers before connecting", () => {
   for (const serverUrl of ["https://example.com", "file:///tmp/browser", "http://user:secret@localhost"]) {
     expect(() => new BrowserHostBrokerClient({ serverUrl, token, theme })).toThrow("local Desktop server")
   }
   expect(() => new BrowserHostBrokerClient({ serverUrl: "http://localhost", token: "invalid", theme })).toThrow()
+})
+
+test("member brokers isolate native owners and partitions while preserving canonical wire identity", async () => {
+  const personal = await fixture()
+  const one = await fixture({ runtimeKey: "member-one" })
+  const two = await fixture({ runtimeKey: "member-two" })
+  for (const f of [personal, one, two]) {
+    f.send(create("shared-page"))
+    expect((await f.result("shared-page")).result?.type).toBe("page")
+  }
+  const inputs = [personal, one, two].map((f) => f.inputs[0])
+  expect(new Set(inputs.map((input) => input.ownerKey)).size).toBe(3)
+  expect(new Set(inputs.map((input) => input.profile.partition)).size).toBe(3)
+  expect(personal.inputs[0].ownerKey).toBe(ownerKey)
+  expect(personal.inputs[0].profile.partition).toBe("persist:synergy-browser-fixture")
+  const event = { type: "page.closed" as const, pageId: "shared-page" }
+  one.inputs[0].emit(event)
+  await until(() => one.messages.some((message) => message.type === "page.event"))
+  expect(one.messages.find((message) => message.type === "page.event")).toMatchObject({ ownerKey, event })
+  await one.client.close()
+  expect(two.destroyed).toEqual([])
+  two.send(command("still-live", "shared-page", { type: "stop" }))
+  expect((await two.result("still-live")).result).toEqual({ type: "void" })
+})
+
+test("member profile contexts and clearing stay within the broker's native partition", async () => {
+  const cleared: string[] = []
+  const saved: string[] = []
+  const profileSession = (partition: string) => ({
+    clearStorageData: async () => {
+      cleared.push(partition)
+    },
+    clearCache: async () => {},
+    clearAuthCache: async () => {},
+    closeAllConnections: async () => {},
+  })
+  const previous = Reflect.get(electronMock.session, "fromPartition")
+  Reflect.set(electronMock.session, "fromPartition", profileSession)
+  cleanups.push(async () => {
+    if (previous === undefined) Reflect.deleteProperty(electronMock.session, "fromPartition")
+    else Reflect.set(electronMock.session, "fromPartition", previous)
+  })
+  const a = new BrowserDataContexts({ session: (partition) => profileSession(partition) as never })
+  const b = new BrowserDataContexts({ session: (partition) => profileSession(partition) as never })
+  const first = await fixture({
+    runtimeKey: "member-one",
+    dataContexts: a,
+    clearSavedData: async (partition) => {
+      saved.push(partition)
+    },
+  })
+  const second = await fixture({ runtimeKey: "member-two", dataContexts: b })
+  const contextId = crypto.randomUUID()
+  const epoch = crypto.randomUUID()
+  const profile = { id: "personal", partition: "persist:synergy-browser-fixture", revision: 0 }
+  for (const f of [first, second]) {
+    f.send({
+      type: "profile.data.prepare",
+      protocolVersion,
+      requestId: "prepare",
+      contextId,
+      epoch,
+      ownerKey,
+      expiresAt: Date.now() + 60_000,
+      profile,
+    })
+    expect((await f.result("prepare")).result).toEqual({ type: "void" })
+  }
+  const own = a.target(contextId)
+  const other = b.target(contextId)
+  expect(own.partition).not.toBe(other.partition)
+  expect(own.partition).not.toBe(profile.partition)
+  const entered = Promise.withResolvers<void>()
+  const release = Promise.withResolvers<void>()
+  const writing = own.write(async () => {
+    entered.resolve()
+    await release.promise
+  })
+  try {
+    await entered.promise
+    first.send({
+      type: "profile.clear",
+      protocolVersion,
+      requestId: "clear",
+      profileId: profile.id,
+      partition: profile.partition,
+      removeSavedData: true,
+    })
+    await until(() => own.signal.aborted)
+    expect(cleared).toEqual([])
+    release.resolve()
+    expect((await first.result("clear")).result).toEqual({ type: "void" })
+    expect(cleared).toEqual([own.partition])
+    expect(saved).toEqual([own.partition])
+    expect(other.current()).toBe(true)
+    second.send({ type: "profile.data.release", protocolVersion, requestId: "release", contextId, epoch, ownerKey })
+    expect((await second.result("release")).result).toEqual({ type: "void" })
+    expect(other.current()).toBe(false)
+  } finally {
+    release.resolve()
+    await writing
+    a.disconnect()
+    b.disconnect()
+  }
 })
 
 test("Node WebSocket closes incompatible or wrong-role broker messages without unhandled rejection", async () => {
@@ -285,7 +487,7 @@ test("unknown and closed pages return structured failures without executing anot
   expect(f.destroyed).toEqual(["page"])
 })
 
-test("a page created after disconnect is destroyed and never acknowledged", async () => {
+test("closing drains a page still being created at disconnect without acknowledging it", async () => {
   const f = await fixture()
   const held = Promise.withResolvers<void>()
   f.blockCreation(() => held.promise)
@@ -293,8 +495,18 @@ test("a page created after disconnect is destroyed and never acknowledged", asyn
   await until(() => f.inputs.length === 1)
   f.disconnect()
   await until(() => f.status.includes("restarting"))
-  held.resolve()
-  await until(() => f.destroyed.includes("late"))
+  let closed = false
+  const closing = f.client.close().then(() => {
+    closed = true
+  })
+  try {
+    await Bun.sleep(10)
+    expect(closed).toBe(false)
+  } finally {
+    held.resolve()
+    await closing
+  }
+  expect(f.destroyed).toEqual(["late"])
   expect(f.messages.some((message) => message.type === "page.result" && message.requestId === "late")).toBe(false)
 })
 
@@ -309,4 +521,41 @@ test("disconnect destroys all owned pages before reconnection", async () => {
   expect(f.destroyed.toSorted()).toEqual(["first", "second"])
   await f.client.close()
   expect(f.destroyed).toHaveLength(2)
+})
+
+test("retired broker callbacks cannot replace a new page or publish a late popup", async () => {
+  const f = await fixture()
+  f.send(create("old", "same-page"))
+  await f.result("old")
+  const retired = f.inputs[0]
+  f.disconnect()
+  await until(() => f.status.filter((status) => status === "ready").length === 2)
+  f.send(create("new", "same-page"))
+  await f.result("new")
+  const before = f.messages.length
+  let popupClosed = false
+  retired.emit({ type: "page.closed", pageId: "same-page" })
+  const page = { ...retired.page, id: "late-popup" }
+  retired.onPopup!(
+    { page, openerId: "same-page" },
+    {
+      state: () => page,
+      isAlive: () => !popupClosed,
+      async destroy() {
+        popupClosed = true
+      },
+      async execute() {
+        return { type: "void" }
+      },
+    },
+  )
+  f.send(command("still-current", "same-page", { type: "stop" }))
+  const result = await f.result("still-current")
+  expect({
+    result: result.result,
+    popupClosed,
+    staleEvents: f.messages
+      .slice(before)
+      .filter((message) => message.type === "page.opened" || message.type === "page.event"),
+  }).toEqual({ result: { type: "void" }, popupClosed: true, staleEvents: [] })
 })

@@ -10,8 +10,10 @@ export namespace ConfigMarkdown {
   }
 
   export async function parse(filePath: string) {
-    const template = await Bun.file(filePath).text()
+    return parseContent(await Bun.file(filePath).text(), filePath)
+  }
 
+  export function parseContent(template: string, filePath: string) {
     try {
       // Pass explicit options so gray-matter skips its content cache: a file
       // whose frontmatter fails to parse must keep throwing on every read.

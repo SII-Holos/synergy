@@ -9,4 +9,6 @@ These documents describe repeatable maintenance and release procedures for the c
 - [Memory residency scope](memory-residency-scope.md) — retain, boundary, and hot file globs, plus the admission lint.
 - [Native Workspace recovery](../../.synergy/skill/find-logs/SKILL.md#recover-native-workspace-coordination) — diagnose live or uncertain claims and recover a malformed ledger during offline host maintenance.
 
+The [organization service runbook](organization-service.md) covers the independent executable, image, Compose, TLS and persistent deployment.
+
 Product usage belongs in [product documentation](../product/overview.md); source-development commands belong in the [development reference](../reference/development.md). Investigation results and one-time measurements belong in [research](../research/README.md).

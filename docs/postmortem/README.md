@@ -14,10 +14,196 @@
 - **Summary**.
 - **Timeline** — observations.
 - **Root cause**.
-- **Guardrails** — tests, docs, gates. A memory-residency failure also includes a checked machine check, `- [x] Machine check: <lint selector or contract test name>`, naming one new or tightened item. See [Memory residency scope](../operations/memory-residency-scope.md).
+- **Guardrails** — tests, docs, gates. Residency requires `- [x] Machine check: <selector>`. [Memory residency scope](../operations/memory-residency-scope.md).
 - **Lessons**.
 
 ## Index
+
+- [0209](0209-compaction-coverage-preparation-opened-one-writer-per-header.md)
+
+- [0208](0208-native-bash-abort-outlived-command-completion.md)
+
+- [0207](0207-historical-actor-check-revoked-accepted-root.md)
+
+- [0206](0206-authority-inspection-issued-one-lookup-per-policy-key.md)
+
+- [0205](0205-native-publication-repeated-independent-storage-operations.md)
+
+- [0204](0204-service-sync-writes-blocked-authenticated-heartbeats.md)
+
+- [0203](0203-native-worker-stop-finished-before-its-owned-exit-callback.md)
+
+- [0202](0202-desktop-dependency-walk-included-volatile-probe-homes.md)
+
+- [0201](0201-linux-controlled-tmp-hid-admitted-workspace.md)
+
+- [0200](0200-attached-client-rejected-canonical-home-scope.md)
+
+- [0199](0199-session-event-capture-outlived-its-native-callback.md)
+
+- [0198](0198-target-sandbox-missed-controlled-session-temporary-directory.md)
+
+- [0197](0197-native-message-order-repeated-full-history-work.md)
+
+- [0196](0196-shared-export-replayed-unchanged-history-through-writers.md)
+
+- [0195](0195-portable-index-rebuild-used-the-ambient-writer.md)
+
+- [0194](0194-organization-controls-overrode-shared-keyboard-focus.md)
+
+- [0193](0193-complete-cloud-handoff-crossed-owner-lifetimes.md)
+
+- [0192](0192-background-bash-released-native-preparation-too-early.md)
+
+- [0191](0191-native-handoff-required-an-unowned-resource-contract.md)
+
+- [0190](0190-verified-organization-names-were-missing-from-the-switcher.md)
+
+- [0189](0189-discovery-connectivity-was-reported-as-identity-change.md)
+
+- [0188](0188-active-file-authority-crossed-the-final-inspection.md)
+
+- [0187](0187-cold-inventory-assumed-home-upgrade-purpose.md)
+
+- [0186](0186-portable-index-loaded-sqlite-before-its-owner.md)
+
+- [0185](0185-recovery-source-disposed-before-returned-work-settled.md)
+
+- [0184](0184-observer-cancellation-reached-accepted-native-retirement.md)
+
+- [0183](0183-service-path-alias-changed-native-recovery-identity.md)
+
+- [0182](0182-process-sampling-raced-original-close-completion.md)
+
+- [0181](0181-source-freeze-preceded-durable-recovery-selection.md)
+
+- [0180](0180-explicit-background-waited-for-automatic-yield.md)
+
+- [0179](0179-hosted-session-reader-bypassed-object-authorization.md)
+
+- [0178](0178-explicit-skill-updates-interrupted-an-authorized-load.md)
+- [0177](0177-shared-projection-accepted-human-writer-authority.md)
+- [0176](0176-current-archive-used-a-logical-namespace-as-physical-identity.md)
+- [0175](0175-returned-session-retained-an-old-message-order.md)
+- [0174](0174-target-cleanup-misreported-a-lost-acknowledgement.md)
+- [0173](0173-received-workspace-copy-could-not-be-transferred-again.md)
+- [0172](0172-handoff-response-crossed-cleanup-authorization-mode.md)
+- [0171](0171-native-move-cold-open-changed-dispatch-identity.md)
+- [0170](0170-service-recovery-skipped-retained-binary-changes.md)
+- [0169](0169-old-handoff-proofs-disclosed-current-private-bindings.md)
+- [0168](0168-workspace-move-release-escaped-an-outer-transaction.md)
+- [0167](0167-project-archive-stranded-a-pending-handoff.md)
+- [0166](0166-hosted-session-publication-parsed-a-virtual-workspace-as-persisted.md)
+- [0165](0165-handoff-view-hid-committed-cancellation-requests.md)
+- [0164](0164-native-rollout-settlement-crossed-source-freeze.md)
+- [0163](0163-hosted-publication-outlived-its-restricted-runtime.md)
+- [0162](0162-recycled-agent-workers-outlived-runtime-shutdown.md)
+- [0161](0161-cli-reference-merged-unrelated-command-names.md)
+- [0160](0160-detached-bridge-cleanup-lost-its-native-owner.md)
+- [0159](0159-publication-chunks-prepared-bytes-before-qualification.md)
+- [0158](0158-invitation-output-lost-private-or-durable-state.md)
+- [0157](0157-private-credentials-trusted-preopen-permissions.md)
+- [0156](0156-surrendered-sync-source-disconnected-return-target.md)
+- [0155](0155-staged-home-opened-ordinary-runtime.md)
+- [0154](0154-cortex-files-confused-caller-and-ancestor-roots.md)
+- [0153](0153-service-maintenance-obscured-health-probes.md)
+- [0152](0152-remote-file-lease-used-mutated-call-inputs.md)
+- [0151](0151-native-recovery-config-wrote-a-replacement-root.md)
+- [0150](0150-space-selection-left-mobile-navigation-open.md)
+
+- [0149](0149-empty-organization-draft-reported-size-error.md)
+
+- [0148](0148-terminal-executions-never-reached-transfer-drainage.md)
+
+- [0147](0147-portable-child-list-skipped-prefix-siblings.md)
+
+- [0146](0146-browser-logins-survived-deployment-incarnation.md)
+
+- [0145](0145-workspace-move-release-outpaced-native-admission.md)
+
+- [0142](0142-publication-identity-disappeared-on-reload.md)
+
+- [0141](0141-cancelled-portability-discovery-paused-the-session.md)
+
+- [0143](0143-portable-environment-output-accepted-invalid-frames.md)
+
+- [0144](0144-source-retirement-fenced-a-substituted-directory.md)
+
+- [0140](0140-project-publication-used-management-permission.md)
+
+- [0138](0138-space-local-notification-hosts-lost-background-actions.md)
+
+- [0139](0139-authenticated-archive-policy-disagreed-with-its-journal.md)
+
+- [0136](0136-default-workspace-writer-rejected-paged-heads.md)
+
+- [0137](0137-current-fingerprints-hid-a-missing-authority-transition.md)
+
+- [0133](0133-session-freeze-ignored-retained-environment-admission.md)
+
+- [0135](0135-late-notifications-retained-a-replaced-deployment.md)
+
+- [0134](0134-authenticated-checkpoint-contained-invalid-authority-history.md)
+
+- [0131](0131-service-recovery-request-omitted-its-snapshot-facet.md)
+
+- [0132](0132-paged-workspace-attachment-used-a-legacy-parser.md)
+
+- [0130](0130-plugin-host-callback-lost-its-native-task-origin.md)
+
+- [0129](0129-vcs-observation-retained-startup-authority.md)
+
+- [0126](0126-native-materialization-replaced-a-competing-directory.md)
+
+- [0128](0128-workspace-http-request-lost-its-resource-origin.md)
+
+- [0127](0127-imported-link-followed-its-source-root-name.md)
+
+- [0125](0125-snapshot-retention-outlived-its-source-reader.md)
+
+- [0124](0124-latest-shared-history-did-not-navigate.md)
+
+- [0123](0123-retained-environment-use-was-overwritten-by-admission.md)
+
+- [0114](0114-portable-reader-forgot-original-cancellation.md)
+
+- [0113](0113-native-identity-reader-followed-linked-records.md)
+
+- [0112](0112-cancelled-reader-retained-artifact-pin.md)
+
+- [0111](0111-cancelled-handoff-reenabled-retained-grants.md)
+
+- [0110](0110-native-file-proof-revived-after-retry.md)
+
+- [0109](0109-native-publication-lost-input-priority.md)
+
+- [0108](0108-staged-context-read-foreign-storage.md)
+
+- [0107](0107-native-activation-outlived-cancellation.md)
+
+- [0106](0106-stream-producer-reentered-destination-artifact-gate.md)
+
+- [0105](0105-native-deallocation-crossed-maintenance-hold.md)
+
+- [0104](0104-cancelled-target-receive-waited-for-native-lock.md)
+
+- [0103](0103-task-retry-replaced-original-release-identity.md)
+
+- [0102](0102-parent-abort-preceded-cortex-transfer-hold.md)
+
+- [0101](0101-paused-runtime-lost-cancellation-target.md)
+
+- [0100](0100-shared-window-current-version-loss.md)
+
+- [0099](0099-member-connection-observer-lifetime.md)
+
+- [0098](0098-member-command-blocked-control-traffic.md)
+
+- [0097](0097-rejected-command-blocked-new-control.md)
+
+- [0096](0096-continue-admission-outlived-observed-pause.md)
+
+- [0095](0095-member-runtime-implicit-source-discovery.md)
 
 - [0094](0094-compaction-attachment-default-drift.md)
 
@@ -53,118 +239,74 @@
 
 - [0078](0078-cold-navigation-migration-admission.md)
 
-- [0074: Agenda origin](0074-agenda-home-origin-blocked-session-creation.md)
+- [0074](0074-agenda-home-origin-blocked-session-creation.md)
 
-- [0072: Watcher concurrency](0072-native-watcher-exception-concurrency.md)
+- [0072](0072-native-watcher-exception-concurrency.md)
 
-- [0071: Cold hydration](0071-cold-conversation-hydration-motion.md)
+- [0071](0071-cold-conversation-hydration-motion.md)
 
-- [0070: Rebound](0070-new-row-following-rebound.md)
+- [0070](0070-new-row-following-rebound.md)
 
-- [0069: History anchors](0069-history-pagination-reading-anchor.md)
+- [0069](0069-history-pagination-reading-anchor.md)
 
-- [0068: Measurements](0068-conversation-measurement-identity.md)
+- [0068](0068-conversation-measurement-identity.md)
 
-- [0067: Isolated containment](0067-isolated-runtime-containment-gaps.md)
+- [0067](0067-isolated-runtime-containment-gaps.md)
 
-- [0066: Completion settlement](0066-completion-waited-for-file-settlement.md)
+- [0066](0066-completion-waited-for-file-settlement.md)
 
-- [0065: Session navigation](0065-session-navigation-flashed-introduction.md)
+- [0065](0065-session-navigation-flashed-introduction.md)
 
-- [0064: History latency](0064-history-pages-scanned-authoritative-storage.md)
-- [0064: Attachment identity](0064-visual-card-attachment-identity.md)
+- [0064](0064-history-pages-scanned-authoritative-storage.md)
+- [0064](0064-visual-card-attachment-identity.md)
 
-- [0063: Startup replay](0063-history-replay-blocked-startup.md)
+- [0063](0063-history-replay-blocked-startup.md)
 
-- [0062: Historical project bindings](0062-project-migration-required-live-directory-identity.md)
-- [0061: Concurrent Workspace admission](0061-concurrent-workspace-admission.md)
-- [0061: Usage recovery](0061-streamed-usage-recovery.md)
+- [0062](0062-project-migration-required-live-directory-identity.md)
+- [0061](0061-concurrent-workspace-admission.md)
+- [0061](0061-streamed-usage-recovery.md)
 
-- [0059: Disclosure](0059-cold-process-disclosure-jank.md)
+- [0059](0059-cold-process-disclosure-jank.md)
 
-- [0058: Markdown settlement](0058-markdown-terminal-estimates-lost-reading.md)
-- [0057: Conversation lifetime](0057-conversation-rendering-lifetime-and-scope-retention.md)
-- [0056: PostgreSQL cleanup](0056-postgres-node-cleanup-repeated-candidates.md)
-- [0055: Workspace tool discovery](0055-discovery-omitted-workspace-selection.md)
-- [0054: Logical file paths](0054-logical-workspace-path-classification.md)
-- [0053: Incomplete Environment release](0053-absent-compute-lost-release-intent.md)
-- [0049: Runtime startup readiness and progress](0049-storage-recovery-startup-progress-gap.md)
-- [0048: Process stability](0048-process-layout-and-arrival-ownership.md)
-- [0046: Structured output retained tool intent](0046-structured-output-retained-tool-intent.md)
+- [0058](0058-markdown-terminal-estimates-lost-reading.md)
+- [0057](0057-conversation-rendering-lifetime-and-scope-retention.md)
+- [0056](0056-postgres-node-cleanup-repeated-candidates.md)
+- [0055](0055-discovery-omitted-workspace-selection.md)
+- [0054](0054-logical-workspace-path-classification.md)
+- [0053](0053-absent-compute-lost-release-intent.md)
+- [0049](0049-storage-recovery-startup-progress-gap.md)
+- [0048](0048-process-layout-and-arrival-ownership.md)
+- [0046](0046-structured-output-retained-tool-intent.md)
 
-- [0045: PostgreSQL startup DDL blocked writers](0045-postgres-startup-ddl-blocked-writers.md)
+- [0045](0045-postgres-startup-ddl-blocked-writers.md)
 
-- [0042: Compaction completion](0042-process-event-ownership-and-compaction-completion.md)
-- [0041: Lost completion signal](0041-cortex-progress-fixture-lost-release.md)
-- [0040: Vite ports](0040-vite-fixtures-shared-default-ports.md)
-- [0039: Process activation deadlock](0039-paused-output-blocked-process-activation.md)
-- [0038: Session latency](0038-session-interactions-amplified-global-work.md)
-- [0035: Titlebar controls](0035-native-titlebar-swallowed-controls.md)
-- [0043: Historical data blocked startup](0043-historical-data-blocked-startup.md)
-- [0036: Directory replacement blocked history](0036-directory-replacement-blocked-history.md)
+- [0042](0042-process-event-ownership-and-compaction-completion.md)
+- [0041](0041-cortex-progress-fixture-lost-release.md)
+- [0040](0040-vite-fixtures-shared-default-ports.md)
+- [0039](0039-paused-output-blocked-process-activation.md)
+- [0038](0038-session-interactions-amplified-global-work.md)
+- [0035](0035-native-titlebar-swallowed-controls.md)
+- [0043](0043-historical-data-blocked-startup.md)
+- [0036](0036-directory-replacement-blocked-history.md)
 
-| Number | Title                                                                      | Status      | Date       |
-| ------ | -------------------------------------------------------------------------- | ----------- | ---------- |
-| 0001   | Coverage-mode test run wrote fixtures into the real Synergy home           | implemented | 2026-08-18 |
-| 0002   | ToolScheduler singleton leaked across CI shard-process tests               | implemented | 2026-08-20 |
-| 0003   | Leaked module-level fetch stub failed the arXiv suite on CI                | implemented | 2026-08-27 |
-| 0004   | Scope-scoped theme registry flipped the skin on session switches           | implemented | 2026-08-30 |
-| 0005   | Linux inotify exhaustion stormed the file watcher and degraded the process | implemented | 2026-09-03 |
-| 0006   | Sequential lock-worker spawns consumed the CI test budget                  | implemented | 2026-09-05 |
-| 0007   | Hidden tool renderers retained highlight state                             | implemented | 2026-09-07 |
-| 0008   | Transition cleanup retained disposed frontend pages                        | implemented | 2026-09-07 |
+Earlier incident metadata is retained in the [historical index](historical-index.md).
 
-| 0009 | Local benchmark cancellation lost export evidence | implemented | 2026-09-10 |
-| 0010 | Global event subscription loss left the UI connected but stale | implemented | 2026-09-12 |
-| 0011 | Watcher static C++ runtime crashed subsequent ONNX loading | implemented | 2026-09-12 |
-| 0012 | Preparation deadline truncated native benchmark execution | implemented | 2026-09-14 |
-| 0013 | Short native probes missed OpenCode runtime stalls under Rosetta | mitigated | 2026-09-14 |
-| 0014 | Benchmark recopied instructions into their existing bind mount | implemented | 2026-09-14 |
-
-| 0015 | Streaming checkpoint ordering and repair | implemented | 2026-09-18 |
-
-| 0016 | Interactive reads scanned historical state | implemented | 2026-09-18 |
-
-| 0017 | Unmapped certificate failure terminated a long child task | implemented | 2026-09-19 |
-| 0018 | Host suspend pinned a session in recovering | implemented | 2026-09-19 |
-
-| 0019 | Retention maintenance stalled the live writer | implemented | 2026-09-19 |
-
-| 0020 | Managed startup maintenance outgrew Desktop progress | implemented | 2026-09-20 |
-
-| 0021 | A healthy SQLite worker was declared dead | implemented | 2026-09-20 |
-| 0022 | Benchmark admission and evidence defects | implemented | 2026-09-22 |
-
-| 0022 | Optional format rewrite blocked startup | implemented | 2026-09-21 |
-
-| 0023 | Historical preparation blocked its own evidence writes | implemented | 2026-09-21 |
-
-| 0024 | Provider fetch wrappers lost request inputs | implemented | 2026-09-22 |
-
-| 0025 | Lazy Session upgrade emptied navigation | implemented | 2026-09-22 |
-
-| 0026 | [A started runtime stranded saved input](0026-started-runtime-stranded-saved-input.md) | implemented | 2026-09-22 |
-
-| 0027 | [Archive 的运行时收尾延迟被计入长会话清理](0027-archive-work-delayed-rollout-cleanup.md) | implemented | 2026-09-24 |
-
-| 0028 | [Unverified Workspace directory access](0028-unverified-workspace-directory-access.md) | implemented | 2026-09-23 |
-
-| 0029 | [Recreated GitHub checkout generation](0029-recreated-github-checkout-generation.md) | implemented | 2026-09-23 |
-
-| 0030 | [Review opaque resource keys](0030-review-opaque-resource-keys.md) | implemented | 2026-09-24 |
-
-| 0031 | [Concurrent Worktree retirement deadlock](0031-concurrent-worktree-retirement-deadlock.md) | implemented | 2026-09-23 |
-
-| 0023 | Benchmark exhausted Docker network addresses | implemented | 2026-09-23 |
-| 0024 | Benchmark observer imposed a stream idle timeout | implemented | 2026-09-23 |
-| 0025 | Benchmark verifier dependencies and missing results | implemented | 2026-09-23 |
-
-| 0032 | [Workspace-free attachment preparation](0032-workspace-free-attachment-preparation.md) | implemented | 2026-09-28 |
-
-| 0033 | [Completed terminal blocked Runtime shutdown](0033-completed-terminal-blocked-runtime-shutdown.md) | implemented | 2026-09-28 |
-
-| 0034 | [Composer uploads suppressed attachment content](0034-composer-upload-suppressed-content.md) | implemented | 2026-09-28 |
-
-- [0037: Mount identity](0037-mount-number-invalidated-directory.md)
+- [0037](0037-mount-number-invalidated-directory.md)
 
 Only append corrections.
+
+- [0115](0115-renewed-cleanup-intent-reused-an-old-generation.md)
+
+- [0116](0116-native-cleanup-rejected-returned-session-history.md)
+
+- [0117](0117-renderer-reload-reopened-pending-logout.md)
+
+- [0118](0118-organization-view-recovery-retained-old-requests.md)
+
+- [0119](0119-portable-writer-retained-mutable-inputs.md)
+
+- [0120](0120-workspace-readers-outlived-their-selected-storage.md)
+
+- [0121](0121-environment-admission-outlived-session-authority.md)
+
+- [0122](0122-shared-host-admission-outlived-its-task.md)

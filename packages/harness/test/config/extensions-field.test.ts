@@ -7,6 +7,18 @@ import { RuntimeContext } from "../../src/lifecycle/context"
 import { testRuntime } from "../support/runtime"
 import { runtimeHome } from "../support/runtime-home"
 
+test("an unowned literal config field exposes the same unavailable type as its runtime parser", async () => {
+  await using runtime = await testRuntime()
+  runtime.run(() => {
+    const absent: z.ZodOptional<z.ZodNever> = ConfigExtensions.field("fixtureAbsentTypedField")
+    expect(absent.safeParse(undefined).success).toBe(true)
+    expect(absent.safeParse({ enabled: true }).success).toBe(false)
+    const name: string = "fixtureDynamicTypedField"
+    const dynamic: z.ZodOptional<z.ZodUnknown> = ConfigExtensions.field(name)
+    expect(dynamic.safeParse({ enabled: true }).success).toBe(false)
+  })
+})
+
 test("an early config field projection retains owner metadata after registration", async () => {
   await using runtime = await testRuntime({
     composition: {

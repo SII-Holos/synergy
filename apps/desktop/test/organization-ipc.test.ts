@@ -1,0 +1,840 @@
+import { signOutAccount } from "./fixture/organization-sign-out"
+import { expect, test } from "bun:test"
+import { randomBytes, createHash, randomUUID } from "node:crypto"
+import { DesktopOrganizationAuthorization } from "../src/organization/authorization"
+import { DesktopOrganizationIPC } from "../src/organization/ipc"
+import { organizationFixture } from "./fixture/organization"
+import { OrganizationDesktop as Desktop } from "@ericsanchezok/synergy-organization-protocol"
+
+async function authorized(f: Awaited<ReturnType<typeof organizationFixture>>) {
+  const verifier = randomBytes(32).toString("base64url")
+  const { issuer, orgID, deploymentIncarnation } = f.info
+  const request = {
+    issuer,
+    orgID,
+    deploymentIncarnation,
+    clientID: "desktop",
+    redirectUri: "synergy://organization-auth/callback",
+    state: randomBytes(32).toString("base64url"),
+    codeChallengeMethod: "S256" as const,
+    codeChallenge: createHash("sha256").update(verifier).digest("base64url"),
+  }
+  const code = await f.consent(request)
+  const result = await f.api.orgAuth.exchange(
+    {
+      orgCodeExchangeInput: {
+        issuer,
+        orgID,
+        deploymentIncarnation,
+        clientID: "desktop",
+        redirectUri: request.redirectUri,
+        code: code.code,
+        verifier,
+      },
+    },
+    { throwOnError: true },
+  )
+  return f.accounts.accept(result.data)
+}
+function bridge(
+  f: Awaited<ReturnType<typeof organizationFixture>>,
+  fetcher = f.transport,
+  emitNotification?: (event: unknown, value: Desktop.NotificationEvent) => void,
+) {
+  const trusted = {}
+  const authorization = new DesktopOrganizationAuthorization({
+    accounts: f.accounts,
+    fetch: fetcher,
+    openExternal: async () => {},
+  })
+  const ipc = new DesktopOrganizationIPC({
+    accounts: f.accounts,
+    authorization,
+    fetch: fetcher,
+    emitNotification,
+    trusted: (event) => event === trusted,
+  })
+  return { trusted, ipc }
+}
+
+test("handoff and self cleanup IPC admits only the fixed authenticated product routes", async () => {
+  await using f = await organizationFixture()
+  const connection = await authorized(f)
+  const calls: Array<{ method: string; path: string }> = []
+  const { trusted, ipc } = bridge(f, (async (input) => {
+    const request = new Request(input)
+    expect(request.headers.get("authorization")).toStartWith("Bearer ")
+    const url = new URL(request.url)
+    calls.push({ method: request.method, path: url.pathname + url.search })
+    return Response.json({ inspected: true })
+  }) as typeof fetch)
+  const paths = [
+    ["GET", "/org/v1/runtimes?limit=50"],
+    ["GET", "/org/v1/runtimes/runtime-one"],
+    ["GET", "/org/v1/runtimes/runtime-one/connection"],
+    ["GET", "/org/v1/runtimes/runtime-one/handoff-cleanups?limit=50&cursor=original-next"],
+    ["GET", "/org/v1/sessions/session-one/handoff-options?requestID=inspection&targetRuntimeID=runtime-one"],
+    ["GET", "/org/v1/sessions/session-one/handoff-targets?limit=50&cursor=original-page"],
+    ["GET", "/org/v1/sessions/session-one/handoffs?limit=50"],
+    ["POST", "/org/v1/sessions/session-one/handoffs"],
+    ["GET", "/org/v1/handoffs/handoff-one"],
+    ["GET", "/org/v1/handoffs/handoff-one/native-target?requestID=original-inspection"],
+    ["POST", "/org/v1/handoffs/handoff-one/accept"],
+    ["POST", "/org/v1/handoffs/handoff-one/cancel"],
+    ["POST", "/org/v1/handoffs/handoff-one/commit"],
+    ["POST", "/org/v1/handoffs/handoff-one/permit"],
+    ["POST", "/org/v1/handoffs/handoff-one/drive"],
+    ["GET", "/org/v1/projects/project-one/resources?limit=50"],
+    ["GET", "/org/v1/projects/project-one/cloud/workspaces?resourceID=storage&limit=50"],
+  ] as const
+  try {
+    for (const [method, path] of paths)
+      expect(
+        await ipc.handle(trusted, "request", {
+          requestID: randomUUID(),
+          connectionID: connection.id,
+          method,
+          path,
+          ...(method === "POST" ? { body: "{}" } : {}),
+        }),
+      ).toMatchObject({ ok: true, value: { status: 200, body: '{"inspected":true}' } })
+    expect(calls).toEqual(paths.map(([method, path]) => ({ method, path })))
+    for (const [method, path] of [
+      ["POST", "/org/v1/runtimes/runtime-one/handoff-cleanups"],
+      ["GET", "/org/v1/runtimes/runtime-one/handoff-cleanups/foreign"],
+      ["POST", "/org/v1/sessions/session-one/handoff-targets"],
+      ["GET", "/org/v1/sessions/session-one/handoff-targets/foreign"],
+      ["POST", "/org/v1/handoffs/handoff-one/native-target"],
+      ["GET", "/org/v1/handoffs/handoff-one/native-target/foreign"],
+      ["PUT", "/org/v1/sessions/session-one/handoffs"],
+      ["DELETE", "/org/v1/handoffs/handoff-one"],
+      ["GET", "/org/v1/handoffs/handoff-one/permit"],
+      ["POST", "/org/v1/handoffs/handoff-one/unknown"],
+      ["POST", "/runtime/v1/handoffs/recovery"],
+      ["POST", "/runtime/v1/handoffs/object"],
+      ["POST", "/runtime/v1/handoffs/proof"],
+      ["POST", "/org/v1/cloud/environments"],
+    ])
+      expect(
+        await ipc.handle(trusted, "request", {
+          requestID: randomUUID(),
+          connectionID: connection.id,
+          method,
+          path,
+          ...(method === "POST" ? { body: "{}" } : {}),
+        }),
+      ).toMatchObject({ ok: false, error: { code: "invalid_request" } })
+    expect(calls).toHaveLength(paths.length)
+  } finally {
+    ipc.dispose()
+  }
+})
+
+test("publication receipt IPC admits only the two fixed authenticated POST routes", async () => {
+  await using f = await organizationFixture()
+  const connection = await authorized(f)
+  const paths: string[] = []
+  const { trusted, ipc } = bridge(f, (async (request) => {
+    paths.push(new URL(request instanceof Request ? request.url : String(request)).pathname)
+    return Response.json({ state: "missing" })
+  }) as typeof fetch)
+  try {
+    for (const kind of ["knowledge", "artifacts"]) {
+      const path = `/org/v1/${kind}/publication-receipts`
+      expect(
+        await ipc.handle(trusted, "request", {
+          requestID: randomUUID(),
+          connectionID: connection.id,
+          method: "POST",
+          path,
+          body: "{}",
+        }),
+      ).toMatchObject({ ok: true, value: { status: 200, body: '{"state":"missing"}' } })
+      for (const changed of [{ method: "PUT" }, { path: `${path}/foreign` }, { path: `${path}%2fcredentials` }])
+        expect(
+          await ipc.handle(trusted, "request", {
+            requestID: randomUUID(),
+            connectionID: connection.id,
+            method: "POST",
+            path,
+            body: "{}",
+            ...changed,
+          }),
+        ).toMatchObject({ ok: false, error: { code: "invalid_request" } })
+    }
+    expect(paths).toEqual(["/org/v1/knowledge/publication-receipts", "/org/v1/artifacts/publication-receipts"])
+  } finally {
+    ipc.dispose()
+  }
+})
+
+test("real native notification IPC authenticates the fixed service stream and binds ACK and shutdown to its original document", async () => {
+  await using f = await organizationFixture()
+  const connection = await authorized(f)
+  const events: Desktop.NotificationEvent[] = []
+  const { trusted, ipc } = bridge(f, f.transport, (_event, value) => events.push(value))
+  try {
+    const input = { requestID: randomUUID(), connectionID: connection.id, revision: connection.revision }
+    expect(await ipc.handle({}, "notificationStart", input)).toMatchObject({
+      ok: false,
+      error: { code: "untrusted_sender" },
+    })
+    expect(
+      await ipc.handle(trusted, "request", {
+        requestID: randomUUID(),
+        connectionID: connection.id,
+        method: "GET",
+        path: "/org/v1/notifications",
+      }),
+    ).toMatchObject({ ok: false, error: { code: "invalid_request" } })
+    expect(await ipc.handle(trusted, "notificationStart", input)).toEqual({ ok: true, value: undefined })
+    const ready = events[0]
+    if (ready?.type !== "frame") throw new Error("Missing native ready frame")
+    expect(ready.frame).toMatchObject({
+      type: "ready",
+      orgID: connection.orgID,
+      accountID: connection.account.accountID,
+      deploymentIncarnation: connection.deploymentIncarnation,
+      authRevision: connection.account.authRevision,
+      sequence: 0,
+    })
+    const ack = {
+      requestID: input.requestID,
+      connectionID: input.connectionID,
+      streamID: ready.frame.streamID,
+      sequence: ready.frame.sequence,
+    }
+    expect(await ipc.handle(trusted, "notificationAck", { ...ack, sequence: 1 })).toMatchObject({
+      ok: false,
+      error: { code: "invalid_request" },
+    })
+    expect(await ipc.handle(trusted, "notificationAck", ack)).toEqual({ ok: true, value: undefined })
+    ipc.invalidate()
+    expect(await ipc.handle(trusted, "notificationAck", ack)).toMatchObject({ ok: false, error: { code: "cancelled" } })
+    expect(events.filter((event) => event.type === "frame")).toHaveLength(1)
+    expect(JSON.stringify(events)).not.toContain("accessToken")
+  } finally {
+    ipc.dispose()
+  }
+})
+
+test("native logout IPC requires its prepared revision and retains the final receipt across retries", async () => {
+  await using f = await organizationFixture()
+  const connection = await authorized(f)
+  const { trusted, ipc } = bridge(f)
+  try {
+    expect(await ipc.handle(trusted, "signOut", { connectionID: connection.id })).toEqual({
+      ok: false,
+      error: { code: "invalid_request" },
+    })
+    expect((await f.accounts.access(connection.id)).connection.revision).toBe(connection.revision)
+    const request = {
+      connectionID: connection.id,
+      expectedRevision: connection.revision,
+      requestID: randomUUID(),
+    }
+    expect(await ipc.handle(trusted, "signOut", { ...request, phase: "prepare" })).toMatchObject({
+      ok: true,
+      value: { state: "sign_out_pending", revision: request.requestID },
+    })
+    await expect(f.accounts.access(connection.id)).rejects.toMatchObject({ code: "signed_out" })
+    const commit = { ...request, phase: "commit", expectedRevision: request.requestID }
+    const final = await ipc.handle(trusted, "signOut", commit)
+    expect(final).toMatchObject({ ok: true, value: { state: "signed_out", revision: request.requestID } })
+    expect(await ipc.handle(trusted, "signOut", commit)).toEqual(final)
+    const staleRevision = randomUUID()
+    expect(
+      await ipc.handle(trusted, "signOut", { ...commit, expectedRevision: staleRevision, requestID: staleRevision }),
+    ).toEqual({
+      ok: false,
+      error: { code: "connection_changed" },
+    })
+    expect((await f.accounts.list())[0]).toMatchObject({ state: "signed_out", revision: request.requestID })
+  } finally {
+    ipc.dispose()
+  }
+})
+
+test("shared transcript windows and runtime availability use exact main-authenticated read paths", async () => {
+  await using f = await organizationFixture()
+  const connection = await authorized(f)
+  let calls = 0
+  const { trusted, ipc } = bridge(
+    f,
+    Object.assign(
+      async (input: RequestInfo | URL) => {
+        const request = new Request(input)
+        expect(request.headers.get("authorization")).toStartWith("Bearer ")
+        calls++
+        return Response.json({ items: [] })
+      },
+      { preconnect() {} },
+    ),
+  )
+  for (const [index, [method, path]] of (
+    [
+      ["GET", "/org/v1/sessions/session-one/sync/messages?limit=32"],
+      ["GET", "/org/v1/sessions/session-one/sync/tasks?limit=32"],
+      ["GET", "/org/v1/sessions/session-one/sync/messages/message-one/parts?limit=64"],
+      ["GET", "/org/v1/runtimes/runtime-one/connection"],
+      ["GET", "/org/v1/sessions/session-one/knowledge/status"],
+      ["PUT", "/org/v1/sessions/session-one/share"],
+      ["GET", "/org/v1/invites?limit=50"],
+      ["POST", "/org/v1/invites/invite-one/revoke"],
+      ["POST", "/org/v1/organization/leave"],
+      ["POST", "/org/v1/sessions/session-one/read"],
+      ["POST", "/org/v1/sessions/session-one/interactions/reply"],
+      ["POST", "/org/v1/sessions/session-one/interactions"],
+      ["GET", "/org/v1/api-tokens?limit=50"],
+      ["POST", "/org/v1/api-tokens"],
+      ["POST", "/org/v1/api-tokens/token-one/revoke"],
+      ["GET", "/org/v1/projects/project-one/knowledge/applied/releases?limit=50"],
+      ["POST", "/org/v1/projects/project-one/knowledge/applied/references"],
+      ["GET", "/org/v1/sessions/session-one/knowledge/releases?limit=50"],
+      ["POST", "/org/v1/sessions/session-one/knowledge/references"],
+      ["POST", "/org/v1/knowledge/selection-updates"],
+      ["GET", "/org/v1/knowledge/selection-updates/update-one"],
+      ["POST", "/org/v1/knowledge/selection-updates/update-one/pages"],
+      ["POST", "/org/v1/knowledge/selection-updates/update-one/commit"],
+    ] as const
+  ).entries()) {
+    const result = await ipc.handle(trusted, "request", {
+      requestID: `read-${index}`,
+      connectionID: connection.id,
+      method,
+      path,
+      ...(method === "PUT" ? { body: '{"expectedShareGeneration":0}' } : {}),
+    })
+    expect(result).toMatchObject({ ok: true, value: { status: 200 } })
+  }
+  expect(calls).toBe(23)
+  ipc.dispose()
+})
+
+test("organization IPC rejects untrusted frames and credential or arbitrary-target requests", async () => {
+  await using f = await organizationFixture()
+  const connection = await authorized(f)
+  let calls = 0
+  const { trusted, ipc } = bridge(f, (async (...args: Parameters<typeof fetch>) => {
+    calls++
+    return f.transport(...args)
+  }) as typeof fetch)
+  for (const action of [
+    "list",
+    "request",
+    "connect",
+    "signOut",
+    "cancel",
+    "memberStatus",
+    "startMember",
+    "download",
+  ] as const)
+    expect(await ipc.handle({}, action, {})).toEqual({ ok: false, error: { code: "untrusted_sender" } })
+  const base = { requestID: "request-a", connectionID: connection.id, method: "GET", path: "/org/v1/projects" }
+  for (const changed of [
+    { path: "https://other.example/org/v1/projects" },
+    { path: "//other.example/org/v1/projects" },
+    { path: "/org/v1/projects/../../auth/exchange" },
+    { path: "/org/v1/projects%2f../auth/exchange" },
+    { path: "/org/v1/auth/refresh", method: "POST" },
+    { path: "/runtime/v1/register", method: "POST" },
+    { path: "/org/v1/runtimes/member", method: "POST" },
+    { path: "/org/v1/invites/consume", method: "POST" },
+    { path: "/org/v1/sessions/session-one/interactions", method: "GET" },
+    { path: "/org/v1/sessions/session-one/interactions/credentials", method: "POST" },
+    { path: "/org/v1/api-tokens/token-one/revoke", method: "GET" },
+    { path: "/org/v1/api-tokens/token-one", method: "DELETE" },
+    { path: "/org/v1/projects/project-one/knowledge/applied" },
+    { path: "/org/v1/projects/project-one/knowledge/applied", method: "PUT", body: "{}" },
+    { path: "/org/v1/sessions/session-one/knowledge" },
+    { path: "/org/v1/sessions/session-one/knowledge", method: "PUT", body: "{}" },
+    { path: "/org/v1/projects#credential" },
+    { headers: { authorization: "injected" } },
+    { body: "{}" },
+    { method: "POST", body: "invalid-json" },
+    { method: "POST", body: JSON.stringify("x".repeat(65_536)) },
+  ])
+    expect(await ipc.handle(trusted, "request", { ...base, ...changed })).toEqual({
+      ok: false,
+      error: { code: "invalid_request" },
+    })
+  expect(calls).toBe(0)
+  expect(await ipc.handle(trusted, "list", undefined)).toEqual({ ok: true, value: [connection] })
+  ipc.dispose()
+})
+
+test("member process requests require a main-owned Runtime registry and reject caller-selected launch inputs", async () => {
+  await using f = await organizationFixture()
+  const connection = await authorized(f)
+  const { trusted, ipc } = bridge(f)
+  try {
+    expect(await ipc.handle(trusted, "memberStatus", { connectionID: connection.id })).toEqual({
+      ok: false,
+      error: { code: "unavailable" },
+    })
+    expect(
+      await ipc.handle(trusted, "startMember", {
+        requestID: "start-member",
+        connectionID: connection.id,
+        home: "/untrusted-home",
+        token: "renderer-supplied-credential",
+      }),
+    ).toEqual({ ok: false, error: { code: "invalid_request" } })
+  } finally {
+    ipc.dispose()
+  }
+})
+
+test("the organization bridge exposes the resource directory through main-owned credentials", async () => {
+  await using f = await organizationFixture()
+  const connection = await authorized(f)
+  const { trusted, ipc } = bridge(f)
+  try {
+    const result = await ipc.handle(trusted, "request", {
+      requestID: "resources",
+      connectionID: connection.id,
+      method: "GET",
+      path: "/org/v1/resources?limit=20",
+    })
+    expect(result).toMatchObject({ ok: true, value: { status: 200 } })
+    if (!result.ok) throw new Error("Resource directory was not admitted")
+    expect(JSON.stringify(result.value)).not.toContain("accessToken")
+  } finally {
+    ipc.dispose()
+  }
+})
+
+test("native blob chunks retain exact bytes and reject ranges or byte bodies on control routes", async () => {
+  await using f = await organizationFixture()
+  const connection = await authorized(f)
+  const bytes = new Uint8Array([0, 255, 128, 10])
+  const received: Request[] = []
+  const { trusted, ipc } = bridge(f, (async (input: RequestInfo | URL) => {
+    const request = input as Request
+    received.push(request)
+    if (request.method === "PUT") return Response.json({ offset: 4 })
+    return new Response(bytes, {
+      status: 206,
+      headers: { "content-type": "application/octet-stream", "content-range": "bytes 0-3/8" },
+    })
+  }) as typeof fetch)
+  const base = {
+    requestID: "blob",
+    connectionID: connection.id,
+    method: "GET",
+    path: `/org/v1/sessions/session/blobs/${"b".repeat(64)}/content`,
+    range: "bytes=0-3",
+  }
+  try {
+    expect(await ipc.handle(trusted, "request", base)).toEqual({
+      ok: true,
+      value: { status: 206, bodyBytes: bytes, contentType: "application/octet-stream", contentRange: "bytes 0-3/8" },
+    })
+    expect(received[0]?.headers.get("range")).toBe("bytes=0-3")
+    expect(received[0]?.headers.get("authorization")).toMatch(/^Bearer [a-f0-9]{64}$/)
+    const upload = await ipc.handle(trusted, "request", {
+      ...base,
+      requestID: "upload",
+      method: "PUT",
+      path: `/org/v1/sessions/session/blobs/${"b".repeat(64)}?offset=0&totalBytes=4`,
+      range: undefined,
+      bodyBytes: bytes,
+      contentType: "application/octet-stream",
+    })
+    expect(upload).toMatchObject({ ok: true, value: { status: 200 } })
+    expect(new Uint8Array(await received[1]!.arrayBuffer())).toEqual(bytes)
+    for (const changed of [
+      { path: "/org/v1/projects" },
+      {
+        method: "POST",
+        path: "/org/v1/projects",
+        range: undefined,
+        bodyBytes: bytes,
+        contentType: "application/octet-stream",
+      },
+    ]) {
+      expect(await ipc.handle(trusted, "request", { ...base, ...changed })).toEqual({
+        ok: false,
+        error: { code: "invalid_request" },
+      })
+    }
+    expect(received).toHaveLength(2)
+  } finally {
+    ipc.dispose()
+  }
+})
+
+test("native downloads stream only authorized immutable content and verify its digest before publishing", async () => {
+  await using f = await organizationFixture()
+  const connection = await authorized(f)
+  const bytes = new Uint8Array([0, 255, 128, 10])
+  const chunks: Uint8Array[] = []
+  let empty = false
+  const trusted = {}
+  const ipc = new DesktopOrganizationIPC({
+    accounts: f.accounts,
+    authorization: new DesktopOrganizationAuthorization({
+      accounts: f.accounts,
+      fetch: f.transport,
+      openExternal: async () => {},
+    }),
+    trusted: (event) => event === trusted,
+    fetch: (async () =>
+      new Response(empty ? null : bytes, {
+        headers: { "content-type": "application/octet-stream", "content-length": empty ? "0" : "4" },
+      })) as typeof fetch,
+    saveFile: async (_name, write) => ({
+      saved: true,
+      bytes: await write(async (chunk) => {
+        chunks.push(chunk)
+      }),
+    }),
+  })
+  const request = {
+    requestID: "download",
+    connectionID: connection.id,
+    path: `/org/v1/sessions/session/blobs/${"b".repeat(64)}/content`,
+    fileName: "evidence.bin",
+    bytes: 4,
+    sha256: createHash("sha256").update(bytes).digest("hex"),
+  }
+  try {
+    expect(await ipc.handle(trusted, "download", request)).toEqual({ ok: true, value: { saved: true, bytes: 4 } })
+    expect(Buffer.concat(chunks)).toEqual(Buffer.from(bytes))
+    expect(
+      await ipc.handle(trusted, "download", { ...request, requestID: "bad-digest", sha256: "a".repeat(64) }),
+    ).toEqual({ ok: false, error: { code: "invalid_response" } })
+    expect(await ipc.handle(trusted, "download", { ...request, path: "/org/v1/projects" })).toEqual({
+      ok: false,
+      error: { code: "invalid_request" },
+    })
+    empty = true
+    expect(
+      await ipc.handle(trusted, "download", {
+        ...request,
+        requestID: "empty",
+        bytes: 0,
+        sha256: createHash("sha256").digest("hex"),
+      }),
+    ).toEqual({ ok: true, value: { saved: true, bytes: 0 } })
+  } finally {
+    ipc.dispose()
+  }
+})
+
+test("the native organization bridge preserves generated SDK results and never repeats a rejected write", async () => {
+  await using f = await organizationFixture()
+  const connection = await authorized(f)
+  const requests: Request[] = []
+  const { trusted, ipc } = bridge(f, (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const request = input instanceof Request ? input : new Request(input, init)
+    requests.push(request)
+    return f.transport(request)
+  }) as typeof fetch)
+  const created = await ipc.handle(trusted, "request", {
+    requestID: "create",
+    connectionID: connection.id,
+    method: "POST",
+    path: "/org/v1/projects",
+    body: JSON.stringify({ name: "Native client" }),
+  })
+  expect(created.ok).toBe(true)
+  if (!created.ok) throw new Error("Project creation failed")
+  expect(created.value).toMatchObject({ status: 200 })
+  expect(JSON.stringify(created)).not.toContain("accessToken")
+  expect(requests[0]!.headers.get("authorization")).toMatch(/^Bearer [a-f0-9]{64}$/)
+  expect(requests[0]!.headers.has("cookie")).toBe(false)
+  expect(requests[0]!.redirect).toBe("error")
+  await signOutAccount(f.accounts, connection.id)
+  const denied = await ipc.handle(trusted, "request", {
+    requestID: "denied",
+    connectionID: connection.id,
+    method: "POST",
+    path: "/org/v1/projects",
+    body: JSON.stringify({ name: "Should not be sent" }),
+  })
+  expect(denied).toEqual({ ok: false, error: { code: "signed_out" } })
+  expect(requests).toHaveLength(1)
+  ipc.dispose()
+})
+
+test("navigation cancels native requests and duplicate transport request IDs cannot repeat a write", async () => {
+  await using f = await organizationFixture()
+  const connection = await authorized(f)
+  const entered = Promise.withResolvers<void>()
+  const response = Promise.withResolvers<Response>()
+  let signal: AbortSignal | undefined
+  const { trusted, ipc } = bridge(f, (async (input: RequestInfo | URL) => {
+    const request = input as Request
+    signal = request.signal
+    entered.resolve()
+    return response.promise
+  }) as typeof fetch)
+  const request = {
+    requestID: "pending",
+    connectionID: connection.id,
+    method: "POST",
+    path: "/org/v1/projects",
+    body: '{"name":"Pending"}',
+  }
+  const pending = ipc.handle(trusted, "request", request)
+  await entered.promise
+  expect(await ipc.handle(trusted, "request", request)).toEqual({ ok: false, error: { code: "request_in_progress" } })
+  ipc.invalidate()
+  expect(signal?.aborted).toBe(true)
+  response.resolve(Response.json({ late: true }))
+  expect(await pending).toEqual({ ok: false, error: { code: "cancelled" } })
+  expect((await ipc.handle(trusted, "list", undefined)).ok).toBe(true)
+  ipc.dispose()
+})
+
+test("native responses retain structured API errors and reject redirects or oversized and non-JSON bodies", async () => {
+  await using f = await organizationFixture()
+  const connection = await authorized(f)
+  let response = Response.json(
+    { code: "AUTHENTICATION_REQUIRED", outcome: "not_dispatched", retryable: false },
+    { status: 401 },
+  )
+  let calls = 0
+  const { trusted, ipc } = bridge(f, (async () => {
+    calls++
+    return response
+  }) as typeof fetch)
+  const request = { requestID: "request", connectionID: connection.id, method: "GET", path: "/org/v1/projects" }
+  const denied = await ipc.handle(trusted, "request", request)
+  expect(denied).toMatchObject({ ok: true, value: { status: 401 } })
+  expect(calls).toBe(1)
+  for (const value of [
+    new Response(null, { status: 302, headers: { location: "https://other.example" } }),
+    new Response("<html>invalid</html>", { headers: { "content-type": "text/html" } }),
+    Response.json({ content: "x".repeat(2_097_152) }),
+  ]) {
+    response = value
+    expect(await ipc.handle(trusted, "request", request)).toEqual({ ok: false, error: { code: "invalid_response" } })
+  }
+  ipc.dispose()
+})
+
+test("typed command streaming preserves a large original input and never exposes credentials to its frames", async () => {
+  const { OrganizationCommandStream: Stream, OrganizationRuntimeProtocol: Runtime } =
+    await import("@ericsanchezok/synergy-organization-protocol")
+  await using f = await organizationFixture()
+  const connection = await authorized(f)
+  const submitted: unknown[] = []
+  const { trusted, ipc } = bridge(
+    f,
+    Object.assign(
+      async (input: RequestInfo | URL) => {
+        const request = new Request(input)
+        expect(new URL(request.url).pathname).toBe("/org/v1/sessions/session-one/commands")
+        expect(request.headers.get("authorization")).toStartWith("Bearer ")
+        submitted.push(await request.json())
+        return Response.json({ intake: "original" }, { status: 202 })
+      },
+      { preconnect() {} },
+    ),
+  )
+  const command = {
+    schemaVersion: 1,
+    orgID: connection.orgID,
+    requestID: "logical-one",
+    sessionID: "session-one",
+    projectID: "project-one",
+    runtimeID: "runtime-one",
+    input: { operation: "input", mode: "task", parts: [{ type: "text", text: "汉字🙂".repeat(20_000) }] },
+  } as const
+  const wire = Stream.serialize({ ...command, input: { ...command.input, parts: [...command.input.parts] } })
+  const begin = {
+    type: "begin",
+    requestID: "ipc-command-one",
+    connectionID: connection.id,
+    operation: wire.operation,
+    header: wire.header,
+    bytes: wire.payload.byteLength,
+    sha256: createHash("sha256").update(wire.payload).digest("hex"),
+  } as const
+  try {
+    expect(await ipc.handle(trusted, "commandStream", begin)).toMatchObject({
+      ok: true,
+      value: { kind: "progress", nextOffset: 0 },
+    })
+    expect(submitted).toHaveLength(0)
+    for (let offset = 0; offset < wire.payload.byteLength; offset += Runtime.commandChunkBytes) {
+      const bytes = wire.payload.subarray(offset, offset + Runtime.commandChunkBytes)
+      expect(
+        await ipc.handle(trusted, "commandStream", {
+          type: "chunk",
+          requestID: begin.requestID,
+          connectionID: connection.id,
+          offset,
+          data: Stream.encodeChunk(bytes),
+        }),
+      ).toMatchObject({ ok: true, value: { kind: "progress", nextOffset: offset + bytes.byteLength } })
+    }
+    expect(
+      await ipc.handle(trusted, "commandStream", {
+        type: "finish",
+        requestID: begin.requestID,
+        connectionID: connection.id,
+      }),
+    ).toEqual({
+      ok: true,
+      value: {
+        kind: "response",
+        requestID: begin.requestID,
+        response: { status: 202, body: JSON.stringify({ intake: "original" }) },
+      },
+    })
+    expect(submitted).toEqual([command])
+    expect(JSON.stringify(begin)).not.toContain("accessToken")
+  } finally {
+    ipc.dispose()
+  }
+})
+test("bad offsets, content hashes and cancellation cannot dispatch a partial typed command", async () => {
+  const { OrganizationCommandStream: Stream, OrganizationRuntimeProtocol: Runtime } =
+    await import("@ericsanchezok/synergy-organization-protocol")
+  await using f = await organizationFixture()
+  const connection = await authorized(f)
+  let calls = 0
+  const { trusted, ipc } = bridge(
+    f,
+    Object.assign(
+      async () => {
+        calls++
+        return Response.json({})
+      },
+      { preconnect() {} },
+    ),
+  )
+  const wire = Stream.serialize({
+    schemaVersion: 1,
+    orgID: connection.orgID,
+    requestID: "logical-question",
+    sessionID: "session-one",
+    projectID: "project-one",
+    runtimeID: "runtime-one",
+    decision: {
+      operation: "decision",
+      kind: "question",
+      requestID: "native-question",
+      reply: "answer",
+      answers: [["x".repeat(100_000)]],
+    },
+  })
+  try {
+    for (const failure of ["offset", "hash", "cancel"]) {
+      const requestID = `ipc-${failure}`
+      const begin = {
+        type: "begin",
+        requestID,
+        connectionID: connection.id,
+        operation: wire.operation,
+        header: wire.header,
+        bytes: wire.payload.byteLength,
+        sha256: failure === "hash" ? "a".repeat(64) : createHash("sha256").update(wire.payload).digest("hex"),
+      } as const
+      expect(await ipc.handle(trusted, "commandStream", begin)).toMatchObject({ ok: true })
+      if (failure === "offset")
+        expect(
+          await ipc.handle(trusted, "commandStream", {
+            type: "chunk",
+            requestID,
+            connectionID: connection.id,
+            offset: 1,
+            data: Stream.encodeChunk(wire.payload.subarray(0, Runtime.commandChunkBytes)),
+          }),
+        ).toMatchObject({ ok: false })
+      else if (failure === "cancel")
+        expect(await ipc.handle(trusted, "cancel", { requestID })).toMatchObject({ ok: true })
+      else
+        for (let offset = 0; offset < wire.payload.byteLength; offset += Runtime.commandChunkBytes)
+          await ipc.handle(trusted, "commandStream", {
+            type: "chunk",
+            requestID,
+            connectionID: connection.id,
+            offset,
+            data: Stream.encodeChunk(wire.payload.subarray(offset, offset + Runtime.commandChunkBytes)),
+          })
+      expect(
+        await ipc.handle(trusted, "commandStream", { type: "finish", requestID, connectionID: connection.id }),
+      ).toMatchObject({ ok: false })
+    }
+    expect(calls).toBe(0)
+  } finally {
+    ipc.dispose()
+  }
+})
+
+test("cancelling a streamed command ends the IPC wait even when a transport has not released its response", async () => {
+  const { OrganizationCommandStream: Stream } = await import("@ericsanchezok/synergy-organization-protocol")
+  await using f = await organizationFixture()
+  const connection = await authorized(f)
+  let release!: () => void
+  let arrived!: () => void
+  const held = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const started = new Promise<void>((resolve) => {
+    arrived = resolve
+  })
+  const { trusted, ipc } = bridge(
+    f,
+    Object.assign(
+      async () => {
+        arrived()
+        await held
+        return Response.json({ done: true })
+      },
+      { preconnect() {} },
+    ),
+  )
+  const wire = Stream.serialize({
+    schemaVersion: 1,
+    orgID: connection.orgID,
+    requestID: "logical-held",
+    sessionID: "session-one",
+    projectID: "project-one",
+    runtimeID: "runtime-one",
+    input: { operation: "input", mode: "task", parts: [{ type: "text", text: "Wait for the original receipt" }] },
+  })
+  const requestID = "ipc-held"
+  let finishing: Promise<unknown> | undefined
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    await ipc.handle(trusted, "commandStream", {
+      type: "begin",
+      requestID,
+      connectionID: connection.id,
+      operation: wire.operation,
+      header: wire.header,
+      bytes: wire.payload.byteLength,
+      sha256: createHash("sha256").update(wire.payload).digest("hex"),
+    })
+    await ipc.handle(trusted, "commandStream", {
+      type: "chunk",
+      requestID,
+      connectionID: connection.id,
+      offset: 0,
+      data: Stream.encodeChunk(wire.payload),
+    })
+    finishing = ipc.handle(trusted, "commandStream", { type: "finish", requestID, connectionID: connection.id })
+    await started
+    expect(
+      await ipc.handle(trusted, "commandStream", { type: "finish", requestID, connectionID: connection.id }),
+    ).toEqual({ ok: false, error: { code: "request_in_progress" } })
+    await ipc.handle(trusted, "cancel", { requestID })
+    const result = await Promise.race([
+      finishing,
+      new Promise((resolve) => {
+        timer = setTimeout(() => resolve({ waiting: true }), 2000)
+      }),
+    ])
+    expect(result).toEqual({ ok: false, error: { code: "cancelled" } })
+  } finally {
+    if (timer) clearTimeout(timer)
+    release()
+    await finishing
+    ipc.dispose()
+  }
+})

@@ -61,6 +61,8 @@ Run everything on one computer for a personal workbench, or host the Agent Runti
 
 For work across personal computers, connect to their Synergy services and use approved device pairing for remote access and manual transfer of paused tasks. Each destination retains its own Runtime and execution authority. This is separate from a single Runtime using remote execution resources; pairing does not continuously replicate Workspaces or provide automatic failover. See [Host connections](docs/architecture/host-connections.md) and [paused-task transfer](docs/architecture/session-transfer.md).
 
+Enrolled organization Runtimes can explicitly hand off a paused conversation with separate Workspace and Environment choices. A return can keep shared cloud files and execution or download a new private native copy with an explicit execution choice. Activation stays paused; continuing work requires a separate authorized action. See [organization handoff](docs/architecture/organization.md#handoff-coordination-facts).
+
 The separation also provides an integration point for additional Environment providers. A cloud Runtime driving arbitrary native laptops through one built-in coordinator is not a packaged deployment mode. Native Browser and Computer Use remain Desktop-local.
 
 ## Work that continues
@@ -201,6 +203,8 @@ Upgrade with `synergy upgrade`, or install a specific version by passing `--vers
 The built-in Browser is Desktop-local and uses Electron's bundled Chromium, with per-session workbench page tabs and reusable website logins; separate and temporary profiles live in Browser settings. CLI and Web use search, fetch and MCP integrations. macOS Desktop also supports native application Computer Use in Full Access mode, with independently checked Accessibility and Screen Recording permissions. Native observations report image quality and action availability; coordinate actions require a verified image submitted to the selecting model request. Computer Use prefers background delivery. The agent can explicitly request foreground observation or input when needed; actions never automatically escalate or replay, and a fresh observation verifies the result. See [Native Computer Use](docs/architecture/computer-use.md).
 
 The Personal space menu in the sidebar opens Settings, Providers and the repository. It hides with the built-in sidebar. Local work does not require a network identity.
+
+The experimental [organization service](packages/organization/README.md) provides independent team accounts, project authorization, a first-party authorization page and authenticated Runtime registration through its own API and `synergy org` commands. The independent `synergy-org` executable and service Compose setup are documented in the [deployment runbook](docs/operations/organization-service.md). Web and Desktop can connect organization accounts and select authorized projects through the space menu, including while the personal service is offline. The service uses a dedicated Home and does not execute Agents. The [member Runtime adapter](packages/organization-runtime/README.md) provisions separate machine identities and consumes registration tickets over verified HTTPS.
 
 See the [CLI reference](docs/reference/cli.md), [configuration reference](docs/reference/configuration.md), and [release notes](https://github.com/SII-Holos/synergy/releases) for complete setup and runtime details.
 

@@ -11,6 +11,9 @@ import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
 import { LocalBashBackend } from "@ericsanchezok/synergy-local-runtime/tools/bash/local"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
+import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
+import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/ledger"
+import { EnvironmentExecution } from "@ericsanchezok/synergy-harness/environment/execution"
 const runtime = await testRuntime()
 
 // Regression for issue #1006: the bash detached-daemon guard must honor the
@@ -51,11 +54,24 @@ function bashRegistryTool() {
 
 async function resolveBashTool(sessionID: string) {
   const session = await Session.get(sessionID)
+  const rootID = Identifier.ascending("message")
+  await Session.updateMessage({
+    id: rootID,
+    rootID,
+    isRoot: true,
+    sessionID,
+    role: "user",
+    agent: PrimaryAgentIdentity.names.general,
+    model: { providerID: "test-provider", modelID: "test-model" },
+    time: { created: Date.now() },
+  })
+  await RolloutLedger.beginRun({ kind: "session", scopeID: session.scope.id, sessionID }, rootID)
   const assistantMessage = {
-    id: "msg_tool_resolver_profile",
+    id: Identifier.ascending("message"),
     sessionID,
     role: "assistant" as const,
-    parentID: "msg_user",
+    parentID: rootID,
+    rootID,
     modelID: "test-model",
     providerID: "test-provider",
     mode: "build",
@@ -106,6 +122,17 @@ test("bash detached daemon guard honors session full_access over agent guarded",
               { ...{ toolCallId: "call_bash_nohup" }, workBrief: "Launch daemon" },
             )
             expect(result.metadata.exit).toBe(0)
+            const executions: EnvironmentExecution.Info[] = []
+            for await (const info of EnvironmentExecution.sessionEntries({
+              scopeID: session.scope.id,
+              sessionID: session.id,
+            }))
+              executions.push(info)
+            expect(executions).toHaveLength(1)
+            expect(executions[0]).toMatchObject({
+              state: "completed",
+              origin: { kind: "session", sessionID: session.id, callID: "call_bash_nohup", tool: "bash" },
+            })
           } finally {
             processor.dispose("test")
           }

@@ -1,4 +1,5 @@
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
+import type { OrganizationDesktop } from "@ericsanchezok/synergy-organization-protocol"
 import type {
   BrowserNativeAttachRequest,
   BrowserNativePageRequest,
@@ -35,6 +36,8 @@ export type BrowserNativeViewBridge = {
   ): Promise<BrowserNativePresentationTicketResult>
   onEvent?(listener: (event: BrowserNativeViewEvent) => void): () => void
 }
+
+export type NotificationActivation = { activate(): void; current(): boolean }
 
 export type DesktopThemeSource = "system" | "light" | "dark"
 export type DesktopThemeEffective = "light" | "dark"
@@ -195,7 +198,13 @@ export type Platform = {
   restart(): Promise<void>
 
   /** Send a system notification (optional deep link; tag collapses duplicates) */
-  notify(title: string, description?: string, href?: string, tag?: string): Promise<void>
+  notify(
+    title: string,
+    description?: string,
+    href?: string,
+    tag?: string,
+    activation?: NotificationActivation,
+  ): Promise<void>
 
   /** Open directory picker dialog; portal denial resolves as plain { denied: true; message } data */
   openDirectoryPickerDialog?(opts?: {
@@ -214,6 +223,7 @@ export type Platform = {
 
   /** Desktop managed server bridge, provided by the desktop shell. */
   desktopServer?: DesktopServerBridge
+  organization?: OrganizationDesktop.Bridge
 
   /** Desktop window controls bridge, provided by the desktop shell. */
   desktopWindow?: DesktopWindowBridge

@@ -1,0 +1,28 @@
+{
+  "name": "@ericsanchezok/synergy-organization-protocol",
+  "version": "1.1.26",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json",
+    "test": "bun ../testing/script/test-ci.ts",
+    "test:ci": "bun ../testing/script/test-ci.ts",
+    "test:coverage": "bun ../testing/script/coverage-run.ts"
+  },
+  "dependencies": {
+    "@ericsanchezok/synergy-util": "workspace:*",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@ericsanchezok/synergy-testing": "workspace:*",
+    "@tsconfig/bun": "catalog:",
+    "@types/bun": "catalog:",
+    "@types/node": "catalog:",
+    "typescript": "catalog:"
+  }
+}

@@ -8,7 +8,7 @@ describe("MigrationRegistry", () => {
   test("registers all domains", () =>
     runtime.run(() => {
       const domainCount = MigrationRegistry.list().size
-      expect(domainCount).toBe(35)
+      expect(domainCount).toBe(46)
       expect(MigrationRegistry.list().get("session")).toContainEqual(
         expect.objectContaining({
           domain: "rollout-journal",
@@ -26,27 +26,38 @@ describe("MigrationRegistry", () => {
         "anima",
         "blueprint-note",
         "blueprint-session",
+        "blueprint-transfer",
         "blueprint_loop",
         "boss-config",
         "browser",
         "channel",
         "config",
+        "cortex-maintenance",
+        "cortex-transfer",
         "digital-twin",
         "environment",
         "installation",
         "lattice",
         "lattice-session",
+        "lattice-transfer",
         "library",
         "light-loop-session",
         "local-workspace",
         "mcp-config",
         "note",
         "observability",
+        "organization-knowledge-runtime",
+        "organization-sync",
         "plugin-config",
         "plugin_catalog",
         "scope",
         "session",
+        "session-child-index",
+        "session-cortex-index",
+        "session-transfer-epochs",
+        "snapshot-ownership",
         "storage",
+        "stored-snapshot-content",
         "tool-input-agenda",
         "tool-input-browser",
         "tool-input-cortex",

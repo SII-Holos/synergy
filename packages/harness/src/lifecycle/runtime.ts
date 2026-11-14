@@ -10,6 +10,9 @@ import { EnvironmentMaintenance } from "../environment/maintenance"
 import { ProviderCatalog } from "../provider/catalog"
 import { ProviderCatalogSource } from "../provider/catalog-source"
 import { RuntimeContext, type RuntimeHost } from "./context"
+import { HomeRestoration } from "./home-restoration"
+import { NamespaceRetirement } from "./namespace-retirement"
+import { HomeOwnership } from "./home-ownership"
 import { SessionStaging } from "../session/staging"
 import { ContextUsageEstimator } from "../session/context-usage-estimator"
 import { StorageRecovery } from "../storage/recovery"
@@ -34,6 +37,7 @@ import { Global } from "../global/index"
 import { Experiment } from "../config/experiment"
 import { Session } from "../session/index"
 import { SessionHistorySearch } from "../session/history-search"
+import { SessionPartField } from "../session/part-field"
 import { SessionManager } from "../session/manager"
 import { SessionCortexRuntime } from "../session/cortex-runtime"
 import { SessionAbort } from "../session/abort"
@@ -199,9 +203,18 @@ export namespace RuntimeHandle {
           }
         }
         await cleanup(closeAdmission)
+        await cleanup(() => NamespaceRetirement.stop())
+        await cleanup(async () => {
+          const { SnapshotCheckpoint } = await import("../session/snapshot-checkpoint")
+          await SnapshotCheckpoint.stop()
+        })
         if (!attached) {
           await cleanup(() => RuntimeResources.stop())
           await cleanup(() => Log.close())
+          await cleanup(async () => {
+            Storage.closeArtifactAdmission()
+            await Storage.drainArtifactPreparations()
+          })
           await cleanup(() => storage?.handle.store.close())
           await cleanup(() => ownership?.release())
           phase = "closed"
@@ -210,6 +223,7 @@ export namespace RuntimeHandle {
           return
         }
         for (const stop of stopBackground) await cleanup(stop)
+        await cleanup(() => SessionPartField.stop())
         await cleanup(() => SessionHistorySearch.stop())
         await cleanup(() => StorageRetention.stop())
         await cleanup(() => stopReclamation?.())
@@ -288,6 +302,10 @@ export namespace RuntimeHandle {
         await cleanup(async () => {
           if (errors.length === 0) await RolloutRecovery.settle()
         })
+        await cleanup(async () => {
+          Storage.closeArtifactAdmission()
+          await Storage.drainArtifactPreparations()
+        })
         await cleanup(() => storage?.handle.store.close())
         if (attached && instance.storage) storageOwners.delete(instance.storage.store)
         instance.storage = undefined
@@ -335,12 +353,14 @@ export namespace RuntimeHandle {
         report(0)
         return report
       }
+      await HomeRestoration.assertOrdinaryStartup()
       await SessionStaging.recover(storageProgress("staging"))
       startupStage("migrations")
       const migration = await ensureMigrations({
         output: options.migrationOutput ?? "silent",
         reporter: options.reporter,
       })
+      await HomeOwnership.assert({ required: true })
       startupStage("storage-recovery")
       await SessionCompat.prepareRecovery(storageProgress("owners"))
       if (storage?.needsValidation) await StorageRecovery.validate(storageProgress("validate"))

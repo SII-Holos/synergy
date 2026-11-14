@@ -88,7 +88,7 @@ const SavedSuggestion = z.object({
 
 export function DigitalTwinComposer(props: Props) {
   const sdk = useSDK()
-  const owner = createMemo(() => ({ url: sdk.url, scope: sdk.scopeKey, sessionID: props.sessionID }))
+  const owner = createMemo(() => ({ connectionKey: sdk.cacheKey, scope: sdk.scopeKey, sessionID: props.sessionID }))
   return (
     <Show when={owner()} keyed>
       {(owner) => <SessionPrediction {...props} sessionID={owner.sessionID} />}
@@ -101,10 +101,10 @@ function SessionPrediction(props: Props) {
   const sync = useSync()
   const active = useViewActivity()
   const { _ } = useLingui()
-  const owner = { url: sdk.url, scopeKey: sdk.scopeKey, sessionID: props.sessionID ?? "" }
+  const owner = { connectionKey: sdk.cacheKey, scopeKey: sdk.scopeKey, sessionID: props.sessionID ?? "" }
   const [saved, setSaved] = persisted(
     {
-      ...Persist.scoped(Persist.scopeKey(sdk.url, sdk.scopeKey), props.sessionID, "digital-twin"),
+      ...Persist.scoped(Persist.scopeKey(sdk.cacheKey, sdk.scopeKey), props.sessionID, "digital-twin"),
       migrate: (value) => SavedSuggestion.safeParse(value).data ?? { version: 1 },
     },
     createStore<z.infer<typeof SavedSuggestion>>({ version: 1 }),

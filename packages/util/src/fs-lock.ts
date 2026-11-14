@@ -1,8 +1,8 @@
 import { createHash, randomUUID } from "node:crypto"
 import fs, { type FileHandle } from "node:fs/promises"
 import path from "node:path"
-import { processStartIdentity } from "./process-identity"
-import { retrySleep } from "./retry"
+import { processStartIdentity } from "./process-identity.js"
+import { retrySleep } from "./retry.js"
 
 export interface FileLockOptions {
   directory: string

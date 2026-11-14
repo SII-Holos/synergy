@@ -33,6 +33,8 @@ When upgrading compiler or patched UI dependencies, resolve the installed transi
 
 ## Local Joint Acceptance
 
+Compose controlled acceptance observers as explicit native Host owners before opening their Runtime. Reuse the canonical Presets component list through typed additional components and forward the returned opaque origin through Resources, Execution and Use admission. Keep model-driven effects under their original Session/Run/tool provenance. Verify that allocation-fault probes actually reach their provider; a missing-origin error before dispatch is uncovered behavior, not the requested fault.
+
 Identify the intended foreground provider request independently of streaming: title and other auxiliary calls can also stream, and journal enumeration is not request chronology. Test both request orders and reject a missing first attachment body even when a later tool response contains its content.
 
 Publish a captured request's bytes and journal entry together before forwarding upstream. Auxiliary requests may begin while an observer enumerates the journal; hold the request-body write in a deterministic regression and require every visible entry to have readable bytes. Preserve unknown accounting for already published incomplete or corrupt records instead of ignoring evidence failures.
@@ -68,3 +70,5 @@ Run the deterministic driver checks with `bun test test/acceptance` from Presets
 For permission acceptance, observe file bytes at the pending decision before replying, then verify rejection and authorized success separately in each control profile. Distinguish Workspace containment and OS read-only failures from policy denial. Linux sandbox temporary directories can be private mounts; an exit-zero write there does not prove that the selected allocation's original directory changed. Match observations to the actual target and wait for observable resource-use drainage before testing detachment.
 
 For transport shutdown changes, exercise a server-initiated WebSocket close through a real full Runtime in a child process. Observe complete terminal output, Runtime closure and process exit separately; a close event or completed tool is not proof that the HTTP server drained. Prepare the native PTY with `bun packages/local-runtime/script/build-pty.ts` before the focused Presets shutdown test. CI restores that helper from its verified build artifact.
+
+Before judging a control's final color or disabled appearance, await its actual enabled/loading state rather than only a transport response counter. Capture native disabled and busy attributes, resolved foreground/background colors and ancestor opacity beside the screenshot. Compute contrast from the observed composited colors and limit the conclusion to those measured controls; a transient disabled style or one passing pair does not establish final appearance or whole-page accessibility.

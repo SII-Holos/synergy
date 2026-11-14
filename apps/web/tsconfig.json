@@ -29,7 +29,8 @@
     "package.json",
     "../desktop/test/fixture/isolated-desktop.ts",
     "../../script/shared/test-runner.ts",
-    "../../packages/testing/src/env.ts"
+    "../../packages/testing/src/env.ts",
+    "lingui.config.ts"
   ],
   "exclude": ["dist", "ts-dist"]
 }

@@ -149,7 +149,8 @@
 
   [data-slot="user-message-text"] {
     white-space: pre-wrap;
-    word-break: break-all;
+    word-break: normal;
+    overflow-wrap: anywhere;
     overflow: hidden;
     border-left: 2px solid var(--border-base);
     padding: 4px 12px;

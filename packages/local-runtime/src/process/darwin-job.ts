@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto"
 
 export namespace DarwinJob {
   async function launchctl(args: string[]) {
-    const child = Bun.spawn(["/bin/launchctl", ...args], { stdout: "ignore", stderr: "pipe" })
+    const child = Bun.spawn(["/bin/launchctl", ...args], { env: {}, stdout: "ignore", stderr: "pipe" })
     const [code, error] = await Promise.all([child.exited, new Response(child.stderr).text()])
     return { code, error: error.trim() }
   }
@@ -32,18 +32,25 @@ export namespace DarwinJob {
     await launchctl(["bootout", target])
   }
   export async function start(args: string[], directory: string, environment: Record<string, string> = {}) {
+    const entries = Object.entries(environment)
+    if (entries.some(([key, value]) => !key || /[=\0]/.test(key) || value.includes("\0")))
+      throw new Error("Invalid native worker environment")
     const uid = process.getuid?.()
     if (uid === undefined) throw new Error("Native process ownership requires a macOS user session")
     const gui = `gui/${uid}`
     const domain = (await launchctl(["print", gui])).code === 0 ? gui : `user/${uid}`
     const label = `com.synergy.process.${randomUUID()}`
     const filename = path.join(directory, "job.plist")
-    const variables = Object.entries({ ...environment, SYNERGY_OWNED_PROCESS_JOB: `${domain}/${label}` })
-      .map(([key, value]) => `<key>${xml(key)}</key><string>${xml(value)}</string>`)
-      .join("")
+    const command = [
+      "/usr/bin/env",
+      "-i",
+      ...entries.filter(([key]) => key !== "SYNERGY_OWNED_PROCESS_JOB").map(([key, value]) => `${key}=${value}`),
+      `SYNERGY_OWNED_PROCESS_JOB=${domain}/${label}`,
+      ...args,
+    ]
     await fs.writeFile(
       filename,
-      `<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>Label</key><string>${label}</string><key>ProgramArguments</key><array>${args.map((arg) => `<string>${xml(arg)}</string>`).join("")}</array><key>EnvironmentVariables</key><dict>${variables}</dict><key>RunAtLoad</key><true/><key>AbandonProcessGroup</key><true/><key>StandardOutPath</key><string>/dev/null</string><key>StandardErrorPath</key><string>${xml(path.join(directory, "startup.log"))}</string></dict></plist>`,
+      `<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>Label</key><string>${label}</string><key>ProgramArguments</key><array>${command.map((arg) => `<string>${xml(arg)}</string>`).join("")}</array><key>WorkingDirectory</key><string>${xml(directory)}</string><key>RunAtLoad</key><true/><key>AbandonProcessGroup</key><true/><key>StandardOutPath</key><string>/dev/null</string><key>StandardErrorPath</key><string>${xml(path.join(directory, "startup.log"))}</string></dict></plist>`,
       { mode: 0o600 },
     )
     const result = await launchctl(["bootstrap", domain, filename])

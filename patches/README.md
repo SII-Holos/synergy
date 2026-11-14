@@ -1,5 +1,11 @@
 # Dependency patches
 
+## Generated SDK native request bodies
+
+Provenance: the pinned [Hey API 0.88.1 client parameter template](https://unpkg.com/@hey-api/openapi-ts@0.88.1/dist/clients/core/params.ts).
+
+Local adaptation: [the pinned patch](@hey-api%252Fopenapi-ts@0.88.1.patch) maps an unnamed flat body field to the request body and removes empty plain parameter objects without deleting native `BodyInit` objects. The root generator applies that template to both published SDKs. Blob/File uploads otherwise disappear before fetch, despite their generated method accepting them. [Binary transport regressions](../packages/sdk/js/test/binary-body.test.ts) preserve native bodies and exercise non-UTF8 publication bytes over real HTTP. Remove these hunks when a replacement generator passes the same cases without them; retain the separate SSE cancellation correction until its own regression passes.
+
 ## OpenAI stream-start failures
 
 Provenance: [OpenAI adapter 4.0.96 stream-error probe](https://unpkg.com/@ai-sdk/openai@4.0.96/src/openai-stream-error.ts).

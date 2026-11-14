@@ -250,6 +250,7 @@ beforeAll(async () => {
           fmt: {},
         })
         const [server, setServer] = createSignal("http://fixture")
+        const cacheKey = () => "runtime:" + server()
         const [scope, setScope] = createSignal("scope")
         const [session, setSession] = createSignal("ses_1")
         const [recovery, setRecovery] = createSignal(1)
@@ -364,7 +365,7 @@ beforeAll(async () => {
           hasHandoff: () => !!transitions.get(session())?.handoff,
         }
         export const useSDK = () => ({
-          get url() { return server() }, get scopeKey() { return scope() }, get client() { return client() }, connected,
+          get url() { return server() }, get cacheKey() { return cacheKey() }, get scopeKey() { return scope() }, get client() { return client() }, connected,
           content: { pending: checkpointPending },
           event: {on: (type, listener) => {
             if (!listeners.has(type)) listeners.set(type, new Set())
@@ -377,8 +378,8 @@ beforeAll(async () => {
         export const useSessionPreparation = () => ({ready})
         const partArrival = createPartArrivalState()
         window.__partArrival = {
-          add: (id, partID, source = "live") => partArrival.add([server(), scope(), id], partID, {source, render: true, previous: false}),
-          peer: () => partArrival.open([server(), scope(), "ses_peer"]).ready(true),
+          add: (id, partID, source = "live") => partArrival.add([cacheKey(), scope(), id], partID, {source, render: true, previous: false}),
+          peer: () => partArrival.open([cacheKey(), scope(), "ses_peer"]).ready(true),
           take: () => false,
         }
         export const useGlobalSync = () => ({partArrival, peekScopeState: () => [{messageWindow: {[session()]: {}}}], reconnectVersion: recovery, ready: true, scopeRecoveryPending: scopePending})

@@ -7,6 +7,7 @@ import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { SessionHistory } from "@ericsanchezok/synergy-harness/session/history"
 import { SessionMemoryPressure } from "@ericsanchezok/synergy-harness/session/memory-pressure"
+import { SessionReadSource } from "@ericsanchezok/synergy-harness/session/read-source"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import DESCRIPTION from "./session-read.txt"
@@ -118,6 +119,15 @@ async function hydrateMessages(input: {
 }
 
 async function readSession(params: z.infer<typeof parameters>, ctx: Tool.Context) {
+  const source = await SessionReadSource.resolve({
+    callerSessionID: ctx.sessionID,
+    targetSessionID: params.target,
+    limit: Math.trunc(Math.max(0, Math.min(params.limit, 50))),
+    offset: Math.trunc(Math.max(0, params.offset)),
+    around: params.around,
+    signal: ctx.abort,
+  })
+  if (source.kind === "projection") return source.result
   const session = await resolveSession(params.target)
   if (!session.scope) {
     return {

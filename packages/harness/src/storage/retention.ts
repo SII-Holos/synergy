@@ -407,13 +407,17 @@ export namespace StorageRetention {
       )
       // Re-check liveness immediately before deleting: a session can start
       // between enumeration and this prune.
-      const result = await handle.store.pruneTreeWithinBudget(owner.key, {
-        limits: ONLINE_LIMITS,
-        cutoff: sampledAt - effective.windowMs,
-        active: () => owner.kind === "session" && new Set(liveSessionIDs()).has(owner.id),
-        maintenance: input.maintenance,
-        signal: input.signal,
-      })
+      const result = await Storage.transaction(
+        (tx) =>
+          tx.pruneTreeWithinBudget(owner.key, {
+            limits: ONLINE_LIMITS,
+            cutoff: sampledAt - effective.windowMs,
+            active: () => owner.kind === "session" && new Set(liveSessionIDs()).has(owner.id),
+            maintenance: input.maintenance,
+            signal: input.signal,
+          }),
+        { priority: "background" },
+      )
       if (result.deferred === "active") report.protectedLive++
       else if (result.deferred === "recent") report.protectedByWindow++
       else if (result.deferred) report.deferred.push({ key: owner.key, reason: result.deferred })

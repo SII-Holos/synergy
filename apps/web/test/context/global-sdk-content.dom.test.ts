@@ -14,6 +14,8 @@ type Fixture = {
     events: Array<{ name: string; details: Event }>
     reads: Array<{ signal: AbortSignal; resolve(value: Response): void }>
     capabilityReads: Array<{ signal: AbortSignal; resolve(value: Response): void }>
+    preparations: unknown[]
+    identities: Array<{ url: string; runtimeID: string }>
     holdCapabilities(): void
     dispose(): void
   }
@@ -29,15 +31,16 @@ test("the WebSocket entry preserves Part discovery and revalidates live capabili
   await Bun.write(
     stub,
     `
-    export const reads = [], capabilityReads = []
+    export const reads = [], capabilityReads = [], identities = [], preparations = []
+    const runtimeID = "94497ff6-b2b3-478e-a3aa-ce77665f0626"
     let held = false
     export const holdCapabilities = () => { held = true }
     export const usePlatform = () => ({fetch: async (request) => {
       if (new URL(request.url).pathname === '/global/capabilities')
-        return held ? new Promise(resolve=>capabilityReads.push({signal:request.signal,resolve})) : Response.json({apiVersion:1,features:[],transports:{projection:'projection-v2'}})
+        return held ? new Promise(resolve=>capabilityReads.push({signal:request.signal,resolve})) : Response.json({apiVersion:1,runtimeID,features:[],transports:{projection:'projection-v2'}})
       return new Promise(resolve=>reads.push({signal:request.signal,resolve}))
     }})
-    export const useServer = () => ({url:'http://fixture.local',scopes:{prepare(){}}})
+    export const useServer = () => ({url:'http://fixture.local',runtimeID,cacheKey:JSON.stringify(['personal',runtimeID]),acceptIdentity:(url,runtimeID)=>identities.push({url,runtimeID}),scopes:{prepare(value){preparations.push(value)}}})
     export const recordTokenReceive = () => {}
     export const recordFrontendWork = () => {}
     export const stopBrowserPerformanceMetrics = () => {}
@@ -49,13 +52,13 @@ test("the WebSocket entry preserves Part discovery and revalidates live capabili
     import { render } from 'solid-js/web'
     import { onCleanup } from 'solid-js'
     import { GlobalSDKProvider, useGlobalSDK } from ${JSON.stringify(globalSDK)}
-    import { reads, capabilityReads, holdCapabilities } from ${JSON.stringify(stub)}
+    import { reads, capabilityReads, holdCapabilities, identities, preparations } from ${JSON.stringify(stub)}
     export function mount(root) {
       let api
       const events=[]
       function Consumer(){api=useGlobalSDK();onCleanup(api.event.listen(event=>events.push(event)));return <div/>}
       const dispose=render(()=><GlobalSDKProvider><Consumer/></GlobalSDKProvider>,root)
-      return {api:()=>api,events,reads,capabilityReads,holdCapabilities,dispose}
+      return {api:()=>api,events,reads,capabilityReads,holdCapabilities,identities,preparations,dispose}
     }
   `,
   )
@@ -243,7 +246,11 @@ test("the WebSocket entry preserves Part discovery and revalidates live capabili
       socket.notify({ type: "config.updated", properties: { scope: "global", changedFields: ["features"] } })
       await waitUntil(() => h.capabilityReads.length === 1)
       expect(api.capabilities.current()).toBeUndefined()
-      const enabled = { apiVersion: 1, features: ["session-long-term-memory"] }
+      const enabled = {
+        apiVersion: 1,
+        runtimeID: "94497ff6-b2b3-478e-a3aa-ce77665f0626",
+        features: ["session-long-term-memory"],
+      }
       h.capabilityReads[0].resolve(Response.json(enabled))
       await waitUntil(() => api.capabilities.has("session-long-term-memory"))
 
@@ -257,7 +264,7 @@ test("the WebSocket entry preserves Part discovery and revalidates live capabili
       socket.notify(reloaded)
       await waitUntil(() => h.capabilityReads.length === 3)
       expect(h.capabilityReads[1].signal.aborted).toBe(true)
-      h.capabilityReads[2].resolve(Response.json({ apiVersion: 1, features: [] }))
+      h.capabilityReads[2].resolve(Response.json({ ...enabled, features: [] }))
       await waitUntil(() => api.capabilities.current() !== undefined)
       h.capabilityReads[1].resolve(Response.json(enabled))
       await new Promise((resolve) => setTimeout(resolve, 30))
@@ -286,6 +293,22 @@ test("the WebSocket entry preserves Part discovery and revalidates live capabili
       await new Promise((resolve) => setTimeout(resolve, 30))
       expect(api.capabilities.current()).toBeUndefined()
       expect(h.capabilityReads).toHaveLength(7)
+      await waitUntil(() => h.capabilityReads.length === 8)
+      const replacement = "01487365-5a92-44c6-85bd-3b47c61cb066"
+      h.capabilityReads[7].resolve(Response.json({ ...enabled, runtimeID: replacement }))
+      await waitUntil(() => h.identities.length === 1)
+      expect(h.identities).toEqual([{ url: "http://fixture.local", runtimeID: replacement }])
+      expect(api.capabilities.current()).toBeUndefined()
+      expect(api.connected()).toBe(false)
+      expect(sockets).toHaveLength(2)
+      const pending = api.client.global.health().catch((error) => error)
+      await waitUntil(() => h.reads.length === 2)
+      h.dispose()
+      api.prepareScopeState([])
+      expect(h.preparations).toEqual([])
+      expect(h.reads[1].signal.aborted).toBe(true)
+      h.reads[1].resolve(Response.json({ healthy: true }))
+      expect(await pending).toBeInstanceOf(Error)
     } finally {
       h.dispose()
     }

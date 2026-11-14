@@ -6,14 +6,22 @@ import { Storage } from "../../src/storage/storage"
 import { StoragePath } from "../../src/storage/path"
 import { StorageRecovery } from "../../src/storage/recovery"
 import { storageTestBackends } from "../support/storage-backends"
-import { testRuntime } from "../support/runtime"
+import { testEnvironmentRuntime as testRuntime } from "../support/environment-origin"
 
 function bind() {
   return Environment.bind({ scopeID: "scope", ownerID: "session", provider: "held-provider", spec: {} })
 }
 
-function acquire(id: string) {
-  return Environment.acquire(id, { scopeID: "scope", useID: "tool", capabilities: ["exec"] })
+function acquire(
+  id: string,
+  runtime: { origin(id: string): import("../../src/environment/origin").EnvironmentOrigin.Token },
+) {
+  return Environment.acquire(id, {
+    scopeID: "scope",
+    useID: "tool",
+    ownership: runtime.origin("tool"),
+    capabilities: ["exec"],
+  })
 }
 
 for (const backend of storageTestBackends()) {
@@ -65,10 +73,10 @@ for (const backend of storageTestBackends()) {
       await runtime.run(async () => {
         const environment = await bind()
         const release = async () => {
-          await (await acquire(environment.id)).release()
+          await (await acquire(environment.id, runtime)).release()
           return Environment.deallocate(environment.id, { scopeID: "scope" })
         }
-        const pending = operation === "allocate" ? acquire(environment.id) : release()
+        const pending = operation === "allocate" ? acquire(environment.id, runtime) : release()
         void pending.catch(() => {})
         try {
           await entered.promise
@@ -110,7 +118,7 @@ for (const backend of storageTestBackends()) {
     })
     await runtime.run(async () => {
       const environment = await bind()
-      await (await acquire(environment.id)).release()
+      await (await acquire(environment.id, runtime)).release()
       const pending = Environment.deallocate(environment.id, { scopeID: "scope" })
       void pending.catch(() => {})
       try {
@@ -157,10 +165,10 @@ for (const backend of storageTestBackends()) {
       })
       await runtime.run(async () => {
         const environment = await bind()
-        if (operation === "deallocate") await (await acquire(environment.id)).release()
+        if (operation === "deallocate") await (await acquire(environment.id, runtime)).release()
         const request =
           operation === "allocate"
-            ? acquire(environment.id)
+            ? acquire(environment.id, runtime)
             : Environment.deallocate(environment.id, { scopeID: "scope" })
         const rejected = await request.catch((error: unknown) => error)
         expect(rejected).toBe(failure)
@@ -170,7 +178,7 @@ for (const backend of storageTestBackends()) {
         expect((await Environment.reconcile(environment.id, "scope")).state).toBe(
           operation === "allocate" ? "ready" : "idle",
         )
-        await (await acquire(environment.id)).release()
+        await (await acquire(environment.id, runtime)).release()
         expect((await Environment.deallocate(environment.id, { scopeID: "scope" })).state).toBe("idle")
       })
     }, 30_000)
@@ -216,7 +224,7 @@ for (const backend of storageTestBackends()) {
       })
       await runtime.run(async () => {
         const environment = await bind()
-        const use = await acquire(environment.id)
+        const use = await acquire(environment.id, runtime)
         await use.release()
         expect(await Environment.deallocate(environment.id, { scopeID: "scope" }).catch((error) => error)).toBe(failure)
         await StorageRecovery.recoverOwners()
@@ -264,12 +272,12 @@ for (const backend of storageTestBackends()) {
         await Storage.write(StoragePath.environmentScope(environment.scopeID, environment.id), environment.id)
       }),
     )
-    const pending = first.run(() => acquire(environment.id))
+    const pending = first.run(() => acquire(environment.id, first))
     void pending.catch(() => {})
     try {
       await entered.promise
       await second.run(async () => {
-        const use = await acquire(environment.id)
+        const use = await acquire(environment.id, second)
         expect(use.target.environmentID).toBe(environment.id)
         expect((await Environment.get(environment.id, "scope")).state).toBe("ready")
         await use.release()

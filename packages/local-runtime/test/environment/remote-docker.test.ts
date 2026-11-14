@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test"
 import path from "node:path"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
-import { testRuntime } from "@ericsanchezok/synergy-harness/test/support/runtime"
+import { testEnvironmentRuntime as testRuntime } from "@ericsanchezok/synergy-harness/test/support/environment-origin"
 import { Environment } from "@ericsanchezok/synergy-harness/environment"
 import { EnvironmentExecution } from "@ericsanchezok/synergy-harness/environment/execution"
 import { EnvironmentProviders } from "@ericsanchezok/synergy-harness/environment/provider"
@@ -70,6 +70,7 @@ test.skipIf(!image || process.platform === "win32")(
         })
         try {
           let operation = await EnvironmentExecution.start({
+            origin: runtime.origin("native-execution"),
             id: "tls-command",
             scopeID: "scope",
             environmentID: environment.id,

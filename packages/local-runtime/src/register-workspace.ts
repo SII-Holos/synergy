@@ -1,4 +1,6 @@
 import { registerSessionTransferWorkspace } from "./session-transfer-workspace"
+import { registerSessionTransferWorkspaces } from "./session-transfer-workspaces"
+import { registerSessionTransferWorkspaceTarget } from "./session-transfer-workspace-target"
 import { SnapshotLink } from "@ericsanchezok/synergy-harness/session/snapshot-link"
 import { FileLink } from "./file/link"
 import { SnapshotRestore } from "@ericsanchezok/synergy-harness/session/snapshot-restore"
@@ -19,6 +21,9 @@ import fs from "node:fs/promises"
 import path from "node:path"
 import { Global } from "@ericsanchezok/synergy-harness/global"
 import { WorkspaceBinding, WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
+import { NativeProcessMaintenance } from "./process/maintenance"
+import { NativeSessionTransferPhysical } from "./session-transfer-physical"
+import { registerNativeWorkspaceMove } from "./workspace/move"
 
 const log = Log.create({ service: "runtime.workspace" })
 
@@ -45,9 +50,15 @@ const workspaceServices: SessionWorkspaceRuntime.Provider = {
 }
 
 export function registerWorkspace(coordinator = new WorkspaceCoordinator()) {
+  NativeSessionTransferPhysical.register(coordinator)
+  registerNativeWorkspaceMove(coordinator)
+  NativeProcessMaintenance.register(coordinator)
   registerWorkspaceIdentityMigrations()
   registerSessionTransferWorkspace()
+  registerSessionTransferWorkspaces()
+  registerSessionTransferWorkspaceTarget()
   SnapshotLink.register({ type: (filename) => FileLink.type(filename) })
+  WorkspaceFileRestore.register()
   SnapshotRestore.register(WorkspaceFileRestore)
   WorkspaceFileImport.register(WorkspaceFileService)
   WorkspaceAccess.register(coordinator)

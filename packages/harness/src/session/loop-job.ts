@@ -2,10 +2,12 @@ import { RuntimeContext } from "../lifecycle/context"
 import { RolloutRecordingError } from "./rollout/error"
 import { RolloutContext } from "./rollout/context"
 import { AsyncLocalStorage } from "node:async_hooks"
+import { addAbortListener } from "node:events"
 import { MessageV2 } from "./message-v2"
 import type { Info } from "./types"
 import { Log } from "../util/log"
 import { ObservabilityMetrics } from "../observability/metrics"
+import { RuntimeMaintenance } from "../storage/runtime-maintenance"
 
 export namespace LoopJob {
   const log = Log.create({ service: "session.loop-job" })
@@ -77,6 +79,7 @@ export namespace LoopJob {
     rootID: string
     abort: AbortSignal
     detached: boolean
+    admission: "checked" | "deferred"
     resume: ReturnType<typeof AsyncLocalStorage.snapshot>
   }
 
@@ -91,11 +94,26 @@ export namespace LoopJob {
     cancel?: AbortController
   }
 
+  interface RecordingFailure {
+    sessionID: string
+    error: InstanceType<typeof RolloutRecordingError>
+    detached: boolean
+    retained: boolean
+  }
+
+  interface RecordingCapture {
+    owns(sessionID: string): Promise<boolean>
+    pending: Set<Promise<boolean>>
+  }
+
   const runtimeState = RuntimeContext.state(() => ({
     registry: new Map<string, RegisteredJob>(),
     signals: new Map<string, Signal>(),
     background: new Map<string, BackgroundState>(),
-    failures: new Map<string, { error: InstanceType<typeof RolloutRecordingError>; detached: boolean }>(),
+    failures: new Map<string, RecordingFailure>(),
+    recordingCaptures: new Set<RecordingCapture>(),
+    maintenance: undefined as RuntimeMaintenance.Lease | undefined,
+    maintenanceFailure: undefined as InstanceType<typeof RolloutRecordingError> | undefined,
     backgroundSequence: 0,
   }))
 
@@ -103,6 +121,72 @@ export namespace LoopJob {
 
   const DEFAULT_BACKGROUND_TIMEOUT_MS = 180_000
   const NEVER_ABORTED_SIGNAL = new AbortController().signal
+
+  export function registerMaintenanceOwner() {
+    RuntimeMaintenance.register("loop-jobs", {
+      version: 1,
+      order: 150,
+      async suspend(context) {
+        await RuntimeMaintenance.assertDraining(context.lease)
+      },
+      async drain(context) {
+        await RuntimeMaintenance.assertDraining(context.lease)
+        const state = runtimeState()
+        state.maintenance = context.lease
+        while (state.background.size) {
+          context.signal.throwIfAborted()
+          const aborted = Promise.withResolvers<never>()
+          using listener = addAbortListener(context.signal, () => aborted.reject(context.signal.reason))
+          await Promise.race([
+            Promise.all([...state.background.values()].map((run) => run.completion)),
+            aborted.promise,
+          ])
+        }
+        state.maintenanceFailure ??= state.failures.values().next().value?.error
+        if (state.maintenanceFailure)
+          throw new RuntimeMaintenance.Blocked(
+            { message: "Background loop recording failed during maintenance" },
+            { cause: state.maintenanceFailure },
+          )
+      },
+      async inspect(context) {
+        context.signal.throwIfAborted()
+        const state = runtimeState()
+        if (state.maintenanceFailure || state.failures.size)
+          return [
+            {
+              owner: "loop-jobs",
+              code: "background_recording_failed",
+              label: "Reconcile the native background recording failure before releasing maintenance",
+              recoverable: true,
+            },
+          ]
+        return state.background.size
+          ? [
+              {
+                owner: "loop-jobs",
+                code: "background_jobs_active",
+                label: "Wait for native background jobs and their final saves to finish",
+                recoverable: true,
+              },
+            ]
+          : []
+      },
+      async release(context) {
+        await RuntimeMaintenance.assertReleasing(context.lease)
+      },
+      async released(context) {
+        await RuntimeMaintenance.assertReleased(context.lease)
+        if (RuntimeContext.isReady()) runtimeState().maintenance = undefined
+      },
+    })
+  }
+
+  async function assertJobAdmission() {
+    await RuntimeMaintenance.assertMutation()
+    if (runtimeState().maintenance)
+      throw new RuntimeMaintenance.Blocked({ message: "Maintenance has drained native loop-job admission" })
+  }
 
   export function register<Payload extends JobInstance>(job: Job<Payload>) {
     const instanceState = runtimeState()
@@ -147,6 +231,7 @@ export namespace LoopJob {
   }
 
   export async function execute(instances: JobInstance[], ctx: Context): Promise<FlowResult> {
+    await assertJobAdmission()
     const instanceState = runtimeState()
 
     const recorded = instanceState.failures.get(ownerKey(ctx.sessionID, ctx.lastUser.rootID ?? ctx.lastUser.id))
@@ -170,7 +255,7 @@ export namespace LoopJob {
         log.error("failed to capture background job", { type: instance.type, error })
         continue
       }
-      scheduleBackground(job, payload, ctx.sessionID, ctx.abort, ctx.lastUser.rootID ?? ctx.lastUser.id)
+      scheduleBackground(job, payload, ctx.sessionID, ctx.abort, ctx.lastUser.rootID ?? ctx.lastUser.id, "checked")
     }
     let flow: FlowResult = "pass"
     for (const { instance, job } of blocking) {
@@ -189,6 +274,54 @@ export namespace LoopJob {
     const errors = [...instanceState.failures.values()].map((entry) => entry.error)
     instanceState.failures.clear()
     if (errors.length) throw new AggregateError(errors, "Background loop jobs failed during runtime shutdown")
+  }
+
+  export function preserveRecordingFailures(owns: RecordingCapture["owns"]) {
+    const captures = runtimeState().recordingCaptures
+    const capture: RecordingCapture = { owns, pending: new Set() }
+    captures.add(capture)
+    return {
+      async [Symbol.asyncDispose]() {
+        captures.delete(capture)
+        await Promise.all([...capture.pending])
+      },
+    }
+  }
+
+  async function retainRecordingFailure(entry: RecordingFailure) {
+    for (const capture of runtimeState().recordingCaptures) {
+      if (entry.retained) return
+      const checked = capture.owns(entry.sessionID)
+      capture.pending.add(checked)
+      try {
+        if (await checked) entry.retained = true
+      } finally {
+        capture.pending.delete(checked)
+      }
+    }
+  }
+
+  export async function drainSnapshot(sessionID: string, signal: AbortSignal) {
+    const state = runtimeState()
+    for (;;) {
+      signal.throwIfAborted()
+      const owned = [...state.background.values()].filter(
+        (run) => run.current.sessionID === sessionID || run.pending?.sessionID === sessionID,
+      )
+      if (!owned.length) break
+      const aborted = Promise.withResolvers<never>()
+      using listener = addAbortListener(signal, () => aborted.reject(signal.reason))
+      const settled = await Promise.race([Promise.allSettled(owned.map((run) => run.completion)), aborted.promise])
+      const rejected = settled.find((result) => result.status === "rejected")
+      if (rejected?.status === "rejected") throw rejected.reason
+    }
+    let failure: RecordingFailure | undefined
+    for (const entry of state.failures.values()) {
+      if (entry.sessionID !== sessionID) continue
+      entry.retained = true
+      failure ??= entry
+    }
+    if (failure) throw failure.error
   }
 
   /**
@@ -216,7 +349,8 @@ export namespace LoopJob {
       if (entry.detached) continue
       if (rootID === undefined ? key.startsWith(`${sessionID}:`) : key === ownerKey(sessionID, rootID)) {
         failure ??= entry.error
-        instanceState.failures.delete(key)
+        await retainRecordingFailure(entry)
+        if (!entry.retained) instanceState.failures.delete(key)
       }
     }
     if (failure) throw failure
@@ -248,7 +382,8 @@ export namespace LoopJob {
       if (!entry.detached || !key.startsWith(`${sessionID}:`)) continue
       if (rootIDs !== undefined && !rootIDs.has(key.slice(sessionID.length + 1))) continue
       failure ??= entry.error
-      instanceState.failures.delete(key)
+      await retainRecordingFailure(entry)
+      if (!entry.retained) instanceState.failures.delete(key)
     }
     if (failure) throw failure
   }
@@ -282,14 +417,16 @@ export namespace LoopJob {
    * global activity probe: session status alone cannot see detached work, so a
    * machine running only background jobs would otherwise look idle.
    */
-  export function activeBackgroundCount(sessionID?: string): number {
+  export function activeBackgroundCount(sessionID?: string, rootID?: string): number {
     const instanceState = runtimeState()
 
-    return sessionID
-      ? [...instanceState.background.values()].filter(
-          (state) => state.current.sessionID === sessionID || state.pending?.sessionID === sessionID,
-        ).length
-      : instanceState.background.size
+    if (sessionID === undefined && rootID === undefined) return instanceState.background.size
+    const matches = (run: BackgroundRun | undefined) =>
+      run !== undefined &&
+      (sessionID === undefined || run.sessionID === sessionID) &&
+      (rootID === undefined || run.rootID === rootID)
+    return [...instanceState.background.values()].filter((state) => matches(state.current) || matches(state.pending))
+      .length
   }
 
   export interface ScheduleDetachedInput {
@@ -311,12 +448,13 @@ export namespace LoopJob {
   export function scheduleDetached(input: ScheduleDetachedInput): boolean {
     const instanceState = runtimeState()
 
+    if (instanceState.maintenance) return false
     const job = instanceState.registry.get(input.type)
     if (!job || job.blocking || job.detached !== true) return false
     const backgroundJob = job as RegisteredBackgroundJob
     const payload = { type: input.type, ...(input.payload ?? {}) }
     try {
-      scheduleBackground(backgroundJob, payload, input.sessionID, NEVER_ABORTED_SIGNAL, input.rootID)
+      scheduleBackground(backgroundJob, payload, input.sessionID, NEVER_ABORTED_SIGNAL, input.rootID, "deferred")
     } catch (error) {
       log.warn("detached schedule failed", { type: input.type, error })
       return false
@@ -330,6 +468,7 @@ export namespace LoopJob {
     sessionID: string,
     abort: AbortSignal,
     rootID: string,
+    admission: BackgroundRun["admission"],
   ) {
     const instanceState = runtimeState()
 
@@ -343,6 +482,7 @@ export namespace LoopJob {
       rootID,
       abort,
       detached: job.detached === true,
+      admission,
       resume: AsyncLocalStorage.snapshot(),
     }
     const current = instanceState.background.get(key)
@@ -387,7 +527,19 @@ export namespace LoopJob {
         outcome = error instanceof DOMException && error.name === "TimeoutError" ? "timeout" : "error"
         log.error("job failed", { type: state.type, outcome, error })
         if (RolloutRecordingError.isInstance(error)) {
-          instanceState.failures.set(ownerKey(run.sessionID, run.rootID), { error, detached: run.detached })
+          const key = ownerKey(run.sessionID, run.rootID)
+          const previous = instanceState.failures.get(key)
+          const failure: RecordingFailure = previous?.retained
+            ? previous
+            : {
+                sessionID: run.sessionID,
+                error,
+                detached: run.detached,
+                retained: false,
+              }
+          instanceState.failures.set(key, failure)
+          await retainRecordingFailure(failure)
+          if (instanceState.maintenance) instanceState.maintenanceFailure ??= error
           if (!run.detached) {
             // Bound recording failures still abort the owning loop: the turn
             // cannot produce trustworthy evidence without its ledger. A
@@ -423,6 +575,7 @@ export namespace LoopJob {
 
   async function executeWithTimeout(state: BackgroundState) {
     const run = state.current
+    if (run.admission === "deferred") await RuntimeMaintenance.assertMutation()
     const controller = new AbortController()
     const timeoutMs = backgroundTimeoutMs(run.job)
     const timeout = setTimeout(

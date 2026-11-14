@@ -3,8 +3,27 @@ import { upgradeSessionRecords } from "../migration"
 import type { Info } from "./types"
 import { WorkspaceCatalog } from "../workspace/catalog"
 import type { StoreTransaction } from "../storage/transactional-store"
+import { StorageCompat } from "../storage/compat"
+import { SessionCompat } from "./compat-import"
 
 export namespace SessionRecords {
+  export async function readMetadataMany(keys: string[][]): Promise<Array<Info | undefined>> {
+    for (const key of keys)
+      if (key.length !== 4 || key[0] !== "sessions" || key[3] !== "info") throw new Error("Expected a Session info key")
+    const locators = await Storage.readMany<StorageCompat.Locator>(keys.map((key) => StorageCompat.locatorKey(key[2])))
+    const result: Array<Info | undefined> = new Array(keys.length)
+    const published: number[] = []
+    for (const [index, key] of keys.entries()) {
+      const locator = locators[index]
+      if (locator && locator.status !== "imported") {
+        result[index] = await SessionCompat.pendingInfo(key[1], key[2])
+      } else published.push(index)
+    }
+    const records = await readMany(published.map((index) => keys[index]))
+    for (const [index, record] of records.entries()) result[published[index]] = record
+    return result
+  }
+
   export async function readMany(keys: string[][]): Promise<Array<Info | undefined>> {
     await upgradeSessionRecords(
       keys.map((key) => {

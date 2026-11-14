@@ -319,6 +319,14 @@ export namespace StoragePath {
 
   export const permission = (scopeID: ScopeID) => ["permissions", scopeID as string]
   export const permissionRules = () => ["permission-rules"]
+  export const sessionDecisionReceipt = (scopeID: string, sessionID: string, kind: string, requestID: string) => [
+    "sessions",
+    scopeID,
+    sessionID,
+    "decision_receipts",
+    kind,
+    requestID,
+  ]
 
   export const share = (shareID: string) => ["shares", shareID]
 

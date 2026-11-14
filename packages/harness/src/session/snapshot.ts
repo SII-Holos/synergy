@@ -67,6 +67,7 @@ export namespace Snapshot {
     signal?: AbortSignal,
     onOmissions?: (omissions: SnapshotSchema.Omission[]) => void,
   ) {
+    info = WorkspaceCatalog.Info.parse(structuredClone(info))
     const source: SnapshotSchema.Workspace = {
       id: info.id,
       generation: info.binding.generation,
@@ -77,35 +78,43 @@ export namespace Snapshot {
       { workspaceID: info.id, scopeID: info.scopeID, generation: info.binding.generation },
       true,
     )
-    const tree = await WorkspaceContent.manifest(
+    const started = performance.now()
+    return WorkspaceContent.withTree(
       { ...info, content: { revision: info.content?.revision ?? 0, manifest } },
       store,
-    )
-    const started = performance.now()
-    return SnapshotStore.withSession(
-      sessionID,
-      async () => {
-        const operation = SnapshotStore.current()
-        await phase("initialize", () => SnapshotStore.initialize(operation))
-        await SnapshotCapture.refresh(operation, signal, { tree, store }, onOmissions)
-        const options = await SnapshotDurability.treeOptions(operation.repository, signal)
-        const result = await phase("tree", () =>
-          gitSpawn(
-            ["git", ...options, "--git-dir", operation.repository, "write-tree"],
-            path.dirname(operation.repository),
-            undefined,
-            signal,
-          ),
-        )
-        if (result.exitCode !== 0 || !result.text.trim())
-          throw new SnapshotStore.StorageError("Snapshot content could not be retained")
-        const hash = result.text.trim()
-        if (!(await phase("retain", () => SnapshotStore.retainCurrent(hash, signal))))
-          throw new SnapshotStore.StorageError("Snapshot retention failed")
-        return hash
-      },
-      signal,
-      { source },
+      (tree) =>
+        SnapshotStore.withSession(
+          sessionID,
+          async () => {
+            tree.assertCurrent()
+            const operation = SnapshotStore.current()
+            await phase("initialize", () => SnapshotStore.initialize(operation))
+            tree.assertCurrent()
+            await SnapshotCapture.refresh(operation, signal, tree, onOmissions)
+            tree.assertCurrent()
+            const options = await SnapshotDurability.treeOptions(operation.repository, signal)
+            tree.assertCurrent()
+            const result = await phase("tree", () =>
+              gitSpawn(
+                ["git", ...options, "--git-dir", operation.repository, "write-tree"],
+                path.dirname(operation.repository),
+                undefined,
+                signal,
+              ),
+            )
+            tree.assertCurrent()
+            if (result.exitCode !== 0 || !result.text.trim())
+              throw new SnapshotStore.StorageError("Snapshot content could not be retained")
+            const hash = result.text.trim()
+            if (!(await phase("retain", () => SnapshotStore.retainCurrent(hash, signal, tree.assertCurrent))))
+              throw new SnapshotStore.StorageError("Snapshot retention failed")
+            tree.assertCurrent()
+            return hash
+          },
+          signal,
+          { source },
+        ),
+      { signal },
     ).finally(() =>
       ObservabilityMetrics.record({
         name: "snapshot.track.total.duration",

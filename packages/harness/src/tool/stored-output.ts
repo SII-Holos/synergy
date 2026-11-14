@@ -19,6 +19,32 @@ const aliasKey = (alias: string) => ["tool_output_aliases", hash(alias)]
 
 /** Immutable output records share the current Storage authority, never a filesystem path. */
 export namespace StoredToolOutput {
+  export const Metadata = Info
+  export async function open(referenceValue: string) {
+    if (!referenceValue || referenceValue.length > 4096) throw new Error("tool_output_reference_invalid")
+    let id: string
+    if (referenceValue.startsWith("tool-output://")) id = ID.parse(referenceValue.slice("tool-output://".length))
+    else {
+      const alias = await Storage.read<{ alias: string; id: string }>(aliasKey(referenceValue))
+      if (alias.alias !== referenceValue) throw new StorageIntegrityError("Tool output alias mismatch")
+      id = ID.parse(alias.id)
+    }
+    const info = Info.parse(await Storage.read(infoKey(id)))
+    const location = (await Storage.artifactReferences({ prefix: dataKey(id), limit: 1 }))[0]
+    if (
+      !location ||
+      JSON.stringify(location.key) !== JSON.stringify(dataKey(id)) ||
+      location.location.size !== info.bytes ||
+      location.location.sha256 !== info.sha256
+    )
+      throw new StorageIntegrityError("Tool output checksum metadata mismatch")
+    return {
+      reference: reference(id),
+      ...info,
+      stream: (signal?: AbortSignal) => Storage.readBinaryStream(dataKey(id), { signal }),
+    }
+  }
+
   export async function save(id: string, text: string, aliases: string[] = []) {
     ID.parse(id)
     if (Buffer.byteLength(text) > MAX_BYTES) throw new Error("tool_output_size_limit")

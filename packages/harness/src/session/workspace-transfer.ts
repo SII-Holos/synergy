@@ -3,9 +3,10 @@ import type { SessionExport } from "./session-export"
 import type { SnapshotSchema } from "./snapshot-schema"
 import { Workspace } from "./workspace-schema"
 import { ScopeTransfer } from "../scope/transfer"
+import { z } from "zod"
 
 export namespace WorkspaceTransfer {
-  export type Reference = { id: string; scopeID: string; legacy?: Workspace }
+  export type Reference = { id: string; scopeID: string; generation?: number; legacy?: Workspace }
   export type Resolve = (reference: Reference) => string
 
   function object(value: unknown): Record<string, unknown> | undefined {
@@ -48,7 +49,19 @@ export namespace WorkspaceTransfer {
       const record = object(value)
       const workspace = object(record?.workspace)
       return record && typeof workspace?.id === "string"
-        ? { ...record, workspace: { ...workspace, id: resolve({ id: workspace.id, scopeID }) } }
+        ? {
+            ...record,
+            workspace: {
+              ...workspace,
+              id: resolve({
+                id: workspace.id,
+                scopeID,
+                ...(workspace.generation === undefined
+                  ? {}
+                  : { generation: z.number().int().positive().safe().parse(workspace.generation) }),
+              }),
+            },
+          }
         : value
     }
     const summary = (value: Record<string, unknown>) => {
@@ -77,7 +90,16 @@ export namespace WorkspaceTransfer {
         ...record,
         referenceContext: {
           ...context,
-          workspace: { ...contextWorkspace, id: resolve({ id: contextWorkspace.id, scopeID }) },
+          workspace: {
+            ...contextWorkspace,
+            id: resolve({
+              id: contextWorkspace.id,
+              scopeID,
+              ...(contextWorkspace.generation === undefined
+                ? {}
+                : { generation: z.number().int().positive().safe().parse(contextWorkspace.generation) }),
+            }),
+          },
         },
       }
     if (key.length === 6 && key[5] === "info" && record.role === "user") return summary(record)
@@ -96,6 +118,15 @@ export namespace WorkspaceTransfer {
     )
       return source(record)
     return record
+  }
+
+  export function recordReferences(key: string[], value: unknown): Reference[] {
+    const references: Reference[] = []
+    record(key, value, (reference) => {
+      references.push(reference)
+      return reference.id
+    })
+    return references
   }
 
   function contextSource(info: MessageV2.Info) {

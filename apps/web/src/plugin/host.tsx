@@ -851,9 +851,17 @@ export function PluginHostProvider(props: ParentProps<{ scopeKey: Accessor<strin
     )
   }
 
-  const shellPreference = createShellPreference(() => server.url)
+  const shellPreference = createShellPreference(
+    () => globalSDK.cacheKey,
+    "shell",
+    () => server.url,
+  )
   const safeUI = useSafeUI()
-  const skinPreference = createShellPreference(() => server.url, "skin")
+  const skinPreference = createShellPreference(
+    () => globalSDK.cacheKey,
+    "skin",
+    () => server.url,
+  )
   const skin = {
     selected: skinPreference.selected,
     select(id: string) {

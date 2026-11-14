@@ -18,6 +18,8 @@ export const useGlobalSDK = () => ({
   content: { active() {} },
   event: { listen: () => () => {} },
   url: "http://scope-memory.test/",
+  cacheKey: "personal-fixture",
+  requestKey: "scope-memory-fixture",
   client: {
     config: { global: () => ok({}) },
     global: { health: () => ok({ healthy: true }), paths: { get: () => ok({}) }, agenda: { list: () => ok([]) } },

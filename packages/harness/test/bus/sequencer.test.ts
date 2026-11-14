@@ -86,10 +86,29 @@ function retainPayload(sequencer: SyncSequencer) {
 test("releases expired payloads while idle without a stamp or replay", async () => {
   const sequencer = new SyncSequencer("idle", 4096, 20)
   const payload = retainPayload(sequencer)
+  const unowned = (() => new WeakRef({ control: true }))()
   await Bun.sleep(60)
-  Bun.gc(true)
-  await Bun.sleep(0)
-  Bun.gc(true)
+  const deadline = performance.now() + 1000
+  let collected = false
+  // WeakRefDeref retains live targets; cross native jobs before the next GC sample.
+  // Provenance: https://tc39.es/ecma262/multipage/managing-memory.html#sec-weakrefderef
+  while (!collected && performance.now() < deadline) {
+    await new Promise<void>((resolve) => setImmediate(resolve))
+    Bun.gc(true)
+    await new Promise<void>((resolve) => setImmediate(resolve))
+    collected = payload.deref() === undefined
+  }
+  if (!collected) {
+    const entries: unknown = Reflect.get(sequencer, "entries")
+    console.error(
+      "idle payload collection diagnostic",
+      JSON.stringify({
+        retainedEntries: Array.isArray(entries) ? entries.length : null,
+        cleanupPending: Reflect.get(sequencer, "cleanupTimer") !== undefined,
+        unownedControlCollected: unowned.deref() === undefined,
+      }),
+    )
+  }
   expect(payload.deref()).toBeUndefined()
   expect(sequencer.current).toBe(1)
   expect(sequencer.replay(0, Date.now()).status).toBe("reset")

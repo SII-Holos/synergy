@@ -2,11 +2,9 @@ import { afterAll, beforeAll, expect, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
 import { chromium, type Browser, type Page } from "playwright"
-import { createServer, type ViteDevServer } from "vite"
-import solid from "vite-plugin-solid"
-import tailwind from "@tailwindcss/vite"
+import { createBrowserFixture, type BrowserFixture } from "../../support/browser-fixture"
 
-let server: ViteDevServer
+let server: BrowserFixture
 let browser: Browser
 let page: Page
 let fixture: string
@@ -74,24 +72,13 @@ beforeAll(async () => {
 
   `,
   )
-  const reservation = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() })
-  const port = reservation.port
-  await reservation.stop(true)
-  server = await createServer({
-    configFile: false,
+  server = await createBrowserFixture({
     root: fixture,
-    cacheDir: path.join(fixture, ".vite"),
-    plugins: [solid(), tailwind()],
-    resolve: { alias: { "@": appSrc } },
-    optimizeDeps: {
-      include: ["solid-js", "solid-js/web", "solid-js/store", "@lingui/core", "@lingui/solid"],
-      noDiscovery: true,
-    },
-    server: { host: "127.0.0.1", port, strictPort: true, fs: { allow: [path.resolve(appSrc, "../../.."), fixture] } },
+    styled: true,
+    localized: false,
+    aliases: [{ find: "@", replacement: appSrc }],
   })
-  await server.listen()
-  base = server.resolvedUrls!.local[0]!
-  await server.warmupRequest("/main.tsx")
+  base = server.url
   browser = await chromium.launch({ headless: true })
   page = await browser.newPage({ viewport: { width: 375, height: 812 } })
   page.setDefaultTimeout(4000)

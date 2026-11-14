@@ -3,6 +3,7 @@ import path from "node:path"
 import { FileLockTimeoutError, withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
 import { SnapshotLease } from "../../src/session/snapshot-lease"
 import { StoragePath } from "../../src/storage/path"
+import { Storage } from "../../src/storage/storage"
 import { withTimeout } from "../../src/util/timeout"
 import { Global } from "../../src/global"
 import { afterAll as afterRuntimeTests } from "bun:test"
@@ -363,3 +364,60 @@ test("an admitted reader can finish nested work while maintenance waits, without
   }))
 
 afterRuntimeTests(() => runtime.close())
+
+test("a callback-bound Home lease admits its native nested reads and releases on failure or cancellation", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir()
+    await expect(Storage.transaction(() => SnapshotLease.withHome(tmp.path, async () => {}))).rejects.toThrow(
+      "outside a storage transaction",
+    )
+    const entered = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    const failure = new Error("native publication failed")
+    const held = SnapshotLease.withHome(tmp.path, async () => {
+      expect(await SnapshotLease.use("nested", false, async () => "read", { dataRoot: tmp.path, timeoutMs: 100 })).toBe(
+        "read",
+      )
+      entered.resolve()
+      await release.promise
+      throw failure
+    }).catch((error: unknown) => error)
+    try {
+      await entered.promise
+      await expect(
+        SnapshotLease.acquire("foreign", false, { dataRoot: tmp.path, timeoutMs: 50 }),
+      ).rejects.toBeInstanceOf(SnapshotLease.BusyError)
+    } finally {
+      release.resolve()
+    }
+    expect(await held).toBe(failure)
+    const controller = new AbortController()
+    const reason = new Error("cancel native Snapshot publication")
+    await expect(
+      SnapshotLease.withHome(
+        tmp.path,
+        async () => {
+          controller.abort(reason)
+        },
+        { signal: controller.signal },
+      ),
+    ).rejects.toBe(reason)
+    await using another = await SnapshotLease.acquireHome(tmp.path, { timeoutMs: 100 })
+  }))
+
+test("an escaped Home callback cannot use its inherited native token after publication has ended", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir()
+    const release = Promise.withResolvers<void>()
+    let escaped: Promise<unknown> | undefined
+    await SnapshotLease.withHome(tmp.path, async () => {
+      escaped = (async () => {
+        await release.promise
+        return SnapshotLease.use("escaped", false, async () => "unexpected", { dataRoot: tmp.path, timeoutMs: 100 })
+      })().catch((error: unknown) => error)
+    })
+    release.resolve()
+    expect(await escaped).toBeInstanceOf(Error)
+    expect(String(await escaped)).toContain("closed")
+    await using another = await SnapshotLease.acquireHome(tmp.path, { timeoutMs: 100 })
+  }))

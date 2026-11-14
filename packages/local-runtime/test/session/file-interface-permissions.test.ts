@@ -7,6 +7,7 @@ import { PermissionNext } from "@ericsanchezok/synergy-harness/permission/next"
 import { PermissionRules } from "@ericsanchezok/synergy-harness/permission/rules"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
+import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { RolloutArtifact } from "@ericsanchezok/synergy-harness/session/rollout/artifact"
 import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/ledger"
@@ -25,11 +26,23 @@ async function prepare(
 ) {
   const session = await Session.create({ controlProfile: profile })
   const model = await Provider.getModel("openai", "gpt-4o")
+  const rootID = Identifier.ascending("message")
+  await Session.updateMessage({
+    id: rootID,
+    sessionID: session.id,
+    role: "user",
+    rootID,
+    isRoot: true,
+    agent: "fixture",
+    model: { providerID: model.providerID, modelID: model.id },
+    time: { created: Date.now() },
+  })
   const assistantMessage = {
     id: `msg_${crypto.randomUUID()}`,
     sessionID: session.id,
     role: "assistant" as const,
-    parentID: "msg_user",
+    parentID: rootID,
+    rootID,
     modelID: model.id,
     providerID: model.providerID,
     mode: "build",
@@ -40,6 +53,8 @@ async function prepare(
     time: { created: Date.now() },
   }
   await Session.updateMessage(assistantMessage)
+  const owner = { kind: "session" as const, scopeID: session.scope.id, sessionID: session.id }
+  await RolloutLedger.beginRun(owner, rootID)
   const processor = SessionProcessor.create({
     assistantMessage,
     sessionID: session.id,
@@ -58,7 +73,7 @@ async function prepare(
   return {
     session,
     processor,
-    runID: assistantMessage.parentID,
+    runID: rootID,
     execute(id: string, args: Record<string, unknown>) {
       const tool = resolved.executionTools[id]
       if (!tool?.execute) throw new Error(`Unavailable tool: ${id}`)
@@ -74,6 +89,12 @@ async function prepare(
     parts: () => MessageV2.parts({ sessionID: session.id, messageID: assistantMessage.id }),
     async [Symbol.asyncDispose]() {
       processor.dispose("test")
+      const tools = await RolloutLedger.tools(owner, rootID)
+      await RolloutLedger.finishRun(
+        owner,
+        rootID,
+        tools.some((tool) => tool.status !== "completed") ? "failed" : "completed",
+      )
       await Session.remove(session.id)
     },
   }

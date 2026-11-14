@@ -119,7 +119,7 @@ test("authenticated execution transport uses the native handler and replays outp
   expect(await Bun.file(staged.paths["note.md"]).text()).toBe("A remote note")
   await expect(
     remote.prepareInputs({ id: "operation", files: [{ name: "note.md", data: "b3RoZXI=" }] }),
-  ).rejects.toThrow("different input")
+  ).rejects.toThrow("Native preparation cannot change or reuse its original input")
   expect((await fetch(new URL("/v1/status", host.url))).status).toBe(401)
   const mount = await remote.files.mount({
     id: "files",
@@ -148,7 +148,9 @@ test("authenticated execution transport uses the native handler and replays outp
   }
   const request = { id: "operation", target, command, digest: ExecutionProtocol.digest(command) }
   await remote.start(request)
-  await expect(remote.discardInputs(request.id)).rejects.toThrow("retained")
+  await expect(remote.discardInputs(request.id)).rejects.toThrow(
+    "Original execution retains its native preparation until saving completes",
+  )
   let status = await remote.status(request.id)
   for (let attempt = 0; status && !ExecutionProtocol.terminal(status) && attempt < 400; attempt++) {
     await Bun.sleep(10)
@@ -313,6 +315,67 @@ test.skipIf(process.platform !== "darwin")(
     })
   },
   20_000,
+)
+
+test.skipIf(process.platform !== "darwin")(
+  "durable preparation transport retains its original policy identity without command dispatch",
+  async () => {
+    const { testRuntime } = await import("../support/runtime")
+    const { SandboxBackend } = await import("../../src/sandbox/backend")
+    await using runtime = await testRuntime()
+    await runtime.run(async () => {
+      await using tmp = await tmpdir()
+      const target = { environmentID: "preparation", allocationID: "allocation", generation: 1 }
+      await using executor = await NativeExecutor.open({
+        target,
+        directory: path.join(tmp.path, "receipts"),
+        sandbox: SandboxBackend,
+        coordinator: new WorkspaceCoordinator({ directory: path.join(tmp.path, "claims") }),
+      })
+      await using host = ExecutionHost.listen({
+        executor,
+        target,
+        token: "original-preparation-transport-token",
+        listen: { hostname: "127.0.0.1", port: 0 },
+      })
+      const remote = new RemoteExecutor({ url: host.url, target, token: "original-preparation-transport-token" })
+      const id = "original-tool-operation"
+      const input = {
+        operationID: id,
+        command: "/bin/sh",
+        args: ["-c", "true"],
+        workspace: tmp.path,
+        sandboxMode: "workspace_write",
+      } satisfies ExecutionProtocol.SandboxInput
+      let sandboxID: string | undefined
+      try {
+        expect((await remote.describe()).preparationVersion).toBe(1)
+        const wrapper = await remote.prepareSandbox(input)
+        sandboxID = wrapper.id
+        expect(wrapper.sandboxed).toBe(true)
+        expect((await remote.prepareSandbox(input)).id).toBe(wrapper.id)
+        expect(await remote.inspectPreparation(id)).toMatchObject({ id, target, state: "prepared" })
+        expect((await remote.inspectPreparation(id)).sandboxes.map((sandbox) => sandbox.id)).toEqual([wrapper.id])
+        expect(await remote.status(id)).toBeUndefined()
+        await remote.releaseSandbox(wrapper.id, id)
+        await remote.releasePreparation(id)
+        expect((await remote.inspectPreparation(id)).state).toBe("released")
+        await expect(remote.prepareSandbox({ ...input, args: ["-c", "false"] })).rejects.toThrow("closed")
+        const foreign = await fetch(new URL(`/v1/preparations/${id}`, host.url), {
+          headers: {
+            authorization: "Bearer original-preparation-transport-token",
+            "x-synergy-target": JSON.stringify({ ...target, generation: 2 }),
+          },
+        })
+        expect(foreign.status).toBe(409)
+        expect((await remote.inspectPreparation(id)).state).toBe("released")
+      } finally {
+        if (sandboxID) await remote.releaseSandbox(sandboxID, id)
+        await remote.releasePreparation(id)
+      }
+    })
+  },
+  10_000,
 )
 
 test("cooperative execution reports lifecycle contention and retains ownership until acknowledgement", async () => {

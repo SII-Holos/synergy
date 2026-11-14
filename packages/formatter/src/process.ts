@@ -2,15 +2,27 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
 import { EnvironmentProcess } from "@ericsanchezok/synergy-harness/environment/process"
 import { EnvironmentResources } from "@ericsanchezok/synergy-harness/environment/resources"
+import { EnvironmentOrigin } from "@ericsanchezok/synergy-harness/environment/origin"
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { randomUUID } from "node:crypto"
 
 export namespace FormatterProcess {
+  const registration = RuntimeContext.state<{ origin?: ReturnType<typeof EnvironmentOrigin.registerHost> }>(() => ({}))
+  export function register() {
+    registration().origin ??= EnvironmentOrigin.registerHost("formatter")
+  }
   export async function run(input: {
     command: string[]
     environment?: Record<string, string>
     signal?: AbortSignal
     expectedFile?: { path: string; canonical: string; version: string | null }
   }) {
+    input = {
+      ...input,
+      command: [...input.command],
+      environment: input.environment && { ...input.environment },
+      expectedFile: input.expectedFile && { ...input.expectedFile },
+    }
     if (!input.command.length) throw new Error("Formatter command is empty")
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(new DOMException("Formatter timed out", "TimeoutError")), 30000)
@@ -26,19 +38,25 @@ export namespace FormatterProcess {
     let bytes = 0
     try {
       const selected = EnvironmentResources.current()
+      const id = `format:${randomUUID()}`
+      const origin = selected ? selected.origin : registration().origin?.capture(id)
+      if (!origin) throw new Error("Formatter requires an owned execution origin")
       const scopeID = ScopeContext.current.scope.id
-      const workspaceID = selected?.workspace?.id ?? ScopeContext.tryWorkspace()?.id
+      const workspaceID = selected
+        ? (selected.workspace?.id ?? selected.selection?.workspaceID)
+        : ScopeContext.tryWorkspace()?.id
       const environmentID = selected?.environment?.id ?? selected?.selection?.environmentID
       resources = await (environmentID ? EnvironmentResources.resolve : EnvironmentResources.select)({
         scopeID,
         ownerID: `formatter:${workspaceID ?? scopeID}`,
         workspaceID,
         environmentID,
+        origin,
         needs: { execution: "exec" },
         signal,
       })
       owned = await EnvironmentProcess.prepare({
-        id: `format:${randomUUID()}`,
+        id,
         scopeID,
         resources,
         signal,

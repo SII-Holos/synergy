@@ -17,6 +17,7 @@ describe("tool icon identity", () => {
   })
 
   test("input-dependent operations retain their business identity", () => {
+    expect(getToolIcon("organization_knowledge")).toBe("book-open-text")
     expect(getToolIcon("note_read")).toBe("notebook-text")
     expect(getToolIcon("note_read", { kind: "blueprint" })).toBe(getSemanticIcon("blueprint.main"))
     expect(getToolIcon("session_control", { action: "compact" })).toBe(getSemanticIcon("settings.compaction"))

@@ -20,6 +20,7 @@ import type { StorageMaintenanceOperation } from "@ericsanchezok/synergy-util/ru
 import { StoragePath } from "./path"
 import { SqliteDriver } from "./sqlite-driver"
 import { PostgresDriver } from "./postgres-driver"
+import { verifySqliteSchema } from "./sqlite-schema"
 import { sqlParameterBytes } from "./sql-contract"
 import { Identifier } from "../id/id"
 import { EvidenceOwnerProjection, evidenceOwnerTables, evidenceOwnerTriggers } from "./evidence-owner-projection"
@@ -72,6 +73,7 @@ export interface RecordQuery {
 }
 export interface ChildKeyQuery {
   prefix: string[]
+  includeBranches?: boolean
   after?: string
   before?: string
   limit?: number
@@ -353,6 +355,14 @@ export class StoreTransaction {
 
   guardMutations(guard: (keys: string[][], tree: boolean) => Promise<void>) {
     this.mutationGuard = guard
+  }
+
+  addMutationGuard(guard: (keys: string[][], tree: boolean) => Promise<void>) {
+    const previous = this.mutationGuard
+    this.mutationGuard = async (keys, tree) => {
+      await previous?.(keys, tree)
+      await guard(keys, tree)
+    }
   }
 
   restrictToPublishedOwners() {
@@ -864,7 +874,9 @@ export class StoreTransaction {
       [...values, limit, this.namespace],
     )
     return {
-      keys: rows.flatMap((row) => (row.key_text === null ? [] : [JSON.parse(row.key_text) as string[]])),
+      keys: input.includeBranches
+        ? rows.map((row) => [...input.prefix, row.segment])
+        : rows.flatMap((row) => (row.key_text === null ? [] : [JSON.parse(row.key_text) as string[]])),
       after: rows.length === limit ? rows.at(-1)!.segment : undefined,
     }
   }
@@ -1058,6 +1070,23 @@ export class StoreTransaction {
     await this.cleanDanglingNodes([prefix])
     const removed = Number(count?.count ?? 0)
     return removed
+  }
+
+  async pruneTreeWithinBudget(
+    prefix: string[],
+    input: { limits: PruneLimits; cutoff: number; active(): boolean; maintenance?: boolean; signal?: AbortSignal },
+  ) {
+    this.check(true)
+    if (input.active()) return { deferred: "active" as const, records: 0 }
+    const deferred = input.maintenance
+      ? await this.pruneEvidenceRecency(prefix, input.cutoff)
+      : await this.pruneDeferral(prefix, input.limits, input.cutoff)
+    if (deferred) return { deferred, records: 0 }
+    if (input.active()) return { deferred: "active" as const, records: 0 }
+    return {
+      records: await this.pruneTree(prefix, { maintenance: input.maintenance, signal: input.signal }),
+      deferred: undefined,
+    }
   }
 
   async pruneEvidenceRecency(prefix: string[], cutoff: number): Promise<PruneDeferral | undefined> {
@@ -1363,21 +1392,30 @@ export class StoreTransaction {
   async *artifacts(prefix: string[] = []): AsyncGenerator<{ key: string[]; location: ArtifactLocation }> {
     this.check()
     await this.assertAdmitted([prefix], true)
-    let after = ""
+    let after: string[] | undefined
     for (;;) {
-      const subtree = this.artifactSubtree(prefix, after)
-      const rows = await this.connection.query(
-        `SELECT key_text, location FROM storage_artifacts WHERE ${subtree.condition} ORDER BY key_text LIMIT 256`,
-        subtree.values,
-      )
+      const rows = await this.artifactPage({ prefix, after, limit: 256 })
       if (!rows.length) return
-      for (const row of rows)
-        yield {
-          key: JSON.parse(String(row.key_text)) as string[],
-          location: ArtifactLocation.parse(JSON.parse(String(row.location))),
-        }
-      after = String(rows.at(-1)!.key_text)
+      yield* rows
+      after = rows.at(-1)!.key
     }
+  }
+
+  async artifactPage(input: { prefix: string[]; after?: string[]; limit?: number }) {
+    this.check()
+    const limit = input.limit ?? 256
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 256)
+      throw new StorageConflictError("Invalid artifact page size")
+    await this.assertAdmitted([input.prefix], true)
+    const subtree = this.artifactSubtree(input.prefix, input.after ? JSON.stringify(input.after) : "")
+    const rows = await this.connection.query(
+      `SELECT key_text, location FROM storage_artifacts WHERE ${subtree.condition} ORDER BY key_text LIMIT ?`,
+      [...subtree.values, limit],
+    )
+    return rows.map((row) => ({
+      key: JSON.parse(String(row.key_text)) as string[],
+      location: ArtifactLocation.parse(JSON.parse(String(row.location))),
+    }))
   }
 
   async assertNotDeleted(key: string[]) {
@@ -1480,6 +1518,7 @@ export class TransactionalStore {
     return this.admission.pending
   }
   private readonly writes = new StorageQueue("store.writes")
+  private readonly writeTransactions = new WeakSet<StoreTransaction>()
   private readonly owner = randomUUID()
   private closing?: Promise<void>
   private unavailable?: Error
@@ -1498,10 +1537,19 @@ export class TransactionalStore {
   ) {}
 
   static async open(options: StoreOptions) {
+    return TransactionalStore.openSelected(options, false)
+  }
+
+  static async openExisting(options: StoreOptions) {
+    if (options.readonly) throw new StorageIntegrityError("Existing writer attachment requires writable ownership")
+    return TransactionalStore.openSelected({ ...options, mustExist: true }, true)
+  }
+
+  private static async openSelected(options: StoreOptions, existingOnly: boolean) {
     if (!/^[a-zA-Z0-9_-]{1,128}$/.test(options.namespace)) throw new StorageIntegrityError("Invalid storage namespace")
     const driver: SqlDriver =
       options.backend === "sqlite"
-        ? await SqliteDriver.open(options.filename, options.readonly, options.mustExist)
+        ? await SqliteDriver.open(options.filename, options.readonly, options.mustExist, existingOnly)
         : await PostgresDriver.open(options.url, options.namespace, options.maxConnections, options.readonly)
     const store = new TransactionalStore(driver, options)
     driver.onUnavailable((error) => {
@@ -1509,13 +1557,14 @@ export class TransactionalStore {
     })
     try {
       if (!options.readonly && driver instanceof PostgresDriver) {
-        if (options.backend === "postgres" && options.schema === "verify")
+        if (existingOnly || (options.backend === "postgres" && options.schema === "verify"))
           await driver.verifySchema(schemaFor("postgres"))
         else await driver.initializeSchema(schemaFor("postgres"))
       }
       await driver.transaction(
         async (connection) => {
-          if (!options.readonly && options.backend === "sqlite")
+          if (options.backend === "sqlite" && existingOnly) await verifySqliteSchema(connection, schemaFor("sqlite"))
+          else if (!options.readonly && options.backend === "sqlite")
             for (const statement of schemaFor("sqlite"))
               await connection.query(statement, [], {
                 // `CREATE INDEX` reads every existing row, so on a large store it
@@ -1539,6 +1588,23 @@ export class TransactionalStore {
           // store current before its rows are rewritten is exactly what would
           // let a v2 store claim v3 while still holding hex keys.
           const version = existing ? Number(existing.version) : options.backend === "sqlite" ? 3 : 2
+          if (existingOnly && version !== (options.backend === "sqlite" ? 3 : 2))
+            throw new StorageIntegrityError("Existing storage format requires an explicit storage upgrade")
+          if (existingOnly) {
+            if (options.backend === "sqlite") {
+              const [projection] = await connection.query(
+                "SELECT phase FROM storage_evidence_preparation WHERE namespace = ?",
+                [options.namespace],
+              )
+              if (projection?.phase !== "ready")
+                throw new StorageIntegrityError("Existing storage projection requires explicit preparation")
+            }
+            const [pending] = await connection.query(
+              "SELECT 1 FROM storage_records WHERE namespace = ? AND kind = 'compat_pending' AND body IS NOT NULL LIMIT 1",
+              [options.namespace],
+            )
+            if (pending) throw new StorageIntegrityError("Existing storage compatibility migration is incomplete")
+          }
           store.keyEncoding = options.backend === "sqlite" && version >= 3 ? "bytes" : "hex"
           // The artifact layout is a property of the table, not of the recorded
           // format: a format 3 namespace falls back to a physical `pack` when its
@@ -1568,7 +1634,8 @@ export class TransactionalStore {
             "INSERT INTO storage_namespaces(namespace, version, owner, state) VALUES (?, ?, ?, 'active') ON CONFLICT(namespace) DO UPDATE SET version = CASE WHEN storage_namespaces.version >= 2 THEN storage_namespaces.version ELSE 2 END, owner = excluded.owner, state = excluded.state",
             [options.namespace, options.backend === "sqlite" ? 3 : 2, store.owner],
           )
-          if (options.backend === "sqlite") await EvidenceOwnerProjection.initialize(connection, options.namespace)
+          if (options.backend === "sqlite" && !existingOnly)
+            await EvidenceOwnerProjection.initialize(connection, options.namespace)
         },
         { readOnly: options.readonly },
       )
@@ -1577,7 +1644,7 @@ export class TransactionalStore {
         [options.namespace],
       )
       store.admission.pending = Boolean(pending)
-      if (!options.readonly) store.scheduleEvidencePreparation()
+      if (!options.readonly && !existingOnly) store.scheduleEvidencePreparation()
       return store
     } catch (error) {
       await driver.close()
@@ -1588,6 +1655,12 @@ export class TransactionalStore {
   private check() {
     if (this.unavailable) throw this.unavailable
     if (this.closing) throw new StorageClosedError()
+  }
+
+  assertWriteTransaction(tx: StoreTransaction): void {
+    if (!this.writeTransactions.has(tx))
+      throw new StorageOwnershipError("Native finalization requires this Store's original live write callback")
+    tx.assertHealthy()
   }
 
   /** Reports a store that failed terminally; the host must restart the Runtime
@@ -1670,6 +1743,7 @@ export class TransactionalStore {
               this.artifactPack,
               this.admission,
             )
+            this.writeTransactions.add(tx)
             try {
               const result = await body(tx)
               tx.assertHealthy()
@@ -1686,6 +1760,7 @@ export class TransactionalStore {
                 )
               return result
             } finally {
+              this.writeTransactions.delete(tx)
               tx.finish()
             }
           }, options)
@@ -1741,25 +1816,8 @@ export class TransactionalStore {
     return this.transaction((tx) => tx.pruneTree(prefix))
   }
 
-  pruneTreeWithinBudget(
-    prefix: string[],
-    input: { limits: PruneLimits; cutoff: number; active(): boolean; maintenance?: boolean; signal?: AbortSignal },
-  ) {
-    return this.transaction(
-      async (tx) => {
-        if (input.active()) return { deferred: "active" as const, records: 0 }
-        const deferred = input.maintenance
-          ? await tx.pruneEvidenceRecency(prefix, input.cutoff)
-          : await tx.pruneDeferral(prefix, input.limits, input.cutoff)
-        if (deferred) return { deferred, records: 0 }
-        if (input.active()) return { deferred: "active" as const, records: 0 }
-        return {
-          records: await tx.pruneTree(prefix, { maintenance: input.maintenance, signal: input.signal }),
-          deferred: undefined,
-        }
-      },
-      { priority: "background" },
-    )
+  pruneTreeWithinBudget(prefix: string[], input: Parameters<StoreTransaction["pruneTreeWithinBudget"]>[1]) {
+    return this.transaction((tx) => tx.pruneTreeWithinBudget(prefix, input), { priority: "background" })
   }
 
   get sqliteFilename() {

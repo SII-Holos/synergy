@@ -9,6 +9,7 @@ import { SnapshotTransfer } from "./snapshot-transfer"
 import { SnapshotLease } from "./snapshot-lease"
 import { SnapshotGit } from "./snapshot-git"
 import { Global } from "../global"
+import { upgradeImportedRecord } from "../migration/import"
 
 export namespace SnapshotArchive {
   async function temporaryRepository<T>(action: (repository: string, directory: string) => Promise<T>) {
@@ -88,7 +89,7 @@ export namespace SnapshotArchive {
           await SnapshotStore.initialize(operation)
           await using catalog = await SnapshotTransfer.Catalog.create(operation.repository)
           const imported = await catalog.import(repository, { roots })
-          await catalog.protect(sessionID, roots)
+          await catalog.protect(await SnapshotStore.retentionID(operation.scopeID, sessionID), roots)
           await SnapshotStore.retainMany(operation.scopeID, sessionID, roots)
           await catalog.releaseKeep(imported.keep)
         },
@@ -210,13 +211,21 @@ export namespace SnapshotArchive {
       const from = path.join(sourceV2, scope.name)
       const to = path.join(targetV2, scope.name)
       const owners = new Map<string, z.infer<typeof SnapshotStore.Owner>>()
+      const skippedRetentions = new Set(options.skipped)
       for (const entry of await SnapshotRecords.entries(path.join(from, "owners"))) {
-        if (!entry.isFile() || !entry.name.endsWith(".json") || options.skipped?.has(entry.name.slice(0, -5))) continue
+        if (!entry.isFile() || !entry.name.endsWith(".json")) continue
         SnapshotStore.component(entry.name.slice(0, -5))
-        const incoming = SnapshotStore.Owner.parse(await read(path.join(from, "owners", entry.name)))
+        const key = ["snapshot-v2", scope.name, "owners", entry.name.replace(/\.json$/, "")]
+        const incoming = SnapshotStore.Owner.parse(
+          upgradeImportedRecord(key, await read(path.join(from, "owners", entry.name))),
+        )
+        if (options.skipped?.has(entry.name.slice(0, -5))) {
+          skippedRetentions.add(incoming.retentionID)
+          continue
+        }
         const value = await read(path.join(to, "owners", entry.name))
-        const existing = value === undefined ? undefined : SnapshotStore.Owner.parse(value)
-        if (existing && existing.backend !== incoming.backend)
+        const existing = value === undefined ? undefined : SnapshotStore.Owner.parse(upgradeImportedRecord(key, value))
+        if (existing && (existing.backend !== incoming.backend || existing.retentionID !== incoming.retentionID))
           throw new SnapshotStore.StorageError(
             "Snapshot owner backends conflict; migrate or resolve deleted sessions before merging",
           )
@@ -225,7 +234,7 @@ export namespace SnapshotArchive {
       const marker = await read(path.join(from, "repository.json"))
       if (marker !== undefined) z.object({ version: z.literal(2), objectFormat: z.literal("sha1") }).parse(marker)
       if (await Bun.file(path.join(from, "store.git", "HEAD")).exists()) {
-        await mergeRepository(path.join(from, "store.git"), path.join(to, "store.git"), options.skipped)
+        await mergeRepository(path.join(from, "store.git"), path.join(to, "store.git"), skippedRetentions)
         if (options.metadata !== false)
           await write(path.join(to, "repository.json"), { version: 2, objectFormat: "sha1" })
       } else if (marker !== undefined || [...owners.values()].some((owner) => owner.backend === "shared"))

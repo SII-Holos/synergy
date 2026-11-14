@@ -36,6 +36,17 @@ function profile(overrides: Partial<Parameters<typeof buildPermissionProfile>[0]
 }
 
 describe("READ_DENY_PATHS", () => {
+  test("protects Runtime machine credentials alongside provider credentials", () =>
+    runtime.run(() => {
+      for (const directory of [
+        path.join(runtime.host.home, ".synergy", "auth"),
+        path.join(runtime.host.home, ".synergy", "data", "auth"),
+      ]) {
+        expect(READ_DENY_PATHS(runtime.host.home)).toContain(directory)
+        expect(CREDENTIAL_PATHS(runtime.host.home)).toContain(directory)
+      }
+    }))
+
   test("keeps the plugin credential root and adds cargo registry tokens", () =>
     runtime.run(() => {
       const home = os.homedir()

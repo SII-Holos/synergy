@@ -16,7 +16,11 @@ import { readdir } from "node:fs/promises"
 import path from "node:path"
 
 const repositoryRoot = path.resolve(import.meta.dir, "../../..")
-const ownsRuntimeFiles = new Set(["packages/cli/test/cli/data-storage-command.test.ts"])
+const ownsRuntimeFiles = new Set([
+  "packages/cli/test/cli/data-storage-command.test.ts",
+  "packages/cli/test/cli/diagnostics-source.test.ts",
+  "packages/organization/test/entry-source.test.ts",
+])
 
 function repositoryFile(file: string, packageRoot: string) {
   return file.startsWith("packages/")
@@ -100,6 +104,8 @@ export const ISOLATED_BATCH_FILES: ReadonlySet<string> = new Set([
   "packages/harness/test/migration/terminal-progress.test.ts",
   // Config projection registration is permanent for the process composition.
   "packages/harness/test/config/extensions-field.test.ts",
+  // This native work probe must observe the canonical engine's first selection.
+  "packages/harness/test/storage/event-delivery-query-work.test.ts",
   // GitHub transport redirects global fetch to its loopback server and owns auth caches.
   "packages/channel-github/test/channel/provider/github/api-transport.test.ts",
   "packages/mcp/test/mcp/owner-lifecycle.test.ts",
@@ -172,6 +178,8 @@ export const ISOLATED_BATCH_FILES: ReadonlySet<string> = new Set([
   "packages/harness/test/storage/storage-silent-not-found.test.ts",
   // Host-suspension fixtures replace the process-wide monotonic clock and deadline timers.
   "packages/harness/test/storage/storage-worker-suspend.test.ts",
+  // Resident organization fixtures own several bridges and storage workers; the file serializes its cases.
+  "packages/organization-runtime/test/runtime.test.ts",
   "packages/presets/test/tool/auto-expand.test.ts",
   "packages/media/test/tools/openai-image-gen.test.ts",
   "packages/local-runtime/test/tools/session-search.test.ts",

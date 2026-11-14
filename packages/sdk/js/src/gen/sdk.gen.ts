@@ -402,6 +402,17 @@ import type {
   NoteUpdateResponses,
   ObservabilityDiagnosticsSummaryErrors,
   ObservabilityDiagnosticsSummaryResponses,
+  OrgCloudLocalFileRequest,
+  OrgLocalProjectBind,
+  OrgLocalProjectBindErrors,
+  OrgLocalProjectBindResponses,
+  OrgLocalProjectGetErrors,
+  OrgLocalProjectGetResponses,
+  OrgLocalSessionReadErrors,
+  OrgLocalSessionReadResponses,
+  OrgLocalWorkspaceFilesRequestErrors,
+  OrgLocalWorkspaceFilesRequestResponses,
+  OrgPrivateReadQuery,
   Part as Part2,
   PartDeleteErrors,
   PartDeleteResponses,
@@ -6981,6 +6992,125 @@ export class Storage extends HeyApiClient {
   snapshot = new Snapshot({ client: this.client })
 }
 
+export class OrgLocalProject extends HeyApiClient {
+  /**
+   * Read this member machine's project directory binding
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters: {
+      projectID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "projectID" }] }])
+    return (options?.client ?? this.client).get<OrgLocalProjectGetResponses, OrgLocalProjectGetErrors, ThrowOnError>({
+      url: "/organization-local-project/{projectID}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Bind a native directory selected on this member machine
+   */
+  public bind<ThrowOnError extends boolean = false>(
+    parameters: {
+      projectID: string
+      orgLocalProjectBind?: OrgLocalProjectBind
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "projectID" },
+            { key: "orgLocalProjectBind", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<OrgLocalProjectBindResponses, OrgLocalProjectBindErrors, ThrowOnError>(
+      {
+        url: "/organization-local-project/{projectID}",
+        ...options,
+        ...params,
+        headers: {
+          "Content-Type": "application/json",
+          ...options?.headers,
+          ...params.headers,
+        },
+      },
+    )
+  }
+}
+
+export class OrgLocalWorkspaceFiles extends HeyApiClient {
+  /**
+   * Access the remote Workspace selected by this accepted Session
+   */
+  public request<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      orgCloudLocalFileRequest: OrgCloudLocalFileRequest
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { key: "orgCloudLocalFileRequest", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      OrgLocalWorkspaceFilesRequestResponses,
+      OrgLocalWorkspaceFilesRequestErrors,
+      ThrowOnError
+    >({
+      url: "/organization/sessions/{sessionID}/workspace-files",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
+export class OrgLocalSession extends HeyApiClient {
+  /**
+   * Read creator-only history from this native member Runtime
+   */
+  public read<ThrowOnError extends boolean = false>(
+    parameters: {
+      orgPrivateReadQuery: OrgPrivateReadQuery
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "orgPrivateReadQuery", map: "body" }] }])
+    return (options?.client ?? this.client).post<OrgLocalSessionReadResponses, OrgLocalSessionReadErrors, ThrowOnError>(
+      {
+        url: "/organization/session/read",
+        ...options,
+        ...params,
+        headers: {
+          "Content-Type": "application/json",
+          ...options?.headers,
+          ...params.headers,
+        },
+      },
+    )
+  }
+}
+
 export class Push extends HeyApiClient {
   /**
    * Get the server's public Web Push VAPID key
@@ -8009,6 +8139,7 @@ export class Domain extends HeyApiClient {
         | "plugins"
         | "mcp"
         | "voice"
+        | "organization"
       directory?: string
       scopeID?: string
     },
@@ -8062,6 +8193,7 @@ export class Domain extends HeyApiClient {
         | "plugins"
         | "mcp"
         | "voice"
+        | "organization"
       directory?: string
       scopeID?: string
       configDomainUpdateInput?: ConfigDomainUpdateInput
@@ -8122,6 +8254,7 @@ export class Domain extends HeyApiClient {
         | "plugins"
         | "mcp"
         | "voice"
+        | "organization"
       directory?: string
       scopeID?: string
     },
@@ -8383,6 +8516,7 @@ export class Config extends HeyApiClient {
         | "plugins"
         | "mcp"
         | "voice"
+        | "organization"
         | Array<
             | "features"
             | "general"
@@ -8405,6 +8539,7 @@ export class Config extends HeyApiClient {
             | "plugins"
             | "mcp"
             | "voice"
+            | "organization"
           >
       includeSecrets?: string
     },
@@ -16529,6 +16664,12 @@ export class SynergyClient extends HeyApiClient {
   performance = new Performance({ client: this.client })
 
   storage = new Storage({ client: this.client })
+
+  orgLocalProject = new OrgLocalProject({ client: this.client })
+
+  orgLocalWorkspaceFiles = new OrgLocalWorkspaceFiles({ client: this.client })
+
+  orgLocalSession = new OrgLocalSession({ client: this.client })
 
   push = new Push({ client: this.client })
 

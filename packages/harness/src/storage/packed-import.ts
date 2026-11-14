@@ -328,7 +328,7 @@ export class PackedLegacyImporter {
   async retire() {
     const { store, dataRoot, backupRoot, progress } = this.options
     let state = await this.initial()
-    if (state.phase === "retired") return
+    if (state.phase === "retired") return state
     if (state.fatal || !["complete", "retiring"].includes(state.phase))
       throw new StorageIntegrityError("Cannot retire an incomplete legacy import")
     if (state.phase === "complete") {
@@ -371,5 +371,6 @@ export class PackedLegacyImporter {
     if (position !== committed) await checkpoint()
     state = { ...state, phase: "retired" }
     await store.write(stateKey, state)
+    return state
   }
 }

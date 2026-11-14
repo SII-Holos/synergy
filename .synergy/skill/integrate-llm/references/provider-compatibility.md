@@ -2,6 +2,8 @@
 
 Embedded hosts keep stable model inventory in `ProviderCatalogSource`. For credentials or SDK context tied to an accepted invocation, register `ProviderRequestSource` before composition is sealed. Validate the detached root user metadata there; keep keys out of model options and prompts. Test real `LLM.prepare()` plus worker-plan serialization, concurrent invocation isolation, cancellation and authorization failure. SDK factories consume the ephemeral `hostRequest` context without persisting it.
 
+For fixed gateway capabilities, restrict the host and worker SDK registries together. Retain the validated credential value rather than its mutable options object; validate the exact gateway target and start window before physical transmission. Wrap the Harness-provided fetch instead of replacing it, preserving watchdogs, request evidence and cancellation while applying deployment trust. Test actual workers and both supported protocols, response loss/reuse, invalid authority, native TLS/redirect refusal and partial response evidence after cancellation. An expired prepared capability must fail before dispatch; it cannot authorize a private provider fallback.
+
 Keep bundled catalog imports lazy at the lifecycle boundary. An installed source host with an exclusive catalog must open, query providers and close without evaluating dependency macros or fetching models.dev. Exercise an actual `node_modules` source installation in addition to workspace tests, and include the selected backend's native resources.
 
 ## Direct AI SDK Calls

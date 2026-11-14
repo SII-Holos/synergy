@@ -1,29 +1,29 @@
 # Web Application Rules
 
-These rules apply under `apps/web`. Root [AGENTS.md](../../AGENTS.md) and [PRODUCT.md](PRODUCT.md) still apply.
+Root [AGENTS.md](../../AGENTS.md) and [PRODUCT.md](PRODUCT.md) apply.
 
 Load `develop-frontend`; server contracts also require `change-server-api`, Channel surfaces `change-channel-runtime`, Browser controls `change-browser-runtime`, and plugin hosts/registries `change-plugin-runtime`.
 
 ## Protect the Active App
 
-Never stop the app/server carrying this task. Inspect its URL; do not assume port `3000`. Reuse it for non-disruptive inspection or use `develop-synergy` for an isolated runtime.
+Never stop this task’s app/server. Inspect its URL; never assume port `3000`. Reuse non-disruptively or isolate through `develop-synergy`.
 
 ## Solid State and Frontend Sync
 
 Read [Frontend data sync](../../docs/architecture/frontend-data-sync.md) before changing contexts, session loading, composer intent, events, or reconnect behavior.
 
 - Use stores for collections and updates; signals for independent scalars.
-- Apply entity writes with `reconcile` or a targeted `setStore(..., reconcile(value))`. Do not replace an entity object when one field changes.
-- Read entities by stable key so reactive consumers subscribe only to the row they use.
+- Apply entity writes through `reconcile` or targeted `setStore(..., reconcile(value))`; never replace entities for single-field changes.
+- Read stable entity keys; consumers subscribe only to their rows.
 - Preserve composer resolution layers: explicit draft → session default → fallback. A derived/historical value must not write back into the user's draft. Existing-session selector choices persist through revisioned `modelSelection`; `modelOverride` is its legacy projection.
 - Preserve `seq`/`epoch` watermarks, reconnect replay, fail-open resync, unsequenced streaming deltas, write-behind behavior, and LRU protection of the active session. Do not add per-event REST refetches.
 - Keep the event queue visibility-aware: hidden pages relax to a 1 s cadence and merge streaming deltas per part (server checkpoints converge), visible pages return to 16 ms with per-delta telemetry; never drop sequenced state events.
 - Keep conversation rows and large Markdown blocks virtualized, preserving prepend anchors, focused controls, selections and full-history operations. Parts stay fine-grained store reads and must not move into the turn projection.
-- Reconcile single messages into the sorted window incrementally (binary-search insertion) rather than re-merging and re-sorting the whole window; window order and eviction semantics stay canonical.
+- Reconcile messages incrementally into sorted windows (binary-search insertion), never re-merge/re-sort whole windows; order/eviction remain canonical.
 
-Discover available services through the generated capabilities API `features` before optional API calls; `components` is diagnostic metadata. Keep startup requests, settings, navigation, composer controls and workbench registrations consistent with that selection; reconnect discards the previous selection and never assumes a full product.
+Discover optional services through generated capabilities `features`; `components` is diagnostic only. Match startup/settings/navigation/composer/workbench registrations to selection; reconnect discards it, never assuming a full product.
 
-Use generated SDK methods for internal HTTP APIs. Add OpenAPI metadata and regenerate the SDK when a required route is missing. Keep raw browser APIs for WebSocket/EventSource, external URLs, local file/blob operations, downloads/uploads without an SDK contract, and platform fetch injection.
+Use generated SDK methods internally; missing routes need OpenAPI metadata/SDK regeneration. Raw browser APIs serve WebSocket/EventSource/external URLs/local files/blobs/downloads/uploads without SDK contracts/platform fetch injection.
 
 ## Product and Interaction
 
@@ -32,17 +32,17 @@ Read [PRODUCT.md](PRODUCT.md) before changing interaction structure, visual hier
 - Preserve surface polarity: dark-mode content/selection steps brighter than its container; light-mode content/selection steps darker.
 - Follow [Frontend themes and color](../../docs/reference/frontend-theming.md). Do not add Tailwind palette colors, arbitrary literal color utilities, or component-local light/dark palettes. Imperative renderers must consume the active resolved tokens and update on same-mode theme switches.
 - Use semantic icon tokens from `packages/plugin/src/icons.ts` for non-tool product UI. Reuse a token only for the same user-facing meaning; add a new token and an unused glyph for a new meaning. Raw Lucide icons belong only to narrow base, file-type, tool, or plugin plumbing with an explicit reason; tool icons follow `add-tool`.
-- Preserve keyboard focus, labels, WCAG AA contrast, reduced-motion behavior, loading/empty/error states, and narrow layouts.
+- Preserve keyboard focus/labels/WCAG AA contrast/reduced motion/loading/empty/error states/narrow layouts.
 - Register optional built-in workbench content through `WorkbenchPanelEntry.loader`. Keep Notes/Tiptap/Mermaid, Files/Monaco, Browser, Terminal, and Review implementations out of the route shell until the panel opens.
-- Keep only active product fonts in the application bundle. Adding an optional font requires a user-selectable runtime path and a loading strategy; do not import dormant font families from the root `Font` component.
+- Bundle active product fonts only. Optional fonts require user-selectable runtime paths/loading strategies; never import dormant families through root `Font`.
 - Treat mobile drawers as named modal surfaces with initial focus, contained Tab traversal, Escape close, and focus return. Verify dense toolbars at 375 px and do not hide overflow that clips interactive controls.
 - Gate Browser on Desktop-native capability and follow [Browser runtime](../../docs/architecture/browser-runtime.md). Keep human tab selection independent of explicit Agent targets, preserve page-scoped prompts/errors and avoid remote or simulated browser fallbacks.
 - Route ordinary browser randomness through `@ericsanchezok/synergy-util/uuid`; security-sensitive randomness uses its strict APIs with no weak fallback. Keep optional Secure Context APIs out of module-scope startup paths so private-network HTTP can boot and unsupported actions fail locally.
 
 ## Settings and Plugins
 
-- Use `src/components/settings/catalog.ts` for built-in section metadata, search terms, and domains.
-- Derive field ownership from `/config/domains` `ownedKeys`; do not maintain a frontend duplicate.
+- Built-in section metadata/search terms/domains belong in `src/components/settings/catalog.ts`.
+- Derive ownership from `/config/domains` `ownedKeys`; never duplicate it in frontend.
 - Use focused forms for common settings. For complex/low-frequency config, always show the canonical file and Copy Path; expose generated `config.domain.open` behavior only in Desktop managed-local mode where the shell and server share filesystem and desktop authority.
 - Preserve the UI API 6 single-context component lifecycle, public domain services, required Shell outlets, scoped styles and owned portals. Built-ins use semantic `iconToken`; plugins may use declared plugin icons.
 - Built-in settings metadata and every other Synergy-owned user-visible string use the shared Lingui runtime with explicit semantic IDs; do not add language branches, dynamic IDs, macro imports, or module-load translation calls. Keep plugin-author, user, LLM, brand, path, identifier, and raw diagnostic content verbatim. Avoid vague paired `X & Y` headings.
@@ -51,15 +51,15 @@ Read [PRODUCT.md](PRODUCT.md) before changing interaction structure, visual hier
 
 ## Verification
 
-Keep tests under `test/`, mirroring their `src/` or `script/` domain; never colocate tests with implementation.
+Keep tests under `test/`, mirroring source domains.
 
-Keep browser conditions, isolation and timeouts in `script/test-options.ts`, shared by the package runner and CI planner.
+Keep browser conditions/isolation/timeouts in `script/test-options.ts`, shared by runner/CI planner.
 
-Run the narrow UI/context test while iterating, then `bun run verify local --test apps/web/test/<domain>/<file>.test.ts` from the root with relevant tests selected. It uses the canonical executor and static gates. Complete Web/UI inventories and thresholds belong to CI; use `bun run verify coverage --package apps/web` when changing coverage policy, instrumentation or removing substantial coverage. See [develop-frontend](../../.synergy/skill/develop-frontend/SKILL.md#verify) for checks triggered by other risks.
+Iterate with focused UI/context tests. Before publication run `bun run verify local --test apps/web/test/<domain>/<file>.test.ts` from the root. CI owns complete Web/UI inventories and thresholds. Coverage policy, instrumentation or substantial coverage removal requires `bun run verify coverage --package apps/web`. See [develop-frontend](../../.synergy/skill/develop-frontend/SKILL.md#verify) for other required checks.
 
 Browser capability or bootstrap changes also run `bun test --cwd apps/web test/testing/browser-crypto-contract.test.ts` and, after the production build, `bun apps/web/script/private-http-smoke.ts` from the repository root.
 
-Optional-feature changes verify unknown, absent, selected, removed and reinstalled states through rendered controls and request counts. Hold replies across a same-URL reconnect epoch; old results must not restore features, resume autosave or erase retained drafts.
+Verify unknown, absent, selected, removed and reinstalled optional features through rendered controls and request counts. Hold replies across same-URL reconnects; stale results cannot restore features, resume autosave or erase drafts.
 
 For product copy, accessibility text, locale-sensitive formatting, or language settings, also run:
 
@@ -68,6 +68,8 @@ bun run --cwd apps/web i18n:extract
 bun run localization:check
 ```
 
-Use the existing app or an isolated second instance for interaction checks. Verify both themes, keyboard/focus, loading/error states, session switching/reconnect when relevant, and the Desktop path for native Browser or Electron behavior. Do not bypass hooks or claim unrun checks.
+Use the existing app or isolated instance for interaction checks. Verify both themes/keyboard/focus/loading/error states, relevant Session switching/reconnect, and Desktop native Browser/Electron paths. Never bypass hooks/claim unrun checks.
 
-Retained descendants require owner-bound routing.
+Retain owner-bound descendants/lazy drafts/files and identity-bound notification sources across Space presentation; passwords stay volatile. Finite pages cannot confirm absence. Retire only owned confirmations on access loss. Moves retain canonical preflight references and original pending bodies; cancellation intent never proves native completion. Keep Continue independent. Verify handoff-{state,native-state,native-cleanup-state,directory-state,targets-state}/handoff.browser/account-devices{.browser,-state}, sessions geometry, revision-bound logout/publication-reload.
+
+Handoff command Environment choices remain distinct from file destinations. Use authorized paged resource/Environment catalogs and actual native templates; confirm the complete choice before preparation. Cloud return defaults keep compute; a private download needs an explicit compatible choice. Verify handoff-environment-state and narrow English/Chinese renderer cases in handoff.browser.

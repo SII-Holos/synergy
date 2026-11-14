@@ -384,6 +384,7 @@ function ScopeListView(props: {
       <div class="mobile-drawer-account">
         <SpaceSwitcher
           expanded
+          onNavigate={props.onClose}
           onSettings={openSettings}
           onRepository={() => platform.openLink("https://github.com/SII-Holos/synergy")}
         />

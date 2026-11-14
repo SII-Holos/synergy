@@ -15,7 +15,8 @@ import { SandboxDetector } from "../../enforcement/sandbox-detector"
 import { startDenialLogger, type DenialLoggerSession } from "../../sandbox/macos-diagnostics"
 import { controlledTempRoot } from "@ericsanchezok/synergy-harness/sandbox/policy"
 import { AttachmentDiscovery } from "../attachment-discovery"
-import type { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
+import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
+import { RolloutContext } from "@ericsanchezok/synergy-harness/session/rollout/context"
 import type { BashParams } from "@ericsanchezok/synergy-harness/tool/bash-contract"
 import type { BashContext } from "@ericsanchezok/synergy-harness/tool/bash-contract"
 import type { BashResult } from "@ericsanchezok/synergy-harness/tool/bash-contract"
@@ -28,7 +29,9 @@ import { ObservabilityRedaction } from "@ericsanchezok/synergy-harness/observabi
 import { ChildProcessClose } from "@ericsanchezok/synergy-harness/process/child-process-close"
 import path from "node:path"
 import { EnvironmentProcess } from "@ericsanchezok/synergy-harness/environment/process"
+import { EnvironmentExecution } from "@ericsanchezok/synergy-harness/environment/execution"
 import { EnvironmentResources } from "@ericsanchezok/synergy-harness/environment/resources"
+import type { EnvironmentOrigin } from "@ericsanchezok/synergy-harness/environment/origin"
 import { createHash, randomUUID } from "node:crypto"
 import type { ProcessHandle } from "@ericsanchezok/synergy-harness/process/handle"
 import { StringDecoder } from "node:string_decoder"
@@ -201,10 +204,36 @@ export function withLinuxChildOomPreference(command: string, platform = process.
 }
 
 export namespace LocalBashBackend {
+  async function executionOrigin(ctx: BashContext): Promise<EnvironmentOrigin.Session> {
+    const rollout = RolloutContext.current()
+    const scopeID = ScopeContext.current.scope.id
+    const message = await MessageV2.readInfo({ scopeID, sessionID: ctx.sessionID, messageID: ctx.messageID })
+    if (
+      !rollout ||
+      rollout.owner.kind !== "session" ||
+      rollout.owner.scopeID !== scopeID ||
+      rollout.owner.sessionID !== ctx.sessionID ||
+      message.role !== "assistant" ||
+      !message.rootID ||
+      !ctx.callID
+    )
+      throw new Error("Bash execution requires its canonical native Session, Run and tool origin")
+    return {
+      kind: "session",
+      scopeID,
+      sessionID: ctx.sessionID,
+      rootID: message.rootID,
+      runID: rollout.runID,
+      messageID: ctx.messageID,
+      callID: ctx.callID,
+      tool: "bash",
+    }
+  }
   export async function execute(params: BashParams, ctx: BashContext): Promise<BashResult> {
     await using admission = ctx.resources
       ? null
       : await EnvironmentResources.select({
+          origin: await executionOrigin(ctx),
           scopeID: ScopeContext.current.scope.id,
           ownerID: ctx.sessionID,
           environmentID: ctx.environmentID,
@@ -233,11 +262,15 @@ export namespace LocalBashBackend {
     ctx: BashContext,
     resources: EnvironmentResources.Resolved,
   ): Promise<BashResult> {
+    const runtime = RuntimeContext.current()
     const shell = resources.runtime!.shell
     const platform = resources.runtime!.platform
-    const executionID = createHash("sha256")
-      .update(JSON.stringify([ScopeContext.current.scope.id, ctx.sessionID, ctx.messageID, ctx.callID || randomUUID()]))
-      .digest("hex")
+    const executionID = EnvironmentExecution.operationID({
+      scopeID: ScopeContext.current.scope.id,
+      sessionID: ctx.sessionID,
+      messageID: ctx.messageID,
+      callID: ctx.callID || randomUUID(),
+    })
     log.info("bash tool using shell", { shell })
 
     const cwd = params.workdir || resources.directory!
@@ -317,11 +350,9 @@ export namespace LocalBashBackend {
       throw new Error(detachedDaemonBlockMessage(detachedRisk))
     }
 
-    // The resolver already authorized this call. Asking again here would make
-    // authorization depend on the tool rather than on containment, and would
-    // double-prompt every contained command.
-    const authorizationResolved = (ctx.extra as any)?.shellAuthorizationResolved === true
-    if (patterns.size > 0 && !authorizationResolved) {
+    // The resolver checks exact native targets while retaining its original
+    // accepted call approval, so this does not prompt twice for the same effect.
+    if (patterns.size > 0) {
       await trace("bash.permission.ask", {
         patternCount: patterns.size,
       })
@@ -647,17 +678,20 @@ export namespace LocalBashBackend {
       scheduleMetadata()
     }
 
-    const kill = () => ProcessRegistry.terminate(regProc)
+    let stopping: Promise<void> | undefined
+    const kill = () => (stopping ??= ProcessRegistry.terminate(regProc))
+    const onAbort = runtime.bind(abortHandler)
 
     let hardCeilingTimer: ReturnType<typeof setTimeout> | undefined
     let autoBackgroundTimer: ReturnType<typeof setTimeout> | undefined
+    let abortExitTimer: ReturnType<typeof setTimeout> | undefined
 
     const cleanupForegroundWait = () => {
       if (autoBackgroundTimer) {
         clearTimeout(autoBackgroundTimer)
         autoBackgroundTimer = undefined
       }
-      ctx.abort.removeEventListener("abort", abortHandler)
+      ctx.abort.removeEventListener("abort", onAbort)
     }
 
     const cleanupAllTimers = () => {
@@ -665,6 +699,10 @@ export namespace LocalBashBackend {
       if (hardCeilingTimer) {
         clearTimeout(hardCeilingTimer)
         hardCeilingTimer = undefined
+      }
+      if (abortExitTimer) {
+        clearTimeout(abortExitTimer)
+        abortExitTimer = undefined
       }
     }
 
@@ -785,6 +823,7 @@ export namespace LocalBashBackend {
       .then(
         async (result) => {
           await owned?.completion
+          await stopping
           await outputPending
           await evidence?.finish({
             interrupted: result.drainTimedOut || aborted || timedOut,
@@ -797,6 +836,7 @@ export namespace LocalBashBackend {
         },
         async (error: unknown) => {
           await owned?.completion
+          await stopping
           await outputPending
           await evidence?.finish({ interrupted: true, exitCode: null, signal: null, pid: child.pid })
           throw error
@@ -843,18 +883,26 @@ export namespace LocalBashBackend {
     function abortHandler() {
       aborted = true
       cleanupAllTimers()
+      abortExitTimer = setTimeout(
+        runtime.bind(() => {
+          abortExitTimer = undefined
+          if (!exited && regProc) {
+            regProc.exited = true
+            ProcessRegistry.markExited(regProc, -1, "SIGKILL")
+          }
+        }),
+        30_000,
+      )
       void kill()
-      setTimeout(() => {
-        if (!exited && regProc) {
-          regProc.exited = true
-          ProcessRegistry.markExited(regProc, -1, "SIGKILL")
-        }
-      }, 30_000)
     }
 
-    ctx.abort.addEventListener("abort", abortHandler, { once: true })
+    ctx.abort.addEventListener("abort", onAbort, { once: true })
 
     const autoBackground = new Promise<"background">((resolve) => {
+      if (params.background) {
+        resolve("background")
+        return
+      }
       if (yieldSeconds <= 0) return
       autoBackgroundTimer = setTimeout(() => {
         if (!exited) resolve("background")
@@ -873,7 +921,7 @@ export namespace LocalBashBackend {
         owned?.detachSignal()
         ProcessRegistry.markBackgrounded(regProc)
         return {
-          title: `[Auto-Background] ${ctx.workBrief?.trim() || params.command}`,
+          title: `[${params.background ? "Background" : "Auto-Background"}] ${ctx.workBrief?.trim() || params.command}`,
           metadata: {
             output: truncateMetadataOutput(regProc.output),
             description: ctx.workBrief?.trim() || params.command,
@@ -881,7 +929,9 @@ export namespace LocalBashBackend {
             background: true,
           },
           output: warnOutput(
-            `Command auto-backgrounded after ${yieldSeconds}s.\n\n` +
+            (params.background
+              ? "Command started in background.\n\n"
+              : `Command auto-backgrounded after ${yieldSeconds}s.\n\n`) +
               `Process ID: ${regProc.id}\n` +
               `Command: ${params.command}\n` +
               `Status: running\n\n` +

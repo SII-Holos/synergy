@@ -2,12 +2,24 @@ import { Storage } from "../storage/storage"
 import type { MessageV2 } from "./message-v2"
 
 export namespace SnapshotEvidence {
-  export function portable(info: MessageV2.Info): MessageV2.Info {
-    if (info.role !== "user" || !info.summary?.diffRevision) return info
+  export function portable(info: MessageV2.Info): MessageV2.Info
+  export function portable(info: unknown): unknown
+  export function portable(info: unknown): unknown {
+    if (!info || typeof info !== "object" || Array.isArray(info)) return info
+    const record = info as Record<string, unknown>
+    if (
+      record.role !== "user" ||
+      !record.summary ||
+      typeof record.summary !== "object" ||
+      Array.isArray(record.summary)
+    )
+      return info
+    const summary = record.summary as Record<string, unknown>
+    if (!summary.diffRevision) return info
     return {
-      ...info,
+      ...record,
       summary: {
-        ...info.summary,
+        ...summary,
         diffs: [],
         diffRevision: undefined,
         diffTotals: undefined,

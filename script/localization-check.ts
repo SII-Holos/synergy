@@ -458,7 +458,7 @@ function isStaticMessageDescriptorExpression(
 
   if (ts.isPropertyAccessExpression(current) || ts.isElementAccessExpression(current)) {
     if (isTypedMessageDescriptorProperty(current, environment, context)) return true
-    if (isKeyofStaticDescriptorMap(current, environment, context)) return true
+    if (staticDescriptorMapEntries(current, environment, context, seen)) return true
     if (isImportedReference(current, environment)) return true
     const resolved = resolvePropertyInitializer(current, environment, seen)
     return resolved ? isStaticMessageDescriptorExpression(resolved, environment, context, new Set(seen)) : false
@@ -509,6 +509,10 @@ function resolveDescriptorObjects(
 
   if (ts.isPropertyAccessExpression(current) || ts.isElementAccessExpression(current)) {
     if (isImportedReference(current, environment)) return []
+    const entries = staticDescriptorMapEntries(current, environment, context, seen)
+    if (entries) {
+      return entries.flatMap((entry) => resolveDescriptorObjects(entry, environment, context, new Set(seen)))
+    }
     const resolved = resolvePropertyInitializer(current, environment, seen)
     return resolved ? resolveDescriptorObjects(resolved, environment, context, new Set(seen)) : []
   }
@@ -583,26 +587,25 @@ function isTypedMessageDescriptorProperty(
   return !!member?.type && isMessageDescriptorType(member.type)
 }
 
-function isKeyofStaticDescriptorMap(
+function staticDescriptorMapEntries(
   expression: ts.PropertyAccessExpression | ts.ElementAccessExpression,
   environment: DescriptorEnvironment,
   context: ts.Node,
-): boolean {
-  if (!ts.isElementAccessExpression(expression) || !expression.argumentExpression) return false
+  seen: Set<ts.Node>,
+): ts.Expression[] | undefined {
+  if (!ts.isElementAccessExpression(expression) || !expression.argumentExpression) return
   const owner = unwrapExpression(expression.expression)
-  const key = unwrapExpression(expression.argumentExpression)
-  if (!ts.isIdentifier(owner) || !ts.isIdentifier(key)) return false
-
-  const parameter = enclosingParameter(key.text, context)
-  if (!parameter?.type || !isKeyofTypeQuery(parameter.type, owner.text)) return false
+  if (!ts.isIdentifier(owner)) return
   const initializer = environment.variables.get(owner.text)
   const map = initializer && unwrapExpression(initializer)
-  if (!map || !ts.isObjectLiteralExpression(map) || map.properties.length === 0) return false
-  return map.properties.every(
-    (property) =>
-      ts.isPropertyAssignment(property) &&
-      isStaticMessageDescriptorExpression(property.initializer, environment, context, new Set()),
-  )
+  if (!map || !ts.isObjectLiteralExpression(map) || map.properties.length === 0) return
+  const entries: ts.Expression[] = []
+  for (const property of map.properties) {
+    if (!ts.isPropertyAssignment(property) || !propertyName(property.name)) return
+    if (!isStaticMessageDescriptorExpression(property.initializer, environment, context, new Set(seen))) return
+    entries.push(property.initializer)
+  }
+  return entries
 }
 
 function enclosingParameter(name: string, context: ts.Node): ts.ParameterDeclaration | undefined {
@@ -642,16 +645,6 @@ function isMessageDescriptorType(type: ts.TypeNode): boolean {
     }),
   )
   return ["id", "message"].every((key) => members.get(key)?.kind === ts.SyntaxKind.StringKeyword)
-}
-
-function isKeyofTypeQuery(type: ts.TypeNode, owner: string): boolean {
-  return (
-    ts.isTypeOperatorNode(type) &&
-    type.operator === ts.SyntaxKind.KeyOfKeyword &&
-    ts.isTypeQueryNode(type.type) &&
-    ts.isIdentifier(type.type.exprName) &&
-    type.type.exprName.text === owner
-  )
 }
 
 function isStaticDescriptorCollectionParameter(

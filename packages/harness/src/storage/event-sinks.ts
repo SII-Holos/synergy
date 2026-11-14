@@ -5,12 +5,15 @@ import { StorageIntegrityError } from "./errors"
 import type { StoredEvent, StoreTransaction, TransactionalStore } from "./transactional-store"
 
 export namespace StorageEventSinks {
+  const Partition = z.string().min(1).max(256)
+  const FlushLimit = z.number().int().min(1).max(1024)
+  const SinkID = z.string().regex(/^[a-zA-Z0-9._-]{1,128}$/)
   const DeliverySchema = z
     .object({
       version: z.literal(1),
       sinkID: z.string().min(1),
       eventID: z.string().min(1),
-      partition: z.string().min(1).max(256),
+      partition: Partition,
       sequence: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
       payload: z.unknown(),
     })
@@ -27,6 +30,8 @@ export namespace StorageEventSinks {
     captured?(delivery: Readonly<Delivery>): void | Promise<void>
     /** Acknowledges durable acceptance. Receivers deduplicate by eventID and sinkID. */
     deliver(delivery: Readonly<Delivery>): Promise<void>
+    /** Acknowledges every delivery in one ordered, partition-local window together. */
+    deliverBatch?(deliveries: readonly Readonly<Delivery>[]): Promise<void>
   }
   const state = RuntimeContext.state(() => ({
     sinks: new Map<string, Sink>(),
@@ -47,7 +52,7 @@ export namespace StorageEventSinks {
     for (const sink of state().sinks.values()) {
       const selected = await sink.capture(structuredClone(event))
       if (selected === undefined) continue
-      const partition = z.string().min(1).max(256).parse(selected.partition)
+      const partition = Partition.parse(selected.partition)
       const meta = ["event_delivery_meta", sink.id, partition]
       const [previous] = await tx.readMany<{ sequence: number }>([meta])
       const sequence = (previous?.sequence ?? 0) + 1
@@ -59,37 +64,63 @@ export namespace StorageEventSinks {
         sequence,
         payload: structuredClone(selected.payload),
       })
-      await tx.write(meta, { sequence })
-      await tx.write(key(delivery), delivery)
+      await tx.writeMany([
+        { key: meta, value: { sequence } },
+        { key: key(delivery), value: delivery },
+      ])
       await sink.captured?.(structuredClone(delivery))
     }
   }
 
   /** Hosts explicitly pump bounded batches before admission and while serving, then drain on shutdown. */
-  export async function flush(options: { limit?: number } = {}): Promise<{ delivered: number }> {
+  export async function flush(
+    options: { limit?: number; sinkID?: string; partition?: string } = {},
+  ): Promise<{ delivered: number }> {
     if (Storage.inTransaction()) throw new Error("Flush storage event sinks outside a transaction")
-    const limit = z
-      .number()
-      .int()
-      .min(1)
-      .max(1024)
-      .parse(options.limit ?? 128)
+    const limit = FlushLimit.parse(options.limit ?? 128)
+    const sinkID = options.sinkID === undefined ? undefined : SinkID.parse(options.sinkID)
+    const partition = options.partition === undefined ? undefined : Partition.parse(options.partition)
+    if (partition !== undefined && sinkID === undefined)
+      throw new Error("A delivery partition requires its sink identity")
+    const prefix =
+      sinkID === undefined ? undefined : ["event_delivery", sinkID, ...(partition === undefined ? [] : [partition])]
     const { store } = Storage.current()
     const current = state()
     const pending = (current.flushing.get(store) ?? Promise.resolve())
       .catch(() => {})
       .then(async () => {
-        const records = await Storage.query<Delivery>({ kind: "event_delivery", limit })
+        const records = await Storage.query<Delivery>({ ...(prefix ? {} : { kind: "event_delivery" }), prefix, limit })
         const accepted: typeof records = []
         try {
-          for (const record of records) {
+          function parse(record: (typeof records)[number]) {
             const delivery = DeliverySchema.parse(record.value)
             if (JSON.stringify(key(delivery)) !== JSON.stringify(record.key))
               throw new StorageIntegrityError("External event delivery identity does not match its record")
+            return delivery
+          }
+          for (let index = 0; index < records.length;) {
+            const record = records[index]!
+            const delivery = parse(record)
             const sink = current.sinks.get(delivery.sinkID)
             if (!sink) throw new StorageIntegrityError(`Storage event sink ${delivery.sinkID} is not registered`)
-            await sink.deliver(structuredClone(delivery))
-            accepted.push(record)
+            if (!sink.deliverBatch) {
+              await sink.deliver(structuredClone(delivery))
+              accepted.push(record)
+              index++
+              continue
+            }
+            const window = [record]
+            const deliveries = [delivery]
+            while (index + window.length < records.length && window.length < 128) {
+              const next = records[index + window.length]!
+              const value = parse(next)
+              if (value.sinkID !== delivery.sinkID || value.partition !== delivery.partition) break
+              window.push(next)
+              deliveries.push(value)
+            }
+            await sink.deliverBatch(structuredClone(deliveries))
+            accepted.push(...window)
+            index += window.length
           }
         } finally {
           // Commit the accepted prefix even if a later delivery fails. External

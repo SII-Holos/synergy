@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto"
 import { RuntimeContext } from "../lifecycle/context"
+import { RuntimeMaintenance } from "../storage/runtime-maintenance"
 import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
 import { StorageRecovery } from "../storage/recovery"
@@ -10,12 +11,15 @@ import { BusEvent } from "../bus/bus-event"
 import { Bus } from "../bus"
 import { Scope } from "../scope"
 import { ScopeContext } from "../scope/context"
+import { EnvironmentUseOwnership } from "./use-ownership"
 
 export namespace Environment {
   export const Info = EnvironmentSchema.Info
   export type Info = EnvironmentSchema.Info
   export const Target = EnvironmentSchema.Target
   export type Target = EnvironmentSchema.Target
+  export const Use = EnvironmentSchema.Use
+  export type Use = EnvironmentSchema.Use
   export const Unavailable = EnvironmentSchema.Unavailable
   export const Stale = EnvironmentSchema.Stale
   export const Busy = EnvironmentSchema.Busy
@@ -26,9 +30,14 @@ export namespace Environment {
   }
   const pending = RuntimeContext.state(() => new Map<string, Promise<Info>>())
   const providerRequests = RuntimeContext.state(() => new Set<string>())
+  const releasePreparations = RuntimeContext.state(() => new Set<string>())
   const epoch = RuntimeContext.state(() => randomUUID())
   const consumers = RuntimeContext.state(() => new Map<string, (info: Info) => Promise<void>>())
   const lostResources = RuntimeContext.state(() => new Map<string, (info: Info) => Promise<boolean>>())
+
+  export function hasPendingRequests() {
+    return pending().size > 0 || providerRequests().size > 0
+  }
 
   export function registerResourceOwner(
     name: string,
@@ -45,8 +54,10 @@ export namespace Environment {
     for (const release of consumers().values()) await release(info)
   }
 
-  export function registerRecovery() {
-    StorageRecovery.register("environment", recover)
+  export function registerRecovery(options: { allocation?: "inspect-only" } = {}) {
+    if (options.allocation !== undefined && options.allocation !== "inspect-only")
+      throw new Error("Unknown Environment allocation recovery mode")
+    StorageRecovery.register("environment", options.allocation === "inspect-only" ? recoverInspection : recover)
   }
 
   export async function get(id: string, scopeID: string): Promise<Info> {
@@ -55,6 +66,36 @@ export namespace Environment {
     const info = Info.parse(value)
     if (info.scopeID !== scopeID) throw new Storage.NotFoundError({ message: "Environment not found in this Scope" })
     return info
+  }
+
+  export async function hasState() {
+    return Storage.snapshot(async () => {
+      for (const prefix of [
+        ["environment"],
+        ["environment_use"],
+        ["environment_execution"],
+        ["environment_binding"],
+        ["environment_active"],
+        ["environment_execution_active"],
+      ])
+        if ((await Storage.queryKeys({ prefix, limit: 1 })).length) return true
+      return false
+    })
+  }
+
+  export function entries(): AsyncIterable<Info> {
+    const current = EnvironmentUseOwnership.captureStorage()
+    return (async function* () {
+      current()
+      for await (const row of Storage.records({ prefix: ["environment"], limit: 128 })) {
+        current()
+        const info = Info.parse(row.value)
+        if (row.key.length !== 2 || row.key[1] !== info.id)
+          throw new Error("Environment metadata belongs to another canonical address")
+        yield info
+      }
+      current()
+    })()
   }
 
   export async function list(scopeID: string): Promise<Info[]> {
@@ -92,6 +133,23 @@ export namespace Environment {
       ownerID: sharedOwner ? JSON.stringify(sharedOwner) : input.ownerID,
     })
     return sharedOwner ? share(environment.id, input) : environment
+  }
+
+  export async function selectNative(input: {
+    scopeID: string
+    ownerID: string
+    environmentID?: string | null
+    workspaceID?: string | null
+    workspaceGeneration?: number
+    signal?: AbortSignal
+  }) {
+    const { signal, ...selection } = { ...input }
+    const { EnvironmentExecutionSource } = await import("./execution-source")
+    if (await EnvironmentExecutionSource.selected(selection, signal)) return
+    if (!selection.environmentID) return
+    const environment = await get(selection.environmentID, selection.scopeID)
+    signal?.throwIfAborted()
+    return environment.provider === "native" ? environment : undefined
   }
 
   export async function bind(input: {
@@ -172,12 +230,66 @@ export namespace Environment {
       scopeID: string
       useID: string
       capabilities: string[]
-      kind?: EnvironmentSchema.Use["kind"]
+      ownership: EnvironmentUseOwnership.Admission
+      kind?: "admission"
+      expectedTarget?: Target
       signal?: AbortSignal
     },
   ) {
+    input = {
+      ...input,
+      capabilities: [...input.capabilities],
+      ...(input.expectedTarget && { expectedTarget: Target.parse(input.expectedTarget) }),
+    }
+    if (input.expectedTarget && input.expectedTarget.environmentID !== id)
+      throw new Stale({ environmentID: id, message: "Environment admission has another expected allocation" })
+    if (input.kind !== undefined && input.kind !== "admission")
+      throw new Busy({ environmentID: id, message: "Physical Environment Uses require their canonical owner" })
     input.signal?.throwIfAborted()
-    const info = await ensure(id, input.scopeID)
+    EnvironmentUseOwnership.assertCurrent(input.ownership)
+    return EnvironmentUseOwnership.request(input.ownership, () => acquireOwned(id, input))
+  }
+
+  async function readUse(id: string, useID: string) {
+    const [raw] = await Storage.readMany([StoragePath.environmentUse(id, useID)])
+    if (raw === undefined) return
+    const use = EnvironmentSchema.upgradeUse(raw).use
+    if (use.id !== useID || use.target.environmentID !== id)
+      throw new Stale({ environmentID: id, message: "Environment Use differs from its canonical address" })
+    return use
+  }
+
+  async function writeUse(use: EnvironmentSchema.Use) {
+    await Storage.write(
+      StoragePath.environmentUse(use.target.environmentID, use.id),
+      EnvironmentSchema.UseRecord.parse({ schemaVersion: 2, use }),
+    )
+  }
+
+  async function acquireOwned(
+    id: string,
+    input: {
+      scopeID: string
+      useID: string
+      capabilities: string[]
+      ownership: EnvironmentUseOwnership.Admission
+      expectedTarget?: Target
+      signal?: AbortSignal
+    },
+  ) {
+    const selector = { scopeID: input.scopeID, environmentID: id, useID: input.useID }
+    await RuntimeMaintenance.assertAdmission()
+    await EnvironmentUseOwnership.authorize(input.ownership, "admission", selector)
+    if (releasePreparations().has(id))
+      throw new Busy({ environmentID: id, message: "Environment release owns resource admission" })
+    const admission = async () => {
+      input.signal?.throwIfAborted()
+      await EnvironmentUseOwnership.authorize(input.ownership, "admission", selector)
+      input.signal?.throwIfAborted()
+    }
+    const info = input.expectedTarget
+      ? await assertTarget(input.expectedTarget, input.scopeID)
+      : await ensure(id, input.scopeID, admission)
     input.signal?.throwIfAborted()
     const target = targetOf(info)
     if (input.capabilities.some((capability) => !info.allocation?.capabilities.includes(capability)))
@@ -185,54 +297,218 @@ export namespace Environment {
         environmentID: id,
         message: `Environment does not support ${input.capabilities.join(", ")}`,
       })
-    await Storage.transaction(async () => {
-      await assertTarget(target, input.scopeID)
-      await Storage.write(
-        StoragePath.environmentUse(id, input.useID),
-        EnvironmentSchema.Use.parse({
+    const acquired = await Storage.transaction(
+      async () => {
+        await RuntimeMaintenance.assertAdmission()
+        const ownership = await EnvironmentUseOwnership.authorize(input.ownership, "admission", selector, target)
+        if (releasePreparations().has(id))
+          throw new Busy({ environmentID: id, message: "Environment release owns resource admission" })
+        await assertTarget(target, input.scopeID)
+        const previous = await readUse(id, input.useID)
+        if (previous) {
+          if (
+            previous.kind !== "operation" ||
+            !EnvironmentUseOwnership.transition(previous.ownership, ownership) ||
+            JSON.stringify(previous.ownership) !== JSON.stringify(ownership) ||
+            !sameTarget(previous.target, target)
+          )
+            throw new Busy({ environmentID: id, message: "Environment Use is already retained by its original owner" })
+          await EnvironmentUseOwnership.inspect(previous, input.scopeID)
+          return { use: previous, revision: undefined }
+        }
+        const use = EnvironmentSchema.Use.parse({
           id: input.useID,
           target,
           createdAt: Date.now(),
-          kind: input.kind,
-          ownerEpoch: input.kind === "admission" ? epoch() : undefined,
-        }),
-      )
-    })
+          kind: "admission",
+          ownership,
+          ownerEpoch: epoch(),
+        })
+        await writeUse(use)
+        const [revision] = await Storage.revisions([StoragePath.environmentUse(id, input.useID)])
+        if (revision === undefined) throw new Error("Environment admission has no native row revision")
+        return { use, revision }
+      },
+      {
+        commitGuard() {
+          EnvironmentUseOwnership.assertCurrent(input.ownership)
+          input.signal?.throwIfAborted()
+        },
+      },
+    )
     return {
       target,
-      release: () => releaseUse(target, input.scopeID, input.useID),
+      use: acquired.use,
+      release: async () => {
+        EnvironmentUseOwnership.assertCurrent(input.ownership)
+        if (acquired.revision === undefined) return
+        await Storage.transaction(
+          async () => {
+            const current = await readUse(id, input.useID)
+            if (!current || current.kind === "operation") return
+            const [revision] = await Storage.revisions([StoragePath.environmentUse(id, input.useID)])
+            if (revision !== acquired.revision || JSON.stringify(current) !== JSON.stringify(acquired.use))
+              throw new Stale({ environmentID: id, message: "Environment admission belongs to another native lease" })
+            const latest = await get(id, input.scopeID)
+            await Storage.remove(StoragePath.environmentUse(id, input.useID))
+            await write({ ...latest, lastUsedAt: Date.now() })
+          },
+          { commitGuard: () => EnvironmentUseOwnership.assertCurrent(input.ownership) },
+        )
+      },
     }
   }
 
   export async function uses(id: string): Promise<EnvironmentSchema.Use[]> {
-    const keys = await Storage.list(StoragePath.environmentUses(id))
-    return (await Storage.readMany<unknown>(keys)).flatMap((value) =>
-      value === undefined ? [] : [EnvironmentSchema.Use.parse(value)],
+    const result: EnvironmentSchema.Use[] = []
+    for await (const use of useEntries(id)) result.push(use)
+    return result
+  }
+
+  export function useEntries(id?: string): AsyncIterable<EnvironmentSchema.Use> {
+    const current = EnvironmentUseOwnership.captureStorage()
+    return (async function* () {
+      current()
+      for await (const row of Storage.records({
+        prefix: id === undefined ? ["environment_use"] : StoragePath.environmentUses(id),
+        limit: 64,
+      })) {
+        current()
+        const use = EnvironmentSchema.Use.parse(EnvironmentSchema.upgradeUse(row.value).use)
+        if (row.key.length !== 3 || row.key[1] !== use.target.environmentID || row.key[2] !== use.id)
+          throw new Error("Environment Use differs from its canonical address")
+        yield use
+        current()
+      }
+    })()
+  }
+
+  export async function inspectUse(use: EnvironmentSchema.Use) {
+    const info = Info.parse(await Storage.read(StoragePath.environment(use.target.environmentID)))
+    if (info.id !== use.target.environmentID) throw new Error("Environment Use has another canonical Environment")
+    const current = await readUse(info.id, use.id)
+    if (!current || JSON.stringify(EnvironmentSchema.Use.parse(current)) !== JSON.stringify(use))
+      throw new Error("Environment Use changed before its owning inspection")
+    return EnvironmentUseOwnership.inspect(current, info.scopeID)
+  }
+
+  export async function assertSessionUsesDrained(input: {
+    scopeID: string
+    sessionID: string
+    environmentID?: string | null
+    workspaceID?: string | null
+  }) {
+    input = { ...input }
+    const current = EnvironmentUseOwnership.captureStorage()
+    for await (const use of useEntries()) {
+      current()
+      const ownership = use.ownership
+      const selected =
+        use.target.environmentID === input.environmentID ||
+        ("workspaceID" in ownership &&
+          ownership.scopeID === input.scopeID &&
+          ownership.workspaceID === input.workspaceID)
+      if (ownership.kind === "legacy-unknown") {
+        if (!selected) continue
+        throw new Busy({
+          environmentID: use.target.environmentID,
+          message: "Selected Environment Use has unknown Session ownership",
+        })
+      }
+      if ("scopeID" in ownership && ownership.scopeID !== input.scopeID && !selected) continue
+      if (
+        ownership.kind !== "admission" &&
+        ownership.kind !== "execution-preparation" &&
+        !selected &&
+        ownership.kind !== "execution"
+      )
+        continue
+      const inspection = await inspectUse(use)
+      current()
+      const origin = inspection?.origin
+      if (origin?.kind === "host") continue
+      if (origin?.kind === "session") {
+        if (origin.scopeID !== input.scopeID || origin.sessionID !== input.sessionID) continue
+        throw new Busy({
+          environmentID: use.target.environmentID,
+          message: "Environment Session Use requires its original native owner to release it",
+        })
+      }
+      if (!selected) continue
+      throw new Busy({
+        environmentID: use.target.environmentID,
+        message: "Selected Environment Use has unknown Session ownership",
+      })
+    }
+    current()
+  }
+
+  export async function retainUse(
+    target: Target,
+    scopeID: string,
+    useID: string,
+    proof: EnvironmentUseOwnership.Token,
+  ) {
+    target = Target.parse(target)
+    await Storage.transaction(
+      async () => {
+        const ownership = await EnvironmentUseOwnership.authorize(
+          proof,
+          "retain",
+          { scopeID, environmentID: target.environmentID, useID },
+          target,
+        )
+        await assertTarget(target, scopeID)
+        const use = await readUse(target.environmentID, useID)
+        if (!use || !sameTarget(use.target, target))
+          throw new Stale({ environmentID: target.environmentID, message: "Environment admission is unavailable" })
+        if (use.kind === "operation" && !EnvironmentUseOwnership.transition(use.ownership, ownership))
+          throw new Stale({
+            environmentID: target.environmentID,
+            message: "Retained Environment Use cannot change its owner",
+          })
+        if (!EnvironmentUseOwnership.transition(use.ownership, ownership))
+          throw new Stale({
+            environmentID: target.environmentID,
+            message: "Environment Use cannot be retained by another canonical owner",
+          })
+        await writeUse({ ...use, kind: "operation", ownership, ownerEpoch: undefined })
+      },
+      { commitGuard: () => EnvironmentUseOwnership.assertCurrent(proof) },
     )
   }
 
-  export async function retainUse(target: Target, scopeID: string, useID: string) {
-    await Storage.transaction(async () => {
-      await assertTarget(target, scopeID)
-      const key = StoragePath.environmentUse(target.environmentID, useID)
-      const [use] = await Storage.readMany<EnvironmentSchema.Use>([key])
-      if (!use || !sameTarget(use.target, target))
-        throw new Stale({ environmentID: target.environmentID, message: "Environment admission is unavailable" })
-      await Storage.write(key, { ...use, kind: "operation", ownerEpoch: undefined })
-    })
-  }
-
-  export async function releaseUse(target: Target, scopeID: string, useID: string) {
-    await Storage.transaction(async () => {
-      const info = await get(target.environmentID, scopeID)
-      const key = StoragePath.environmentUse(info.id, useID)
-      const [use] = await Storage.readMany<EnvironmentSchema.Use>([key])
-      if (!use) return
-      if (!sameTarget(use.target, target))
-        throw new Stale({ environmentID: info.id, message: "Environment use belongs to another allocation" })
-      await Storage.remove(key)
-      await write({ ...info, lastUsedAt: Date.now() })
-    })
+  export async function releaseUse(
+    target: Target,
+    scopeID: string,
+    useID: string,
+    proof: EnvironmentUseOwnership.Token,
+  ) {
+    target = Target.parse(target)
+    await Storage.transaction(
+      async () => {
+        const ownership = await EnvironmentUseOwnership.authorize(
+          proof,
+          "release",
+          { scopeID, environmentID: target.environmentID, useID },
+          target,
+        )
+        const info = await get(target.environmentID, scopeID)
+        const key = StoragePath.environmentUse(info.id, useID)
+        const use = await readUse(info.id, useID)
+        if (!use) return
+        if (!sameTarget(use.target, target))
+          throw new Stale({ environmentID: info.id, message: "Environment use belongs to another allocation" })
+        if (use.kind !== "operation" || JSON.stringify(use.ownership) !== JSON.stringify(ownership))
+          throw new Stale({
+            environmentID: info.id,
+            message: "Environment Use requires its original canonical retirement proof",
+          })
+        await Storage.remove(key)
+        await write({ ...info, lastUsedAt: Date.now() })
+      },
+      { commitGuard: () => EnvironmentUseOwnership.assertCurrent(proof) },
+    )
   }
 
   export async function assertTarget(target: Target, scopeID: string): Promise<Info> {
@@ -248,24 +524,99 @@ export namespace Environment {
 
   async function release(id: string, scopeID: string, idleBefore?: number, expectedGeneration?: number) {
     await get(id, scopeID)
-    return providerRequest(id, async () => {
-      const info = await Storage.transaction(async () => {
-        const info = await get(id, scopeID)
-        if (expectedGeneration !== undefined && info.generation !== expectedGeneration)
+    await RuntimeMaintenance.assertAdmission()
+    return providerRequest(id, () =>
+      withReleasePreparation(id, async () => {
+        const selected = await get(id, scopeID)
+        if (expectedGeneration !== undefined && selected.generation !== expectedGeneration)
           throw new Stale({ environmentID: id, message: "Environment allocation changed" })
-        if (info.state === "idle") return info
-        if (idleBefore !== undefined && info.lastUsedAt > idleBefore) return info
-        if (info.state !== "ready")
+        if (selected.state === "idle" || (idleBefore !== undefined && selected.lastUsedAt > idleBefore)) return selected
+        if (selected.state !== "ready")
           throw new Unavailable({ environmentID: id, message: "Reconcile the Environment before releasing it" })
         if ((await uses(id)).length)
           throw new Busy({ environmentID: id, message: "Environment still has active or unreconciled uses" })
-        return write({ ...info, state: "releasing" })
-      })
+        return releaseOwned(selected, async (assertOwner) => {
+          return await Storage.transaction(
+            async () => {
+              assertOwner()
+              await RuntimeMaintenance.assertAdmission()
+              const info = await get(id, scopeID)
+              if (
+                info.generation !== selected.generation ||
+                info.allocation?.requestID !== selected.allocation?.requestID ||
+                info.allocation?.id !== selected.allocation?.id ||
+                (expectedGeneration !== undefined && info.generation !== expectedGeneration)
+              )
+                throw new Stale({ environmentID: id, message: "Environment allocation changed" })
+              if (idleBefore !== undefined && info.lastUsedAt > idleBefore) return info
+              if (info.state !== "ready")
+                throw new Unavailable({ environmentID: id, message: "Reconcile the Environment before releasing it" })
+              if ((await uses(id)).length)
+                throw new Busy({ environmentID: id, message: "Environment still has active or unreconciled uses" })
+              return write({ ...info, state: "releasing" })
+            },
+            { commitGuard: assertOwner },
+          )
+        })
+      }),
+    )
+  }
+
+  async function withReleasePreparation<T>(id: string, body: () => Promise<T>) {
+    releasePreparations().add(id)
+    try {
+      return await body()
+    } finally {
+      releasePreparations().delete(id)
+    }
+  }
+
+  async function releaseOwned(selected: Info, publish: (assertOwner: () => void) => Promise<Info>) {
+    const provider = EnvironmentProviders.get(selected.provider)
+    const runtime = RuntimeContext.current()
+    const storage = Storage.current()
+    let active = true
+    const assertOwner = () => {
+      if (
+        !active ||
+        RuntimeContext.current() !== runtime ||
+        Storage.current().store !== storage.store ||
+        Storage.current().artifactDirectory !== storage.artifactDirectory ||
+        Storage.current().artifactObjects !== storage.artifactObjects
+      )
+        throw new Error("Environment release owner is closed or belongs to another Runtime or storage")
+    }
+    const performRelease = async () => {
+      assertOwner()
+      const info = await publish(assertOwner)
+      assertOwner()
       if (info.state !== "releasing") return info
       await releaseResources(info)
-      await EnvironmentProviders.get(info.provider).deallocate(requestOf(info))
+      assertOwner()
+      await provider.deallocate(requestOf(info))
+      assertOwner()
       return updateAllocation(info, undefined)
-    })
+    }
+    let owned: Promise<Info> | undefined
+    const release = async () => {
+      assertOwner()
+      return (owned ??= performRelease())
+    }
+    try {
+      if (provider.withDeallocation) await provider.withDeallocation(selected, release)
+      else await release()
+      if (!owned) throw new Error("Environment provider returned without invoking its release owner")
+      return await owned
+    } catch (error) {
+      if (owned)
+        await owned.catch((failure) => {
+          if (failure !== error)
+            throw new AggregateError([error, failure], "Environment release and provider wrapper failed")
+        })
+      throw error
+    } finally {
+      active = false
+    }
   }
 
   export async function reclaimIdle(scopeID: string, now = Date.now()) {
@@ -287,19 +638,38 @@ export namespace Environment {
   }
 
   export async function reconcile(id: string, scopeID: string): Promise<Info> {
+    return reconcileOwned(id, scopeID, false)
+  }
+
+  export async function reconcileInspection(id: string, scopeID: string): Promise<Info> {
+    return reconcileOwned(id, scopeID, true)
+  }
+
+  async function reconcileOwned(id: string, scopeID: string, inspection: boolean): Promise<Info> {
     const info = await get(id, scopeID)
     // Recovery cannot retire a provider request still owned by this Runtime.
     if (providerRequests().has(id)) return info
     return providerRequest(id, async () => {
       if (!info.allocation) return info
       const provider = EnvironmentProviders.get(info.provider)
-      if (info.state === "releasing") {
-        await releaseResources(info)
-        await provider.deallocate(requestOf(info))
-        return updateAllocation(info, undefined)
-      }
+      if (info.state === "releasing")
+        return withReleasePreparation(id, () =>
+          releaseOwned(info, async (assertOwner) => {
+            assertOwner()
+            await RuntimeMaintenance.assertMutation()
+            const latest = await get(id, scopeID)
+            if (
+              latest.state !== "releasing" ||
+              latest.allocation?.requestID !== info.allocation?.requestID ||
+              !sameTarget(targetOf(latest), targetOf(info))
+            )
+              throw new Stale({ environmentID: id, message: "Environment release allocation changed" })
+            return latest
+          }),
+        )
       const status = await provider.inspect(requestOf(info))
       if (status.state === "pending") {
+        if (inspection && info.state === "allocating") return info
         if (info.state !== "allocating" || !provider.resume || (await uses(id)).length)
           return updateAllocation(info, "unknown")
         return updateAllocation(info, await provider.resume(requestOf(info)))
@@ -316,17 +686,27 @@ export namespace Environment {
     })
   }
 
-  async function recover(progress?: () => void) {
+  function recoverInspection(progress?: () => void) {
+    return recover(progress, true)
+  }
+
+  async function recover(progress?: () => void, inspection = false) {
     for (const key of await Storage.list(StoragePath.environmentActive())) {
       const [scopeID] = await Storage.readMany<string>([key])
       progress?.()
       if (!scopeID) continue
       for (const use of await uses(key[1])) {
-        if (use.kind === "admission" && use.ownerEpoch !== epoch()) await releaseUse(use.target, scopeID, use.id)
+        if (
+          !inspection &&
+          use.kind === "admission" &&
+          use.ownership.kind !== "legacy-unknown" &&
+          use.ownerEpoch !== epoch()
+        )
+          await releaseRecoveredAdmission(use, scopeID)
         progress?.()
       }
       try {
-        await reconcile(key[1], scopeID)
+        await reconcileOwned(key[1], scopeID, inspection)
       } catch {
         const info = await get(key[1], scopeID)
         if (info.state !== "releasing") await updateAllocation(info, "unknown")
@@ -335,13 +715,82 @@ export namespace Environment {
     }
   }
 
-  async function ensure(id: string, scopeID: string): Promise<Info> {
+  export async function retireRecoveredAdmission(value: EnvironmentSchema.Use, scopeID: string) {
+    const previous = EnvironmentSchema.Use.parse(structuredClone(value))
+    const runtime = RuntimeContext.current(),
+      primary = runtime.storage,
+      current = Storage.current()
+    if (
+      !primary ||
+      current.store !== primary.store ||
+      current.artifactDirectory !== primary.artifactDirectory ||
+      current.artifactObjects !== primary.artifactObjects ||
+      current.store.options.readonly ||
+      previous.kind !== "admission" ||
+      previous.ownership.kind === "legacy-unknown" ||
+      previous.ownerEpoch === epoch()
+    )
+      throw new Unavailable({
+        environmentID: previous.target.environmentID,
+        message: "Recovered admission requires its actual old native Use and writable primary",
+      })
+    return releaseRecoveredAdmission(previous, scopeID)
+  }
+
+  async function releaseRecoveredAdmission(previous: EnvironmentSchema.Use, scopeID: string) {
+    const runtime = RuntimeContext.current()
+    const { store, artifactDirectory, artifactObjects } = Storage.current()
+    const namespace = JSON.stringify(store.options)
+    const config = artifactObjects && {
+      blobs: artifactObjects.blobs,
+      writerID: artifactObjects.writerID,
+      now: artifactObjects.now,
+    }
+    const guard = () => {
+      const current = Storage.current()
+      if (
+        RuntimeContext.current() !== runtime ||
+        current.store !== store ||
+        JSON.stringify(store.options) !== namespace ||
+        current.artifactDirectory !== artifactDirectory ||
+        current.artifactObjects !== artifactObjects ||
+        artifactObjects?.blobs !== config?.blobs ||
+        artifactObjects?.writerID !== config?.writerID ||
+        artifactObjects?.now !== config?.now
+      )
+        throw new Error("Recovered Environment admission belongs to another native Store")
+    }
+    await Storage.transaction(
+      async () => {
+        guard()
+        const info = await get(previous.target.environmentID, scopeID)
+        const current = await readUse(info.id, previous.id)
+        if (!current) return
+        if (
+          current.kind !== "admission" ||
+          current.ownerEpoch === epoch() ||
+          JSON.stringify(current) !== JSON.stringify(previous)
+        )
+          throw new Busy({
+            environmentID: info.id,
+            message: "Recovered admission is still held by another native owner",
+          })
+        await Storage.remove(StoragePath.environmentUse(info.id, previous.id))
+        await write({ ...info, lastUsedAt: Date.now() })
+      },
+      { commitGuard: guard },
+    )
+  }
+
+  async function ensure(id: string, scopeID: string, admission: () => Promise<void>): Promise<Info> {
     const current = pending().get(id)
     if (current) {
       await get(id, scopeID)
-      return current
+      const info = await current
+      await admission()
+      return info
     }
-    const promise = allocate(id, scopeID)
+    const promise = allocate(id, scopeID, admission)
     pending().set(id, promise)
     try {
       return await promise
@@ -350,7 +799,8 @@ export namespace Environment {
     }
   }
 
-  async function allocate(id: string, scopeID: string): Promise<Info> {
+  async function allocate(id: string, scopeID: string, admission: () => Promise<void>): Promise<Info> {
+    await admission()
     let info = await get(id, scopeID)
     if (info.state === "ready") return info
     if (info.state !== "idle") info = await reconcile(id, scopeID)
@@ -360,9 +810,12 @@ export namespace Environment {
         environmentID: id,
         message: "Environment allocation is uncertain; reconcile it before executing",
       })
+    await RuntimeMaintenance.assertAdmission()
     return providerRequest(id, async () => {
       const requestID = `alloc_${randomUUID().replaceAll("-", "")}`
       info = await Storage.transaction(async () => {
+        await admission()
+        await RuntimeMaintenance.assertAdmission()
         const latest = await get(id, scopeID)
         if (latest.state !== "idle")
           throw new Busy({ environmentID: id, message: "Environment is already being allocated" })
@@ -374,10 +827,13 @@ export namespace Environment {
           allocation: { requestID, capabilities: [] },
         })
       })
+      await admission()
       const allocation = EnvironmentSchema.Allocation.parse(
         await EnvironmentProviders.get(info.provider).allocate(requestOf(info)),
       )
-      return updateAllocation(info, allocation)
+      const ready = await updateAllocation(info, allocation)
+      await admission()
+      return ready
     })
   }
 

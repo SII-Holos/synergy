@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test"
 import path from "node:path"
+import { z } from "zod"
 import { chmod, mkdtemp, rm } from "node:fs/promises"
 import os from "node:os"
 import { createDevPlan, runDevPlan } from "../../script/dev"
@@ -230,4 +231,30 @@ test("CI sandbox builder commands resolve and accept both target platforms", asy
     }
   }
   expect(commands).toBe(3)
+})
+
+test("native asset jobs check out the exact source head their independent consumers verify", async () => {
+  const workflow = z
+    .object({
+      jobs: z.record(
+        z.string(),
+        z.object({
+          steps: z.array(
+            z.object({
+              uses: z.string().optional(),
+              with: z.object({ ref: z.string().optional(), "persist-credentials": z.boolean().optional() }).optional(),
+            }),
+          ),
+        }),
+      ),
+    })
+    .parse(Bun.YAML.parse(await Bun.file(path.join(root, ".github/workflows/build-helpers.yml")).text()))
+  const checkouts = Object.values(workflow.jobs)
+    .flatMap((job) => job.steps)
+    .filter((step) => step.uses?.startsWith("actions/checkout@"))
+  expect(checkouts).toHaveLength(3)
+  for (const checkout of checkouts) {
+    expect(checkout.with?.ref).toBe("${{ github.event.pull_request.head.sha || github.sha }}")
+    expect(checkout.with?.["persist-credentials"]).toBe(false)
+  }
 })

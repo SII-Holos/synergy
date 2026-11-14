@@ -1,5 +1,6 @@
 import { createStore } from "solid-js/store"
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
+import { useServer } from "./server"
 import { Persist, persisted } from "@/utils/persist"
 
 export interface AuthUser {
@@ -18,7 +19,7 @@ export const { use: useAuth, provider: AuthProvider } = createSimpleContext({
   name: "Auth",
   init: () => {
     const [persistedStore, setPersistedStore, , ready] = persisted(
-      Persist.global("auth", ["auth.v1"]),
+      Persist.connection(useServer().cacheKey, "auth"),
       createStore<{ token: string | null; user: AuthUser | null }>({
         token: null,
         user: null,

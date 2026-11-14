@@ -13,6 +13,7 @@ import type { StoreTransaction } from "../storage/transactional-store"
 import { WorkspaceTree } from "./tree"
 import { EnvironmentSchema } from "../environment/schema"
 import { JsonValue } from "../util/json-value"
+import { WorkspaceMove } from "./move"
 
 export namespace WorkspaceCatalog {
   export const Backend = z.object({ provider: z.string().min(1), spec: z.record(z.string(), JsonValue) })
@@ -237,6 +238,7 @@ export namespace WorkspaceCatalog {
   ): Promise<Info[]> {
     return Storage.transaction(async () => {
       const current = await retirementRecords(records, expectedLifecycle)
+      for (const record of current) await WorkspaceMove.assertLifecycle(record)
       if (lifecycle === "released" && current.some((record) => !record.recovery))
         throw new Invalid({ workspaceID: current[0]!.id, message: "Releasing a Workspace requires a recovery receipt" })
       const next = current.map((record) => ({
@@ -380,10 +382,17 @@ export namespace WorkspaceCatalog {
     })
   }
 
-  export async function publishContent(previous: Info, manifest: string): Promise<Info> {
+  export async function publishContent(
+    previous: Info,
+    manifest: string,
+    options: { paths?: readonly string[] } = {},
+  ): Promise<Info> {
+    previous = Info.parse(previous)
     WorkspaceTree.Hash.parse(manifest)
+    const paths = options.paths?.map((name) => (name === "" ? "" : WorkspaceTree.Path.parse(name))) ?? [""]
     return Storage.transaction(async () => {
       const latest = await get(previous.id, previous.scopeID)
+      await WorkspaceMove.assertMutation(latest, paths)
       if (latest.lifecycle !== "active" || latest.binding.state !== "bound")
         throw new Unavailable({ workspaceID: latest.id, message: "Workspace has no active storage authority" })
       if (
@@ -489,6 +498,29 @@ export namespace WorkspaceCatalog {
     await tx.write(scopeKey(info.scopeID, info.id), info.id)
   }
 
+  export async function writeImportedFiles(value: Info, tx: StoreTransaction) {
+    const info = Info.parse(value)
+    if (
+      info.binding.state !== "bound" ||
+      info.binding.path !== null ||
+      info.binding.physicalID ||
+      info.content ||
+      info.activeMount ||
+      info.sharedWritableWorkspaceIDs.length ||
+      info.lifecycle !== "active" ||
+      !info.backend ||
+      ["objects", "directory"].includes(info.backend.provider)
+    )
+      throw new Invalid({ message: "Remote file Locator cannot carry local file authority", workspaceID: info.id })
+    if ((await tx.readMany([recordKey(info.id)]))[0] !== undefined)
+      throw new BindingChanged({
+        message: "Workspace identity was occupied during remote publication",
+        workspaceID: info.id,
+      })
+    await tx.write(recordKey(info.id), info)
+    await tx.write(scopeKey(info.scopeID, info.id), info.id)
+  }
+
   export async function writeRelocated(info: Info, tx: StoreTransaction) {
     if (info.binding.state !== "bound" || !info.binding.path || !info.binding.physicalID || info.lifecycle !== "active")
       throw new Invalid({ message: "Relocated Workspace requires verified local authority", workspaceID: info.id })
@@ -537,6 +569,7 @@ export namespace WorkspaceCatalog {
   ): Promise<Info> {
     return Storage.transaction(async () => {
       const previous = await get(id, input.scopeID)
+      await WorkspaceMove.assertLifecycle(previous)
       if (previous.activeMount)
         throw new Unavailable({ workspaceID: id, message: "Detach the active Workspace mount before rebinding" })
       if (previous.revision !== input.expectedRevision)

@@ -20,6 +20,9 @@ import { SessionEvent } from "../../src/session/event"
 import { SessionRecovery } from "../../src/session/recovery"
 import { SessionInvoke } from "../../src/session/invoke"
 import { testRuntime } from "../support/runtime"
+import { Storage } from "../../src/storage/storage"
+import { Lock } from "../../src/util/lock"
+import type { ActorStamp } from "@ericsanchezok/synergy-util/actor-stamp"
 
 const runtime = await testRuntime()
 afterAll(() => runtime.close())
@@ -91,6 +94,282 @@ async function fixture(fn: () => Promise<void>) {
     await ScopeContext.provide({ scope: await tmp.scope(), fn })
   })
 }
+
+test("trusted Continue admission commits its actor and receipt atomically with native recovery", () =>
+  fixture(async () => {
+    using schedule = spyOn(SessionManager, "scheduleWake").mockImplementation(() => {})
+    const { session, owner, rootID, pausedSince } = await failedSession()
+    const request = { sessionID: session.id, requestID: "trusted-continue", pausedSince }
+    const actor: ActorStamp.Account = {
+      kind: "account",
+      orgID: "organization",
+      subjectID: "member",
+      displayName: "Member",
+      clientKind: "web",
+      requestID: request.requestID,
+    }
+    const key = ["resume-admission-fixture", session.id]
+    const failure = new Error("Receipt write failed")
+    const options: SessionResume.Admission = {
+      actor,
+      async validate() {
+        expect(Storage.inTransaction()).toBe(true)
+        expect((await Session.get(session.id)).paused?.since).toBe(pausedSince)
+      },
+      async record(receipt) {
+        expect(Storage.inTransaction()).toBe(true)
+        await Storage.write(key, receipt)
+        throw failure
+      },
+    }
+    await expect(resumeSession(request, options)).rejects.toBe(failure)
+    expect((await Session.get(session.id)).paused?.since).toBe(pausedSince)
+    expect((await Session.get(session.id)).resume).toBeUndefined()
+    expect(await SessionInbox.peekSteer(session.id)).toHaveLength(0)
+    expect((await RolloutLedger.getRun(owner, rootID)).status).toBe("failed")
+    expect(await Storage.readMany([key])).toEqual([undefined])
+    expect(schedule).not.toHaveBeenCalled()
+    await expect(
+      resumeSession(request, {
+        ...options,
+        async validate() {
+          throw undefined
+        },
+      }),
+    ).rejects.toBeUndefined()
+    const accepted = await resumeSession(request, { ...options, record: (receipt) => Storage.write(key, receipt) })
+    expect(accepted.outcome).toBe("accepted")
+    expect(accepted.receipt?.actor).toEqual(actor)
+    expect(await Storage.read(key)).toEqual(accepted.receipt)
+    const duplicate = await resumeSession(request, {
+      actor: { ...actor, subjectID: "another-member" },
+      record: async () => {
+        throw new Error("A replay cannot rewrite its receipt")
+      },
+    })
+    expect(duplicate.receipt).toEqual(accepted.receipt)
+    const [item] = await SessionInbox.peekSteer(session.id)
+    expect(item.message?.actor).toEqual(actor)
+    await SessionInbox.materializeItem(item, rootID, { guiding: true })
+    const message = (await MessageV2.get({ sessionID: session.id, messageID: item.messageID })).info
+    if (message.role !== "user") throw new Error("Expected continuation input")
+    expect(message.actor).toEqual(actor)
+  }))
+
+test("Continue drains without holding control and rechecks a pause that changed while waiting", () =>
+  fixture(async () => {
+    using schedule = spyOn(SessionManager, "scheduleWake").mockImplementation(() => {})
+    const { session, pausedSince } = await failedSession()
+    const lease = SessionManager.acquire(session.id)!
+    const waiting = Promise.withResolvers<void>()
+    const waitForIdle = SessionManager.waitForIdle
+    using observer = spyOn(SessionManager, "waitForIdle").mockImplementation((...args) => {
+      waiting.resolve()
+      return waitForIdle(...args)
+    })
+    const pending = resumeSession({ sessionID: session.id, requestID: "waiting-continue", pausedSince })
+    try {
+      await waiting.promise
+      const control = await Lock.tryAcquireWrite(`session-control:${session.id}`)
+      const acquired = !!control
+      control?.[Symbol.dispose]()
+      await SessionLifecycle.clear(session.id)
+      await SessionLifecycle.pause({ sessionID: session.id, reason: "workflow", description: "A newer pause" })
+      const newer = (await Session.get(session.id)).paused!
+      expect(newer.since).not.toBe(pausedSince)
+      await SessionManager.release(lease, { requestNextWork: false })
+      expect((await pending).outcome).toBe("stale")
+      expect(acquired).toBe(true)
+      expect((await Session.get(session.id)).paused).toEqual(newer)
+      expect(await SessionInbox.peekSteer(session.id)).toHaveLength(0)
+      expect(schedule).not.toHaveBeenCalled()
+    } finally {
+      await SessionManager.release(lease, { requestNextWork: false })
+      await pending.catch(() => {})
+    }
+  }))
+
+test("Continue preserves host commit refusal after native and external receipts have been written", () =>
+  fixture(async () => {
+    using schedule = spyOn(SessionManager, "scheduleWake").mockImplementation(() => {})
+    const { session, pausedSince } = await failedSession()
+    const refusal = new Error("Host admission expired at commit")
+    let recorded = false
+    await expect(
+      resumeSession(
+        { sessionID: session.id, requestID: "host-commit-refusal", pausedSince },
+        {
+          async record(receipt) {
+            await Storage.write(["test-host-continue", session.id], receipt)
+            recorded = true
+          },
+          commitGuard() {
+            expect(recorded).toBe(true)
+            throw refusal
+          },
+        },
+      ),
+    ).rejects.toBe(refusal)
+    expect((await Session.get(session.id)).paused?.since).toBe(pausedSince)
+    expect((await Session.get(session.id)).resume).toBeUndefined()
+    expect(await Storage.readMany([["test-host-continue", session.id]])).toEqual([undefined])
+    expect(await SessionInbox.peekSteer(session.id)).toHaveLength(0)
+    expect(schedule).not.toHaveBeenCalled()
+    expect(
+      (await resumeSession({ sessionID: session.id, requestID: "host-commit-refusal", pausedSince })).outcome,
+    ).toBe("accepted")
+  }))
+
+test("cancelled Continue stops waiting without cancelling the active execution or admitting a late wake", () =>
+  fixture(async () => {
+    using schedule = spyOn(SessionManager, "scheduleWake").mockImplementation(() => {})
+    const { session, pausedSince } = await failedSession()
+    const lease = SessionManager.acquire(session.id)!
+    const waiting = Promise.withResolvers<void>()
+    const waitForIdle = SessionManager.waitForIdle
+    using observer = spyOn(SessionManager, "waitForIdle").mockImplementation((...args) => {
+      waiting.resolve()
+      return waitForIdle(...args)
+    })
+    const controller = new AbortController()
+    const pending = resumeSession(
+      { sessionID: session.id, requestID: "cancelled-wait", pausedSince },
+      { signal: controller.signal },
+    ).then(
+      () => "accepted",
+      (error: unknown) => (error instanceof DOMException ? error.name : String(error)),
+    )
+    try {
+      await waiting.promise
+      controller.abort()
+      expect(await Promise.race([pending, Bun.sleep(100).then(() => "still waiting")])).toBe("AbortError")
+      expect(lease.signal.aborted).toBe(false)
+    } finally {
+      await SessionManager.release(lease, { requestNextWork: false })
+      await pending
+    }
+    expect((await Session.get(session.id)).paused?.since).toBe(pausedSince)
+    expect((await Session.get(session.id)).resume).toBeUndefined()
+    expect(schedule).not.toHaveBeenCalled()
+  }))
+
+test("Continue waits for Inbox uniqueness before taking the SQL writer", () =>
+  fixture(async () => {
+    using schedule = spyOn(SessionManager, "scheduleWake").mockImplementation(() => {})
+    const { session, pausedSince } = await failedSession()
+    const requestID = "delivery-lock-continue"
+    const key = `session-inbox-delivery:${session.id}:${requestID}`
+    const held = await Lock.write(key)
+    const waiting = Promise.withResolvers<void>()
+    const write = Lock.write
+    using observer = spyOn(Lock, "write").mockImplementation((key) => {
+      if (key === `session-inbox-delivery:${session.id}:${requestID}`) waiting.resolve()
+      return write(key)
+    })
+    const pending = resumeSession({ sessionID: session.id, requestID, pausedSince })
+    let progress: Promise<string> | undefined
+    let outcome: string | undefined
+    try {
+      await waiting.promise
+      progress = Storage.write(["resume-admission-fixture", "independent"], { saved: true }).then(() => "saved")
+      outcome = await Promise.race([progress, Bun.sleep(500).then(() => "writer blocked")])
+    } finally {
+      held[Symbol.dispose]()
+      await progress
+      await pending
+    }
+    expect(outcome).toBe("saved")
+    expect((await pending).outcome).toBe("accepted")
+  }))
+
+test("Continue commit cancellation rolls back its receipt, pause release and Rollout reopening", () =>
+  fixture(async () => {
+    using schedule = spyOn(SessionManager, "scheduleWake").mockImplementation(() => {})
+    const { session, owner, rootID, pausedSince } = await failedSession()
+    const controller = new AbortController()
+    const key = ["resume-admission-fixture", session.id]
+    const rejected = await resumeSession(
+      { sessionID: session.id, requestID: "commit-cancel", pausedSince },
+      {
+        signal: controller.signal,
+        async record(receipt) {
+          await Storage.write(key, receipt)
+          controller.abort()
+        },
+      },
+    ).catch((error: unknown) => error)
+    expect(rejected).toBe(controller.signal.reason)
+    expect((await Session.get(session.id)).paused?.since).toBe(pausedSince)
+    expect((await Session.get(session.id)).resume).toBeUndefined()
+    expect(await Storage.readMany([key])).toEqual([undefined])
+    expect(await SessionInbox.peekSteer(session.id)).toHaveLength(0)
+    expect((await RolloutLedger.getRun(owner, rootID)).status).toBe("failed")
+    expect(schedule).not.toHaveBeenCalled()
+  }))
+
+test("Continue refuses an enclosing transaction before waiting for execution", () =>
+  fixture(async () => {
+    const { session } = await failedSession()
+    await expect(Storage.transaction(() => resumeSession({ sessionID: session.id }))).rejects.toThrow(
+      "Session continuation must own its commit boundary",
+    )
+    expect((await Session.get(session.id)).paused).toBeDefined()
+    expect(await SessionInbox.peekSteer(session.id)).toHaveLength(0)
+  }))
+
+test("Continue rechecks the pause at publication after history preparation", () =>
+  fixture(async () => {
+    using schedule = spyOn(SessionManager, "scheduleWake").mockImplementation(() => {})
+    const { session, owner, rootID, pausedSince } = await failedSession()
+    const prepared = Promise.withResolvers<void>()
+    const proceed = Promise.withResolvers<void>()
+    const modelMessages = SessionHistory.modelMessages
+    using preparation = spyOn(SessionHistory, "modelMessages").mockImplementation(async (...args) => {
+      const messages = await modelMessages(...args)
+      prepared.resolve()
+      await proceed.promise
+      return messages
+    })
+    const pending = resumeSession({ sessionID: session.id, requestID: "prepared-continue", pausedSince })
+    try {
+      await prepared.promise
+      await SessionLifecycle.clear(session.id)
+      await SessionLifecycle.pause({ sessionID: session.id, reason: "workflow" })
+      const newer = (await Session.get(session.id)).paused!
+      expect(newer.since).not.toBe(pausedSince)
+      proceed.resolve()
+      expect((await pending).outcome).toBe("stale")
+      expect((await Session.get(session.id)).paused).toEqual(newer)
+      expect(await SessionInbox.peekSteer(session.id)).toHaveLength(0)
+      expect((await RolloutLedger.getRun(owner, rootID)).status).toBe("failed")
+      expect(schedule).not.toHaveBeenCalled()
+    } finally {
+      proceed.resolve()
+      await pending.catch(() => {})
+    }
+  }))
+
+test("a cancelled Continue cannot acquire a queued control lock after its caller leaves", () =>
+  fixture(async () => {
+    using schedule = spyOn(SessionManager, "scheduleWake").mockImplementation(() => {})
+    const { session, pausedSince } = await failedSession()
+    const held = await Lock.write(`session-control:${session.id}`)
+    const controller = new AbortController()
+    const pending = resumeSession(
+      { sessionID: session.id, requestID: "queued-continue", pausedSince },
+      { signal: controller.signal },
+    ).catch((error: unknown) => error)
+    try {
+      controller.abort()
+      expect(await Promise.race([pending, Bun.sleep(100).then(() => "still waiting")])).toBe(controller.signal.reason)
+    } finally {
+      held[Symbol.dispose]()
+      await pending
+    }
+    expect((await Session.get(session.id)).paused?.since).toBe(pausedSince)
+    expect((await Session.get(session.id)).resume).toBeUndefined()
+    expect(schedule).not.toHaveBeenCalled()
+  }))
 
 test("Continue admits one attempt after provider recovery timed out without erasing the failure", () =>
   fixture(async () => {

@@ -5,6 +5,7 @@ import { ContinuationKernel } from "./continuation-kernel"
 import { SessionInbox } from "./inbox"
 import { SessionLifecycle } from "./lifecycle"
 import { SessionManager } from "./manager"
+import { RuntimeMaintenance } from "../storage/runtime-maintenance"
 
 export namespace SessionDrive {
   const log = Log.create({ service: "session.drive" })
@@ -79,6 +80,12 @@ export namespace SessionDrive {
    *    apply, so forcing can resume work but cannot bypass a stop.
    */
   async function arbitrate(sessionID: string, reason: string, force: boolean): Promise<boolean> {
+    try {
+      await RuntimeMaintenance.assertAdmission()
+    } catch (error) {
+      if (error instanceof RuntimeMaintenance.Blocked) return false
+      throw error
+    }
     if (SessionManager.isRunning(sessionID)) return false
     if (await isPaused(sessionID)) return false
     if (await SessionInbox.hasRunnableItem(sessionID)) return true

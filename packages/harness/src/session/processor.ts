@@ -11,6 +11,7 @@ import { Log } from "../util/log"
 import { Identifier } from "../id/id"
 import { Session } from "."
 import { SessionEvent } from "./event"
+import { SessionSchemaRegistry } from "./schema-registry"
 import { Bus } from "../bus"
 import { SessionRetry } from "./retry"
 import { SessionManager } from "./manager"
@@ -197,8 +198,12 @@ export namespace SessionProcessor {
     abort: AbortSignal
     generation?: number
     toolDisplay?: (toolName: string) => ToolDisplay | undefined
+    notificationSource?: SessionSchemaRegistry.NotificationSource
   }) {
     const runtime = RuntimeContext.current()
+    const notificationSource = input.notificationSource
+      ? SessionSchemaRegistry.snapshotNotificationSource(input.notificationSource)
+      : undefined
     const isCurrent = () => {
       if (input.abort.aborted) return false
       if (input.generation === undefined) return true
@@ -909,6 +914,9 @@ export namespace SessionProcessor {
     }
 
     const result = {
+      get notificationSource() {
+        return notificationSource
+      },
       get message() {
         return input.assistantMessage
       },
@@ -2101,6 +2109,7 @@ export namespace SessionProcessor {
                 Bus.publish(SessionEvent.Error, {
                   sessionID: input.assistantMessage.sessionID,
                   error: input.assistantMessage.error,
+                  ...(notificationSource ? { source: notificationSource } : {}),
                 })
               }
             }

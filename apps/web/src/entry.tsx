@@ -1,9 +1,9 @@
 // @refresh reload
+import { notifyBrowser } from "./context/notification-platform"
 import { AP } from "@/app-i18n"
 import { render } from "solid-js/web"
 import { AppBaseProviders, AppInterface } from "@/app"
 import { Platform, PlatformProvider } from "@/context/platform"
-import { BRAND_ASSETS, brandAssetPath } from "@/utils/brand-assets"
 import { assetPath } from "@/utils/proxy"
 import { schedulePromptAttachmentImagePipelineWarmup } from "@/utils/prompt-attachment"
 import { configureClipboard } from "@ericsanchezok/synergy-ui/clipboard"
@@ -12,7 +12,10 @@ import pkg from "../package.json"
 
 declare global {
   interface Window {
-    synergyDesktop?: Pick<Platform, "platform" | "browserNative" | "clipboard" | "openDirectoryPickerDialog"> & {
+    synergyDesktop?: Pick<
+      Platform,
+      "platform" | "browserNative" | "clipboard" | "openDirectoryPickerDialog" | "organization"
+    > & {
       update?: Platform["desktopUpdate"]
       server?: Platform["desktopServer"]
       shell?: {
@@ -58,6 +61,7 @@ const platform: Platform = {
   browserNative: window.synergyDesktop?.browserNative,
   desktopUpdate: window.synergyDesktop?.update,
   desktopServer: window.synergyDesktop?.server,
+  organization: window.synergyDesktop?.organization,
   desktopWindow: window.synergyDesktop?.window,
   desktopTheme: window.synergyDesktop?.theme,
   desktopBadge: window.synergyDesktop?.badge,
@@ -75,39 +79,7 @@ const platform: Platform = {
   restart: async () => {
     window.location.reload()
   },
-  notify: async (title, description, href, tag) => {
-    if (!("Notification" in window)) return
-
-    const permission =
-      Notification.permission === "default"
-        ? await Notification.requestPermission().catch(() => "denied")
-        : Notification.permission
-
-    if (permission !== "granted") return
-
-    const inView = document.visibilityState === "visible" && document.hasFocus()
-    if (inView) return
-
-    await Promise.resolve()
-      .then(() => {
-        const notification = new Notification(title, {
-          body: description ?? "",
-          icon: brandAssetPath(BRAND_ASSETS.synergy.notificationIcon),
-          // Same tag as the service-worker push notification: the desktop
-          // page notification and the Web Push delivery collapse into one.
-          ...(tag ? { tag } : {}),
-        })
-        notification.onclick = () => {
-          window.focus()
-          if (href) {
-            window.history.pushState(null, "", href)
-            window.dispatchEvent(new PopStateEvent("popstate"))
-          }
-          notification.close()
-        }
-      })
-      .catch(() => undefined)
-  },
+  notify: notifyBrowser,
 }
 
 // Register the push service worker on capable, secure contexts. The worker

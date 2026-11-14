@@ -4,7 +4,7 @@ The web client for [Synergy](https://github.com/SII-Holos/synergy) — a browser
 
 ## Development
 
-The web client connects to a running Synergy server. From the monorepo root:
+Personal space connects to a running Synergy Runtime. Organization spaces connect independently to their organization service; their execution and sharing model is documented in [Organization architecture](../../docs/architecture/organization.md). From the monorepo root:
 
 ```bash
 # Start the server plus Vite web client
@@ -14,7 +14,15 @@ bun dev web
 bun dev app --open
 ```
 
-Vite handles hot module replacement, so changes appear in the browser immediately.
+Vite handles hot module replacement, so changes appear in the browser immediately. Organization connection recovery keeps revision-bound logout metadata across reload without retaining credentials; see [logout recovery](../../docs/decisions/implemented/bug-fix/2026-11-12-recover-native-logout-before-renderer-reload.md).
+
+Conversation actions preserve original requests across reload and leave the destination paused. Existing native destinations require review and acceptance of their exact frozen directory versions. See [conversation moves](../../docs/decisions/implemented/feature/2026-11-13-move-organization-conversations-through-existing-handoff-owners.md) and [native version review](../../docs/decisions/implemented/feature/2026-11-13-review-native-directory-versions-before-handoff.md).
+
+Private organization tool files open through finite metadata pages and share the transcript's verified preview and streaming save actions. They use the captured Session reader; an empty visible page may still have another page. See [organization file transfers](../../docs/decisions/implemented/architecture/2026-11-11-bound-organization-desktop-file-transfers.md).
+
+Project knowledge publication follows the service's execution permission, independently of membership administration. Read-only and archived projects retain version browsing; unavailable management deep links keep ordinary navigation reachable. See [publication controls](../../docs/decisions/implemented/bug-fix/2026-11-12-align-knowledge-publication-with-project-execution.md). Sealed publication recovery uses paged local metadata and the original service receipt; see [reload recovery](../../docs/decisions/implemented/bug-fix/2026-11-12-reconcile-publications-after-renderer-reload.md).
+
+Background completion and error notifications keep their original personal Runtime or organization account while another space is open. Their shared App surface opens that source only after checking its current identity; reconnect does not replay missed organization notices. See [notification presentation ownership](../../docs/decisions/implemented/architecture/2026-11-12-retain-notification-presentation-outside-space-views.md).
 
 Frontend colors and selectable themes follow the repository's [semantic theme contract](../../docs/reference/frontend-theming.md). Product components must consume canonical tokens rather than Tailwind palette colors, literal colors, or component-local theme maps.
 
@@ -35,3 +43,7 @@ See the [main repository](https://github.com/SII-Holos/synergy) for setup instru
 ## License
 
 MIT
+
+Account’s My computers section discovers the current account’s original cancelled-move preparations without opening a conversation. See [device cleanup discovery](../../docs/decisions/implemented/feature/2026-11-13-discover-owned-runtime-cleanup-without-session-access.md).
+
+Conversation destination selection uses the Session-scoped metadata page instead of exposing colleagues' Runtime registrations. A destination member can reload and verify its original native directory before consent; directory inspection preserves unknown original operations and never substitutes the current default. See [scoped destination inspection](../../docs/decisions/implemented/feature/2026-11-13-inspect-scoped-handoff-destinations-and-original-native-directories.md).

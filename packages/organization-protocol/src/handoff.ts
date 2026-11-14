@@ -1,0 +1,954 @@
+import { z } from "zod"
+import { OrganizationIdentity as Identity } from "./identity.js"
+import { OrganizationProtocol } from "./core.js"
+import { OrganizationSyncProtocol as Sync } from "./sync.js"
+import { SigningSignature, digestProtocol, signedProtocol } from "./signature.js"
+import { ActorStamp } from "@ericsanchezok/synergy-util/actor-stamp"
+import { WorkspacePath } from "./workspace-path.js"
+
+export namespace OrganizationHandoffProtocol {
+  export const Hash = z.string().regex(/^[a-f0-9]{64}$/)
+  export const syncTransferVersion = 1
+  export const syncTransferBridge = 10
+  export const SyncCheckpoint = z
+    .strictObject({
+      version: z.literal(syncTransferVersion),
+      closureHash: Hash,
+      pendingBatch: Sync.BatchIdentity.nullable(),
+    })
+    .meta({ ref: "OrgHandoffSyncCheckpoint" })
+  export type SyncCheckpoint = z.infer<typeof SyncCheckpoint>
+  export const syncCheckpointHash = (checkpoint: SyncCheckpoint) =>
+    digestProtocol(SyncCheckpoint, "synergy.organization.handoff.sync-checkpoint.v1\n", checkpoint)
+  export const NativeEnvironmentDescriptor = z.strictObject({
+    version: z.literal(1),
+    kind: z.literal("native"),
+    platform: z.string().min(1).max(64),
+    architecture: z.string().min(1).max(64),
+    capabilities: z.array(z.enum(["exec", "pty", "files"])).refine((items) => new Set(items).size === items.length),
+  })
+  export const NativeEnvironmentSelection = z.strictObject({
+    kind: z.literal("native"),
+    environmentID: Identity.ID,
+    provider: Identity.ID,
+    generation: Identity.Revision,
+    descriptor: NativeEnvironmentDescriptor,
+  })
+  export type NativeEnvironmentSelection = z.infer<typeof NativeEnvironmentSelection>
+  export const NativeEnvironmentTarget = z.strictObject({
+    kind: z.literal("native"),
+    provider: Identity.ID,
+    descriptor: NativeEnvironmentDescriptor,
+    reference: z.strictObject({ environmentID: Identity.ID, generation: Identity.Revision }).nullable(),
+  })
+  export type NativeEnvironmentTarget = z.infer<typeof NativeEnvironmentTarget>
+  export const OrganizationEnvironmentSelection = z.strictObject({
+    kind: z.literal("organization"),
+    resourceID: Identity.ID,
+    resourceRevision: Identity.Revision,
+    environmentID: Identity.ID,
+  })
+  export const EnvironmentSourceSelection = z.discriminatedUnion("kind", [
+    z.strictObject({ kind: z.literal("none") }),
+    NativeEnvironmentSelection,
+    OrganizationEnvironmentSelection,
+  ])
+  export type EnvironmentSourceSelection = z.infer<typeof EnvironmentSourceSelection>
+  export const EnvironmentTargetSelection = z.discriminatedUnion("kind", [
+    z.strictObject({ kind: z.literal("none") }),
+    NativeEnvironmentTarget,
+    OrganizationEnvironmentSelection,
+  ])
+  export type EnvironmentTargetSelection = z.infer<typeof EnvironmentTargetSelection>
+  export const EnvironmentMapping = z
+    .strictObject({
+      version: z.literal(1),
+      expectedSelectionRevision: Identity.Revision,
+      source: EnvironmentSourceSelection,
+      target: EnvironmentTargetSelection,
+    })
+    .meta({ ref: "OrgHandoffEnvironmentMapping" })
+  export type EnvironmentMapping = z.infer<typeof EnvironmentMapping>
+  export const environmentMappingHash = (mapping: EnvironmentMapping) =>
+    digestProtocol(EnvironmentMapping, "synergy.organization.handoff.environment-mapping.v1\n", mapping)
+  export const Requirement = z.strictObject({
+    code: Identity.ID,
+    label: z.string().min(1).max(1024),
+    recoverable: z.boolean(),
+  })
+  export const Phase = z.enum([
+    "preparing",
+    "prepared",
+    "surrendered",
+    "committed",
+    "activation_permitted",
+    "completed",
+    "cancelled",
+    "retired",
+  ])
+  export const Binding = z.strictObject({
+    schemaVersion: z.literal(1),
+    orgID: Identity.ID,
+    deploymentIncarnation: Identity.ID,
+    handoffID: Identity.ID,
+    sessionID: Identity.ID,
+    sourceRuntimeID: Identity.ID,
+    targetRuntimeID: Identity.ID,
+    fromEpoch: OrganizationProtocol.Epoch,
+    toEpoch: OrganizationProtocol.Epoch,
+    mappingPlanRevision: z.number().int().positive().safe(),
+    shareGeneration: Identity.Revision,
+  })
+  function sameBinding(left: z.infer<typeof Binding>, right: z.infer<typeof Binding>) {
+    return Object.keys(Binding.shape).every(
+      (field) => left[field as keyof z.infer<typeof Binding>] === right[field as keyof z.infer<typeof Binding>],
+    )
+  }
+  const Mode = z.number().int().min(0).max(0o777)
+  export const DifferenceConsent = z.strictObject({
+    sourceSnapshotHash: Hash,
+    targetDigest: Hash,
+    diffHash: Hash,
+    mappingPlanRevision: z.number().int().positive().safe(),
+  })
+  export type DifferenceConsent = z.infer<typeof DifferenceConsent>
+  export const Difference = DifferenceConsent.extend({
+    entries: Identity.Revision,
+    sourceEntries: Identity.Revision,
+    targetEntries: Identity.Revision,
+    mode: z.strictObject({ source: Mode, target: Mode }),
+  })
+  export type Difference = z.infer<typeof Difference>
+  const DifferenceHeader = z.discriminatedUnion("kind", [
+    z.strictObject({ path: WorkspacePath, kind: z.literal("file"), mode: Mode, size: Identity.Revision, hash: Hash }),
+    z.strictObject({ path: WorkspacePath, kind: z.literal("directory"), mode: Mode }),
+    z.strictObject({
+      path: WorkspacePath,
+      kind: z.literal("symlink"),
+      mode: Mode,
+      target: z.string().min(1).max(4096),
+    }),
+  ])
+  export const DifferencePage = z.strictObject({
+    diffHash: Hash,
+    items: z
+      .array(
+        z
+          .strictObject({
+            path: WorkspacePath,
+            source: DifferenceHeader.nullable(),
+            target: DifferenceHeader.nullable(),
+          })
+          .refine(
+            (item) =>
+              (!!item.source || !!item.target) &&
+              (!item.source || item.source.path === item.path) &&
+              (!item.target || item.target.path === item.path),
+            "Difference entries must retain their exact canonical path",
+          ),
+      )
+      .max(64),
+    cursor: Identity.ID.optional(),
+  })
+  export const DifferenceProof = Binding.extend({
+    purpose: z.literal("target-difference"),
+    manifestHash: Hash,
+    difference: Difference,
+  })
+  export const SignedDifference = z.strictObject({ proof: DifferenceProof, signature: SigningSignature })
+  export const Proof = z
+    .discriminatedUnion("purpose", [
+      Binding.extend({
+        purpose: z.literal("source-frozen"),
+        syncCheckpoint: SyncCheckpoint.optional(),
+        environmentMappingHash: Hash.optional(),
+        manifestHash: Hash,
+        commandSeq: Identity.Revision,
+        receivedSeq: Identity.Revision,
+        compatibilityHash: Hash,
+        closureHash: Hash,
+        fileClosureHash: Hash.nullable(),
+        workspaceMoveReceiptHash: Hash.nullable(),
+        workspaceSourceHash: Hash.nullable().optional(),
+        paused: z.literal(true),
+        drained: z.literal(true),
+      }),
+      Binding.extend({
+        purpose: z.literal("target-prepared"),
+        syncCheckpointHash: Hash.optional(),
+        environmentMappingHash: Hash.optional(),
+        manifestHash: Hash,
+        compatibilityHash: Hash,
+        convertedHash: Hash,
+        closureHash: Hash,
+        fileClosureHash: Hash.nullable(),
+        workspaceMoveReceiptHash: Hash.nullable(),
+        workspaceSourceHash: Hash.nullable().optional(),
+        workspaceNativeReceiptHash: Hash.optional(),
+        workspaceDifferenceHash: Hash.optional(),
+        paused: z.literal(true),
+      }),
+      Binding.extend({
+        purpose: z.literal("source-surrendered"),
+        manifestHash: Hash,
+        permitID: Identity.ID,
+        preparedHash: Hash,
+        gatePersisted: z.literal(true),
+      }),
+      Binding.extend({
+        purpose: z.literal("source-cancelled"),
+        manifestHash: Hash.nullable(),
+        gateCancelled: z.literal(true),
+        paused: z.literal(true),
+      }),
+      Binding.extend({
+        purpose: z.literal("target-activated"),
+        manifestHash: Hash,
+        permitID: Identity.ID,
+        preparedHash: Hash,
+        paused: z.literal(true),
+      }),
+      Binding.extend({
+        purpose: z.literal("target-never-activate"),
+        manifestHash: Hash,
+        preparedHash: Hash,
+        tombstonePersisted: z.literal(true),
+      }),
+      DifferenceProof,
+      Binding.extend({
+        purpose: z.literal("target-preview-released"),
+        manifestHash: Hash,
+        diffHash: Hash.nullable(),
+        tombstonePersisted: z.literal(true),
+      }),
+    ])
+    .meta({ ref: "OrgHandoffProof" })
+  export type Proof = z.infer<typeof Proof>
+  export const FactAcknowledgement = Binding.extend({
+    purpose: z.union(Proof.options.map((proof) => proof.shape.purpose)),
+    factHash: Hash,
+  }).meta({ ref: "OrgHandoffFactAcknowledgement" })
+  export type FactAcknowledgement = z.infer<typeof FactAcknowledgement>
+  export const SignedProof = z
+    .strictObject({ proof: Proof, signature: SigningSignature })
+    .meta({ ref: "OrgHandoffSignedProof" })
+  export type SignedProof = z.infer<typeof SignedProof>
+  const proofs = signedProtocol(Proof, "synergy.organization.handoff.fact.v1\n")
+  export const signProof = proofs.sign
+  export const verifyProof = proofs.verify
+  export const proofHash = (proof: Proof) => digestProtocol(Proof, "synergy.organization.handoff.fact.v1\n", proof)
+  export const Permit = Binding.extend({
+    purpose: z.enum(["handoff-surrender", "handoff-activation"]),
+    permitID: Identity.ID,
+    keyID: Identity.ID,
+    sourceBinding: OrganizationProtocol.SessionBinding.optional(),
+    manifestHash: Hash,
+    preparedHash: Hash,
+    createdAt: z.number().int().nonnegative().safe(),
+  }).meta({ ref: "OrgHandoffPermit" })
+  export type Permit = z.infer<typeof Permit>
+  export const SignedPermit = z
+    .strictObject({ permit: Permit, signature: SigningSignature })
+    .meta({ ref: "OrgHandoffSignedPermit" })
+  export type SignedPermit = z.infer<typeof SignedPermit>
+  const permits = signedProtocol(Permit, "synergy.organization.handoff.permit.v1\n")
+  export const signPermit = permits.sign
+  export const verifyPermit = permits.verify
+  export const PermitRequest = z
+    .strictObject({ purpose: z.enum(["handoff-surrender", "handoff-activation"]) })
+    .meta({ ref: "OrgHandoffPermitRequest" })
+  export type PermitRequest = z.infer<typeof PermitRequest>
+  export const WorkspaceMapping = z.discriminatedUnion("kind", [
+    z.strictObject({ kind: z.literal("native") }),
+    z.strictObject({
+      kind: z.literal("native-existing"),
+      moveID: Identity.ID,
+      source: z.strictObject({
+        workspaceID: Identity.ID,
+        generation: OrganizationProtocol.Epoch,
+      }),
+      target: z.strictObject({
+        kind: z.literal("existing"),
+        workspaceID: Identity.ID,
+        generation: OrganizationProtocol.Epoch,
+        expectedRevision: Identity.Revision.positive(),
+        projectRevision: Hash,
+      }),
+    }),
+    z.strictObject({
+      kind: z.literal("organization-live"),
+      source: z.strictObject({ workspaceID: Identity.ID, generation: OrganizationProtocol.Epoch }),
+      resource: z.strictObject({
+        resourceID: Identity.ID,
+        workspaceID: Identity.ID,
+        generation: OrganizationProtocol.Epoch,
+        path: z.union([WorkspacePath, z.literal("")]),
+      }),
+    }),
+    z.strictObject({
+      kind: z.literal("organization-native"),
+      moveID: Identity.ID,
+      source: z.strictObject({ workspaceID: Identity.ID, generation: OrganizationProtocol.Epoch }),
+      resource: z.strictObject({
+        resourceID: Identity.ID,
+        workspaceID: Identity.ID,
+        generation: OrganizationProtocol.Epoch,
+        path: z.union([WorkspacePath, z.literal("")]),
+      }),
+      target: z.discriminatedUnion("kind", [
+        z.strictObject({
+          kind: z.literal("existing"),
+          workspaceID: Identity.ID,
+          generation: OrganizationProtocol.Epoch,
+          expectedRevision: z.number().int().positive().safe(),
+          projectRevision: Hash,
+        }),
+        z.strictObject({ kind: z.literal("private-copy") }),
+      ]),
+    }),
+    z.strictObject({
+      kind: z.literal("organization-object"),
+      moveID: Identity.ID,
+      source: z.strictObject({ workspaceID: Identity.ID, generation: OrganizationProtocol.Epoch }),
+      target: z.strictObject({
+        resourceID: Identity.ID,
+        workspaceID: Identity.ID,
+        generation: OrganizationProtocol.Epoch,
+        path: WorkspacePath,
+        expectedRevision: z.number().int().positive().safe(),
+      }),
+      acceptedDiffHash: z.null(),
+    }),
+  ])
+  export type WorkspaceMapping = z.infer<typeof WorkspaceMapping>
+  export type NativeTargetMapping = Extract<WorkspaceMapping, { kind: "organization-native" | "native-existing" }>
+  export function isNativeTargetMapping(mapping: WorkspaceMapping | undefined): mapping is NativeTargetMapping {
+    return mapping?.kind === "organization-native" || mapping?.kind === "native-existing"
+  }
+  export const mappingHash = (mapping: WorkspaceMapping) =>
+    digestProtocol(WorkspaceMapping, "synergy.organization.handoff.workspace-mapping.v1\n", mapping)
+  export const LegacyPrepare = z.strictObject({
+    handoffID: Identity.ID,
+    targetRuntimeID: Identity.ID,
+    expectedBindingEpoch: OrganizationProtocol.Epoch,
+    expectedControlRevision: Identity.Revision,
+    mappingPlanRevision: z.number().int().positive().safe(),
+  })
+  export const CurrentPrepare = LegacyPrepare.extend({
+    workspaceMapping: WorkspaceMapping,
+    environmentMapping: EnvironmentMapping.optional(),
+  })
+  export const planHash = (workspaceMapping: WorkspaceMapping, environmentMapping?: EnvironmentMapping) =>
+    environmentMapping === undefined
+      ? mappingHash(workspaceMapping)
+      : digestProtocol(
+          z.strictObject({ workspaceMapping: WorkspaceMapping, environmentMapping: EnvironmentMapping }),
+          "synergy.organization.handoff.mapping-plan.v1\n",
+          { workspaceMapping, environmentMapping },
+        )
+  export const Prepare = z
+    .union([CurrentPrepare, LegacyPrepare])
+    .transform((value) =>
+      "workspaceMapping" in value ? value : { ...value, workspaceMapping: { kind: "native" as const } },
+    )
+    .meta({ ref: "OrgHandoffPrepare" })
+  export type Prepare = z.input<typeof Prepare>
+  export const Accept = z
+    .union([
+      z.strictObject({
+        mappingPlanRevision: z.number().int().positive().safe(),
+        mappingHash: Hash,
+        workspaceDifference: DifferenceConsent,
+      }),
+      z.strictObject({ mappingPlanRevision: z.number().int().positive().safe(), mappingHash: Hash }),
+      z.strictObject({ mappingPlanRevision: z.number().int().positive().safe() }),
+    ])
+    .meta({ ref: "OrgHandoffAccept" })
+  export type Accept = z.infer<typeof Accept>
+  export const OptionsQuery = z.strictObject({ requestID: Identity.ID, targetRuntimeID: Identity.ID })
+  export type OptionsQuery = z.infer<typeof OptionsQuery>
+  export const WorkspaceReference = z.strictObject({
+    workspaceID: Identity.ID,
+    generation: OrganizationProtocol.Epoch,
+    revision: Identity.Revision.positive(),
+  })
+  export const RemoteWorkspace = z.strictObject({
+    resourceID: Identity.ID,
+    workspaceID: Identity.ID,
+    generation: OrganizationProtocol.Epoch,
+    path: z.union([WorkspacePath, z.literal("")]),
+  })
+  export const SourceWorkspace = z
+    .strictObject({
+      reference: WorkspaceReference,
+      kind: z.enum(["native", "organization", "unsupported"]),
+      label: z.string().min(1).max(255),
+      resource: RemoteWorkspace.optional(),
+    })
+    .refine(
+      (value) => (value.kind === "organization") === (value.resource !== undefined),
+      "Only an organization Workspace carries its remote resource",
+    )
+  export type SourceWorkspace = z.infer<typeof SourceWorkspace>
+  export const NativeTarget = z.strictObject({
+    reference: WorkspaceReference,
+    projectRevision: Hash,
+    label: z.string().min(1).max(255),
+  })
+  export type NativeTarget = z.infer<typeof NativeTarget>
+  export const TargetCursor = z
+    .string()
+    .min(1)
+    .max(4096)
+    .regex(/^[a-zA-Z0-9_-]+$/)
+  export const TargetsQuery = Identity.Page.omit({ cursor: true }).extend({ cursor: TargetCursor.optional() })
+  export type TargetsQuery = z.infer<typeof TargetsQuery>
+  const targetMetadata = {
+    runtimeID: Identity.ID,
+    state: z.enum(["pending", "active", "revoked"]),
+    availability: z.enum(["ready", "offline", "incompatible"]),
+  }
+  export const Target = z.discriminatedUnion("runtimeKind", [
+    z.strictObject({
+      ...targetMetadata,
+      runtimeKind: z.literal("member"),
+      accountID: Identity.ID,
+      deviceID: Identity.ID,
+      displayName: Identity.Name,
+    }),
+    z.strictObject({ ...targetMetadata, runtimeKind: z.literal("hosted"), name: z.string().min(1).max(256) }),
+  ])
+  export type Target = z.infer<typeof Target>
+  export const TargetPage = z
+    .strictObject({
+      sessionID: Identity.ID,
+      sourceRuntimeID: Identity.ID,
+      bindingEpoch: OrganizationProtocol.Epoch,
+      controlRevision: Identity.Revision,
+      shareGeneration: Identity.Revision,
+      items: z.array(Target).max(100),
+      cursor: TargetCursor.optional(),
+    })
+    .meta({ ref: "OrgHandoffTargetPage" })
+  export type TargetPage = z.infer<typeof TargetPage>
+  export const NativeTargetQuery = z.strictObject({ requestID: Identity.ID })
+  export const NativeTargetSelection = z
+    .strictObject({
+      requestID: Identity.ID,
+      handoffID: Identity.ID,
+      targetRuntimeID: Identity.ID,
+      mappingPlanRevision: Identity.Revision.positive(),
+      mappingHash: Hash,
+      native: NativeTarget,
+    })
+    .meta({ ref: "OrgHandoffNativeTargetSelection" })
+  export type NativeTargetSelection = z.infer<typeof NativeTargetSelection>
+  export const InspectionPlan = z
+    .strictObject({
+      schemaVersion: z.literal(1),
+      purpose: z.literal("handoff-inspection"),
+      requestID: Identity.ID,
+      keyID: Identity.ID,
+      orgID: Identity.ID,
+      deploymentIncarnation: Identity.ID,
+      projectID: Identity.ID,
+      sessionID: Identity.ID,
+      sourceRuntimeID: Identity.ID,
+      targetRuntimeID: Identity.ID,
+      runtimeID: Identity.ID,
+      connectionEpoch: OrganizationProtocol.Epoch,
+      bindingEpoch: OrganizationProtocol.Epoch,
+      controlRevision: Identity.Revision,
+      role: z.enum(["source", "target"]),
+      actor: ActorStamp.Info,
+      issuedAt: z.number().int().nonnegative().safe(),
+      expiresAt: z.number().int().positive().safe(),
+    })
+    .refine(
+      (value) =>
+        value.actor.kind === "account" &&
+        value.actor.orgID === value.orgID &&
+        value.actor.requestID === value.requestID &&
+        value.runtimeID === (value.role === "source" ? value.sourceRuntimeID : value.targetRuntimeID) &&
+        value.expiresAt > value.issuedAt &&
+        value.expiresAt - value.issuedAt <= 30_000,
+      "Inspection requires its account, current participant and finite window",
+    )
+  export type InspectionPlan = z.infer<typeof InspectionPlan>
+  export const SignedInspectionPlan = z.strictObject({ plan: InspectionPlan, signature: SigningSignature })
+  export type SignedInspectionPlan = z.infer<typeof SignedInspectionPlan>
+  const inspectionSigning = signedProtocol(InspectionPlan, "synergy.organization.handoff.inspection.v1\n")
+  export const signInspection = inspectionSigning.sign
+  export const verifyInspection = inspectionSigning.verify
+  export const InspectionResult = z
+    .strictObject({
+      requestID: Identity.ID,
+      orgID: Identity.ID,
+      deploymentIncarnation: Identity.ID,
+      projectID: Identity.ID,
+      sessionID: Identity.ID,
+      runtimeID: Identity.ID,
+      connectionEpoch: OrganizationProtocol.Epoch,
+      bindingEpoch: OrganizationProtocol.Epoch,
+      controlRevision: Identity.Revision,
+      role: z.enum(["source", "target"]),
+      workspace: SourceWorkspace.nullable(),
+      native: NativeTarget.nullable(),
+      sourceEnvironment: NativeEnvironmentSelection.nullable().optional(),
+      nativeEnvironment: NativeEnvironmentTarget.nullable().optional(),
+    })
+    .refine(
+      (value) => (value.role === "source" ? value.native === null : value.workspace === null),
+      "Inspection returns only its selected participant metadata",
+    )
+  export type InspectionResult = z.infer<typeof InspectionResult>
+  export function matchesInspection(plan: InspectionPlan, result: InspectionResult) {
+    return (
+      [
+        "requestID",
+        "orgID",
+        "deploymentIncarnation",
+        "projectID",
+        "sessionID",
+        "runtimeID",
+        "connectionEpoch",
+        "bindingEpoch",
+        "controlRevision",
+        "role",
+      ] as const
+    ).every((key) => plan[key] === result[key])
+  }
+  export const Options = z
+    .strictObject({
+      sessionID: Identity.ID,
+      projectID: Identity.ID,
+      bindingEpoch: OrganizationProtocol.Epoch,
+      controlRevision: Identity.Revision,
+      sourceRuntimeID: Identity.ID,
+      targetRuntimeID: Identity.ID,
+      source: SourceWorkspace.nullable(),
+      native: NativeTarget.nullable(),
+      environment: z
+        .strictObject({
+          source: EnvironmentSourceSelection,
+          expectedSelectionRevision: Identity.Revision,
+          native: NativeEnvironmentTarget.nullable(),
+          choices: z.array(z.enum(["none", "native", "organization"])),
+        })
+        .optional(),
+      choices: z.array(
+        z.union([
+          z.strictObject({
+            kind: z.enum(["native", "organization-object", "organization-live"]),
+            requiresDifference: z.literal(false),
+          }),
+          z.strictObject({
+            kind: z.literal("organization-native"),
+            targetKind: z.literal("existing"),
+            requiresDifference: z.literal(true),
+          }),
+          z.strictObject({
+            kind: z.literal("native-existing"),
+            requiresDifference: z.literal(true),
+          }),
+          z.strictObject({
+            kind: z.literal("organization-native"),
+            targetKind: z.literal("private-copy"),
+            requiresDifference: z.literal(false),
+          }),
+        ]),
+      ),
+    })
+    .meta({ ref: "OrgHandoffOptions" })
+  export type Options = z.infer<typeof Options>
+  export const LegacyView = Binding.extend({
+    phase: Phase,
+    initiator: Identity.ID,
+    targetAccepted: z.boolean(),
+    commandSeq: Identity.Revision,
+    manifestHash: Hash.optional(),
+    missingRequirements: z.array(Requirement),
+    canCancel: z.boolean(),
+    canAccept: z.boolean(),
+    canContinue: z.boolean(),
+    currentDriver: Identity.ID,
+    bindingEpoch: OrganizationProtocol.Epoch,
+  })
+  export const View = LegacyView.extend({
+    workspaceMapping: WorkspaceMapping,
+    environmentMapping: EnvironmentMapping.optional(),
+    mappingHash: Hash,
+    cancelRequested: z.boolean(),
+    workspaceDifference: Difference.optional(),
+    workspaceDifferenceAccepted: z.boolean().optional(),
+  }).meta({
+    ref: "OrgHandoffView",
+  })
+  export type View = z.infer<typeof View>
+  export const Page = z
+    .strictObject({ items: z.array(View), cursor: Identity.ID.optional() })
+    .meta({ ref: "OrgHandoffPage" })
+
+  export const DriveOperation = z.enum([
+    "inspect-source",
+    "inspect-target",
+    "prepare-source",
+    "prepare-target",
+    "preview-target",
+    "surrender-source",
+    "cancel-source",
+    "activate-target",
+    "retire-target",
+  ])
+  export const Drive = z
+    .strictObject({
+      requestID: Identity.ID,
+      operation: DriveOperation,
+      expectedRevision: Hash.optional(),
+      cursor: Identity.ID.optional(),
+    })
+    .refine((value) => !value.cursor || value.operation.startsWith("inspect-"), "Only inspection can page requirements")
+    .meta({ ref: "OrgHandoffDrive" })
+  export type Drive = z.infer<typeof Drive>
+  export const MachineOperation = z.enum([...DriveOperation.options, "object"])
+  export type MachineOperation = z.infer<typeof MachineOperation>
+  export function machineRole(operation: MachineOperation) {
+    return operation === "object" || operation.endsWith("-source") ? "source" : "target"
+  }
+  export const ObjectRange = z.strictObject({
+    hash: Hash,
+    offset: z.number().int().nonnegative().safe(),
+    length: z
+      .number()
+      .int()
+      .min(1)
+      .max(128 * 1024),
+  })
+  export const MachinePlan = Binding.extend({
+    purpose: z.literal("handoff-machine"),
+    syncTransferVersion: z.literal(syncTransferVersion).optional(),
+    requestID: Identity.ID,
+    keyID: Identity.ID,
+    runtimeID: Identity.ID,
+    connectionEpoch: OrganizationProtocol.Epoch,
+    operation: MachineOperation,
+    sourceBinding: OrganizationProtocol.SessionBinding,
+    commandSeq: Identity.Revision,
+    controlRevision: Identity.Revision,
+    authRevision: Identity.Revision,
+    actor: ActorStamp.Info,
+    issuedAt: z.number().int().nonnegative().safe(),
+    expiresAt: z.number().int().nonnegative().safe(),
+    expectedRevision: Hash.optional(),
+    cursor: Identity.ID.optional(),
+    manifestHash: Hash.optional(),
+    preparedHash: Hash.optional(),
+    frozen: SignedProof.optional(),
+    cleanup: SignedProof.optional(),
+    authorization: SignedPermit.optional(),
+    object: ObjectRange.optional(),
+    mappingPlanHash: Hash.optional(),
+    environmentPlan: z
+      .strictObject({
+        mapping: EnvironmentMapping,
+        hash: Hash,
+        selectionActor: ActorStamp.Info.nullable(),
+      })
+      .optional(),
+    workspacePlan: z
+      .strictObject({
+        mapping: WorkspaceMapping,
+        hash: Hash,
+        selectionActor: ActorStamp.Info.nullable(),
+        targetActor: ActorStamp.Info.nullable().optional(),
+        differenceConsent: DifferenceConsent.optional(),
+        difference: Difference.optional(),
+        targetScopeID: Identity.ID.optional(),
+      })
+      .refine(
+        (value) =>
+          value.mapping.kind === "native" || (value.selectionActor?.kind === "account" && !!value.targetScopeID),
+        "Object mapping requires its actual selection actor and target namespace",
+      )
+      .refine(
+        (value) =>
+          value.mapping.kind !== "organization-native" ||
+          value.mapping.target.kind !== "private-copy" ||
+          (!value.difference && !value.differenceConsent),
+        "A private download cannot borrow existing-directory difference consent",
+      )
+      .optional(),
+  })
+    .refine(
+      (value) =>
+        value.toEpoch > value.fromEpoch &&
+        value.sourceBinding.orgID === value.orgID &&
+        value.sourceBinding.driverRuntimeID === value.sourceRuntimeID &&
+        value.sourceBinding.bindingEpoch === value.fromEpoch &&
+        value.actor.kind !== "local" &&
+        value.actor.orgID === value.orgID &&
+        value.actor.requestID === value.requestID &&
+        (value.operation === "object"
+          ? value.actor.kind === "system" &&
+            value.actor.clientKind === "runtime" &&
+            value.actor.subjectID === value.targetRuntimeID
+          : value.actor.kind === "account" &&
+            value.actor.clientKind !== "runtime" &&
+            value.actor.clientKind !== "system") &&
+        value.runtimeID === (machineRole(value.operation) === "source" ? value.sourceRuntimeID : value.targetRuntimeID),
+      "Machine control requires its canonical source and exact destination",
+    )
+    .refine(
+      (value) => value.expiresAt > value.issuedAt && value.expiresAt - value.issuedAt <= 30_000,
+      "Machine control has a finite authorization window",
+    )
+    .refine(
+      (value) => (value.operation === "object") === !!value.object,
+      "Object data requires a scoped object request",
+    )
+    .refine(
+      (value) =>
+        ![
+          "prepare-target",
+          "preview-target",
+          "surrender-source",
+          "activate-target",
+          "retire-target",
+          "object",
+        ].includes(value.operation) || !!value.manifestHash,
+      "This machine operation requires the frozen manifest",
+    )
+    .refine((value) => !value.cursor || value.operation.startsWith("inspect-"), "Only inspection can page requirements")
+    .refine((value) => {
+      const cancelled = value.cleanup?.proof
+      return (
+        !cancelled ||
+        (isNativeTargetMapping(value.workspacePlan?.mapping) &&
+          ["retire-target", "inspect-target"].includes(value.operation) &&
+          cancelled.purpose === "source-cancelled" &&
+          sameBinding(value, cancelled) &&
+          cancelled.manifestHash === value.manifestHash)
+      )
+    }, "Cleanup inspection requires the original cancelled native binding")
+    .refine((value) => {
+      const required =
+        value.operation === "surrender-source"
+          ? "handoff-surrender"
+          : value.operation === "activate-target"
+            ? "handoff-activation"
+            : undefined
+      if (!required) return !value.authorization
+      const permit = value.authorization?.permit
+      return (
+        !!permit &&
+        permit.purpose === required &&
+        sameBinding(value, permit) &&
+        permit.manifestHash === value.manifestHash &&
+        JSON.stringify(permit.sourceBinding) === JSON.stringify(value.sourceBinding)
+      )
+    }, "Machine publication requires its separately issued handoff permit")
+    .refine((value) => {
+      const frozen = value.frozen?.proof
+      return (
+        !frozen ||
+        (frozen.purpose === "source-frozen" && sameBinding(value, frozen) && frozen.manifestHash === value.manifestHash)
+      )
+    }, "Machine source proof must describe this frozen handoff")
+    .meta({ ref: "OrgHandoffMachinePlan" })
+  export type MachinePlan = z.infer<typeof MachinePlan>
+  export const SignedMachinePlan = z
+    .strictObject({ plan: MachinePlan, signature: SigningSignature })
+    .meta({ ref: "OrgHandoffSignedMachinePlan" })
+  export type SignedMachinePlan = z.infer<typeof SignedMachinePlan>
+  const machinePlans = signedProtocol(MachinePlan, "synergy.organization.handoff.machine.v1\n")
+  export const signMachinePlan = machinePlans.sign
+  export const verifyMachinePlan = machinePlans.verify
+
+  export const ObjectChunk = z
+    .strictObject({
+      hash: Hash,
+      offset: z.number().int().nonnegative().safe(),
+      nextOffset: z.number().int().nonnegative().safe(),
+      totalBytes: z.number().int().nonnegative().safe(),
+      data: z
+        .string()
+        .regex(/^(?:[A-Za-z0-9_-]{4})*(?:[A-Za-z0-9_-]{2}|[A-Za-z0-9_-]{3})?$/)
+        .max(174_763),
+      complete: z.boolean(),
+    })
+    .refine(
+      (value) =>
+        value.offset <= value.nextOffset &&
+        value.nextOffset <= value.totalBytes &&
+        value.nextOffset - value.offset === Math.floor((value.data.length * 3) / 4) &&
+        value.complete === (value.nextOffset === value.totalBytes),
+      "Object bytes must match their exact window",
+    )
+  const machineResult = {
+    handoffID: Identity.ID,
+    requestID: Identity.ID,
+    runtimeID: Identity.ID,
+    operation: MachineOperation,
+    state: z.enum(["idle", "working", "blocked", "complete"]),
+    stage: z.enum([
+      "idle",
+      "preparing",
+      "source-frozen",
+      "target-prepared",
+      "source-surrendered",
+      "source-cancelled",
+      "target-activated",
+      "target-never-activate",
+      "target-difference",
+      "target-preview-released",
+    ]),
+    revision: Hash,
+    requirements: z.array(Requirement).max(64),
+    requirementsCursor: Identity.ID.optional(),
+    progress: z
+      .strictObject({
+        bytes: z.number().int().nonnegative().safe(),
+        totalBytes: z.number().int().nonnegative().safe().optional(),
+      })
+      .optional(),
+    readers: z.record(Identity.ID, z.array(z.number().int().positive().safe()).min(1)).optional(),
+    object: ObjectChunk.optional(),
+    workspaceDifference: Difference.optional(),
+    differencePage: DifferencePage.optional(),
+  }
+  export const MachineExecution = z.strictObject({ ...machineResult, facts: z.array(Proof).max(3) })
+  export type MachineExecution = z.infer<typeof MachineExecution>
+  export const MachineResult = z
+    .strictObject({ ...machineResult, facts: z.array(SignedProof).max(3) })
+    .meta({ ref: "OrgHandoffMachineResult" })
+  export type MachineResult = z.infer<typeof MachineResult>
+  export function matchesMachine(input: unknown, response: unknown) {
+    const parsed = MachinePlan.safeParse(input)
+    const result = MachineResult.safeParse(response)
+    if (!parsed.success || !result.success) return false
+    const plan = parsed.data
+    const value = result.data
+    if (
+      value.handoffID !== plan.handoffID ||
+      value.requestID !== plan.requestID ||
+      value.runtimeID !== plan.runtimeID ||
+      value.operation !== plan.operation
+    )
+      return false
+    if (plan.operation === "object") {
+      if (
+        !value.object ||
+        !plan.object ||
+        value.object.hash !== plan.object.hash ||
+        value.object.offset !== plan.object.offset ||
+        value.object.nextOffset - value.object.offset > plan.object.length
+      )
+        return false
+    } else if (value.object) return false
+    const difference = value.facts.find((fact) => fact.proof.purpose === "target-difference")?.proof
+    if (difference?.purpose === "target-difference" && !value.workspaceDifference) return false
+    if (
+      value.workspaceDifference &&
+      (difference?.purpose !== "target-difference" ||
+        JSON.stringify(value.workspaceDifference) !== JSON.stringify(difference.difference))
+    )
+      return false
+    if (
+      value.differencePage &&
+      (plan.operation !== "inspect-target" ||
+        !plan.expectedRevision ||
+        value.differencePage.diffHash !== plan.expectedRevision ||
+        value.workspaceDifference?.diffHash !== plan.expectedRevision)
+    )
+      return false
+    if (value.differencePage && value.workspaceDifference) {
+      const cursor = plan.cursor ?? "0000000000000000"
+      if (!/^\d{16}$/.test(cursor)) return false
+      const position = Number(cursor),
+        next = position + value.differencePage.items.length,
+        total = value.workspaceDifference.entries
+      if (
+        !Number.isSafeInteger(position) ||
+        position > total ||
+        next > total ||
+        (next < total && value.differencePage.items.length === 0)
+      )
+        return false
+      if (value.differencePage.cursor !== (next < total ? String(next).padStart(16, "0") : undefined)) return false
+    }
+    const completions: Partial<Record<MachineOperation, Proof["purpose"]>> = {
+      "prepare-source": "source-frozen",
+      "prepare-target": "target-prepared",
+      "preview-target": "target-difference",
+      "surrender-source": "source-surrendered",
+      "cancel-source": "source-cancelled",
+      "activate-target": "target-activated",
+      "retire-target": "target-never-activate",
+    }
+    const completion = completions[plan.operation]
+    if (
+      value.state === "complete" &&
+      completion &&
+      !value.facts.some(
+        (fact) =>
+          fact.proof.purpose === completion ||
+          (plan.operation === "retire-target" &&
+            plan.workspacePlan &&
+            isNativeTargetMapping(plan.workspacePlan.mapping) &&
+            fact.proof.purpose === "target-preview-released"),
+      )
+    )
+      return false
+    for (const { proof } of value.facts) {
+      if (
+        !sameBinding(plan, proof) ||
+        (proof.purpose.startsWith("source-") ? "source" : "target") !== machineRole(plan.operation) ||
+        (plan.manifestHash && proof.manifestHash !== plan.manifestHash)
+      )
+        return false
+      if (
+        proof.purpose === "target-difference" &&
+        (!plan.workspacePlan ||
+          !isNativeTargetMapping(plan.workspacePlan.mapping) ||
+          plan.workspacePlan.mapping.target.kind !== "existing" ||
+          proof.difference.mappingPlanRevision !== plan.mappingPlanRevision ||
+          plan.frozen?.proof.purpose !== "source-frozen" ||
+          proof.difference.sourceSnapshotHash !== plan.frozen.proof.workspaceSourceHash)
+      )
+        return false
+      if (
+        proof.purpose === "target-preview-released" &&
+        ((plan.operation !== "retire-target" && !(plan.operation === "inspect-target" && plan.cleanup)) ||
+          !plan.workspacePlan ||
+          !isNativeTargetMapping(plan.workspacePlan.mapping) ||
+          proof.diffHash !== (plan.workspacePlan.difference?.diffHash ?? null))
+      )
+        return false
+      if (proof.purpose === "target-prepared") {
+        if (plan.workspacePlan && isNativeTargetMapping(plan.workspacePlan.mapping)) {
+          if (
+            !proof.workspaceNativeReceiptHash ||
+            (plan.workspacePlan.mapping.target.kind === "existing"
+              ? !plan.workspacePlan.differenceConsent ||
+                proof.workspaceDifferenceHash !== plan.workspacePlan.differenceConsent.diffHash
+              : proof.workspaceDifferenceHash !== undefined)
+          )
+            return false
+        } else if (proof.workspaceNativeReceiptHash || proof.workspaceDifferenceHash) return false
+      }
+      if (
+        proof.purpose === "source-frozen" &&
+        (proof.commandSeq !== plan.commandSeq || proof.receivedSeq !== plan.commandSeq)
+      )
+        return false
+      if (
+        plan.authorization &&
+        (proof.purpose === "source-surrendered" || proof.purpose === "target-activated") &&
+        (proof.permitID !== plan.authorization.permit.permitID ||
+          proof.preparedHash !== plan.authorization.permit.preparedHash)
+      )
+        return false
+    }
+    return true
+  }
+}

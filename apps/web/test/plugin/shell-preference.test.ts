@@ -23,3 +23,22 @@ test("remembers shell selection per server without erasing a temporarily unavail
   })
   localStorage.removeItem("synergy.global.dat:plugin-shells")
 })
+
+test("reads a URL-keyed selection after the runtime identity key is adopted", () => {
+  localStorage.setItem(
+    "synergy.global.dat:plugin-shells",
+    JSON.stringify({ version: 1, servers: { "https://legacy.test": "plugin:main" } }),
+  )
+  createRoot((dispose) => {
+    const preference = createShellPreference(
+      () => '["personal","runtime"]',
+      "shell",
+      () => "https://legacy.test",
+    )
+    expect(preference.selected()).toBe("plugin:main")
+    preference.select("synergy")
+    expect(preference.selected()).toBe("synergy")
+    dispose()
+  })
+  localStorage.removeItem("synergy.global.dat:plugin-shells")
+})

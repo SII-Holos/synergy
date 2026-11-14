@@ -193,11 +193,17 @@ export namespace WorkflowRecovery {
     apply: boolean
     report: SessionRecovery.RuntimeReconcileReport
   }) {
-    const note = await SessionNoteAccess.getBlueprintNote(input.scopeID, input.loop.noteID)
-    if (!note || note.activeLoopID !== input.loop.id) return
-
     if (input.apply) {
-      await SessionNoteAccess.setBlueprintActiveLoop(input.scopeID, input.loop.noteID, null)
+      const changed = await SessionNoteAccess.setBlueprintActiveLoop(
+        input.scopeID,
+        input.loop.noteID,
+        null,
+        undefined,
+        input.loop.id,
+      )
+      if (!changed) return
+    } else if (!(await SessionNoteAccess.hasBlueprintActiveLoop(input.scopeID, input.loop.noteID, input.loop.id))) {
+      return
     }
     reportChange(input.report, {
       scopeID: input.scopeID,
@@ -319,7 +325,14 @@ export namespace WorkflowRecovery {
       if (isActiveLoop(loop)) continue
 
       if (input.apply) {
-        await SessionNoteAccess.setBlueprintActiveLoop(input.scopeID, note.noteID, null)
+        const changed = await SessionNoteAccess.setBlueprintActiveLoop(
+          input.scopeID,
+          note.noteID,
+          null,
+          undefined,
+          loopID,
+        )
+        if (!changed) continue
       }
       reportChange(input.report, {
         scopeID: input.scopeID,

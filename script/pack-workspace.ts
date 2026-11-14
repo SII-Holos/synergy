@@ -16,6 +16,8 @@ export const runtimePackages = new Set(
     "harness",
     "local-runtime",
     "agent-runtime",
+    "organization",
+    "organization-runtime",
     "cli",
     "server",
     "presets",
@@ -70,6 +72,7 @@ export async function packWorkspace(
     version?: string
   } = {},
 ) {
+  output = path.resolve(output)
   const targets = options.targets ?? [options.target ?? { os: process.platform, arch: process.arch as "arm64" | "x64" }]
   const nativeTargets = new Set<string>()
   const packages = workspaces(root)

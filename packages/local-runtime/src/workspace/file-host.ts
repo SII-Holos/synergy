@@ -14,6 +14,9 @@ import { NativeFileMutation } from "../file/mutation-core"
 import { WorkspaceCoordinator } from "./coordinator"
 import type { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
 import { NativeWorkspaceTree } from "./tree"
+import { NativeWorkspacePortableTree } from "./portable-tree"
+import { WorkspacePortableTree } from "@ericsanchezok/synergy-harness/workspace/portable-tree"
+import { WorkspaceContent, type BlobStore } from "@ericsanchezok/synergy-harness/workspace/content"
 import { SnapshotLink } from "@ericsanchezok/synergy-harness/session/snapshot-link"
 import { FileWatcherBinding } from "../file/watcher-binding"
 // @ts-ignore
@@ -29,6 +32,7 @@ export const MountReceipt = z.object({
   input: WorkspaceProtocol.MountInput,
   digest: z.string(),
   mount: WorkspaceProtocol.Mount.optional(),
+  preparedPhysicalID: z.string().min(1).optional(),
   detached: z.boolean().default(false),
 })
 const Receipt = z.object({
@@ -60,7 +64,13 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
       owner?: { uid: number; gid: number }
       executionWriter?(id: string, root: string): Promise<{ id: string; token: string }>
     },
-  ) {}
+  ) {
+    this.options = {
+      ...options,
+      owner: options.owner && { ...options.owner },
+      allowedRoots: options.allowedRoots && [...options.allowedRoots],
+    }
+  }
 
   private acquire(input: Parameters<WorkspaceCoordinator["acquire"]>[0]) {
     return this.options.acquire ? this.options.acquire(input) : this.options.coordinator.acquire(input)
@@ -104,7 +114,7 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
       if (previous && (previous.digest !== digest || previous.detached))
         throw new Error("Workspace mount already has different input or was detached")
       if (previous?.mount) return this.required(input)
-      await this.persist("mounts", input.id, { input, digest })
+      await this.persist("mounts", input.id, previous ?? { input, digest })
       const root =
         input.source.kind === "directory"
           ? await fs.realpath(input.source.path)
@@ -123,31 +133,44 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
         signal: this.shutdown.signal,
       })
       try {
+        let preparedPhysicalID = previous?.preparedPhysicalID
         if (input.source.kind === "materialized") {
-          const manifest = WorkspaceTree.Manifest.parse(
-            JSON.parse(
-              new TextDecoder().decode(await this.getBlob(input.source.manifest, WorkspaceTree.manifestBytes)),
-            ),
-          )
+          const store = this.blobs()
+          const manifest = await this.savedTree(input.source.manifest, store)
           const exists = await fs.lstat(root).catch((error: NodeJS.ErrnoException) => {
             if (error.code !== "ENOENT") throw error
           })
           if (exists) {
-            const actual = WorkspaceTree.hash(
-              WorkspaceTree.encode(await NativeWorkspaceTree.capture(root, this.blobs(), this.shutdown.signal)),
-            )
-            if (actual !== input.source.manifest)
-              throw new Error("Materialized Workspace changed before mount acknowledgement")
+            if (!preparedPhysicalID || (await identifyFilesystemObject(root)).physicalID !== preparedPhysicalID)
+              throw new Error("Materialized Workspace requires its original native preparation receipt")
+            if (!("entries" in manifest)) {
+              await NativeWorkspacePortableTree.verify({
+                root,
+                captured: manifest,
+                directory: this.treeCache(),
+                signal: this.shutdown.signal,
+              })
+            } else {
+              const actual = WorkspaceTree.hash(
+                WorkspaceTree.encode(await NativeWorkspaceTree.capture(root, store, this.shutdown.signal)),
+              )
+              if (actual !== input.source.manifest)
+                throw new Error("Materialized Workspace changed before mount acknowledgement")
+            }
           } else
-            await NativeWorkspaceTree.materialize(root, manifest, this.blobs(), {
-              owner: this.options.owner,
-              signal: this.shutdown.signal,
+            await this.materialize(root, manifest, store, async (staged) => {
+              this.shutdown.signal.throwIfAborted()
+              preparedPhysicalID = (await identifyFilesystemObject(staged)).physicalID
+              await this.persist("mounts", input.id, { input, digest, preparedPhysicalID })
             })
         }
         const identity = await identifyFilesystemObject(root)
+        if (input.source.kind === "materialized" && identity.physicalID !== preparedPhysicalID)
+          throw new Error("Materialized Workspace requires its original native preparation receipt")
         if (!(await fs.stat(root)).isDirectory()) throw new Error("Workspace mount is not a directory")
         const mount = WorkspaceProtocol.Mount.parse({ ...input, path: root, physicalID: identity.physicalID })
-        await this.persist("mounts", input.id, { input, digest, mount })
+        this.shutdown.signal.throwIfAborted()
+        await this.persist("mounts", input.id, { input, digest, mount, preparedPhysicalID })
         return mount
       } finally {
         await claim.release()
@@ -158,6 +181,36 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
   private async materializationRoot() {
     await fs.mkdir(this.options.materializationRoot, { recursive: true, mode: 0o711 })
     return fs.realpath(this.options.materializationRoot)
+  }
+  private treeCache() {
+    return path.join(this.options.directory, "portable-trees")
+  }
+  private async savedTree(hash: string, store: BlobStore): Promise<WorkspaceContent.StoredTree> {
+    const bytes = await store.get(hash, WorkspaceTree.manifestBytes)
+    this.shutdown.signal.throwIfAborted()
+    return WorkspaceContent.decode(hash, bytes)
+  }
+  private materialize(
+    root: string,
+    tree: WorkspaceContent.StoredTree,
+    store: BlobStore,
+    beforePublish?: (staged: string) => Promise<void>,
+  ) {
+    return "entries" in tree
+      ? NativeWorkspaceTree.materialize(root, tree, store, {
+          signal: this.shutdown.signal,
+          owner: this.options.owner,
+          beforePublish,
+        })
+      : NativeWorkspacePortableTree.materialize({
+          root,
+          captured: tree,
+          store,
+          directory: this.treeCache(),
+          owner: this.options.owner,
+          signal: this.shutdown.signal,
+          beforePublish,
+        })
   }
   async inspect(reference: WorkspaceProtocol.Reference) {
     const input = WorkspaceProtocol.Reference.parse(reference)
@@ -177,6 +230,22 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
       throw new Error("Workspace directory changed")
     }
     return mount
+  }
+  async inspectRelease(
+    reference: WorkspaceProtocol.Reference,
+  ): Promise<{ state: "active"; mount: WorkspaceProtocol.Mount } | { state: "detached" }> {
+    const input = WorkspaceProtocol.Reference.parse(reference)
+    const receipt = MountReceipt.parse(await this.receipt("mounts", input.id))
+    const mount = receipt.mount
+    if (
+      !mount ||
+      mount.id !== input.id ||
+      mount.workspaceID !== input.workspaceID ||
+      mount.generation !== input.generation
+    )
+      throw new Error("Workspace allocation has no matching native mount receipt")
+    if (receipt.detached) return { state: "detached" }
+    return { state: "active", mount: await this.required(input) }
   }
   private async required(reference: WorkspaceProtocol.Reference) {
     const mount = await this.inspect(reference)
@@ -458,20 +527,33 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
             ...options,
           })
         } else if (change.kind === "import") {
-          const tree = WorkspaceTree.Manifest.parse(
-            JSON.parse(new TextDecoder().decode(await this.getBlob(change.manifest, WorkspaceTree.manifestBytes))),
-          )
+          const store = this.blobs()
+          const tree = await this.savedTree(change.manifest, store)
           const target = await NativeFileEntry.canonical(absolute(change.to))
           await options.validate!(target, "write")
-          for (const entry of WorkspaceTree.importEntries(tree, change.to))
-            await options.validate!(absolute(entry.path), "write")
+          if ("entries" in tree) {
+            for (const entry of WorkspaceTree.importEntries(tree, change.to))
+              await options.validate!(absolute(entry.path), "write")
+          } else {
+            const directory = this.treeCache()
+            await fs.mkdir(directory, { recursive: true, mode: 0o700 })
+            await using reader = await WorkspacePortableTree.open({
+              root: tree,
+              store,
+              directory,
+              signal: this.shutdown.signal,
+            })
+            if (!(await reader.get("entry"))) throw new Error("Transfer has no root entry")
+            for await (const entry of reader.entries())
+              await options.validate!(absolute(WorkspaceTree.importHeader(entry, change.to).path), "write")
+          }
           if (await NativeFileEntry.inspect(target)) throw new NativeFileMutation.ConflictError()
           const stagingRoot = path.join(this.options.directory, "imports")
           await fs.mkdir(stagingRoot, { recursive: true, mode: 0o700 })
           const staging = await fs.realpath(await fs.mkdtemp(path.join(stagingRoot, "transfer-")))
           try {
             const content = path.join(staging, "content")
-            await NativeWorkspaceTree.materialize(content, tree, this.blobs(), { signal: this.shutdown.signal })
+            await this.materialize(content, tree, store)
             const source = path.join(content, "entry")
             const entry = await NativeFileEntry.inspect(source)
             if (!entry) throw new Error("Transfer has no source entry")
@@ -596,8 +678,13 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
       const source = MountReceipt.parse(await this.receipt("mounts", reference.id)).input.source
       let manifest: string | null = null
       if (source.kind === "materialized") {
-        const tree = await NativeWorkspaceTree.capture(mount.path, this.blobs(), this.shutdown.signal)
-        const bytes = WorkspaceTree.encode(tree)
+        const tree = await NativeWorkspacePortableTree.checkpoint({
+          root: mount.path,
+          directory: this.treeCache(),
+          store: this.blobs(),
+          signal: this.shutdown.signal,
+        })
+        const bytes = new TextEncoder().encode(JSON.stringify(tree))
         manifest = WorkspaceTree.hash(bytes)
         await this.putBlob(manifest, bytes)
       }
@@ -618,8 +705,13 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
     const source = MountReceipt.parse(await this.receipt("mounts", reference.id)).input.source
     if (source.kind !== "materialized") return undefined
     await this.options.coordinator.validateRetention(claim, mount.path)
-    const tree = await NativeWorkspaceTree.capture(mount.path, this.blobs(), this.shutdown.signal)
-    const bytes = WorkspaceTree.encode(tree)
+    const tree = await NativeWorkspacePortableTree.checkpoint({
+      root: mount.path,
+      directory: this.treeCache(),
+      store: this.blobs(),
+      signal: this.shutdown.signal,
+    })
+    const bytes = new TextEncoder().encode(JSON.stringify(tree))
     const manifest = WorkspaceTree.hash(bytes)
     await this.putBlob(manifest, bytes)
     return manifest
@@ -689,10 +781,7 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
     return WorkspaceTree.verify(hash, new Uint8Array(await file.arrayBuffer()), maximumBytes)
   }
   private blobs() {
-    return {
-      put: (hash: string, bytes: Uint8Array) => this.putBlob(hash, bytes),
-      get: (hash: string, maximumBytes: number) => this.getBlob(hash, maximumBytes),
-    }
+    return Object.freeze({ put: this.putBlob.bind(this), get: this.getBlob.bind(this) })
   }
 
   async close() {

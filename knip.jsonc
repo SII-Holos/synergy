@@ -15,6 +15,7 @@
     "packages/**/dist/**",
     "packages/**/release/**",
     "packages/sdk/js/src/gen/**",
+    "packages/sdk/js/src/organization-gen/**",
     "apps/**/dist/**",
     "apps/**/release/**",
     "apps/web/test/**/.*-fixture-*/**",
@@ -162,6 +163,21 @@
     "packages/harness": {
       "entry": ["test/**/*.ts"],
       "project": ["src/**/*.ts", "test/**/*.ts"],
+    },
+    "packages/organization": {
+      "entry": ["test/**/*.ts", "test/fixtures/*.mjs"],
+      "project": ["src/**/*.ts", "test/**/*.ts", "test/fixtures/*.mjs"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
+    },
+    "packages/organization-protocol": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
+    },
+    "packages/organization-runtime": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
     },
     "packages/agent-runtime": {
       "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
@@ -388,7 +404,8 @@
       "entry": ["script/**/*.ts", "test/**/*.ts"],
       "project": ["src/**/*.ts", "script/**/*.ts", "test/**/*.ts"],
       // Electron supplies this Node built-in; the Bun-based analyzer does not list it.
-      "ignoreDependencies": ["node:sqlite"],
+      // Bun treats ws as a built-in; Electron uses its installed package and declarations.
+      "ignoreDependencies": ["node:sqlite", "ws", "@types/ws"],
     },
     ".": {
       "ignoreDependencies": ["dependency-cruiser", "@ericsanchezok/synergy-testing"],

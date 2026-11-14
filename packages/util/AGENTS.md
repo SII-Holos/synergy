@@ -1,6 +1,6 @@
 # Shared Utility Rules
 
-Shared primitives for runtime, SDK, plugins, UI and protocols.
+Portable utilities.
 
 - Do not import App, Desktop, or core-runtime implementation into this package. Keep unnamed utilities deterministic, portable and side-effect free.
 - Preserve public export paths and Bun/types/import resolution. Prefer small domain-neutral functions and schemas over moving product ownership into a generic helper.
@@ -27,10 +27,10 @@ Run `bun run typecheck`, `bun test`, and `bun run build`, affected consumer test
 
 `native-assets` resolves platform resources from an explicit owning module. Linux ABI selection distinguishes musl and glibc; native resource packages remain separate from portable JavaScript.
 
-`markdown-assets` owns bounded managed-reference extraction using the Markdown lexer and deterministic attachment suppression. It performs no resource loading; callers decide which prose is the final answer and which files are deliverables. Verify parser boundaries, summary limits and both virtual and hydrated conversation placement.
+`markdown-assets` uses the canonical Markdown lexer. Display extraction is bounded; complete traversal lexes whole strings and preserves every occurrence. Callers own loading, deduplication and residency. Verify parser semantics, display budgets and conversation placement.
 
 `resource-reference` owns the portable target parser, Workspace origin and location schemas. It never selects a current Workspace or probes files. Use it for every Markdown/resource ingress; ownership validation and opening belong to the host. Verify `test/resource-reference.test.ts` with affected message, composer and resource-opening tests.
 
-`render-artifact`/`render-ui` own [visual schemas](../../docs/architecture/visual-results.md); `json-value` validates JSON.
+`render-artifact`/`render-ui` own [visual schemas](../../docs/architecture/visual-results.md); `json-value` validates JSON. Use `filesystem-identity.readExistingIdentityFile` for existing Host identity without provisioning; verify filesystem-identity.
 
-`features` selects features; `feature-config` reads preferences; `worker-plan` validates worker selections.
+`features` selects features; `feature-config` reads preferences; `worker-plan` validates worker selections; `actor-stamp` shares attribution with Node hosts.

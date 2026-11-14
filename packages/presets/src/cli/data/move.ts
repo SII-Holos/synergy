@@ -210,7 +210,7 @@ export async function executeMove(opts: MoveOptions) {
     // If target has no library.db, the file copy will handle it
   }
 
-  return DataTransfer.withFiles([sourceRoot, targetPath], async () => {
+  return await DataTransfer.withTargetFiles(sourceRoot, targetPath, async () => {
     // Step 6: Execute move
     UI.empty()
     const errors: string[] = []

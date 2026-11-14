@@ -1,4 +1,5 @@
 import { SessionTransferGate } from "../session/transfer-gate"
+import { SessionTransferEpochs } from "../session/transfer-epochs"
 import { registerCoreEvents } from "../bus/register"
 import { WorkspaceOperations } from "../workspace/operations"
 import { registerConfigMigrations } from "../config/migration"
@@ -18,7 +19,18 @@ import { Environment } from "../environment"
 import { registerEnvironmentMigrations } from "../environment/migration"
 import { registerWorkspaceMigrations } from "../workspace/migration"
 import { WorkspaceMounts } from "../workspace/mount"
+import { WorkspaceMove } from "../workspace/move"
 import { EnvironmentExecution } from "../environment/execution"
+import { registerSnapshotOwnershipMigrations } from "../session/snapshot-ownership-migration"
+import { registerStoredSnapshotMigrations } from "../session/stored-snapshot-maintenance"
+import { registerSessionChildIndexMigrations } from "../session/child-index-migration"
+import { registerSessionCortexIndexMigrations } from "../session/cortex-index-migration"
+import { HomeRestoration } from "./home-restoration"
+import { RuntimeMaintenance } from "../storage/runtime-maintenance"
+import { registerSessionMaintenanceOwner } from "../session/maintenance"
+import { registerEnvironmentMaintenanceOwner } from "../environment/maintenance-owner"
+import { LoopJob } from "../session/loop-job"
+import { RolloutRecovery } from "../session/rollout/recovery"
 
 const registration = RuntimeContext.state(() => ({ complete: false }))
 
@@ -29,6 +41,10 @@ export function registerHarness() {
   registerConfigMigrations()
   registerScopeMigrations()
   registerSessionMigrations()
+  registerSnapshotOwnershipMigrations()
+  registerStoredSnapshotMigrations()
+  registerSessionChildIndexMigrations()
+  registerSessionCortexIndexMigrations()
   registerObservabilityMigrations()
   registerStorageMigrations()
   UsageMigration.register()
@@ -38,7 +54,14 @@ export function registerHarness() {
   WorkspaceMounts.register()
   EnvironmentExecution.registerRecovery()
   WorkspaceOperations.register()
-  SessionTransferGate.register()
+  WorkspaceMove.register()
+  HomeRestoration.register()
+  RuntimeMaintenance.registerProtection()
+  registerSessionMaintenanceOwner()
+  LoopJob.registerMaintenanceOwner()
+  RolloutRecovery.registerMaintenanceOwner()
+  registerEnvironmentMaintenanceOwner()
+  SessionTransferGate.register({ epochs: SessionTransferEpochs })
   registerSessionResolver()
   registerSummaryJob()
   registerTitleJob()

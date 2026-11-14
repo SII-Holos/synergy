@@ -1,6 +1,7 @@
 import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { PluginInvocationWorkspace } from "./invocation-workspace"
 import { EnvironmentResources } from "@ericsanchezok/synergy-harness/environment/resources"
+import type { EnvironmentOrigin } from "@ericsanchezok/synergy-harness/environment/origin"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { FileView } from "@ericsanchezok/synergy-local-runtime/file/view"
 import { WorkspaceFileService } from "@ericsanchezok/synergy-local-runtime/workspace-file/service"
@@ -370,6 +371,10 @@ async function startPluginAgent(input: PluginHostServiceInvocationInput, value: 
 async function inScope<T>(input: PluginHostServiceInvocationInput, fn: () => Promise<T>): Promise<T> {
   input.signal.throwIfAborted()
   const selected = PluginInvocationWorkspace.current()
+  const origin =
+    input.method.startsWith("workspace.") || input.method === "shell.run"
+      ? (selected?.origin ?? PluginInvocationWorkspace.captureOrigin(input.invocation))
+      : undefined
   if (selected) {
     if (
       selected.invocation.scopeId !== input.invocation.scopeId ||
@@ -379,7 +384,7 @@ async function inScope<T>(input: PluginHostServiceInvocationInput, fn: () => Pro
     return ScopeContext.provide({
       scope: selected.scope,
       workspace: selected.workspace,
-      fn: () => inResources(input, selected.selection, fn),
+      fn: () => inResources(input, selected.selection, origin, fn),
     })
   }
   const scope = await Scope.fromID(input.invocation.scopeId)
@@ -395,6 +400,7 @@ async function inScope<T>(input: PluginHostServiceInvocationInput, fn: () => Pro
             workspaceID: ScopeContext.current.workspace?.id,
             workspaceGeneration: ScopeContext.current.workspace?.generation,
           },
+          origin,
           fn,
         )
       const session = await sessionInInvocationScope(input, input.invocation.sessionId)
@@ -410,6 +416,7 @@ async function inScope<T>(input: PluginHostServiceInvocationInput, fn: () => Pro
               workspaceGeneration: session.workspace?.generation,
               environmentID: session.environmentID,
             },
+            origin,
             fn,
           ),
       })
@@ -420,6 +427,7 @@ async function inScope<T>(input: PluginHostServiceInvocationInput, fn: () => Pro
 async function inResources<T>(
   input: PluginHostServiceInvocationInput,
   selection: EnvironmentResources.Selection,
+  origin: EnvironmentOrigin.Captured | undefined,
   fn: () => Promise<T>,
 ) {
   const workspace = input.method.startsWith("workspace.")
@@ -427,6 +435,7 @@ async function inResources<T>(
   if (!workspace && !execution) return fn()
   await using resources = await EnvironmentResources.select({
     ...selection,
+    origin,
     ownerID: input.invocation.sessionId ?? `plugin:${input.pluginId}`,
     needs: { workspace, execution },
     signal: input.signal,
@@ -727,7 +736,9 @@ async function runPluginShell(input: PluginHostServiceInvocationInput, value: Re
 
   const sandbox = gate.getSandbox()
   const sandboxPolicy = gate.getSandboxPolicy()
+  const operationID = EnvironmentResources.nextOperationID()
   const wrapper = await EnvironmentResources.prepareSandbox(resources, {
+    operationID,
     command: command[0],
     args: command.slice(1),
     workspace: directory,
@@ -774,7 +785,7 @@ async function runPluginShell(input: PluginHostServiceInvocationInput, value: Re
       execution: {
         resources,
         scopeID: input.invocation.scopeId,
-        id: EnvironmentResources.nextOperationID(),
+        id: operationID,
         sandboxID: "id" in wrapper ? wrapper.id : undefined,
         intentDigest: "intentDigest" in wrapper ? wrapper.intentDigest : undefined,
       },
