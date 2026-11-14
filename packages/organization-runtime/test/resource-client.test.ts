@@ -361,3 +361,52 @@ test("oversized control responses cancel their stream without retaining or echoi
   })
   await cancelled.promise
 })
+
+test("current caller metadata binds its accepted actor and never falls back when the Service lacks the operation", async () => {
+  await using f = await execution()
+  const grant = await f.connection.resources.bind(await f.binding())
+  const proof = await f.description()
+  const access = await f.connection.resources.authorizeCaller(proof)
+  expect(access).toMatchObject({
+    grantID: grant.grantID,
+    rootID: grant.rootID,
+    generation: grant.retention.generation,
+    accountID: proof.receipt.accepted!.permit.actor.subjectID,
+  })
+  const requests: string[] = []
+  for (const changed of [{ accountID: "another-account" }, { rootID: "another-root" }, { grantID: "another-grant" }]) {
+    f.interceptHTTP((request) => {
+      requests.push(new URL(request.url).pathname)
+      return Response.json({ ...access, ...changed })
+    })
+    const outcome = await f.connection.resources.authorizeCaller(proof).then(
+      () => ({ kind: "resolved" as const }),
+      (error: unknown) => ({ kind: "rejected" as const, error }),
+    )
+    expect(outcome.kind).toBe("rejected")
+    if (outcome.kind === "rejected")
+      expect(outcome.error).toMatchObject({
+        data: { code: "PROTOCOL_MISMATCH" },
+      })
+  }
+  f.interceptHTTP((request) => {
+    requests.push(new URL(request.url).pathname)
+    return Response.json(
+      {
+        code: "NOT_FOUND",
+        message: "Execution caller authorization is unavailable",
+        retryable: false,
+        outcome: "rejected",
+      },
+      { status: 404 },
+    )
+  })
+  const missing = await f.connection.resources.authorizeCaller(proof).then(
+    () => ({ kind: "resolved" as const }),
+    (error: unknown) => ({ kind: "rejected" as const, error }),
+  )
+  expect(missing.kind).toBe("rejected")
+  if (missing.kind === "rejected") expect(missing.error).toMatchObject({ data: { code: "NOT_FOUND" } })
+  expect(requests).toHaveLength(4)
+  expect(requests.every((pathname) => pathname === "/runtime/v1/execution/caller")).toBe(true)
+})

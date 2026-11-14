@@ -873,3 +873,57 @@ test("provisional admission, rejection and root indexes commit atomically withou
     )
   })
 })
+
+test("current execution caller metadata rejects a removed accepted actor while its held work remains valid", async () => {
+  await using f = await commandFixture()
+  await f.connect()
+  const prepared = await task(f, "bob")
+  const binding = await proof(f, prepared.receipt)
+  const bound = await f.run(() => f.execution.bind(binding))
+  const { rootID: _, purpose: __, ...received } = binding.proof
+  const description = Execution.DescriptionProof.parse({
+    ...received,
+    purpose: "execution-resource-description",
+  })
+  const request = {
+    proof: description,
+    signature: await Execution.signDescription(description, f.machineKeys.privateKey),
+  }
+  const caller = (headers: Record<string, string> = {}) =>
+    fetch(new URL("/runtime/v1/execution/caller", f.baseUrl), {
+      method: "POST",
+      headers: { "content-type": "application/json", ...headers },
+      body: JSON.stringify(request),
+    })
+  const allowed = await caller()
+  expect(allowed.status).toBe(200)
+  expect(await allowed.json()).toEqual({
+    orgID: bound.orgID,
+    deploymentIncarnation: bound.deploymentIncarnation,
+    runtimeID: bound.runtimeID,
+    sessionID: bound.sessionID,
+    projectID: bound.projectID,
+    bindingEpoch: bound.bindingEpoch,
+    grantID: bound.grantID,
+    rootID: bound.rootID,
+    generation: bound.retention.generation,
+    accountID: "bob",
+  })
+  expect((await caller({ origin: "https://organization.example" })).status).toBe(403)
+  await f.run(async () => {
+    const account = (await Record.read(Record.Account, Keys.account("bob")))!
+    await Storage.write(Keys.account("bob"), {
+      ...account,
+      state: "removed",
+      authRevision: account.authRevision + 1,
+    })
+    expect((await f.execution.describe(request)).grant).toEqual(bound)
+    expect(await f.execution.bind(binding)).toEqual(bound)
+  })
+  expect((await caller()).status).toBe(403)
+  await f.run(async () => {
+    expect(await Record.read(Record.ExecutionGrant, Keys.executionGrant(bound.grantID))).toEqual(bound)
+    expect((await Record.read(Record.SessionDirectory, Keys.session(f.sessionID)))?.retainedExecutionGrants).toBe(1)
+    expect(await Record.read(Record.ExecutionUsage, Keys.executionUsage(bound.grantID))).toBeUndefined()
+  })
+})

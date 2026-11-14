@@ -22,7 +22,7 @@ Knowledge pages verify releases before atomic per-Session selection. Deferred lo
 
 Shared export transactionally captures identities; mask/project bounded queue/outbox windows. Preserve FULL/restart/GC dependencies. Sync-two/pending ACK precedes content. `organization-sync`/one preserves drafts/batches/Refs/seals; command-five unchanged. Original frozen Source settles same batch; exact receipts ACK. Notifications retain bindings without authority. Verify sync-exporter/sync-native-write-failure/transcript/notification-source/notifications-http/sync-transfer suites.
 
-Session/history/interaction reads require target authorization/signed permits/canonical Scope/lineage/binding fences. Attachments need native producer evidence, never bare hashes. Reuse pending windows/decision receipts; omit metadata/answers. Bound ranges/preparation/provenance. Verify session-read/attachment-read/interactions suites; regenerate SDKs after contract changes.
+Session/history/interaction reads require signed target/Scope/lineage/binding authorization. Process reads/controls recheck accepted-caller execution access. Attachments require native producer evidence. Reuse pending windows/decision receipts; omit metadata/answers. Bound ranges/preparation/provenance. Verify session-read/attachment-read/interactions/process-access-source; regenerate SDKs after contract changes.
 
 Desktop Browser requires private managed launch data/explicit listener auth/lazy pages. Reject inherited native credentials/non-Desktop selection. Hosted/member share bridge/intake/worker composition; Hosted has no human account. Verify desktop/hosted-home/hosted-runtime suites.
 

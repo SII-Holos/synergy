@@ -292,6 +292,21 @@ export namespace OrganizationExecutionProtocol {
     }, "Execution descriptors must match the exact active grant selection")
     .meta({ ref: "OrgExecutionDescription" })
   export type Description = z.infer<typeof Description>
+  export const CallerAccess = z
+    .strictObject({
+      orgID: Identity.ID,
+      deploymentIncarnation: Identity.ID,
+      runtimeID: Identity.ID,
+      sessionID: Identity.ID,
+      projectID: Identity.ID,
+      bindingEpoch: Protocol.Epoch,
+      grantID: Identity.ID,
+      rootID: Identity.ID,
+      generation: z.number().int().positive().safe(),
+      accountID: Identity.ID,
+    })
+    .meta({ ref: "OrgExecutionCallerAccess" })
+  export type CallerAccess = z.infer<typeof CallerAccess>
   const descriptionSignatures = signedProtocol(DescriptionProof, "synergy.organization.execution.resources.v1\n")
   export const signDescription = descriptionSignatures.sign
   export const verifyDescription = descriptionSignatures.verify

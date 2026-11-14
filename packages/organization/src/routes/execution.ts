@@ -68,6 +68,21 @@ export function executionRoutes(grants: () => ExecutionGrants) {
       },
     )
     .post(
+      "/execution/caller",
+      operation(
+        "orgExecution.caller",
+        "Authorize the current caller of an accepted retained execution without reading its content",
+        Execution.CallerAccess,
+        true,
+      ),
+      validator("json", Execution.DescriptionRequest, validation),
+      async (c) => {
+        if (c.req.header("origin") || c.req.header("cookie"))
+          fail("PERMISSION_DENIED", "Execution caller access requires a machine request")
+        return c.json(await grants().caller(c.req.valid("json")))
+      },
+    )
+    .post(
       "/execution/bind",
       operation(
         "orgExecution.bind",

@@ -205,9 +205,19 @@ test.skipIf(process.platform === "win32")(
             .status,
         )
         expect((await f.physical(started.executionID)).execution.state).toBe("running")
+        const readOutcome = await accepted.process({ action: "log", processId: started.processId }).then(
+          () => ({ kind: "resolved" as const }),
+          (error: unknown) => ({ kind: "rejected" as const, error }),
+        )
+        expect(readOutcome.kind).toBe("rejected")
+        if (readOutcome.kind === "rejected") expect(readOutcome.error).toBeInstanceOf(Error)
         resume.resolve()
-        await expect(control).rejects.toThrow()
-        await expect(accepted.process({ action: "log", processId: started.processId })).rejects.toThrow()
+        const controlOutcome = await control.then(
+          () => ({ kind: "resolved" as const }),
+          (error: unknown) => ({ kind: "rejected" as const, error }),
+        )
+        expect(controlOutcome.kind).toBe("rejected")
+        if (controlOutcome.kind === "rejected") expect(controlOutcome.error).toBeInstanceOf(Error)
         expect((await f.physical(started.executionID)).execution.state).toBe("running")
       } finally {
         clearTimeout(deadline)
@@ -222,11 +232,21 @@ test.skipIf(process.platform === "win32")(
       let retirements = 0,
         inspections = 0
       let retirementReply: { status: number; code?: string; message?: string; outcome?: string } | undefined
+      let loseInspectionReplies = false
       service.interceptHTTP(async (request) => {
         const pathname = new URL(request.url).pathname
-        if (pathname === "/runtime/v1/environments/execution/retirement/inspection") {
-          inspections++
-          return
+        if (
+          pathname === "/runtime/v1/environments/execution/retirement/inspection" ||
+          pathname === "/runtime/v1/environments/execution/inspection"
+        ) {
+          const signed =
+            pathname === "/runtime/v1/environments/execution/retirement/inspection"
+              ? CloudExecution.RetirementInspectionRequest.parse(await request.clone().json())
+              : CloudExecution.InspectionRequest.parse(await request.clone().json())
+          if (signed.proof.kind !== "execution" || signed.proof.id !== started.executionID) return
+          if (pathname === "/runtime/v1/environments/execution/retirement/inspection") inspections++
+          const response = await service.service.fetch(request)
+          return loseInspectionReplies && response.status === 200 ? Response.json(null) : response
         }
         if (pathname !== "/runtime/v1/environments/execution/retirement") return
         const signed = CloudExecution.RetirementRequest.parse(await request.clone().json())
@@ -241,6 +261,7 @@ test.skipIf(process.platform === "win32")(
         )
         retirementReply = { status: response.status, ...(body.success && body.data) }
         if (response.status !== 200) return response
+        loseInspectionReplies = true
         return Response.json(null)
       })
       try {
@@ -261,6 +282,7 @@ test.skipIf(process.platform === "win32")(
         expect(original.uses.some((use) => use.kind === "operation" && use.ownership.kind === "execution")).toBe(false)
         const before = inspections,
           effects = f.nativeEffects(physical.execution.id)
+        loseInspectionReplies = false
         const reopened = await machine.reopen()
         expect(reopened === originalRuntime).toBe(false)
         const signal = AbortSignal.timeout(5000)

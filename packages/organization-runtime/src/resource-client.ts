@@ -79,6 +79,7 @@ export interface MemberResourceClient {
   retention(proof: Execution.DescriptionProof, signal?: AbortSignal): Promise<Execution.Grant>
   inspectRetention(proof: Execution.InspectionProof, signal?: AbortSignal): Promise<Execution.Inspection>
   describe(proof: Execution.DescriptionProof, signal?: AbortSignal): Promise<Execution.Description>
+  authorizeCaller(proof: Execution.DescriptionProof, signal?: AbortSignal): Promise<Execution.CallerAccess>
   bind(proof: Execution.BindingProof, signal?: AbortSignal): Promise<Execution.BoundGrant>
   release(proof: Execution.ReleaseProof, signal?: AbortSignal): Promise<Execution.ReleaseReceipt>
   reserve(proof: Gateway.Proof, signal?: AbortSignal): Promise<Gateway.SignedPermit>
@@ -1138,6 +1139,40 @@ export function createMemberResourceClient(options: {
             { signal },
           ),
         (result) => grant(proof, result.grant),
+        signal,
+      )
+    },
+    async authorizeCaller(value, signal) {
+      const proof = Execution.DescriptionProof.parse(value)
+      return invoke(
+        proof,
+        Execution.CallerAccess,
+        async (signal) =>
+          client.orgExecution.caller(
+            {
+              orgExecutionDescriptionRequest: {
+                proof,
+                signature: await Execution.signDescription(proof, options.key),
+              },
+            },
+            { signal },
+          ),
+        (result) => {
+          const accepted = proof.receipt.accepted!
+          const permit = proof.continuation?.receipt.accepted!.permit ?? accepted.permit
+          if (
+            result.orgID !== proof.orgID ||
+            result.deploymentIncarnation !== proof.deploymentIncarnation ||
+            result.runtimeID !== proof.runtimeID ||
+            result.sessionID !== permit.sessionID ||
+            result.projectID !== permit.projectID ||
+            result.bindingEpoch !== permit.bindingEpoch ||
+            (!proof.continuation && result.grantID !== accepted.permit.provisionalGrantID) ||
+            result.rootID !== accepted.effect.messageID ||
+            result.accountID !== permit.actor.subjectID
+          )
+            throw failure("PROTOCOL_MISMATCH", "Execution caller access belongs to another accepted task")
+        },
         signal,
       )
     },

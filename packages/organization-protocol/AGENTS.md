@@ -22,7 +22,7 @@ Resources declare fixed protocols/portable model capabilities. Separate upstream
 
 Execution proofs bind accepted task receipts, native roots and finite machine authority separately from command acceptance. Require explicit native/cloud infrastructure; classify resource roles and exclude infrastructure from business gateways. Verify altered claims and strict contracts in `test/execution*.test.ts`.
 
-Descriptions validate accepted intake and ordered secret-free descriptors. File signatures bind complete operations, original references and root authority. Verify cloud-files tests.
+Descriptions validate accepted intake and secret-free descriptors. Metadata-only caller metadata binds the exact retained root/current actor; routes fix its action. File signatures bind complete operations, original references and root authority. Verify cloud-files tests.
 
 Gateway capabilities bind one call and finite resource limits. Keep machine request and worker invocation signatures separate. Verify token bounds, altered targets and signature separation in `test/gateway.test.ts`.
 

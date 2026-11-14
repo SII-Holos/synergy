@@ -11,6 +11,20 @@ import { denied, withMemberExecution, type MemberExecutionResolution } from "./e
 import { OrganizationRuntimeError } from "./error"
 
 const same = (left: unknown, right: unknown) => JSON.stringify(left) === JSON.stringify(right)
+async function authorizeCaller(
+  resolution: MemberExecutionResolution,
+  grant: Execution.BoundGrant,
+  signal: AbortSignal,
+) {
+  const access = await resolution.source.resources.authorizeCaller(resolution.descriptionProof, signal)
+  if (
+    access.grantID !== grant.grantID ||
+    access.rootID !== grant.rootID ||
+    access.bindingEpoch !== grant.bindingEpoch ||
+    access.generation !== grant.retention.generation
+  )
+    throw denied("Process access changed its original retained caller authority")
+}
 const lineage = (session: Session.Info) =>
   session.cortex && {
     taskID: session.cortex.taskID,
@@ -170,6 +184,7 @@ export function registerOrganizationProcessAccess(value: RuntimeIdentity) {
               : resolution.description.grant,
           )
           cancellation.throwIfAborted()
+          await authorizeCaller(resolution, grant, cancellation)
           const native = await nativeCaller(caller)
           if (native.toolID !== original.toolID)
             throw denied("Process access changed its original native Tool while binding")
@@ -216,6 +231,7 @@ export function registerOrganizationProcessAccess(value: RuntimeIdentity) {
             if (current.source !== source) throw denied("Process access changed its original enrolled connection")
             const native = await nativeCaller(caller)
             const grant = Execution.BoundGrant.parse(current.description.grant)
+            await authorizeCaller(current, grant, signal)
             if (
               grant.retention.state !== "held" ||
               JSON.stringify({

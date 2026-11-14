@@ -118,6 +118,8 @@ import type {
   OrgExecutionBindErrors,
   OrgExecutionBindingRequest,
   OrgExecutionBindResponses,
+  OrgExecutionCallerErrors,
+  OrgExecutionCallerResponses,
   OrgExecutionCloseHandoffErrors,
   OrgExecutionCloseHandoffResponses,
   OrgExecutionDescriptionRequest,
@@ -4934,6 +4936,28 @@ export class OrgExecution extends HeyApiClient {
       ThrowOnError
     >({
       url: "/runtime/v1/execution/resources",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Authorize the current caller of an accepted retained execution without reading its content
+   */
+  public caller<ThrowOnError extends boolean = false>(
+    parameters: {
+      orgExecutionDescriptionRequest: OrgExecutionDescriptionRequest
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "orgExecutionDescriptionRequest", map: "body" }] }])
+    return (options?.client ?? this.client).post<OrgExecutionCallerResponses, OrgExecutionCallerErrors, ThrowOnError>({
+      url: "/runtime/v1/execution/caller",
       ...options,
       ...params,
       headers: {

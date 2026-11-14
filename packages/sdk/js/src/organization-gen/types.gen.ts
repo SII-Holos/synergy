@@ -5359,6 +5359,19 @@ export type OrgExecutionDescription = {
   }>
 }
 
+export type OrgExecutionCallerAccess = {
+  orgID: string
+  deploymentIncarnation: string
+  runtimeID: string
+  sessionID: string
+  projectID: string
+  bindingEpoch: number
+  grantID: string
+  rootID: string
+  generation: number
+  accountID: string
+}
+
 export type OrgExecutionReleaseProof = {
   schemaVersion: 1
   orgID: string
@@ -12709,6 +12722,51 @@ export type OrgExecutionResourcesResponses = {
 }
 
 export type OrgExecutionResourcesResponse = OrgExecutionResourcesResponses[keyof OrgExecutionResourcesResponses]
+
+export type OrgExecutionCallerData = {
+  body: OrgExecutionDescriptionRequest
+  path?: never
+  query?: never
+  url: "/runtime/v1/execution/caller"
+}
+
+export type OrgExecutionCallerErrors = {
+  /**
+   * Organization error
+   */
+  400: OrgError
+  /**
+   * Organization error
+   */
+  401: OrgError
+  /**
+   * Organization error
+   */
+  403: OrgError
+  /**
+   * Organization error
+   */
+  404: OrgError
+  /**
+   * Organization error
+   */
+  409: OrgError
+  /**
+   * Organization error
+   */
+  503: OrgError
+}
+
+export type OrgExecutionCallerError = OrgExecutionCallerErrors[keyof OrgExecutionCallerErrors]
+
+export type OrgExecutionCallerResponses = {
+  /**
+   * Success
+   */
+  200: OrgExecutionCallerAccess
+}
+
+export type OrgExecutionCallerResponse = OrgExecutionCallerResponses[keyof OrgExecutionCallerResponses]
 
 export type OrgExecutionBindData = {
   body: OrgExecutionBindingRequest

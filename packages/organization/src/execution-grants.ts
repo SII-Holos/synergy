@@ -687,6 +687,43 @@ export function createExecutionGrants(options: {
       fail("REVISION_CONFLICT", "Session resource selection changed")
     return Resources.enabled(session, grant.selection)
   }
+  async function currentActor(
+    session: Record.SessionDirectory,
+    grant: Execution.Grant,
+    proof: ReceiptProof,
+    action: "session.read" | "session.execute",
+  ) {
+    const actor = proof.continuation?.receipt.accepted!.permit.actor ?? grant.actor
+    const account = await Record.read(Record.Account, Keys.account(actor.subjectID))
+    if (
+      actor.orgID !== grant.orgID ||
+      !account ||
+      account.accountID !== actor.subjectID ||
+      account.orgID !== grant.orgID ||
+      account.state !== "active"
+    )
+      fail("PERMISSION_DENIED", "Execution caller account is no longer active")
+    await accountSession(account, session.sessionID, action)
+    return account
+  }
+  async function currentCaller(
+    proof: Execution.DescriptionProof,
+    publicKey: string,
+    action: "session.read" | "session.execute",
+  ) {
+    const { session, grant, account: machineAccount } = await resolve(proof, publicKey)
+    await enabled(session, grant, machineAccount)
+    if (
+      grant.state !== "bound" ||
+      grant.retention.state !== "held" ||
+      grant.rootID !== proof.receipt.accepted!.effect.messageID
+    )
+      fail("PERMISSION_DENIED", "Execution reads require their original retained native root")
+    return {
+      grant,
+      account: await currentActor(session, grant, proof, action),
+    }
+  }
   async function retention(value: Execution.DescriptionRequest): Promise<Execution.Grant>
   async function retention(value: Execution.InspectionRequest): Promise<Execution.Inspection>
   async function retention(value: Execution.RetentionRequest): Promise<Execution.RetentionResult>
@@ -1039,6 +1076,11 @@ export function createExecutionGrants(options: {
             )
               fail("PROTOCOL_MISMATCH", "Environment admission has another selected Working location")
           } else environmentReference(current, proof.rootID, operation.reference)
+          if (
+            operation.action === "resize" ||
+            (operation.action === "stdin" && (operation.data !== "" || !operation.end))
+          )
+            await currentActor(session, current, proof, "session.execute")
           retained ??= current
           assert()
         })
@@ -1264,6 +1306,14 @@ export function createExecutionGrants(options: {
             (retained && (retained.grantID !== current.grantID || !same(retained.retention, current.retention)))
           )
             fail("PERMISSION_DENIED", "Workspace file request lost its original retained root")
+          const action = request.proof.operation.action
+          if (action !== "acknowledge")
+            await currentActor(
+              session,
+              current,
+              proof,
+              action === "write" || action === "mutate" ? "session.execute" : "session.read",
+            )
           retained ??= current
           assert()
         })
@@ -1505,6 +1555,36 @@ export function createExecutionGrants(options: {
         })
       })
     },
+    async caller(value: Execution.DescriptionRequest): Promise<Execution.CallerAccess> {
+      if (Storage.inTransaction())
+        fail("INVALID_REQUEST", "Execution caller access must own its authorization boundary")
+      const { proof, signature } = Execution.DescriptionRequest.parse(value)
+      window(proof)
+      const registered = await Storage.snapshot(() => machine(proof))
+      if (!(await Execution.verifyDescription(proof, signature, registered.runtime.publicKey)))
+        fail("PERMISSION_DENIED", "Execution caller proof signature is invalid")
+      const connection = capture(proof, registered.runtime)
+      await options.admissions.observe(connection, proof.continuation?.receipt ?? proof.receipt)
+      return Storage.snapshot(async () => {
+        window(proof)
+        connection.assertCurrent()
+        const { grant, account } = await currentCaller(proof, registered.runtime.publicKey, "session.execute")
+        window(proof)
+        connection.assertCurrent()
+        return Execution.CallerAccess.parse({
+          orgID: grant.orgID,
+          deploymentIncarnation: grant.deploymentIncarnation,
+          runtimeID: grant.runtimeID,
+          sessionID: grant.sessionID,
+          projectID: grant.projectID,
+          bindingEpoch: grant.bindingEpoch,
+          grantID: grant.grantID,
+          rootID: grant.rootID,
+          generation: grant.retention.generation,
+          accountID: account.accountID,
+        })
+      })
+    },
     async withAuthority<T>(
       value: Execution.DescriptionRequest,
       read: (input: {
@@ -1527,26 +1607,10 @@ export function createExecutionGrants(options: {
           if (!active) fail("PERMISSION_DENIED", "Execution read authority has ended")
           window(proof)
           connection.assertCurrent()
-          const { session, grant, account: machineAccount } = await resolve(proof, registered.runtime.publicKey)
-          await enabled(session, grant, machineAccount)
-          if (
-            grant.state !== "bound" ||
-            grant.retention.state !== "held" ||
-            grant.rootID !== proof.receipt.accepted!.effect.messageID
-          )
-            fail("PERMISSION_DENIED", "Execution reads require their original retained native root")
+          const { grant, account } = await currentCaller(proof, registered.runtime.publicKey, "session.read")
           const actor = proof.continuation?.receipt.accepted!.permit.actor ?? grant.actor
           if (actor.tokenID || actor.clientKind === "api")
             fail("PERMISSION_DENIED", "Cross-Session tool reads require an interactive account authority")
-          const account = await Record.read(Record.Account, Keys.account(actor.subjectID))
-          if (
-            !account ||
-            account.accountID !== actor.subjectID ||
-            account.orgID !== grant.orgID ||
-            account.state !== "active"
-          )
-            fail("PERMISSION_DENIED", "Execution read account is no longer active")
-          await accountSession(account, session.sessionID, "session.read")
           window(proof)
           connection.assertCurrent()
           return { grant, account }
