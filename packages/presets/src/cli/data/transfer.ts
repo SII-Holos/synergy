@@ -9,6 +9,7 @@ import { StorageBootstrap } from "@ericsanchezok/synergy-harness/storage/bootstr
 import { authorityRecordRoots, StoragePortable } from "@ericsanchezok/synergy-harness/storage/portable"
 import { legacyRecordKey } from "@ericsanchezok/synergy-harness/storage/legacy-import"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { RuntimeMaintenance } from "@ericsanchezok/synergy-harness/storage/runtime-maintenance"
 import { Usage } from "@ericsanchezok/synergy-harness/usage"
 import { NoteStore } from "@ericsanchezok/synergy-note"
 import { StorageCompat } from "@ericsanchezok/synergy-harness/storage/compat"
@@ -41,7 +42,15 @@ const local = new Set([
 ])
 
 export namespace DataTransfer {
-  const fileClaims = RuntimeContext.createAsyncContext<string[]>()
+  type Target = Awaited<ReturnType<typeof StorageBootstrap.openExisting>>
+  interface Files {
+    runtime: RuntimeContext.Instance
+    primary: Storage.Handle
+    roots: string[]
+    open: boolean
+    target?: { root: string; storageRoot: string; handle: Target }
+  }
+  const fileClaims = RuntimeContext.createAsyncContext<Files>()
   async function canonical(directory: string): Promise<string> {
     try {
       return await fs.realpath(directory)
@@ -57,15 +66,80 @@ export namespace DataTransfer {
     return relative === "" || (relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative))
   }
 
-  export async function withFiles<T>(roots: string[], fn: () => Promise<T>) {
+  function assertFiles(current: Files) {
+    if (
+      !current.open ||
+      current.runtime !== RuntimeContext.current() ||
+      current.primary.store !== Storage.current().store
+    )
+      throw new Error("Home transfer no longer owns its original Runtime and primary Store")
+  }
+
+  async function withFiles<T>(roots: string[], fn: () => Promise<T>, target?: Files["target"]) {
     const resolved = await Promise.all(roots.map((root) => canonical(path.resolve(root))))
     const current = fileClaims.getStore()
     if (current) {
-      if (!resolved.every((root) => current.some((claimed) => contains(claimed, root))))
+      assertFiles(current)
+      if (!resolved.every((root) => current.roots.some((claimed) => contains(claimed, root))))
         throw new Error("Nested Home transfer escaped its file ownership")
       return fn()
     }
-    return WorkspaceAccess.maintenance(() => WorkspaceAccess.retire(resolved, () => fileClaims.run(resolved, fn)))
+    const frame: Files = {
+      runtime: RuntimeContext.current(),
+      primary: Storage.current(),
+      roots: resolved,
+      target,
+      open: true,
+    }
+    try {
+      return await WorkspaceAccess.maintenance(() => WorkspaceAccess.retire(resolved, () => fileClaims.run(frame, fn)))
+    } finally {
+      frame.open = false
+    }
+  }
+
+  async function assertTarget(target: NonNullable<Files["target"]>) {
+    const current = await StorageBootstrap.inspect(target.storageRoot)
+    if (!current) throw new Error("Target storage has not been initialized")
+    try {
+      if (
+        current.manifest.target !== target.handle.manifest.target ||
+        current.manifest.namespace !== target.handle.manifest.namespace ||
+        current.manifest.storeID !== target.handle.manifest.storeID ||
+        current.manifest.artifactStoreID !== target.handle.manifest.artifactStoreID
+      )
+        throw new Error("Home transfer target changed its original dataset")
+    } finally {
+      await current.store.close()
+    }
+  }
+
+  export async function withTargetFiles<T>(sourceRoot: string, targetRoot: string, fn: () => Promise<T>) {
+    await validateHomes([sourceRoot, targetRoot])
+    const storageRoot = path.resolve(targetRoot)
+    const root = await canonical(storageRoot)
+    const current = fileClaims.getStore()
+    if (current) {
+      assertFiles(current)
+      if (!current.target || current.target.root !== root)
+        throw new Error("Nested Home transfer changed its original target")
+      await assertTarget(current.target)
+      return withFiles([sourceRoot, targetRoot], fn)
+    }
+    const source = await StorageBootstrap.inspect(sourceRoot)
+    if (!source) throw new Error("Source storage has not been initialized")
+    try {
+      await Storage.provide(source, () => RuntimeMaintenance.assertAdmission())
+    } finally {
+      await source.store.close()
+    }
+    const handle = await StorageBootstrap.openExisting(storageRoot)
+    const target = { root, storageRoot, handle }
+    try {
+      return await Storage.provide(handle, () => withFiles([sourceRoot, targetRoot], fn, target))
+    } finally {
+      await handle.store.close()
+    }
   }
 
   export async function validateHomes(roots: string[]) {
@@ -116,7 +190,16 @@ export namespace DataTransfer {
   }
 
   export async function pack(sourceRoot: string, destination: string) {
-    return withFiles([sourceRoot, destination], () => packRecords(sourceRoot, destination))
+    if (fileClaims.getStore()) return withFiles([sourceRoot, destination], () => packRecords(sourceRoot, destination))
+    const source = await StorageBootstrap.inspect(sourceRoot)
+    if (!source) throw new Error("Source storage has not been initialized")
+    try {
+      return await Storage.provide(source, () =>
+        withFiles([sourceRoot, destination], () => packRecords(sourceRoot, destination)),
+      )
+    } finally {
+      await source.store.close()
+    }
   }
 
   async function packRecords(sourceRoot: string, destination: string) {
@@ -146,7 +229,7 @@ export namespace DataTransfer {
     targetRoot: string,
     options: { progress?: (progress: CopyProgress) => void; trusted?: boolean } = {},
   ) {
-    return withFiles([sourceRoot, targetRoot], () => mergeRecords(sourceRoot, targetRoot, options))
+    return withTargetFiles(sourceRoot, targetRoot, () => mergeRecords(sourceRoot, targetRoot, options))
   }
 
   async function mergeRecords(
@@ -157,10 +240,16 @@ export namespace DataTransfer {
     await validateHomes([sourceRoot, targetRoot])
     const source = await StorageBootstrap.inspect(sourceRoot)
     if (!source) throw new Error("Source storage has not been initialized")
-    let target: StorageBootstrap.Prepared | undefined
+    const frame = fileClaims.getStore()
+    if (!frame?.target) {
+      await source.store.close()
+      throw new Error("Home transfer requires its original target Store")
+    }
+    const target = frame.target.handle
     try {
+      assertFiles(frame)
       await StorageCompat.assertConverged(source.store)
-      target = await StorageBootstrap.prepare({ root: targetRoot })
+      await assertTarget(frame.target)
       await StorageCompat.assertConverged(target.store)
       const skipped = new Set<string>()
       for (const scopeID of await target.store.scan(["sessions"]))
@@ -259,7 +348,6 @@ export namespace DataTransfer {
       )
       return { ...copied, skipped: copied.skipped + conflicts.size, skippedSessions: conflicts.size }
     } finally {
-      await target?.store.close()
       await source.store.close()
     }
   }
