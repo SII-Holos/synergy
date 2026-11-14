@@ -39,6 +39,8 @@ Cortex holds preserve task/root/input/budget/deadline/notification identity; nev
 
 Portability requires atomic cohorts/epochs, ordered publication/dependencies, permanent surrender/retirement, prepared pins/`session-workspaces`/Environment owners. Verify `test/session/{transfer-*,workspace-*}.test.ts` and `test/storage/{artifact-stream,storage-binary-stream,object-artifacts}.test.ts`.
 
+`PartContent.RecordCommitted` exposes body-free native commit identities inside the actual write transaction; verify buffered flush, rollback and removal in `test/session/streaming-persistence.test.ts`.
+
 `SessionHistory`: indexed headers/fields/attachments; page children/Cortex (`test/session/{part-field-header,attachment-content,attachment-index,cortex-index}.test.ts`).
 
 Install Assets before activation; test `test/asset/portable.test.ts`. Use decision receipts and Scope-qualified pending windows; verify permission suites.

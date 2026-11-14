@@ -14,8 +14,9 @@ import { PartContent } from "../../src/session/part-content"
 import { PartWriteBuffer } from "../../src/session/part-write-buffer"
 import { UpgradeWork } from "../../src/storage/upgrade-work"
 import { Storage } from "../../src/storage/storage"
+import { StorageEventSinks } from "../../src/storage/event-sinks"
 import { StoragePath } from "../../src/storage/path"
-import { StorageCommitUnknownError } from "../../src/storage/errors"
+import { StorageCommitUnknownError, StorageIntegrityError } from "../../src/storage/errors"
 import type { StoreTransaction, TransactionOptions } from "../../src/storage/transactional-store"
 import { SessionExport } from "../../src/session/session-export"
 import { SessionImport } from "../../src/session/session-import"
@@ -644,3 +645,127 @@ test("corpus preparation and hydration preserve streamed text after a derived su
     await Session.flushPartWrites(session.id)
     expect(await SessionCorpus.hydrate([ref])).toEqual([undefined])
   }))
+
+test("native Part facts follow deferred physical flush, terminal replacement and removal without capturing delta bodies", async () => {
+  await using runtime = await testRuntime({
+    register() {
+      StorageEventSinks.register({
+        id: "native-part-facts",
+        capture(event) {
+          if (event.type !== "message.part.committed") return
+          const { properties } = z
+            .object({ properties: z.object({ sessionID: z.string() }).passthrough() })
+            .parse(event.payload)
+          return { partition: properties.sessionID, payload: properties }
+        },
+        async deliver() {},
+      })
+    },
+  })
+  await runtime.run(() =>
+    ScopeContext.provide({
+      scope: Scope.home(),
+      fn: async () => {
+        const value = await streamFixture()
+        const entered = Promise.withResolvers<void>()
+        const release = Promise.withResolvers<void>()
+        const append = PartContent.append
+        using held = spyOn(PartContent, "append").mockImplementation(async (...args) => {
+          entered.resolve()
+          await release.promise
+          return append(...args)
+        })
+        const delta = "Original private native stream text"
+        value.part.text = delta
+        await Session.updatePartDelta(value.part, delta)
+        const flushing = Session.flushPartWrites(value.session.id)
+        void flushing.catch(() => {})
+        try {
+          await entered.promise
+          expect((await Storage.readMany([value.key]))[0]).toBeUndefined()
+          expect(await Storage.query({ kind: "event_delivery" })).toEqual([])
+          release.resolve()
+          await flushing
+          const records = await Storage.query<{ payload: unknown }>({ kind: "event_delivery" })
+          expect(records).toHaveLength(1)
+          expect(records[0]!.value.payload).toEqual({
+            scopeID: value.session.scope.id,
+            sessionID: value.session.id,
+            messageID: value.part.messageID,
+            partID: value.part.id,
+            revision: String((await Storage.revisions([value.key]))[0]),
+            removed: false,
+          })
+          expect(JSON.stringify(records[0]!.value)).not.toContain(delta)
+          await Session.updatePart({ ...value.part, text: delta + " completed" })
+          await Session.removePart({
+            sessionID: value.session.id,
+            messageID: value.part.messageID,
+            partID: value.part.id,
+          })
+          const facts = (
+            await Storage.query<{ payload: { removed: boolean; revision: string } }>({ kind: "event_delivery" })
+          ).map((row) => row.value.payload)
+          expect(facts.map((fact) => fact.removed)).toEqual([false, false, true])
+          expect(BigInt(facts[1]!.revision)).toBeGreaterThan(BigInt(facts[0]!.revision))
+          expect(facts[2]!.revision).toBe(facts[1]!.revision)
+          expect((await Storage.readMany([value.key]))[0]).toBeUndefined()
+        } finally {
+          release.resolve()
+          await flushing.catch(() => {})
+        }
+      },
+    }),
+  )
+})
+
+test("native Part capture failure rolls back its actual record and rejects foreign or missing identities", async () => {
+  const failure = new Error("Original native Part capture unavailable")
+  let reject = true
+  await using runtime = await testRuntime({
+    register() {
+      StorageEventSinks.register({
+        id: "native-part-facts",
+        capture(event) {
+          if (event.type !== "message.part.committed") return
+          if (reject) throw failure
+          const { properties } = z
+            .object({ properties: z.object({ sessionID: z.string() }).passthrough() })
+            .parse(event.payload)
+          return { partition: properties.sessionID, payload: properties }
+        },
+        async deliver() {},
+      })
+    },
+  })
+  await runtime.run(() =>
+    ScopeContext.provide({
+      scope: Scope.home(),
+      fn: async () => {
+        const value = await streamFixture("Original native body")
+        try {
+          await expect(Session.updatePart(value.part)).rejects.toBe(failure)
+          expect((await Storage.readMany([value.key]))[0]).toBeUndefined()
+          expect(await Storage.query({ kind: "event_delivery" })).toEqual([])
+        } finally {
+          reject = false
+        }
+        await Session.flushPartWrites(value.session.id)
+        const canonical = await Storage.read(value.key)
+        const original = await Storage.query({ kind: "event_delivery" })
+        expect(original).toHaveLength(1)
+        await expect(
+          PartContent.replace(value.key, { ...value.part, id: Identifier.ascending("part") }),
+        ).rejects.toBeInstanceOf(StorageIntegrityError)
+        const foreign = [...value.key]
+        foreign[2] = Identifier.ascending("session")
+        await expect(PartContent.replace(foreign, { ...value.part, sessionID: foreign[2]! })).rejects.toBeInstanceOf(
+          Storage.NotFoundError,
+        )
+        expect(await Storage.read(value.key)).toEqual(canonical)
+        expect(await Storage.query({ kind: "event_delivery" })).toEqual(original)
+        expect((await Storage.readMany([foreign]))[0]).toBeUndefined()
+      },
+    }),
+  )
+})
