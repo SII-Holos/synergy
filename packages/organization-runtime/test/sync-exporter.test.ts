@@ -20,8 +20,8 @@ import fs from "node:fs/promises"
 import path from "node:path"
 import { startMemberSyncExporter, drainMemberSync } from "../src/sync-exporter"
 import type { MemberConnection } from "../src/connection"
-import { prepareNativeSync, pumpNativeSync } from "../src/sync-native-source"
-import { binding as nativeSyncBinding, Batch as StoredBatch } from "../src/sync-outbox"
+import { prepareNativeSync, pumpNativeSync, observeNativeSync } from "../src/sync-native-source"
+import { binding as nativeSyncBinding, Batch as StoredBatch, Draft as StoredDraft } from "../src/sync-outbox"
 import { registerSessionSchema } from "../src/session-schema"
 import { OrganizationSyncPath as Keys } from "../src/storage/path"
 import { RolloutArtifact } from "@ericsanchezok/synergy-harness/session/rollout/artifact"
@@ -1175,4 +1175,145 @@ test("a detached exporter close remains idempotent after its original Runtime is
   } finally {
     await runtime.close()
   }
+})
+
+test("automatic native wakes coalesce original fact work while an in-flight pump retains later committed facts", async () => {
+  await using runtime = await testRuntime({ register: () => registerSessionSchema(binding) })
+  await runtime.run(async () => {
+    const originalRuntime = RuntimeContext.current()
+    const originalStore = Storage.current().store
+    const queryEntered = Promise.withResolvers<void>()
+    const releaseQuery = Promise.withResolvers<void>()
+    const converted = Promise.withResolvers<void>()
+    const messages: string[] = []
+    const parts: string[] = []
+    let selectedSessionID: string | undefined
+    let nativeQueries = 0
+    let holding = true
+    let resolved = false
+    let wakes = 0
+    const query = Storage.query
+    using queries = spyOn(Storage, "query").mockImplementation(async <T>(input: Parameters<typeof query>[0]) => {
+      const rows = await query<T>(input)
+      if (RuntimeContext.current() !== originalRuntime || Storage.current().store !== originalStore) return rows
+      if (input.prefix?.[0] !== "event_delivery" || input.prefix[1] !== "organization-native-sync") return rows
+      nativeQueries++
+      if (holding) {
+        holding = false
+        queryEntered.resolve()
+        await releaseQuery.promise
+      }
+      return rows
+    })
+    const write = Storage.write
+    using writes = spyOn(Storage, "write").mockImplementation(async (key, value) => {
+      const result = await write(key, value)
+      if (!selectedSessionID || resolved || !Storage.inWriteTransaction() || messages.length !== 32) return result
+      if (JSON.stringify(key) !== JSON.stringify(Keys.state(binding.orgID, selectedSessionID))) return result
+      const drafts = (await query<unknown>({ prefix: Keys.drafts(binding.orgID, selectedSessionID), limit: 128 })).map(
+        (row) => StoredDraft.parse(row.value),
+      )
+      const messageIDs = new Set(
+        drafts.flatMap((draft) => (draft.event.type === "message" ? [draft.event.messageID] : [])),
+      )
+      const partIDs = new Set(drafts.flatMap((draft) => (draft.event.type === "part" ? [draft.event.partID] : [])))
+      if (messages.every((id) => messageIDs.has(id)) && parts.every((id) => partIDs.has(id))) {
+        Storage.afterCommit(() => {
+          resolved = true
+          converted.resolve()
+        })
+      }
+      return result
+    })
+    const stop = observeNativeSync(() => {
+      wakes++
+    })
+    const remote = transport("unused-before-original-root-creation")
+    remote.connection.syncState = async (sessionID) => ({
+      sessionID,
+      shareState: "private",
+      shareGeneration: 0,
+      bindingEpoch: 1,
+      nextSeq: 1,
+      syncState: "pending",
+      updatedAt: 1,
+    })
+    remote.connection.sync = async () => {
+      throw new Error("This native work fixture cannot acknowledge a network batch")
+    }
+    const exporter = startMemberSyncExporter({
+      identity: { orgID: binding.orgID, accountID: binding.creatorID, deviceID: "device-sync" },
+      connection: remote.connection,
+      signal: new AbortController().signal,
+    })
+    try {
+      await exporter.flush()
+      const f = await fixture()
+      selectedSessionID = f.session.id
+      await queryEntered.promise
+      wakes = 0
+      await ScopeContext.provide({
+        scope: f.scope,
+        workspace: null,
+        fn: async () => {
+          for (let offset = 0; offset < 32; offset += 16)
+            await Storage.transaction(async () => {
+              for (let index = offset; index < offset + 16; index++) {
+                const messageID = Identifier.ascending("message")
+                const partID = Identifier.ascending("part")
+                messages.push(messageID)
+                parts.push(partID)
+                await Session.updateMessage({
+                  id: messageID,
+                  sessionID: f.session.id,
+                  role: "user",
+                  agent: "general",
+                  model: { providerID: "fixture", modelID: "native-wake-work" },
+                  time: { created: index + 10 },
+                })
+                await Session.updatePart({
+                  id: partID,
+                  sessionID: f.session.id,
+                  messageID,
+                  type: "text",
+                  text: `Committed native wake ${index}`,
+                })
+              }
+            })
+        },
+      })
+      expect(wakes).toBe(64)
+      releaseQuery.resolve()
+      await converted.promise
+      const automatic = (await query<unknown>({ prefix: Keys.drafts(binding.orgID, f.session.id), limit: 128 })).map(
+        (row) => StoredDraft.parse(row.value),
+      )
+      expect(
+        automatic
+          .flatMap((draft) =>
+            draft.event.type === "message" && messages.includes(draft.event.messageID) ? [draft.event.messageID] : [],
+          )
+          .sort(),
+      ).toEqual(messages.toSorted())
+      expect(
+        automatic
+          .flatMap((draft) =>
+            draft.event.type === "part" && parts.includes(draft.event.partID) ? [draft.event.partID] : [],
+          )
+          .sort(),
+      ).toEqual(parts.toSorted())
+      await exporter.flush()
+      await exporter.close()
+      expect(await Storage.count({ prefix: ["event_delivery", "organization-native-sync"] })).toBe(0)
+      expect(remote.batches).toHaveLength(0)
+      expect(nativeQueries).toBeLessThanOrEqual(8)
+      const history = await Array.fromAsync(MessageV2.stream({ sessionID: f.session.id }))
+      expect(history.filter((message) => messages.includes(message.info.id))).toHaveLength(32)
+      expect(history.flatMap((message) => message.parts.filter((part) => parts.includes(part.id)))).toHaveLength(32)
+    } finally {
+      stop()
+      releaseQuery.resolve()
+      await exporter.close()
+    }
+  })
 })

@@ -38,6 +38,7 @@ test("ten authenticated clients replay a shared 10000-message history while thre
   osMemory.own(process.pid, () => true)
   resources.defer("capacity OS process sampler", () => osMemory[Symbol.asyncDispose]())
   let failed: { error: unknown } | undefined
+  let failureDiagnostics: (() => Promise<Array<Record<string, number>>>) | undefined
   const observedAt = performance.now()
   let observedPhase = "setup"
   function phase(value: string, counts: Record<string, number> = {}) {
@@ -209,6 +210,7 @@ test("ten authenticated clients replay a shared 10000-message history while thre
 
     async function child(home: { home: string; root: string; identity: RuntimeIdentity }, runtimeID: string) {
       const pending = new Map<string, ReturnType<typeof Promise.withResolvers<unknown>>>()
+      let lastBacklog: z.infer<typeof CapacityBacklog> | undefined
       const ready = Promise.withResolvers<number>()
       const processHandle = Bun.spawn({
         cmd: [
@@ -271,7 +273,9 @@ test("ten authenticated clients replay a shared 10000-message history while thre
         )
         try {
           processHandle.send({ ...command, id })
-          return schema.parse(await result.promise)
+          const parsed = schema.parse(await result.promise)
+          if (command.operation === "backlog") lastBacklog = CapacityBacklog.parse(parsed)
+          return parsed
         } finally {
           clearTimeout(timer)
           pending.delete(id)
@@ -298,6 +302,7 @@ test("ten authenticated clients replay a shared 10000-message history while thre
         pid,
         runtimeID,
         request,
+        backlog: () => lastBacklog,
         headers:
           "accountID" in home.identity && home.identity.accountID === member.accountID
             ? member.headers
@@ -359,6 +364,48 @@ test("ten authenticated clients replay a shared 10000-message history while thre
     expect(new Set([memberA.home, memberB.home, hosted.home]).size).toBe(3)
     timings.enrollmentMs = performance.now() - started
     const sessions: Array<{ sessionID: string; projectID: string; runtime: number }> = []
+    failureDiagnostics = () =>
+      Promise.all(
+        runtimes.map(async (runtime, index): Promise<Record<string, number>> => {
+          const retained = runtime.backlog()
+          const counts = {
+            runtime: index,
+            observedSessions: retained?.sessions ?? 0,
+            observedDrafts: retained?.drafts ?? -1,
+            observedBatches: retained?.pendingBatches ?? -1,
+            observedSynced: retained?.synced ?? -1,
+            ...connectionActivity(runtime.runtimeID),
+          }
+          const selected = sessions.find((entry) => entry.runtime === index)
+          if (!selected) return { ...counts, available: 0 }
+          try {
+            const current = await runtime.request(
+              { operation: "backlog", sessions: [selected.sessionID], inspectNative: true },
+              CapacityBacklog,
+              500,
+            )
+            return {
+              ...counts,
+              available: 1,
+              inspectedSessions: current.sessions,
+              inspectedDrafts: current.drafts,
+              inspectedBatches: current.pendingBatches,
+              inspectedSynced: current.synced,
+              deliveriesInStore: current.native?.deliveriesInStore ?? -1,
+              inspectedProjections: current.native?.projections ?? -1,
+              inspectedOrderRows: current.native?.orderedDrafts ?? -1,
+              inspectedBound: current.native?.boundSessions ?? -1,
+              inspectedBindingErrors: current.native?.bindingUnavailable ?? -1,
+              inspectedBindingAbsent: current.native
+                ? current.sessions - current.native.boundSessions - current.native.bindingUnavailable
+                : -1,
+              faultsInRuntime: current.native?.faultsInRuntime ?? -1,
+            }
+          } catch {
+            return { ...counts, available: 0 }
+          }
+        }),
+      )
     for (let index = 0; index < 100; index++) {
       const runtime = index % runtimes.length
       const projectID = projects[index % projects.length].projectID
@@ -747,6 +794,13 @@ test("ten authenticated clients replay a shared 10000-message history while thre
       JSON.stringify({ phase: observedPhase, elapsedMs: performance.now() - observedAt }),
     )
     failed = { error }
+    if (failureDiagnostics) {
+      try {
+        console.error("CAPACITY_NATIVE_FAILURE", JSON.stringify(await failureDiagnostics()))
+      } catch {
+        console.error("CAPACITY_NATIVE_FAILURE", JSON.stringify({ available: 0 }))
+      }
+    }
     console.error("CAPACITY_SYNC_FAILURE", error)
     console.error("CAPACITY_OS_PEAKS", JSON.stringify(await osMemory.snapshot()))
   }

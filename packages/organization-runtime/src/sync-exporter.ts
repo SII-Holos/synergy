@@ -126,6 +126,7 @@ export function startMemberSyncExporter(input: {
   ])
   const sessions = new Set<string>()
   const tails = new Map<string, Promise<void>>()
+  const nativeWakes = new Map<string, { dirty: boolean }>()
   const unsubs: Array<() => void> = []
   let timer: ReturnType<typeof setTimeout> | undefined
   const retryTimer = setInterval(() => {
@@ -892,9 +893,24 @@ export function startMemberSyncExporter(input: {
     observeNativeSync((rootSessionID) => {
       if (closed || signal.aborted) return
       sessions.add(rootSessionID)
+      const pending = nativeWakes.get(rootSessionID)
+      if (pending) {
+        pending.dirty = true
+        schedule()
+        return
+      }
+      const accepted = { dirty: false }
+      nativeWakes.set(rootSessionID, accepted)
       queue(rootSessionID, async () => {
-        const original = await sessionBinding(rootSessionID)
-        if (original) await pumpNativeSync(original)
+        try {
+          do {
+            accepted.dirty = false
+            const original = await sessionBinding(rootSessionID)
+            if (original) await pumpNativeSync(original)
+          } while (accepted.dirty && !closed && !signal.aborted)
+        } finally {
+          if (nativeWakes.get(rootSessionID) === accepted) nativeWakes.delete(rootSessionID)
+        }
       })
       schedule()
     }),
@@ -938,6 +954,7 @@ export function startMemberSyncExporter(input: {
       )
       settled.push(...local)
       tails.clear()
+      nativeWakes.clear()
       sessions.clear()
       registeredExporters.delete(drain)
       originalSenders.delete(sender)
