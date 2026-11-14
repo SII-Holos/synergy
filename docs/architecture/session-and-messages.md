@@ -290,6 +290,8 @@ When a paginated result contains a non-root message whose root lies outside the 
 
 Transcript consumers use the ordered message array as the chronology. `time.created` records when a message enters the transcript; message IDs provide stable identity and only break ties between messages with the same creation time. Inbox delivery may pre-allocate a message ID before materialization, so loop, rollback, fork, compaction, pagination, and other positional logic must not compare raw message IDs to decide whether one message is before or after another.
 
+Order memoization belongs to one live Store write transaction and the exact Scope/Session tuple. The first load validates its current native index. Typed order mutations invalidate the affected memo, and overlapping order operations stop reusing it for that transaction. Reads outside the writer use their own snapshot. Core activation removes ordering through `MessageV2.removeOrderIndex`; cached IDs grant no execution authority. See [order ownership](../decisions/implemented/bug-fix/2026-11-13-invalidate-destination-message-order-after-transfer.md).
+
 Opening the latest display window uses pages of immediate message-order keys. Hydrating selected message bodies validates only those canonical message records and their display headers; it does not prepare a neighboring history window for every requested message. Rollback visibility, content versions and on-access semantic upgrades remain authoritative.
 
 ## Message Page API

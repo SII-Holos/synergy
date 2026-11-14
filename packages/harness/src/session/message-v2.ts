@@ -33,6 +33,7 @@ import { SymbolRange } from "./symbol-range"
 import { SnapshotSchema } from "./snapshot-schema"
 import { fn } from "../util/fn"
 import { Storage } from "../storage/storage"
+import type { StoreTransaction } from "../storage/transactional-store"
 import { StoragePath } from "../storage/path"
 import { StorageIntegrityError } from "../storage/errors"
 import { PartContent } from "./part-content"
@@ -1767,17 +1768,23 @@ export namespace MessageV2 {
   })
 
   type MessageOrderCache = {
+    scopeID: Identifier.ScopeID
     markers: string[]
     byMessageID: Map<string, string>
   }
 
-  const messageOrderCache = Storage.state(() => new Map<string, MessageOrderCache>())
+  type MessageOrderTransaction = {
+    values: Map<string, MessageOrderCache>
+    writers: Map<string, number>
+    contended: Set<string>
+  }
+  const messageOrderTransactions = Storage.state(() => new WeakMap<StoreTransaction, MessageOrderTransaction>())
   const MESSAGE_ORDER_CACHE_LIMIT = 64
   const MESSAGE_ORDER_SIGN_BIT = 1n << 63n
   const MESSAGE_ORDER_MASK = (1n << 64n) - 1n
 
   function messageOrderKey(scopeID: Identifier.ScopeID, sessionID: Identifier.SessionID) {
-    return `${scopeID}:${sessionID}`
+    return JSON.stringify([scopeID, sessionID])
   }
 
   function messageOrderNumberKey(value: number) {
@@ -1819,9 +1826,53 @@ export namespace MessageV2 {
     }
   }
 
+  function transactionMessageOrders() {
+    if (!Storage.inWriteTransaction()) return
+    const { store, transaction } = Storage.current()
+    if (!transaction) throw new StorageIntegrityError("Message order cache requires its original transaction")
+    store.assertWriteTransaction(transaction)
+    const transactions = messageOrderTransactions()
+    let orders = transactions.get(transaction)
+    if (orders) return orders
+    orders = { values: new Map(), writers: new Map(), contended: new Set() }
+    transactions.set(transaction, orders)
+    const selected = orders.values
+    transaction.addMutationGuard(async (keys) => {
+      for (const key of keys) {
+        if (key.length && key[0] !== "session_message_order_v1") continue
+        if (key.length >= 3) {
+          selected.delete(messageOrderKey(Identifier.asScopeID(key[1]!), Identifier.asSessionID(key[2]!)))
+          continue
+        }
+        for (const [owner, value] of selected) if (key.length < 2 || value.scopeID === key[1]) selected.delete(owner)
+      }
+    })
+    return orders
+  }
+
+  function messageOrderWriter(scopeID: Identifier.ScopeID, sessionID: Identifier.SessionID) {
+    const state = transactionMessageOrders()
+    if (!state) throw new StorageIntegrityError("Message order writer requires its original transaction")
+    const key = messageOrderKey(scopeID, sessionID)
+    const writers = state.writers.get(key) ?? 0
+    if (writers) {
+      state.contended.add(key)
+      state.values.delete(key)
+    }
+    state.writers.set(key, writers + 1)
+    return {
+      [Symbol.dispose]() {
+        const remaining = state.writers.get(key)! - 1
+        if (remaining) state.writers.set(key, remaining)
+        else state.writers.delete(key)
+      },
+    }
+  }
+
   function cacheMessageOrder(scopeID: Identifier.ScopeID, sessionID: Identifier.SessionID, markers: string[]) {
     const key = messageOrderKey(scopeID, sessionID)
-    const value = {
+    const value: MessageOrderCache = {
+      scopeID,
       markers: markers.slice(),
       byMessageID: new Map(
         markers.flatMap((marker) => {
@@ -1830,32 +1881,17 @@ export namespace MessageV2 {
         }),
       ),
     }
-    if (Storage.inWriteTransaction()) {
-      Storage.afterCommit(() => {
-        cacheMessageOrder(scopeID, sessionID, markers)
-      })
-      return value
+    const state = transactionMessageOrders()
+    const cache = state && !state.contended.has(key) ? state.values : undefined
+    if (cache) {
+      cache.delete(key)
+      cache.set(key, value)
+      while (cache.size > MESSAGE_ORDER_CACHE_LIMIT) cache.delete(cache.keys().next().value!)
     }
-    messageOrderCache().delete(key)
-    messageOrderCache().set(key, {
-      markers,
-      byMessageID: new Map(
-        markers.flatMap((marker) => {
-          const messageID = markerMessageID(marker)
-          return messageID ? [[messageID, marker] as const] : []
-        }),
-      ),
-    })
-    while (messageOrderCache().size > MESSAGE_ORDER_CACHE_LIMIT) {
-      const oldest = messageOrderCache().keys().next().value
-      if (oldest === undefined) break
-      messageOrderCache().delete(oldest)
-    }
-    return messageOrderCache().get(key)!
+    return value
   }
 
   async function rebuildMessageOrder(scopeID: Identifier.ScopeID, sessionID: Identifier.SessionID) {
-    messageOrderCache().delete(messageOrderKey(scopeID, sessionID))
     await Storage.write(StoragePath.sessionMessageOrderState(scopeID, sessionID), {
       version: 1,
       ready: false,
@@ -1874,10 +1910,12 @@ export namespace MessageV2 {
 
   async function loadMessageOrder(scopeID: Identifier.ScopeID, sessionID: Identifier.SessionID) {
     const key = messageOrderKey(scopeID, sessionID)
-    const cached = Storage.inTransaction() ? undefined : messageOrderCache().get(key)
-    if (cached) {
-      messageOrderCache().delete(key)
-      messageOrderCache().set(key, cached)
+    const memo = transactionMessageOrders()
+    const cache = memo && !memo.contended.has(key) ? memo.values : undefined
+    const cached = cache?.get(key)
+    if (cache && cached) {
+      cache.delete(key)
+      cache.set(key, cached)
       return cached
     }
 
@@ -1922,12 +1960,7 @@ export namespace MessageV2 {
     })
     if (captured !== undefined) return captured
     return Storage.transaction(async () => {
-      const key = messageOrderKey(scopeID, sessionID)
-      if (messageOrderCache().has(key)) {
-        const cached = Storage.inTransaction() ? undefined : messageOrderCache().get(key)
-        if (cached) return cached.markers.slice()
-      }
-
+      using writer = messageOrderWriter(scopeID, sessionID)
       return (await loadMessageOrder(scopeID, sessionID)).markers.slice()
     })
   }
@@ -1936,6 +1969,7 @@ export namespace MessageV2 {
     return Storage.transaction(async () => {
       const info = canonicalMessage(input.info)
       const sessionID = Identifier.asSessionID(info.sessionID)
+      using writer = messageOrderWriter(input.scopeID, sessionID)
 
       const order = await loadMessageOrder(input.scopeID, sessionID)
       const previousMarker = order.byMessageID.get(info.id)
@@ -1946,7 +1980,6 @@ export namespace MessageV2 {
         return info
       }
 
-      messageOrderCache().delete(messageOrderKey(input.scopeID, sessionID))
       await Storage.write(StoragePath.sessionMessageOrderState(input.scopeID, sessionID), {
         version: 1,
         ready: false,
@@ -1978,6 +2011,7 @@ export namespace MessageV2 {
     messageID: Identifier.MessageID
   }) {
     return Storage.transaction(async () => {
+      using writer = messageOrderWriter(input.scopeID, input.sessionID)
       const order = await loadMessageOrder(input.scopeID, input.sessionID)
       const marker = order.byMessageID.get(input.messageID)
       if (!marker) {
@@ -1988,7 +2022,6 @@ export namespace MessageV2 {
         return
       }
 
-      messageOrderCache().delete(messageOrderKey(input.scopeID, input.sessionID))
       await Storage.write(StoragePath.sessionMessageOrderState(input.scopeID, input.sessionID), {
         version: 1,
         ready: false,
@@ -2010,7 +2043,7 @@ export namespace MessageV2 {
 
   export async function removeOrderIndex(scopeID: Identifier.ScopeID, sessionID: Identifier.SessionID) {
     return Storage.transaction(async () => {
-      messageOrderCache().delete(messageOrderKey(scopeID, sessionID))
+      using writer = messageOrderWriter(scopeID, sessionID)
       await Storage.removeTree(StoragePath.sessionMessageOrderRoot(scopeID, sessionID))
     })
   }

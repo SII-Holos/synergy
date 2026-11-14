@@ -10,6 +10,8 @@ A Session returning to a previous native Home can replace its canonical messages
 
 Core publication invalidates the destination Session's message ordering through `MessageV2.removeOrderIndex` inside its original activation transaction. The existing owner removes the durable ordering index and its in-memory cache. A later read rebuilds ordering from the newly published canonical messages.
 
+Native order memoization is scoped to the original live Store write transaction and exact Scope/Session tuple. Its first access validates current state and marker coverage; the existing mutation guard invalidates affected entries before typed mutations. An overlapping order operation disables memoization for that owner until transaction completion, preserving the original scan and repair behavior. Other owners remain independent. The owner keeps no global order cache or after-commit order publisher.
+
 The change preserves the imported Session identity, message and Part bodies, actors, paused state and transfer Epoch. It does not modify the model working-set policy or introduce another cache. Display records remain inside the transported Session aggregate; their timeline, page and detail reads are verified separately.
 
 ## Alternatives considered
@@ -20,9 +22,15 @@ The change preserves the imported Session identity, message and Part bodies, act
 
 **Clear every Session cache and index.** Rejected because the observed defect concerns the external ordering index. The imported Display records already contain the current messages.
 
+**Keep a global order cache populated after every write.** Rejected because all order loaders already run inside write transactions, so the global cache had no reachable consumer while retaining repeated whole-history arrays.
+
+**Reuse order after overlapping writes.** Rejected because a delayed operation can populate an earlier order after another mutation. A public-write regression retained every canonical header but omitted a message from the same-transaction stream.
+
 ## Consequences
 
 A returning Session exposes messages accepted on either machine without reopening execution. Ordering removal participates in activation rollback, and reconstruction uses the current canonical records. Cloud Environment selection, native download, other destination mappings and independent model continuation remain separate capabilities.
+
+Sequential writes in one transaction reuse verified order without repeated full marker scans. Every new transaction and readonly snapshot establishes its own view. This removes repeated work and deferred cache retention, but order metadata and per-message array work still depend on history size. See [native write amplification](../../../postmortem/0197-native-message-order-repeated-full-history-work.md).
 
 ## Verification
 
