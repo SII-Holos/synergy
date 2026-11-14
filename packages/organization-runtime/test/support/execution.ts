@@ -24,6 +24,7 @@ import { createMemberMcpTool } from "../../src/mcp-tool"
 import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
 import { fixture } from "./organization"
 import { registerOrganizationKnowledge } from "../../src/knowledge-source"
+import { registerCortexSessionRuntime } from "@ericsanchezok/synergy-harness/cortex/session-runtime"
 
 export async function executionFixture(
   input: {
@@ -93,6 +94,7 @@ export async function executionFixture(
         registerSessionSchema({ orgID: f.identity.orgID })
         if (input.knowledge) registerOrganizationKnowledge(member.identity)
         if (input.execution) {
+          registerCortexSessionRuntime()
           registerMemberExecution(member.identity)
           ToolRegistry.registerToolProvider("organization-runtime", () => [
             createMemberConnectionTool(member.identity),

@@ -76,7 +76,7 @@ test("hosted-runtime privately enrolls a machine and reuses managed CLI shutdown
     try {
       const accepted = await connected.promise
       expect(accepted.capabilities).toContain("handoffs")
-      expect(accepted.schemas.handoffs).toBe(8)
+      expect(accepted.schemas.handoffs).toBe(9)
     } finally {
       clearTimeout(bridgeDeadline)
     }

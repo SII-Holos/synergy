@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test"
+import { expect, spyOn, test } from "bun:test"
 import { OrganizationGatewayProtocol as Gateway } from "@ericsanchezok/synergy-organization-protocol"
 import { Cortex } from "@ericsanchezok/synergy-harness/cortex"
 import { Provider } from "@ericsanchezok/synergy-harness/provider/provider"
@@ -12,6 +12,7 @@ import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/ledger"
 import { RolloutLifecycle } from "@ericsanchezok/synergy-harness/session/rollout/lifecycle"
 import { executionFixture } from "./support/execution"
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 
 const plan: Provider.WorkerPlan = {
   authoritative: true,
@@ -271,4 +272,60 @@ test("resource model changes cannot silently reinterpret a materialized native r
     )
     expect((await Session.get(f.sessionID)).modelSelection?.selected.model).toEqual(input.user.model)
   })
+})
+
+test("closing the original execution fixture releases native Cortex retention before disposing its Runtime", async () => {
+  const f = await executionFixture({ execution: true })
+  const owner = f.runtime.run(() => RuntimeContext.current())
+  const timers = new Set<ReturnType<typeof setTimeout>>()
+  const schedule = setTimeout
+  const cancel = clearTimeout
+  using scheduling = spyOn(globalThis, "setTimeout").mockImplementation(
+    new Proxy(schedule, {
+      apply(target, receiver, args) {
+        const timer = Reflect.apply(target, receiver, args) as ReturnType<typeof setTimeout>
+        if (RuntimeContext.tryCurrent() === owner && (args[1] === 30_000 || args[1] === 300_000)) timers.add(timer)
+        return timer
+      },
+    }),
+  )
+  using cancelling = spyOn(globalThis, "clearTimeout").mockImplementation(
+    new Proxy(cancel, {
+      apply(target, receiver, args) {
+        timers.delete(args[0])
+        return Reflect.apply(target, receiver, args)
+      },
+    }),
+  )
+  try {
+    const input = await materialize(f)
+    await f.runtime.run(() =>
+      ScopeContext.provide({
+        scope: input.session.scope,
+        workspace: null,
+        fn: async () => {
+          const task = await Cortex.prepare({
+            description: "Original execution retention",
+            prompt: "Retain the actual admitted child",
+            agent: input.user.agent,
+            parentSessionID: f.sessionID,
+            parentMessageID: input.user.id,
+            notifyParentOnComplete: false,
+          })
+          await Cortex.cancel(task.id)
+          expect(Cortex.get(task.id)?.status).toBe("cancelled")
+        },
+      }),
+    )
+    expect(timers.size).toBe(2)
+    await f[Symbol.asyncDispose]()
+    expect(() => f.runtime.run(() => {})).toThrow("Runtime is closed")
+    expect(timers.size).toBe(0)
+  } finally {
+    try {
+      await f[Symbol.asyncDispose]()
+    } finally {
+      for (const timer of timers) cancel(timer)
+    }
+  }
 })

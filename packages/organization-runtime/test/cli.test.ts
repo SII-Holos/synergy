@@ -131,7 +131,7 @@ test("a supervised member command enrolls from private input, serves its own Hom
         }
         const accepted = await handshake.promise
         expect(accepted.capabilities).toContain("handoffs")
-        expect(accepted.schemas.handoffs).toBe(8)
+        expect(accepted.schemas.handoffs).toBe(9)
         const capabilities = (await client.global.capabilities({ throwOnError: true })).data
         expect(capabilities.features.includes("browser")).toBe(restart)
         const current = capabilities.runtimeID
