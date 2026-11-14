@@ -2,12 +2,14 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { createHash } from "node:crypto"
 import { createRequire } from "node:module"
 import fs from "node:fs/promises"
+import type { Stats } from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { assertRuntimeManifest } from "../../../script/release/shared/runtime-contract"
 import { runtimeTarget, signingRuntime } from "./fixture/signing-runtime"
 
 interface ElectronBuilderConfig {
+  files?: string[]
   mac?: {
     icon?: string
     target?: Array<{ target?: string; arch?: string[] }>
@@ -103,6 +105,129 @@ async function writeRuntimeManifest(runtimeDir: string) {
 }
 
 describe("desktop packaging", () => {
+  test("dependency packaging excludes live probe Homes and survives their cleanup without removing native payloads", async () => {
+    const config = (await Bun.file(
+      new URL("../electron-builder.json", import.meta.url),
+    ).json()) as ElectronBuilderConfig
+    const builderRequire = createRequire(require.resolve("electron-builder"))
+    const packagerRequire = createRequire(builderRequire.resolve("app-builder-lib"))
+    const { FileMatcher, getNodeModuleFileMatcher } = builderRequire("app-builder-lib/out/fileMatcher") as {
+      FileMatcher: new (
+        source: string,
+        destination: string,
+        expand: (value: string) => string,
+        patterns: string[],
+      ) => unknown
+      getNodeModuleFileMatcher(
+        source: string,
+        destination: string,
+        expand: (value: string) => string,
+        platform: object,
+        packager: object,
+      ): { patterns: string[] }
+    }
+    const { NodeModuleCopyHelper } = builderRequire("app-builder-lib/out/util/NodeModuleCopyHelper") as {
+      NodeModuleCopyHelper: new (
+        matcher: unknown,
+        packager: object,
+      ) => {
+        metadata: Map<string, Stats>
+        collectNodeModules(
+          module: { name: string; dir: string },
+          extensions: string[],
+          destination: string,
+        ): Promise<string[]>
+      }
+    }
+    const { copyAppFiles } = builderRequire("app-builder-lib/out/util/appFileCopier") as {
+      copyAppFiles(
+        files: { src: string; destination: string; files: string[]; metadata: Map<string, Stats> },
+        packager: object,
+        transformer: null,
+      ): Promise<void>
+    }
+    const { CancellationToken } = packagerRequire("builder-util-runtime") as { CancellationToken: new () => object }
+    const asar = packagerRequire("@electron/asar") as {
+      createPackage(source: string, archive: string): Promise<void>
+      listPackage(archive: string): string[]
+    }
+    const { requiredRuntimeArtifactPaths } = require("../../../script/release/shared/runtime-layout.cjs") as {
+      requiredRuntimeArtifactPaths(target: string): string[]
+    }
+    const nativeName = "@ericsanchezok/synergy-native-linux-x64-glibc"
+    const nativePrefix = `runtime/node_modules/${nativeName}/`
+    const nativeFiles = requiredRuntimeArtifactPaths("synergy-linux-x64")
+      .filter((file) => file.startsWith(nativePrefix))
+      .map((file) => file.slice(nativePrefix.length))
+    for (const removeAfterInventory of [false, true]) {
+      const root = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-desktop-module-files-"))
+      temporaryDirectories.push(root)
+      const app = path.join(root, "app")
+      const destination = path.join(root, "staged")
+      const localName = "@ericsanchezok/synergy-local-runtime"
+      const modules = [
+        {
+          name: localName,
+          dir: path.join(root, "workspace/packages/local-runtime"),
+          files: [
+            "package.json",
+            "dist/component.js",
+            ".artifacts/pty/linux-x64-glibc/libsynergy_pty.so",
+            ".artifacts/pty/linux-x64-glibc/receipt.json",
+            ".artifacts/watcher/linux-x64-glibc/watcher.node",
+            ".artifacts/watcher/linux-x64-glibc/receipt.json",
+            "sandbox-assets/linux-x64/synergy-sandbox-linux",
+          ],
+        },
+        { name: nativeName, dir: path.join(root, "workspace/native"), files: nativeFiles },
+      ]
+      for (const module of modules) {
+        for (const file of module.files) {
+          const target = path.join(module.dir, file)
+          await fs.mkdir(path.dirname(target), { recursive: true })
+          await fs.writeFile(target, `${module.name}/${file}\n`)
+        }
+      }
+      const probes = path.join(modules[0].dir, ".artifacts/sandbox-probes")
+      const synthetic = path.join(probes, "home-fixture/.aws/credentials")
+      await fs.mkdir(path.dirname(synthetic), { recursive: true })
+      await fs.writeFile(synthetic, "synthetic packaging exclusion sentinel\n")
+      const expand = (value: string) => value
+      const owner = {
+        config,
+        appInfo: { type: "module" },
+        debugLogger: { isEnabled: false },
+        getWorkspaceRoot: async () => root,
+        cancellationToken: new CancellationToken(),
+      }
+      const main = getNodeModuleFileMatcher(app, destination, expand, {}, owner)
+      const fileSets = []
+      for (const module of modules) {
+        const to = path.join(destination, "node_modules", module.name)
+        const matcher = new FileMatcher(module.dir, to, expand, main.patterns)
+        const copier = new NodeModuleCopyHelper(matcher, owner)
+        fileSets.push({
+          src: module.dir,
+          destination: to,
+          files: await copier.collectNodeModules(module, [], path.join("node_modules", module.name)),
+          metadata: copier.metadata,
+        })
+      }
+      if (removeAfterInventory) await fs.rm(probes, { recursive: true, force: true })
+      for (const fileSet of fileSets) await copyAppFiles(fileSet, owner, null)
+      const archive = path.join(root, "app.asar")
+      await asar.createPackage(destination, archive)
+      const members = asar.listPackage(archive).map((file) => file.replace(/^\//, ""))
+      expect(members.some((file) => file.includes("/.artifacts/sandbox-probes"))).toBe(false)
+      for (const module of modules) {
+        for (const file of module.files) {
+          const relative = `node_modules/${module.name}/${file}`
+          expect(members).toContain(relative)
+          expect(await fs.readFile(path.join(destination, relative), "utf8")).toBe(`${module.name}/${file}\n`)
+        }
+      }
+    }
+  })
   test("requires explicit opt-in to package without a prepared runtime", async () => {
     const original = process.env.SYNERGY_DESKTOP_ALLOW_MISSING_RUNTIME
     const context = { electronPlatformName: "darwin", arch: "missing-signing-test" }

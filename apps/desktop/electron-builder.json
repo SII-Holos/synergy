@@ -24,7 +24,11 @@
       "to": "icons/icon-unread.png"
     }
   ],
-  "files": ["dist/**", "package.json"],
+  "files": [
+    "dist/**",
+    "package.json",
+    "!**/node_modules/@ericsanchezok/synergy-local-runtime/.artifacts/sandbox-probes{,/**/*}"
+  ],
   "protocols": [
     {
       "name": "Synergy",

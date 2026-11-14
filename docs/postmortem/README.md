@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0202](0202-desktop-dependency-walk-included-volatile-probe-homes.md)
+
 - [0201](0201-linux-controlled-tmp-hid-admitted-workspace.md)
 
 - [0200](0200-attached-client-rejected-canonical-home-scope.md)
