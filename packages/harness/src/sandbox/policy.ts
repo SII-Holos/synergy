@@ -236,11 +236,29 @@ export function traversalLiterals(roots: string[]): string[] {
  * `synergy-glob-{pid}-{id}`), so concurrent sandboxed shells cannot peek at
  * each other's temporary files through TMPDIR.
  */
+function controlledSessionTempName(sessionKey: string, processID: number) {
+  const safeKey = sessionKey.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 24)
+  return `synergy-${processID}-${safeKey}`
+}
+
 export function controlledTempRoot(workspace: string, sessionKey?: string): string {
   const base = joinPathLike(workspace, ".synergy", "tmp")
-  if (!sessionKey) return base
-  const safeKey = sessionKey.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 24)
-  return joinPathLike(base, `synergy-${process.pid}-${safeKey}`)
+  return sessionKey ? joinPathLike(base, controlledSessionTempName(sessionKey, process.pid)) : base
+}
+
+export function isControlledSessionTempRoot(workspace: string, candidate: string): boolean {
+  const base = controlledTempRoot(workspace)
+  const relative = path.posix.relative(normalizeSlashes(base), normalizeSlashes(candidate))
+  if (path.posix.dirname(relative) !== "." || !relative.startsWith("synergy-")) return false
+  const separator = relative.indexOf("-", "synergy-".length)
+  if (separator < 0) return false
+  const originalPID = relative.slice("synergy-".length, separator)
+  const processID = Number(originalPID)
+  if (!Number.isSafeInteger(processID) || processID <= 0 || String(processID) !== originalPID) return false
+  return (
+    normalizeSlashes(candidate) ===
+    joinPathLike(base, controlledSessionTempName(relative.slice(separator + 1), processID))
+  )
 }
 
 // ------------------------------------------------------------------

@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0198](0198-target-sandbox-missed-controlled-session-temporary-directory.md)
+
 - [0197](0197-native-message-order-repeated-full-history-work.md)
 
 - [0196](0196-shared-export-replayed-unchanged-history-through-writers.md)

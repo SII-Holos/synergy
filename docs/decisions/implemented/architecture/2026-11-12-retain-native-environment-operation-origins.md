@@ -18,6 +18,8 @@ Session/root and active Environment indexes contain canonical operation locators
 
 Finite resource preparation and execution requests retain exact native request ownership before their first asynchronous work. Source drainage waits outside the SQL writer; cancelling that observer does not cancel the provider. Epoch freeze reads canonical Session operation state and checks pending native requests again at commit. Preparation revalidates the original Task after connection and releases its admission when that authority closed. If an execution receipt was already submitted, a failed dispatch check sends cancellation through the original Executor. Only confirmed terminal cancellation with `effectsStarted: false` permits immediate native saving and use release. Unknown or failed cancellation keeps the original receipt for reconciliation.
 
+POSIX workspace-write sandbox preparation also materializes the approved original Session temporary child on the actual Executor. The shared naming owner recognizes the carried path without replacing its controller PID. Descriptor-relative creation retains the selected Workspace and refuses symbolic or replaced parents; the original preparing receipt and operation guards cover the effect. It neither creates arbitrary writable roots nor weakens protected-create monitoring. A prepared retry only verifies the existing directories and original policy. The native preparation and anchored directory suites distinguish this filesystem fact from actual Linux helper execution.
+
 ## Alternatives considered
 
 **Infer ownership from Scope, working directory or an operation hash.** These are shared destinations or opaque identities and cannot prove a Session, root or tool lineage.

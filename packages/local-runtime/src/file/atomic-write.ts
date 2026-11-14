@@ -60,6 +60,9 @@ function segments(value: readonly string[]) {
   return parts
 }
 interface Frame {
+  directory: string
+  dev: bigint
+  ino: bigint
   fd: number
   open: boolean
   pending: Set<Promise<void>>
@@ -80,7 +83,7 @@ export namespace FileAtomicWrite {
     if (!before.isDirectory() || before.isSymbolicLink())
       throw new Error("Anchored file root must be an independent directory")
     const held = await fs.promises.open(directory, directoryFlags)
-    const frame: Frame = { fd: held.fd, open: true, pending: new Set() }
+    const frame: Frame = { directory, dev: before.dev, ino: before.ino, fd: held.fd, open: true, pending: new Set() }
     try {
       const actual = await held.stat({ bigint: true })
       if (!actual.isDirectory() || actual.dev !== before.dev || actual.ino !== before.ino)
@@ -104,6 +107,15 @@ export namespace FileAtomicWrite {
       await held.close()
     }
   }
+  export function mkdir(root: Root, relative: readonly string[]) {
+    const frame = frames.get(root)
+    if (!frame?.open) throw new Error("Anchored directory creation requires its original open callback")
+    const parts = segments(relative)
+    const work = mkdirNative(frame, parts)
+    frame.pending.add(work)
+    void work.catch(() => {})
+    return work
+  }
   // Provenance: https://man7.org/linux/man-pages/man2/openat.2.html
   // https://man7.org/linux/man-pages/man2/rename.2.html
   // Adaptation: directory-relative creation and replacement retain the original filesystem target across parent renames.
@@ -118,6 +130,75 @@ export namespace FileAtomicWrite {
     return work
   }
 }
+async function directoriesNative(root: number, parts: readonly string[], opened: number[], retainCreated: boolean) {
+  const { symbols, check } = nativeAPI()
+  let directory = root
+  const retain = (fd: number) => {
+    opened.push(fd)
+    return fd
+  }
+  for (const part of parts) {
+    const component = name(part)
+    let fd: number | undefined
+    try {
+      fd = retain(check(symbols.openat(directory, ptr(component), directoryFlags, 0)))
+    } catch (error) {
+      if (!(error instanceof Error) || !("code" in error) || error.code !== "ENOENT") throw error
+      try {
+        check(symbols.mkdirat(directory, ptr(component), 0o700))
+        if (retainCreated) fd = retain(check(symbols.openat(directory, ptr(component), directoryFlags, 0)))
+        await sync(directory)
+      } catch (error) {
+        if (!(error instanceof Error) || !("code" in error) || error.code !== "EEXIST") throw error
+      }
+      fd ??= retain(check(symbols.openat(directory, ptr(component), directoryFlags, 0)))
+    }
+    if (fd === undefined) throw new Error("Anchored directory traversal lost its original descriptor")
+    directory = fd
+  }
+  return directory
+}
+function assertDirectoryRoot(frame: Frame) {
+  const current = fs.lstatSync(frame.directory, { bigint: true })
+  if (!current.isDirectory() || current.isSymbolicLink() || current.dev !== frame.dev || current.ino !== frame.ino)
+    throw new Error("Anchored directory root changed its original identity")
+}
+async function mkdirNative(frame: Frame, parts: string[]) {
+  const { symbols, check } = nativeAPI()
+  const opened: number[] = []
+  let failure: { error: unknown } | undefined
+  const cleanup: unknown[] = []
+  try {
+    assertDirectoryRoot(frame)
+    const directory = await directoriesNative(frame.fd, parts, opened, true)
+    await sync(directory)
+    assertDirectoryRoot(frame)
+    let parent = frame.fd
+    for (const [index, part] of parts.entries()) {
+      const held = opened[index]!
+      const current = check(symbols.openat(parent, ptr(name(part)), directoryFlags, 0))
+      opened.push(current)
+      const before = fs.fstatSync(held, { bigint: true })
+      const actual = fs.fstatSync(current, { bigint: true })
+      if (!actual.isDirectory() || before.dev !== actual.dev || before.ino !== actual.ino)
+        throw new Error("Anchored directory path changed its original identity")
+      parent = held
+    }
+    assertDirectoryRoot(frame)
+  } catch (error) {
+    failure = { error }
+  } finally {
+    const closed = await Promise.allSettled(opened.reverse().map(close))
+    cleanup.push(...closed.flatMap((value) => (value.status === "rejected" ? [value.reason] : [])))
+  }
+  if (failure) {
+    if (cleanup.length)
+      throw new AggregateError([failure.error, ...cleanup], "Anchored directory creation and cleanup failed")
+    throw failure.error
+  }
+  if (cleanup.length) throw new AggregateError(cleanup, "Cannot close anchored native directories")
+}
+
 async function writeNative(root: number, parts: string[], bytes: Uint8Array) {
   const { symbols, check } = nativeAPI()
   const opened: number[] = []
@@ -128,24 +209,7 @@ async function writeNative(root: number, parts: string[], bytes: Uint8Array) {
   let failure: { error: unknown } | undefined
   const cleanup: unknown[] = []
   try {
-    for (const part of parts.slice(0, -1)) {
-      const component = name(part)
-      let fd: number
-      try {
-        fd = check(symbols.openat(directory, ptr(component), directoryFlags, 0))
-      } catch (error) {
-        if (!(error instanceof Error) || !("code" in error) || error.code !== "ENOENT") throw error
-        try {
-          check(symbols.mkdirat(directory, ptr(component), 0o700))
-          await sync(directory)
-        } catch (error) {
-          if (!(error instanceof Error) || !("code" in error) || error.code !== "EEXIST") throw error
-        }
-        fd = check(symbols.openat(directory, ptr(component), directoryFlags, 0))
-      }
-      opened.push(fd)
-      directory = fd
-    }
+    directory = await directoriesNative(root, parts.slice(0, -1), opened, false)
     const fd = check(
       symbols.openat(
         directory,

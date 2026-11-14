@@ -8,6 +8,8 @@ import type { SandboxHost } from "@ericsanchezok/synergy-harness/sandbox/host"
 import { AtomicFile } from "@ericsanchezok/synergy-util/atomic-file"
 import { withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
 import { ExecutionInputs } from "./inputs"
+import { isControlledSessionTempRoot } from "@ericsanchezok/synergy-harness/sandbox/policy"
+import { FileAtomicWrite } from "../file/atomic-write"
 
 const Wrapper = ExecutionProtocol.Sandbox.omit({ id: true }).extend({ tempPath: z.string().optional() })
 const Sandbox = z.strictObject({
@@ -117,6 +119,7 @@ export class NativeExecutionPreparation {
       if (previous) {
         if (previous.digest !== digest || previous.state !== "prepared" || !previous.wrapper)
           throw new Error("Native sandbox preparation has ended or remains unknown")
+        await this.verifyControlledTemporary(input)
         await this.verifyWrapper(previous)
         return ExecutionProtocol.Sandbox.parse({ ...previous.wrapper, id })
       }
@@ -125,6 +128,7 @@ export class NativeExecutionPreparation {
       const sandbox: z.infer<typeof Sandbox> = { id, digest, state: "preparing" }
       receipt.sandboxes.push(sandbox)
       await this.write(receipt)
+      const controlled = await this.prepareControlledTemporary(input, operationID)
       const wrapper = Wrapper.parse(
         this.options.sandbox?.prepareWrapper(input) ?? {
           command: input.command,
@@ -146,10 +150,61 @@ export class NativeExecutionPreparation {
           identity: `${after.dev}:${after.ino}`,
         }
       }
+      await this.options.guard(operationID, "prepare")
+      await this.verifyControlledTemporary(input, controlled)
       sandbox.state = "prepared"
       await this.write(receipt)
       return ExecutionProtocol.Sandbox.parse({ ...wrapper, id })
     })
+  }
+
+  private controlledTemporary(input: ExecutionProtocol.SandboxInput) {
+    if (!["darwin", "linux"].includes(process.platform) || input.sandboxMode !== "workspace_write") return []
+    return [...new Set(input.extraWritableRoots ?? [])].filter((root) =>
+      isControlledSessionTempRoot(input.workspace, root),
+    )
+  }
+
+  private async prepareControlledTemporary(input: ExecutionProtocol.SandboxInput, operationID: string) {
+    const roots = this.controlledTemporary(input)
+    if (!roots.length) return
+    return FileAtomicWrite.withRoot(input.workspace, async (root) => {
+      const identity = await fs.lstat(input.workspace, { bigint: true })
+      for (const directory of roots) {
+        await this.options.guard(operationID, "prepare")
+        await FileAtomicWrite.mkdir(root, path.relative(input.workspace, directory).split(path.sep))
+      }
+      await this.verifyControlledTemporary(input, identity)
+      return identity
+    })
+  }
+
+  private async verifyControlledTemporary(
+    input: ExecutionProtocol.SandboxInput,
+    expected?: { dev: bigint; ino: bigint },
+  ) {
+    const roots = this.controlledTemporary(input)
+    if (!roots.length) return
+    const before = await fs.lstat(input.workspace, { bigint: true })
+    if (
+      !before.isDirectory() ||
+      before.isSymbolicLink() ||
+      (expected && (before.dev !== expected.dev || before.ino !== expected.ino))
+    )
+      throw new Error("Native sandbox controlled temporary root changed its original Workspace")
+    for (const directory of roots) {
+      const parts = path.relative(input.workspace, directory).split(path.sep)
+      let selected = input.workspace
+      for (const part of parts) {
+        selected = path.join(selected, part)
+        const actual = await fs.lstat(selected)
+        if (!actual.isDirectory() || actual.isSymbolicLink())
+          throw new Error("Native sandbox controlled temporary path is not an independent directory")
+      }
+    }
+    const after = await fs.lstat(input.workspace, { bigint: true })
+    if (!after.isDirectory() || after.isSymbolicLink() || after.dev !== before.dev || after.ino !== before.ino)
+      throw new Error("Native sandbox controlled temporary root changed its original Workspace")
   }
 
   private async verifyWrapper(sandbox: z.infer<typeof Sandbox>) {

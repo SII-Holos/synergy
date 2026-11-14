@@ -1,5 +1,8 @@
 import { expect, spyOn, test } from "bun:test"
 import { createHash } from "node:crypto"
+import fs from "node:fs/promises"
+import path from "node:path"
+import { controlledTempRoot } from "@ericsanchezok/synergy-harness/sandbox/policy"
 import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { Environment } from "@ericsanchezok/synergy-harness/environment"
 import type { EnvironmentOrigin } from "@ericsanchezok/synergy-harness/environment/origin"
@@ -377,6 +380,126 @@ test.skipIf(process.platform !== "darwin")(
             } finally {
               compile.mockRestore()
               if (materialized.wrapper) SandboxBackend.cleanupWrapper(materialized.wrapper)
+            }
+          }),
+      })
+    })
+  },
+  10_000,
+)
+
+test.skipIf(!["darwin", "linux"].includes(process.platform))(
+  "original target sandbox preparation materializes only its approved Session temporary directory",
+  async () => {
+    await using runtime = await testRuntime()
+    await runtime.run(async () => {
+      await using temporary = await tmpdir()
+      await ScopeContext.provide({
+        scope: await temporary.scope(),
+        workspace: null,
+        fn: () =>
+          withNativeTool(async (session, origin) => {
+            const resources = await EnvironmentResources.select({
+              scopeID: session.scope.id,
+              ownerID: session.id,
+              environmentID: session.environmentID,
+              origin,
+              needs: { execution: "exec" },
+            })
+            if (!resources.directory || !resources.environment) throw new Error("Missing original native target")
+            const original = controlledTempRoot(resources.directory, session.id)
+            const controlled = path.join(
+              path.dirname(original),
+              path.basename(original).replace(`synergy-${process.pid}-`, `synergy-${process.pid + 1}-`),
+            )
+            expect(controlled).not.toBe(original)
+            const unrelated = path.join(temporary.path, "unrelated-approved-root")
+            await expect(fs.lstat(controlled)).rejects.toMatchObject({ code: "ENOENT" })
+            const input = {
+              command: "/bin/sh",
+              args: ["-c", "true"],
+              workspace: resources.directory,
+              sandboxMode: "workspace_write" as const,
+              extraWritableRoots: [controlled, unrelated],
+            }
+            let prepared: Awaited<ReturnType<typeof EnvironmentResources.prepareSandbox>> | undefined
+            try {
+              prepared = await EnvironmentResources.prepareSandbox(resources, input)
+              expect((await fs.lstat(controlled)).isDirectory()).toBe(true)
+              expect((await fs.lstat(controlled)).isSymbolicLink()).toBe(false)
+              await expect(fs.lstat(unrelated)).rejects.toMatchObject({ code: "ENOENT" })
+              expect(
+                ExecutionProtocol.Sandbox.parse(await EnvironmentResources.prepareSandbox(resources, input)),
+              ).toEqual(ExecutionProtocol.Sandbox.parse(prepared))
+              const actualUse = (await Environment.uses(resources.environment.id)).find(
+                (use) =>
+                  use.ownership.kind === "execution-preparation" &&
+                  use.ownership.operationID === EnvironmentExecution.operationID(origin),
+              )
+              expect(actualUse).toBeDefined()
+              expect(await Storage.list(["environment_execution", session.scope.id])).toEqual([])
+            } finally {
+              if (prepared && "cleanup" in prepared) await prepared.cleanup()
+              await resources.release()
+            }
+          }),
+      })
+    })
+  },
+  10_000,
+)
+
+test.skipIf(!["darwin", "linux"].includes(process.platform))(
+  "original native sandbox preparation refuses a symlink in its controlled temporary parents",
+  async () => {
+    await using runtime = await testRuntime()
+    await runtime.run(async () => {
+      await using temporary = await tmpdir()
+      await ScopeContext.provide({
+        scope: await temporary.scope(),
+        workspace: null,
+        fn: () =>
+          withNativeTool(async (session, origin) => {
+            const resources = await EnvironmentResources.select({
+              scopeID: session.scope.id,
+              ownerID: session.id,
+              environmentID: session.environmentID,
+              origin,
+              needs: { execution: "exec" },
+            })
+            if (!resources.directory || !resources.environment) throw new Error("Missing original native target")
+            const outside = path.join(temporary.path, "outside")
+            await fs.mkdir(outside)
+            await fs.symlink(outside, path.join(resources.directory, ".synergy"))
+            const input = {
+              command: "/bin/sh",
+              args: ["-c", "true"],
+              workspace: resources.directory,
+              sandboxMode: "workspace_write" as const,
+              extraWritableRoots: [controlledTempRoot(resources.directory, session.id)],
+            }
+            const result = await EnvironmentResources.prepareSandbox(resources, input).then(
+              (value) => ({ kind: "prepared" as const, value }),
+              (error: unknown) => ({ kind: "refused" as const, error }),
+            )
+            try {
+              expect(result.kind).toBe("refused")
+              expect(await fs.readdir(outside)).toEqual([])
+              const actualUse = (await Environment.uses(resources.environment.id)).find(
+                (use) =>
+                  use.ownership.kind === "execution-preparation" &&
+                  use.ownership.operationID === EnvironmentExecution.operationID(origin),
+              )
+              if (!actualUse) throw new Error("Refused native preparation lost its original operation Use")
+              const retained = await EnvironmentExecution.retainedPreparation(actualUse)
+              expect((await retained.inspect()).state).toBe("preparing")
+              await expect(retained.release()).rejects.toThrow("unknown")
+              expect(await Storage.list(["environment_execution", session.scope.id])).toEqual([])
+            } finally {
+              if (result.kind === "prepared") {
+                if ("cleanup" in result.value) await result.value.cleanup()
+                await resources.release()
+              }
             }
           }),
       })

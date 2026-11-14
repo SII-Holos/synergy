@@ -27,7 +27,7 @@ Workspace file indexes, native subscriptions and edit evidence follow the resolv
 
 Use public `process/owned-process`, `file/mutation`, `file/link` and `file/rename` exports. Preserve byte versions, native link kinds and exclusive publication. Snapshots use Harness link encoding. Acquire resource pins before activation; Sandbox grants never imply writer exclusion. Versioned Executor inputs separate resource use, capture and concrete mutations.
 
-Use `native/ffi` and descriptor-relative `file/atomic-write`; preflight retirement. Verify `test/{process/native-bindings,file/atomic-write}.test.ts` with/without JIT.
+`native/ffi`/`file/atomic-write`: preserve parents/operations. Preflight retirement; create only approved `controlledTempRoot` children. Verify `test/{process/native-bindings,file/atomic-write,environment/preparation}.test.ts` (JIT=0/1).
 
 Expose composition through `./component`; registration remains side-effect free until selection. Declare component dependencies, optional ordering, worker roles and lazy HTTP adapters. Reload and lifecycle contributions preserve instance isolation and failed-start cleanup.
 
