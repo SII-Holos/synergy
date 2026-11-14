@@ -704,6 +704,9 @@ test("an acknowledgement cannot erase a newer part update received during its fl
         .at(-1)
       expect(last).toMatchObject({ partID: f.part.id, part: { content: { text: latest.text } } })
       expect(remote.batches.length).toBeGreaterThan(1)
+      expect(await Storage.count({ prefix: Keys.drafts(binding.orgID, f.session.id) })).toBe(0)
+      expect(await Storage.count({ prefix: Keys.orderedDrafts(binding.orgID, f.session.id) })).toBe(0)
+      expect((await Storage.readMany([Keys.batch(binding.orgID, f.session.id)]))[0]).toBeUndefined()
     } finally {
       acknowledge.resolve()
       await exporter.close()
@@ -735,6 +738,9 @@ test("history beyond one batch publishes its root first and drains every part", 
       const parts = remote.batches.flatMap((batch) => batch.events).filter((event) => event.type === "part")
       expect(new Set(parts.map((part) => part.partID)).size).toBe(271)
       expect(remote.batches.every((batch) => Buffer.byteLength(JSON.stringify(batch)) <= 1024 * 1024)).toBe(true)
+      expect(await Storage.count({ prefix: Keys.drafts(binding.orgID, f.session.id) })).toBe(0)
+      expect(await Storage.count({ prefix: Keys.orderedDrafts(binding.orgID, f.session.id) })).toBe(0)
+      expect((await Storage.readMany([Keys.batch(binding.orgID, f.session.id)]))[0]).toBeUndefined()
     } finally {
       await exporter.close()
     }

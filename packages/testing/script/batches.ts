@@ -100,6 +100,8 @@ export const ISOLATED_BATCH_FILES: ReadonlySet<string> = new Set([
   "packages/harness/test/migration/terminal-progress.test.ts",
   // Config projection registration is permanent for the process composition.
   "packages/harness/test/config/extensions-field.test.ts",
+  // This native work probe must observe the canonical engine's first selection.
+  "packages/harness/test/storage/event-delivery-query-work.test.ts",
   // GitHub transport redirects global fetch to its loopback server and owns auth caches.
   "packages/channel-github/test/channel/provider/github/api-transport.test.ts",
   "packages/mcp/test/mcp/owner-lifecycle.test.ts",

@@ -258,24 +258,31 @@ export async function putDrafts(bound: Bound, inputs: readonly DraftInput[], own
       continue
     }
     await Storage.transaction(
-      async () => {
+      async (tx) => {
         if (owner.afterFailure) Storage.afterFailure(owner.afterFailure)
         await owner.check()
         const current = await read(State, Keys.state(identity.orgID, rootSessionID))
+        const originalDrafts = await tx.readMany<unknown>(
+          window.map((entry) => Keys.draft(identity.orgID, rootSessionID, entry.draftID)),
+        )
+        const originalProjections = await tx.readMany<unknown>(
+          window.map((entry) => Keys.projection(identity.orgID, rootSessionID, entry.draftID)),
+        )
+        const prepared = new Map<string, { draft: Draft; projection: ProjectionRecord }>()
         let nextDraft = current?.nextDraft ?? 1
-        let written = false
-        for (const input of window) {
-          const draftKey = Keys.draft(identity.orgID, rootSessionID, input.draftID)
-          const previous = await read(Draft, draftKey)
+        for (const [index, input] of window.entries()) {
+          const pending = prepared.get(input.draftID)
+          const previous =
+            pending?.draft ?? (originalDrafts[index] === undefined ? undefined : Draft.parse(originalDrafts[index]))
           const retained =
-            previous ?? (await read(ProjectionRecord, Keys.projection(identity.orgID, rootSessionID, input.draftID)))
+            previous ??
+            (originalProjections[index] === undefined ? undefined : ProjectionRecord.parse(originalProjections[index]))
           if (sameDraft(retained, rootSessionID, input)) continue
           const localSequence = retained?.localSequence ?? nextDraft
           nextDraft = Math.max(nextDraft, localSequence + 1)
           const event = Sync.Event.parse({ ...input.event, sequence: 1 })
-          await Storage.write(
-            draftKey,
-            Draft.parse({
+          prepared.set(input.draftID, {
+            draft: Draft.parse({
               schemaVersion: 1,
               draftID: input.draftID,
               sessionID: rootSessionID,
@@ -284,22 +291,22 @@ export async function putDrafts(bound: Bound, inputs: readonly DraftInput[], own
               queuedAt: previous?.queuedAt ?? Date.now(),
               bytes: Buffer.byteLength(JSON.stringify(event)),
             }),
-          )
-          await Storage.write(
-            Keys.projection(identity.orgID, rootSessionID, input.draftID),
-            ProjectionRecord.parse({
+            projection: ProjectionRecord.parse({
               schemaVersion: 1,
               draftID: input.draftID,
               localSequence,
               event,
             }),
-          )
-          await Storage.write(Keys.orderedDraft(identity.orgID, rootSessionID, localSequence), {
-            draftID: input.draftID,
           })
-          written = true
         }
-        if (!written) return
+        if (!prepared.size) return
+        await tx.writeMany(
+          [...prepared].flatMap(([draftID, value]) => [
+            { key: Keys.draft(identity.orgID, rootSessionID, draftID), value: value.draft },
+            { key: Keys.projection(identity.orgID, rootSessionID, draftID), value: value.projection },
+            { key: Keys.orderedDraft(identity.orgID, rootSessionID, value.draft.localSequence), value: { draftID } },
+          ]),
+        )
         await Storage.write(
           Keys.state(identity.orgID, rootSessionID),
           State.parse({

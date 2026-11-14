@@ -95,7 +95,7 @@ export namespace StorageEventSinks {
     const pending = (current.flushing.get(store) ?? Promise.resolve())
       .catch(() => {})
       .then(async () => {
-        const records = await Storage.query<Delivery>({ kind: "event_delivery", prefix, limit })
+        const records = await Storage.query<Delivery>({ ...(prefix ? {} : { kind: "event_delivery" }), prefix, limit })
         const accepted: typeof records = []
         try {
           function parse(record: (typeof records)[number]) {

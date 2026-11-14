@@ -391,6 +391,7 @@ async function retainedNativeRoot(rootSessionID: string, orgID: string) {
 
 export function registerNativeSyncSource(orgID: string) {
   StorageMutationGuard.register("organization-sync-dependencies", async (_tx, keys, tree) => {
+    let selected: { selector: string; binding: Awaited<ReturnType<typeof mutationBinding>> } | undefined
     for (const key of keys) {
       const native = key[0] === "sessions" && key.length >= 3
       const shared =
@@ -400,7 +401,10 @@ export function registerNativeSyncSource(orgID: string) {
         (key[2] === "sessions" || key[2] === "roots")
       const sessionID = native ? key[2] : shared ? key[3] : undefined
       if (!sessionID) continue
-      const original = await mutationBinding(sessionID, orgID, native ? key[1] : undefined)
+      const selector = JSON.stringify([sessionID, native ? key[1] : null])
+      if (selected?.selector !== selector)
+        selected = { selector, binding: await mutationBinding(sessionID, orgID, native ? key[1] : undefined) }
+      const original = selected.binding
       if (!original) continue
       if (native && original.session.scope.id !== key[1])
         throw new Error("Native shared mutation changed its actual Scope")

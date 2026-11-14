@@ -26,6 +26,8 @@ A sink may implement `deliverBatch` to durably accept up to 128 adjacent records
 
 An explicit pump may select one sink and optionally one partition through the original queue prefix before its bounded query. A partition requires its sink identity. Selection neither grants delivery authority nor changes acknowledgment checks; a blocked partition keeps its records while a healthy selected partition can progress. An empty selected result proves only that selected queue is empty, never that the Runtime has drained all deliveries.
 
+A selected queue uses the existing live namespace subtree without a redundant kind selector. Combining that prefix with the kind index would bypass subtree traversal and repeatedly inspect acknowledged history and unrelated partitions. Unselected pumps keep their kind selector. Both paths retain the original query ordering, visibility, delivery identity and revision checks, and accepted-prefix acknowledgment; this changes neither queue storage nor receiver authority. `test/storage/event-delivery-query-work.test.ts` measures the actual emitted query against retained history and foreign partitions.
+
 ## Alternatives considered
 
 Replaying arbitrary Bus subscribers can duplicate external effects. Publishing from a subscriber loses events after a crash. A host-side queue written after the fact leaves a commit gap. An exactly-once network promise cannot resolve a lost response.

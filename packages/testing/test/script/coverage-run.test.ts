@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { createIsolatedTestEnv } from "../../src/env"
+import { executionBatches } from "../../script/run"
+import { planShards } from "../../script/test-ci"
 import {
   batchShardCount,
   batchInvocation,
@@ -14,6 +16,32 @@ import {
 } from "../../script/coverage-run"
 
 describe("coverage batch splitting", () => {
+  test("keeps the canonical SQLite work probe outside initialized-engine batches", async () => {
+    const harness = path.resolve(import.meta.dir, "../../../harness")
+    const initialized = "test/storage/transactional-store.test.ts"
+    const probe = "test/storage/event-delivery-query-work.test.ts"
+    expect(splitBatchFiles([initialized, probe], harness)).toEqual({ main: [initialized], isolated: [probe] })
+    expect(executionBatches([initialized, probe], harness, 1).map((batch) => batch.files)).toEqual([
+      [initialized],
+      [probe],
+    ])
+    const initializedFile = "packages/harness/" + initialized
+    const probeFile = "packages/harness/" + probe
+    const files = [initializedFile, probeFile]
+    expect(planShards(files, { SYNERGY_BATCH_SHARDS: "1" }).batches.map((batch) => batch.files)).toEqual([
+      [initializedFile],
+      [probeFile],
+    ])
+    const coverage: string[][] = []
+    expect(
+      await runBatches(files, { SYNERGY_BATCH_SHARDS: "1" }, async (batch) => {
+        coverage.push(batch)
+        return 0
+      }),
+    ).toBe(0)
+    expect(coverage).toEqual([[initializedFile], [probeFile]])
+  })
+
   test("keeps every discovered file exactly once across batches", () => {
     const files = [
       "test/a.test.ts",
@@ -73,6 +101,7 @@ describe("coverage batch splitting", () => {
       "packages/harness/test/migration/terminal-progress.test.ts",
       "packages/harness/test/provider/catalog-stability.test.ts",
       "packages/harness/test/session/retry.test.ts",
+      "packages/harness/test/storage/event-delivery-query-work.test.ts",
       "packages/harness/test/storage/storage-retry.test.ts",
       "packages/harness/test/storage/storage-silent-not-found.test.ts",
       "packages/harness/test/storage/storage-worker-suspend.test.ts",
