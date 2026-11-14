@@ -16,6 +16,8 @@ Trace each mutable registry, cache, environment read, callback, child process an
 
 Worker stop must drain its original parent exit callback even when native exit is already known. Use a real child with callback delivery held after exit; preserve the captured Runtime, exact callback failure and repeated stop before disposal.
 
+Native command completion must drain its original cancellation promise as well as native exit, output and saving. Retain every abort fallback timer, register it before termination can complete synchronously, and clear it through all original exit/error paths. Keep a later Runtime active beyond the unchanged fallback interval to expose callbacks that escape the original owner.
+
 Attach resident outbound connections to component services. Verify local readiness while the remote handshake is blocked, automatic recovery of transient loss, terminal replacement/revocation, and shutdown while checkpoint admission is held by another owner. Keep one-shot imports and discovery inert; a successful transport handshake never substitutes for command authorization.
 
 Separate bounded business callbacks from heartbeat and frame validation. Reserve bounded capacity for receipt queries and skip reconciliation while controls drain; saturation must refuse before receiver admission without retiring a healthy connection. Track every callback through shutdown and reject duplicate active exchange identities. Test a held command beyond the negotiated offline interval, independent queries, count/byte saturation, slot reuse, and close before callback release. Durable admission, not callback completion order, owns command sequencing.

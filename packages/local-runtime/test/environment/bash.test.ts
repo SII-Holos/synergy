@@ -17,6 +17,8 @@ import { EnvironmentExecution } from "@ericsanchezok/synergy-harness/environment
 import { EnvironmentProviders } from "@ericsanchezok/synergy-harness/environment/provider"
 import { SessionLifecycle } from "@ericsanchezok/synergy-harness/session/lifecycle"
 import { RolloutContext } from "@ericsanchezok/synergy-harness/session/rollout/context"
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
+import { LocalBashBackend } from "../../src/tools/bash/local"
 
 function nativeBashPermission(sessionID: string, patterns: string[]) {
   const ruleset = patterns.map((pattern) => ({ permission: "bash", pattern, action: "allow" as const }))
@@ -322,4 +324,91 @@ test.skipIf(process.platform === "win32")(
     })
   },
   15_000,
+)
+
+test.skipIf(process.platform === "win32")(
+  "an aborted native Bash command retires its original callback before its Runtime closes",
+  async () => {
+    await using runtime = await testRuntime()
+    const owner = await runtime.run(() => RuntimeContext.current())
+    const enter = owner.run
+    let closed = false
+    const lateEntries: string[] = []
+    using entries = spyOn(owner, "run").mockImplementation(<T>(body: () => T): T => {
+      if (closed) lateEntries.push("original Runtime callback")
+      return enter(body)
+    })
+    await runtime.run(async () => {
+      await using directory = await tmpdir()
+      await ScopeContext.provide({
+        scope: await directory.scope(),
+        workspace: null,
+        async fn() {
+          const session = await Session.create({ workspace: null, controlProfile: "full_access" })
+          const controller = new AbortController()
+          const ready = Promise.withResolvers<void>()
+          const quote = (value: string) => "'" + value.replaceAll("'", "'\\''") + "'"
+          const script = "console.log('ABORT_CALLBACK_READY'); setInterval(() => {}, 1000)"
+          const command = `${quote(process.execPath)} -e ${quote(script)}`
+          const completion = withBashOrigin(session, "abort-callback", (messageID) =>
+            LocalBashBackend.execute(
+              { command, yieldSeconds: 0 },
+              {
+                sessionID: session.id,
+                messageID,
+                callID: "abort-callback",
+                workBrief: "Drain the original native abort owner",
+                agent: PrimaryAgentIdentity.names.general,
+                abort: controller.signal,
+                environmentID: session.environmentID,
+                extra: { shellAuthorizationResolved: true, shellBypassSandbox: true, controlProfile: "full_access" },
+                metadata(update) {
+                  if (update.metadata?.output?.includes("ABORT_CALLBACK_READY")) ready.resolve()
+                },
+                async ask() {},
+                openProcessEvidence: RolloutTool.openProcess,
+              },
+            ),
+          ).then(
+            (value) => ({ kind: "settled" as const, value }),
+            (error: unknown) => ({ kind: "failed" as const, error }),
+          )
+          try {
+            const first = await Promise.race([ready.promise.then(() => ({ kind: "ready" as const })), completion])
+            if (first.kind === "failed") throw first.error
+            if (first.kind !== "ready") throw new Error("The original native child ended before its abort barrier")
+            expect(ProcessRegistry.listActive().filter((entry) => entry.command === command)).toHaveLength(1)
+            controller.abort(new Error("Original native abort callback regression"))
+            const result = await completion
+            if (result.kind === "failed") throw result.error
+            expect(result.value.output).toContain("The command was interrupted")
+            await ProcessRegistry.stop()
+            expect(ProcessRegistry.listActive().filter((entry) => entry.command === command)).toHaveLength(0)
+            expect(await Environment.uses(session.environmentID!)).toHaveLength(0)
+          } finally {
+            controller.abort(new Error("Original native abort fixture cleanup"))
+            await completion
+          }
+        },
+      })
+    })
+    await runtime.close()
+    closed = true
+    await using next = await testRuntime()
+    await next.run(async () => {
+      await using directory = await tmpdir()
+      await ScopeContext.provide({
+        scope: await directory.scope(),
+        workspace: null,
+        async fn() {
+          expect(RuntimeContext.current().id).not.toBe(owner.id)
+          const session = await Session.create({ workspace: null, controlProfile: "full_access" })
+          await Bun.sleep(30_250)
+          expect((await Session.get(session.id)).id).toBe(session.id)
+          expect(lateEntries).toEqual([])
+        },
+      })
+    })
+  },
+  60_000,
 )

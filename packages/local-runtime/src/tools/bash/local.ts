@@ -678,11 +678,13 @@ export namespace LocalBashBackend {
       scheduleMetadata()
     }
 
-    const kill = () => ProcessRegistry.terminate(regProc)
+    let stopping: Promise<void> | undefined
+    const kill = () => (stopping ??= ProcessRegistry.terminate(regProc))
     const onAbort = runtime.bind(abortHandler)
 
     let hardCeilingTimer: ReturnType<typeof setTimeout> | undefined
     let autoBackgroundTimer: ReturnType<typeof setTimeout> | undefined
+    let abortExitTimer: ReturnType<typeof setTimeout> | undefined
 
     const cleanupForegroundWait = () => {
       if (autoBackgroundTimer) {
@@ -697,6 +699,10 @@ export namespace LocalBashBackend {
       if (hardCeilingTimer) {
         clearTimeout(hardCeilingTimer)
         hardCeilingTimer = undefined
+      }
+      if (abortExitTimer) {
+        clearTimeout(abortExitTimer)
+        abortExitTimer = undefined
       }
     }
 
@@ -817,6 +823,7 @@ export namespace LocalBashBackend {
       .then(
         async (result) => {
           await owned?.completion
+          await stopping
           await outputPending
           await evidence?.finish({
             interrupted: result.drainTimedOut || aborted || timedOut,
@@ -829,6 +836,7 @@ export namespace LocalBashBackend {
         },
         async (error: unknown) => {
           await owned?.completion
+          await stopping
           await outputPending
           await evidence?.finish({ interrupted: true, exitCode: null, signal: null, pid: child.pid })
           throw error
@@ -875,9 +883,9 @@ export namespace LocalBashBackend {
     function abortHandler() {
       aborted = true
       cleanupAllTimers()
-      void kill()
-      setTimeout(
+      abortExitTimer = setTimeout(
         runtime.bind(() => {
+          abortExitTimer = undefined
           if (!exited && regProc) {
             regProc.exited = true
             ProcessRegistry.markExited(regProc, -1, "SIGKILL")
@@ -885,6 +893,7 @@ export namespace LocalBashBackend {
         }),
         30_000,
       )
+      void kill()
     }
 
     ctx.abort.addEventListener("abort", onAbort, { once: true })

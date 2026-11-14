@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0208](0208-native-bash-abort-outlived-command-completion.md)
+
 - [0207](0207-historical-actor-check-revoked-accepted-root.md)
 
 - [0206](0206-authority-inspection-issued-one-lookup-per-policy-key.md)
