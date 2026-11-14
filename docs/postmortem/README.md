@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0203](0203-native-worker-stop-finished-before-its-owned-exit-callback.md)
+
 - [0202](0202-desktop-dependency-walk-included-volatile-probe-homes.md)
 
 - [0201](0201-linux-controlled-tmp-hid-admitted-workspace.md)
