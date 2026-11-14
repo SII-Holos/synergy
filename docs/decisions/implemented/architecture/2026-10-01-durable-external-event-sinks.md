@@ -12,6 +12,8 @@ Hosts explicitly register Runtime-owned StorageEventSinks. A pure capture callba
 
 Capture may await transaction-local reads to resolve persisted ownership. Its promise is awaited before the fact can commit, and a projection failure rolls the fact and queue back together. Network effects remain forbidden inside capture.
 
+An owner may register `Storage.afterFailure` inside its original live write frame to observe the actual outer transaction error through synchronous in-memory diagnostics. It also covers a later delivery-record write or final commit failure after capture returned. Observers run after the native writer exits, remain bound to the original Runtime and do not grant a new write or recovery effect. Successful commits, caught nested errors and failed post-commit notifications do not trigger them. Unknown commit outcomes remain unknown; an observer failure cannot replace the original error or prevent later observers.
+
 An optional captured callback receives the allocated delivery identity and sequence inside that transaction. A host can retain the minimal receipt required by a synchronous admission handshake without inspecting queue keys or duplicating sequence allocation. Callback failure rolls back the fact, sequence, queue and host receipt together.
 
 Each bounded pump acknowledges its accepted prefix in one transaction after external delivery, preserving revision checks for every removed record. A later delivery failure still commits the accepted prefix; a revision conflict rolls back the whole acknowledgment. This trades a larger possible replay prefix for fewer durable commits without holding a transaction during network calls.

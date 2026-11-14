@@ -53,6 +53,7 @@ export namespace Storage {
     transaction?: StoreTransaction
     effects?: Array<() => Promise<unknown> | void>
     settled?: Array<(outcome: "committed" | "aborted" | "unknown") => void>
+    failures?: Array<(error: unknown) => undefined>
     pending?: Promise<unknown>[]
     commitGuards?: Array<() => void>
     eventCapture?: Promise<void>
@@ -127,6 +128,9 @@ export namespace Storage {
     const settled: NonNullable<Context["settled"]> = []
     let commitGuards = options?.commitGuard ? [options.commitGuard] : []
     let outcome: "committed" | "aborted" | "unknown" = "aborted"
+    let failures: Array<(error: unknown) => undefined> = []
+    let failed = false
+    let failure: unknown
     try {
       const result = await parent.store.transaction(
         async (tx) => {
@@ -136,6 +140,7 @@ export namespace Storage {
           }
           effects = []
           acknowledgements = []
+          failures = []
           commitGuards = options?.commitGuard ? [options.commitGuard] : []
           const pending: Promise<unknown>[] = []
           return RuntimeContext.transaction(() =>
@@ -147,6 +152,7 @@ export namespace Storage {
                 effects,
                 pending,
                 settled,
+                failures,
                 commitGuards,
                 acknowledgements,
                 eventCapture: undefined,
@@ -201,10 +207,29 @@ export namespace Storage {
       }
       return result
     } catch (error) {
-      if (error instanceof StorageCommitUnknownError) outcome = "unknown"
+      failed = true
+      failure = error
+      if (outcome !== "committed" && error instanceof StorageCommitUnknownError) outcome = "unknown"
       throw error
     } finally {
       for (const release of settled) release(outcome)
+      if (failed && outcome !== "committed")
+        for (const observe of failures) {
+          try {
+            observe(failure)
+          } catch (error) {
+            try {
+              ObservabilityIssues.raise({
+                code: "STORAGE_FAILURE_OBSERVER_FAILED",
+                severity: "error",
+                module: "storage",
+                title: "A storage failure observer could not finish",
+                message: "The original transaction failure remains the operation outcome.",
+                evidence: { errorName: error instanceof Error ? error.name : "unknown" },
+              })
+            } catch {}
+          }
+        }
     }
   }
 
@@ -236,6 +261,15 @@ export namespace Storage {
   export function inWriteTransaction() {
     const active = context.getStore()
     return active?.owner === RuntimeContext.tryCurrent() && Boolean(active?.transaction && active.effects)
+  }
+
+  /** Registers synchronous in-memory diagnostics for the original write outcome, never recovery effects. */
+  export function afterFailure(observe: (originalError: unknown) => undefined): void {
+    const active = context.getStore()
+    if (active?.owner !== RuntimeContext.tryCurrent() || !active?.transaction || !active.failures || !active.effects)
+      throw new StorageConflictError("Failure observation requires the original live write transaction")
+    active.store.assertWriteTransaction(active.transaction)
+    active.failures.push(observe)
   }
 
   export function afterCommit(effect: () => Promise<unknown> | void): void {
