@@ -447,8 +447,9 @@ test("resident member startup reconnects its outbound bridge without blocking lo
     listen: { port: await availablePort(), token: "d".repeat(64) },
   })
   await runtime.run(() => {
-    expect(SessionTransferOwners.versions(["session-environments"])).toEqual({ "session-environments": 2 })
+    expect(SessionTransferOwners.versions(["session-environments"])).toEqual({ "session-environments": 3 })
     expect(SessionTransferOwners.compatibility({ "session-environments": 1 })).toEqual([])
+    expect(SessionTransferOwners.compatibility({ "session-environments": 2 })).toEqual([])
   })
   const deadline = setTimeout(() => reconnected.reject(new Error("Resident bridge did not reconnect")), 3_000)
   try {

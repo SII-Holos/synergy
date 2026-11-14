@@ -13,6 +13,7 @@ import { enrollMemberRuntime } from "../src/enrollment"
 import { openMemberRuntime } from "../src/runtime"
 import { OrganizationSyncPath as Keys } from "../src/storage/path"
 import { fixture } from "./support/organization"
+import { observeSyncWindow } from "./support/sync-window-observation"
 
 async function until<T>(label: string, read: () => Promise<T>, ready: (value: T) => boolean) {
   const end = Date.now() + 15000
@@ -86,6 +87,28 @@ test("a real enrolled native exporter reuses pending projections and regenerates
     )
   ).data.effect.sessionID
   const messages: string[] = []
+  using diagnostic = observeSyncWindow("generation", () => messages.length)
+  const store = await runtime.run(async () => Storage.current().store)
+  const transaction = store.transaction.bind(store)
+  using writes = spyOn(store, "transaction").mockImplementation(
+    <T>(body: Parameters<typeof store.transaction<T>>[0], options?: Parameters<typeof store.transaction<T>>[1]) =>
+      transaction(async (tx) => {
+        diagnostic.transaction(tx)
+        return body(tx)
+      }, options),
+  )
+  async function sample() {
+    diagnostic.queue(
+      await runtime.run(async () => ({
+        projections: await Storage.count({ prefix: Keys.projections(home.identity.orgID, sessionID) }),
+        drafts: await Storage.count({ prefix: Keys.drafts(home.identity.orgID, sessionID) }),
+        ordered: await Storage.count({ prefix: Keys.orderedDrafts(home.identity.orgID, sessionID) }),
+        nativeDeliveriesInStore: await Storage.count({ prefix: ["event_delivery", "organization-native-sync"] }),
+        pendingBatches: Number((await Storage.readMany([Keys.batch(home.identity.orgID, sessionID)]))[0] !== undefined),
+      })),
+    )
+  }
+  diagnostic.stage("native-producer")
   await runtime.run(async () => {
     const session = await Session.get(sessionID)
     await ScopeContext.provide({
@@ -93,7 +116,8 @@ test("a real enrolled native exporter reuses pending projections and regenerates
       workspace: session.workspace,
       fn: async () => {
         for (let offset = 0; offset < 512; offset += 64)
-          await Storage.transaction(async () => {
+          await Storage.transaction(async (tx) => {
+            diagnostic.nativeTransaction(tx)
             for (let index = offset; index < offset + 64; index++) {
               const id = Identifier.ascending("message")
               messages.push(id)
@@ -114,19 +138,26 @@ test("a real enrolled native exporter reuses pending projections and regenerates
               })
             }
           })
+        diagnostic.stage("part-flush")
         await Session.flushPartWrites(sessionID)
+        diagnostic.stage("native-migrations")
         await prepareSessionMigrations({ scopeID: session.scope.id, sessionID })
       },
     })
   })
+  diagnostic.stage("projection-drain")
   const projectionCount = 1 + 2 * messages.length
+  await sample()
   await until(
     "actual live projections did not settle before sharing",
-    () => runtime.run(() => Storage.count({ prefix: Keys.projections(home.identity.orgID, sessionID) })),
+    async () => {
+      const count = await runtime.run(() => Storage.count({ prefix: Keys.projections(home.identity.orgID, sessionID) }))
+      diagnostic.queue({ projections: count })
+      return count
+    },
     (count) => count === projectionCount,
   )
-  const store = await runtime.run(async () => Storage.current().store)
-  using writes = spyOn(store, "transaction")
+  writes.mockClear()
   const budget = Math.ceil(projectionCount / 128) + 8
   async function drained() {
     return until(
@@ -134,10 +165,12 @@ test("a real enrolled native exporter reuses pending projections and regenerates
       () =>
         runtime.run(async () => {
           const [batch] = await Storage.readMany([Keys.batch(home.identity.orgID, sessionID)])
-          return {
+          const state = {
             drafts: await Storage.count({ prefix: Keys.drafts(home.identity.orgID, sessionID) }),
             batch: Boolean(batch),
           }
+          diagnostic.queue({ drafts: state.drafts, pendingBatches: Number(state.batch) })
+          return state
         }),
       (state) => state.drafts === 0 && !state.batch,
     )
@@ -158,19 +191,25 @@ test("a real enrolled native exporter reuses pending projections and regenerates
     expect(count).toBe(messages.length)
     expect([...received].sort()).toEqual(messages.slice().sort())
   }
+  diagnostic.stage("first-share")
   const shared = (
     await service.client.orgSessions.share({ sessionID, orgShareChange: { expectedShareGeneration: 0 } }, options)
   ).data
+  diagnostic.stage("first-batch")
   const first = await until(
     "first actual generation batch was not dispatched",
     async () => firstBatches.get(shared.shareGeneration),
     (batch) => Boolean(batch),
   )
   expect(writes.mock.calls.length).toBeLessThanOrEqual(budget)
+  await sample()
   expect(first!.events[0]).toMatchObject({ type: "session", session: { sessionID } })
   expect(first!.events.length).toBeLessThanOrEqual(256)
+  diagnostic.stage("first-drain")
   await drained()
+  diagnostic.stage("first-history")
   await verifySharedHistory()
+  diagnostic.stage("unshare")
   const hidden = (
     await service.client.orgSessions.unshare(
       { sessionID, orgShareChange: { expectedShareGeneration: shared.shareGeneration } },
@@ -178,6 +217,7 @@ test("a real enrolled native exporter reuses pending projections and regenerates
     )
   ).data
   writes.mockClear()
+  diagnostic.stage("reshare")
   const reshared = (
     await service.client.orgSessions.share(
       { sessionID, orgShareChange: { expectedShareGeneration: hidden.shareGeneration } },
@@ -185,12 +225,16 @@ test("a real enrolled native exporter reuses pending projections and regenerates
     )
   ).data
   expect(reshared.shareGeneration).toBeGreaterThan(shared.shareGeneration)
+  diagnostic.stage("second-batch")
   await until(
     "new original generation was not reconstructed",
     async () => firstBatches.get(reshared.shareGeneration),
     (batch) => Boolean(batch),
   )
   expect(writes.mock.calls.length).toBeLessThanOrEqual(budget)
+  diagnostic.stage("second-drain")
   await drained()
+  diagnostic.stage("second-history")
   await verifySharedHistory()
+  diagnostic.stage("completed")
 }, 45000)

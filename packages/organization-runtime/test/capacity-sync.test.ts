@@ -38,6 +38,16 @@ test("ten authenticated clients replay a shared 10000-message history while thre
   osMemory.own(process.pid, () => true)
   resources.defer("capacity OS process sampler", () => osMemory[Symbol.asyncDispose]())
   let failed: { error: unknown } | undefined
+  const observedAt = performance.now()
+  let observedPhase = "setup"
+  function phase(value: string, counts: Record<string, number> = {}) {
+    observedPhase = value
+    console.log(
+      "CAPACITY_PHASE",
+      JSON.stringify({ phase: value, elapsedMs: performance.now() - observedAt, ...counts }),
+    )
+  }
+  phase("setup")
   try {
     const service = await fixture()
     resources.defer("capacity organization service", () => service[Symbol.asyncDispose]())
@@ -59,6 +69,10 @@ test("ten authenticated clients replay a shared 10000-message history while thre
     const sockets = new Map<Socket, string>()
     const online = new Set<string>()
     let gatedSession: string | undefined
+    let observedSession: string | undefined
+    let tailStarted = false
+    let tailBatchFrames = 0
+    let lastLongBatch: Record<string, number> = {}
     const held: Array<{ socket: Socket; raw: Frame }> = []
     const firstHeld = Promise.withResolvers<void>()
     service.interceptFrames((socket, raw) => {
@@ -76,6 +90,20 @@ test("ten authenticated clients replay a shared 10000-message history while thre
       }
       if (frame.type !== "sync-batch") return false
       wire.batches++
+      if (frame.batch.sessionID === observedSession) {
+        const changed = lastLongBatch.lastSeq !== frame.batch.lastSeq
+        lastLongBatch = {
+          firstSeq: frame.batch.firstSeq,
+          lastSeq: frame.batch.lastSeq,
+          events: frame.batch.events.length,
+          shareGeneration: frame.batch.shareGeneration,
+          bindingEpoch: frame.batch.bindingEpoch,
+          connectionEpoch: frame.connectionEpoch,
+          messageEvents: frame.batch.events.filter((event) => event.type === "message").length,
+        }
+        if (tailStarted && (++tailBatchFrames === 1 || changed || tailBatchFrames % 20 === 0))
+          console.log("CAPACITY_TAIL_WIRE", JSON.stringify({ frames: tailBatchFrames, ...lastLongBatch }))
+      }
       wire.maxEvents = Math.max(wire.maxEvents, frame.batch.events.length)
       wire.maxBatchBytes = Math.max(wire.maxBatchBytes, Buffer.byteLength(JSON.stringify(frame.batch)))
       if (frame.batch.sessionID !== gatedSession) return false
@@ -166,7 +194,7 @@ test("ten authenticated clients replay a shared 10000-message history while thre
           if (message.type === "ready") return ready.resolve(message.pid)
           if (message.type === "progress") {
             console.log(
-              `CAPACITY_NATIVE_PROGRESS ${JSON.stringify({ pid: processHandle.pid, completed: message.completed, total: message.total, elapsedMs: message.elapsedMs, peakRSS: message.peakRSS, peakHeap: message.peakHeap })}`,
+              `CAPACITY_NATIVE_PROGRESS ${JSON.stringify({ pid: processHandle.pid, completed: message.completed, total: message.total, elapsedMs: message.elapsedMs, peakRSS: message.peakRSS, peakHeap: message.peakHeap, nativeTransactions: message.nativeTransactions, markerScans: message.markerScans })}`,
             )
             return
           }
@@ -315,6 +343,7 @@ test("ten authenticated clients replay a shared 10000-message history while thre
     }
     expect(new Set(sessions.map((entry) => entry.sessionID)).size).toBe(100)
     const long = sessions[0]
+    phase("native-append", { sessions: sessions.length, messages: 10000, runtimes: runtimes.length })
     const produced = (
       await Promise.all(
         runtimes.map((runtime, index) =>
@@ -339,18 +368,31 @@ test("ten authenticated clients replay a shared 10000-message history while thre
     expect(history.attachment?.bytes).toBe(8 * 1024 * 1024 + 17)
     expect(history.attachment!.chunks).toBeGreaterThan(1)
     timings.producedMs = performance.now() - started
+    observedSession = long.sessionID
+    phase("native-append-complete", {
+      sessions: produced.length,
+      messages: history.count,
+      attachmentBytes: history.attachment!.bytes,
+    })
     gatedSession = long.sessionID
-    for (const entry of sessions)
+    let shared = 0
+    phase("share", { completed: 0, total: sessions.length, held: held.length, batches: wire.batches })
+    for (const entry of sessions) {
       await service.client.orgSessions.share(
         { sessionID: entry.sessionID, orgShareChange: { expectedShareGeneration: 0 } },
         { headers: runtimes[entry.runtime].headers, throwOnError: true },
       )
+      if (++shared % 10 === 0)
+        phase("share", { completed: shared, total: sessions.length, held: held.length, batches: wire.batches })
+    }
+    phase("first-held-wait", { shared, held: held.length, batches: wire.batches })
     const heldTimer = setTimeout(
       () => firstHeld.reject(new Error("The real exporter did not reach its sync batch barrier")),
       240000,
     )
     await firstHeld.promise.finally(() => clearTimeout(heldTimer))
     timings.firstBatchMs = performance.now() - started
+    phase("held-backlog-read", { held: held.length, batches: wire.batches, firstBatchMs: timings.firstBatchMs })
     const queued = await runtimes[0].request(
       {
         operation: "backlog",
@@ -360,8 +402,10 @@ test("ten authenticated clients replay a shared 10000-message history while thre
     )
     expect(queued.drafts).toBeGreaterThanOrEqual(20000)
     expect(queued.pendingBatches).toBeGreaterThan(0)
+    phase("held-release", { held: held.length, drafts: queued.drafts, pendingBatches: queued.pendingBatches })
     gatedSession = undefined
     for (const item of held.splice(0)) await service.service.websocket.message(item.socket, item.raw)
+    phase("drain")
     const drained = await eventually(
       "Original durable exporter backlog did not drain",
       () =>
@@ -385,6 +429,11 @@ test("ten authenticated clients replay a shared 10000-message history while thre
     expect(wire.maxBlobFrameWireBytes).toBeLessThanOrEqual(64 * 1024)
     expect([...wire.blobOffsets].sort((a, b) => a - b)).toEqual([0, 4 * 1024 * 1024, 8 * 1024 * 1024])
     timings.drainedMs = performance.now() - started
+    phase("drained", {
+      sessions: drained.reduce((sum, value) => sum + value.sessions, 0),
+      drafts: drained.reduce((sum, value) => sum + value.drafts, 0),
+      drainedMs: timings.drainedMs,
+    })
 
     const api = { calls: 0, bytes: 0, maxResponseBytes: 0 }
     const clients: Array<{
@@ -433,6 +482,7 @@ test("ten authenticated clients replay a shared 10000-message history while thre
     }
     expect(new Set(clients.map((entry) => entry.options.headers.cookie)).size).toBe(10)
     serviceMetrics.begin()
+    phase("first-screen", { clients: clients.length })
     const first = await Promise.all(
       clients.map(async ({ client, options }) => {
         const [directory, messages, snapshot] = await Promise.all([
@@ -456,6 +506,7 @@ test("ten authenticated clients replay a shared 10000-message history while thre
     ).toBe(true)
     expect(firstScreen.sql.maxReadMany).toBeLessThanOrEqual(128)
     const watermark = first[0].watermark
+    phase("client-replay", { clients: clients.length, watermark, apiCalls: api.calls })
     const replays = await Promise.all(
       clients.map(async ({ client, options }, index) => {
         let page = first[index]
@@ -486,7 +537,13 @@ test("ten authenticated clients replay a shared 10000-message history while thre
         return { count, pages }
       }),
     )
+    phase("client-replay-complete", {
+      clients: replays.length,
+      pages: replays.reduce((sum, value) => sum + value.pages, 0),
+      messages: replays.reduce((sum, value) => sum + value.count, 0),
+    })
     const attachment = history.attachment!
+    phase("attachment-download", { expectedBytes: attachment.bytes })
     const download = await clients[9].client.orgSessionSync.downloadBlob(
       { sessionID: long.sessionID, hash: attachment.hash, shareGeneration: first[9].shareGeneration },
       { ...clients[9].options, parseAs: "stream" },
@@ -504,28 +561,62 @@ test("ten authenticated clients replay a shared 10000-message history while thre
     }
     expect(downloadedBytes).toBe(attachment.bytes)
     expect(hash.digest("hex")).toBe(attachment.hash)
+    phase("attachment-complete", { bytes: downloadedBytes, maxChunk: maxDownloadChunk })
+    tailStarted = true
+    phase("tail-append", { watermark, batches: wire.batches, ...lastLongBatch })
     const tail = (
       await runtimes[0].request(
         { operation: "append", sessions: [{ sessionID: long.sessionID, count: 1 }] },
         z.array(WrittenHistory),
       )
     )[0]
+    phase("tail-appended", { messages: tail.count, batches: wire.batches, ...lastLongBatch })
+    const tailNativeBacklog = await runtimes[0].request(
+      { operation: "backlog", sessions: [long.sessionID] },
+      CapacityBacklog,
+    )
+    phase("tail-native-backlog", {
+      sessions: tailNativeBacklog.sessions,
+      drafts: tailNativeBacklog.drafts,
+      pendingBatches: tailNativeBacklog.pendingBatches,
+      synced: tailNativeBacklog.synced,
+      ...lastLongBatch,
+    })
+    phase("tail-events", { clients: clients.length, watermark })
+    let tailPolls = 0
     const replayedTail = await eventually(
       "The ten clients did not receive the post-checkpoint event",
-      () =>
-        Promise.all(
+      async () => {
+        const entries = await Promise.all(
           clients.map(
             async ({ client, options }) =>
               (await client.orgSessionSync.events({ sessionID: long.sessionID, limit: 50, cursor: watermark }, options))
                 .data,
           ),
-        ),
+        )
+        if (++tailPolls === 1 || tailPolls % 20 === 0)
+          phase("tail-events", {
+            polls: tailPolls,
+            clients: entries.length,
+            watermark,
+            minNextSeq: Math.min(...entries.map((entry) => entry.nextSeq)),
+            maxNextSeq: Math.max(...entries.map((entry) => entry.nextSeq)),
+            items: entries.reduce((sum, entry) => sum + entry.items.length, 0),
+            clientsWithTail: entries.filter((entry) =>
+              entry.items.some((event) => event.type === "message" && event.messageID === tail.lastMessageID),
+            ).length,
+            tailBatchFrames,
+            ...lastLongBatch,
+          })
+        return entries
+      },
       (entries) =>
         entries.every((entry) =>
           entry.items.some((event) => event.type === "message" && event.messageID === tail.lastMessageID),
         ),
     )
     expect(replayedTail.every((entry) => entry.items.length <= 50)).toBe(true)
+    phase("tail-drain", { clients: replayedTail.length, tailBatchFrames, ...lastLongBatch })
     const finalBacklog = await eventually(
       "The post-checkpoint native drafts did not settle",
       () =>
@@ -538,6 +629,7 @@ test("ten authenticated clients replay a shared 10000-message history while thre
         ),
       (entry) => entry.drafts === 0 && entry.pendingBatches === 0,
     )
+    phase("final-backlog", { drafts: finalBacklog.drafts, pendingBatches: finalBacklog.pendingBatches })
     const finalMetrics = await Promise.all(
       runtimes.map((runtime, index) =>
         runtime.request(
@@ -550,6 +642,7 @@ test("ten authenticated clients replay a shared 10000-message history while thre
       ),
     )
     timings.totalMs = performance.now() - started
+    phase("final-report", { runtimes: finalMetrics.length, clients: replays.length, totalMs: timings.totalMs })
     const osSamples = await osMemory.snapshot()
     const nativeMetrics = [serviceMetrics.snapshot(), ...finalMetrics.map((entry) => entry.metrics)]
     const processes = nativeMetrics.map((entry) => {
@@ -585,13 +678,25 @@ test("ten authenticated clients replay a shared 10000-message history while thre
     console.log(`CAPACITY_SYNC_REPORT ${JSON.stringify(report)}`)
     if (process.env.SYNERGY_TEST_CAPACITY_REPORT)
       await Bun.write(process.env.SYNERGY_TEST_CAPACITY_REPORT, `${JSON.stringify(report, null, 2)}\n`)
+    phase("completed", {
+      clients: clients.length,
+      sessions: sessions.length,
+      messages: history.count,
+      totalMs: timings.totalMs,
+    })
   } catch (error) {
+    console.error(
+      "CAPACITY_PHASE_FAILURE",
+      JSON.stringify({ phase: observedPhase, elapsedMs: performance.now() - observedAt }),
+    )
     failed = { error }
     console.error("CAPACITY_SYNC_FAILURE", error)
     console.error("CAPACITY_OS_PEAKS", JSON.stringify(await osMemory.snapshot()))
   }
+  phase("cleanup")
   try {
     await resources.close()
+    phase("cleanup-complete")
   } catch (cleanup) {
     console.error("CAPACITY_SYNC_CLEANUP_FAILURE", cleanup)
     if (failed)

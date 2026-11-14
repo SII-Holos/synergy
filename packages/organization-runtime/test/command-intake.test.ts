@@ -4,6 +4,7 @@ import {
   OrganizationRuntimeProtocol as Runtime,
   OrganizationSessionProtocol as Sessions,
   OrganizationExecutionProtocol as Execution,
+  OrganizationSyncProtocol as Sync,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
@@ -23,6 +24,12 @@ import { createCommandIntake } from "../src/command-intake"
 import { registerSessionSchema } from "../src/session-schema"
 import { OrganizationIntakePath as Keys } from "../src/storage/path"
 import { OrganizationRuntimeError } from "../src/error"
+import { commandFixture } from "../../organization/test/support/commands"
+import { OrganizationSharing } from "../../organization/src/sharing"
+import { OrganizationSessionDirectory } from "../../organization/src/session-directory"
+import { createHandoffs } from "../../organization/src/handoff"
+import { startMemberSyncExporter } from "../src/sync-exporter"
+import type { MemberConnection } from "../src/connection"
 
 test("handoff barriers require every authorized command slot to be durably reconciled", async () => {
   const service = await authority()
@@ -54,7 +61,8 @@ const binding: Sessions.Binding = {
   bindingEpoch: 1,
 }
 
-async function authority() {
+async function authority(selectedBinding: Sessions.Binding = binding) {
+  const binding = selectedBinding
   const keys = await crypto.subtle.generateKey("Ed25519", true, ["sign", "verify"])
   const identity: Command.SigningIdentity = {
     schemaVersion: 1,
@@ -159,7 +167,87 @@ async function authority() {
   }
 }
 
-async function session() {
+async function nativeSyncAcknowledgements() {
+  const f = await commandFixture({
+    sync: { receipt: (lease, query) => handoffs.syncBatchReceipt(lease, query) },
+  })
+  const handoffs = createHandoffs({ connections: f.connections, signing: f.signing })
+  try {
+    await f.connect()
+    const lease = f.connections.capture("runtime-alice")
+    const directory = await f.run(() => OrganizationSessionDirectory.get(f.credentials.alice, f.sessionID))
+    const binding = Sessions.Binding.parse({
+      schemaVersion: 1,
+      orgID: lease.handshake.orgID,
+      projectID: directory.projectID,
+      creatorID: directory.creatorID,
+      driverRuntimeID: directory.driverRuntimeID,
+      bindingEpoch: directory.bindingEpoch,
+    })
+    expect(lease.handshake.schemas.sync).toBe(Sync.observationVersion)
+    return {
+      ...f,
+      binding,
+      async reserve(sessionID: string) {
+        await f.run(() =>
+          OrganizationSessionDirectory.reservePrivate(f.credentials.alice, {
+            sessionID,
+            projectID: binding.projectID,
+            runtimeID: binding.driverRuntimeID,
+          }),
+        )
+      },
+      async acknowledge(sessionID: string) {
+        await f.run(() => OrganizationSharing.share(f.credentials.alice, sessionID, { expectedShareGeneration: 0 }))
+        let committed = 0
+        const connection: Pick<MemberConnection, "connected" | "syncState" | "sync" | "uploadBlob"> = {
+          connected: Runtime.Connected.parse({
+            type: "handshake",
+            protocolVersion: 1,
+            orgID: lease.handshake.orgID,
+            deploymentIncarnation: lease.handshake.deploymentIncarnation,
+            runtimeID: lease.handshake.runtimeID,
+            connectionEpoch: lease.handshake.connectionEpoch,
+            signingIdentity: f.signing.identity,
+            syncVersion: lease.handshake.schemas.sync,
+            heartbeatMs: 1000,
+            offlineMs: 10000,
+          }),
+          syncState: async (id) => f.run(() => OrganizationSharing.getFromRuntime(lease.handshake, id)),
+          sync: async (batch) =>
+            f.run(async () => {
+              const ack = await OrganizationSharing.applyBatchFromRuntime(lease, batch)
+              committed++
+              return ack
+            }),
+          async uploadBlob() {
+            throw new Error("The original command receipt fixture has no blob dependency")
+          },
+        }
+        const exporter = startMemberSyncExporter({
+          identity: { orgID: binding.orgID, accountID: binding.creatorID, deviceID: "command-intake-fixture" },
+          connection,
+          signal: new AbortController().signal,
+        })
+        try {
+          await exporter.flush()
+          expect(committed).toBeGreaterThan(0)
+          expect((await f.run(() => OrganizationSharing.getFromRuntime(lease.handshake, sessionID))).syncState).toBe(
+            "synced",
+          )
+        } finally {
+          await exporter.close()
+        }
+      },
+    }
+  } catch (error) {
+    await f[Symbol.asyncDispose]()
+    throw error
+  }
+}
+
+async function session(selectedBinding: Sessions.Binding = binding, id?: string) {
+  const binding = selectedBinding
   const scope = await Scope.registerProject({
     type: "project",
     id: binding.projectID,
@@ -169,7 +257,7 @@ async function session() {
   return ScopeContext.provide({
     scope,
     workspace: null,
-    fn: () => Session.create({ organization: binding, workspaceID: null }),
+    fn: () => Session.create({ id, organization: binding, workspaceID: null }),
   })
 }
 
@@ -406,11 +494,13 @@ test("cancel commits a native receipt before drainage and survives disconnection
 })
 
 test("cancel observations preserve reception while rejecting changed or unreadable current evidence", async () => {
-  const service = await authority()
+  await using sync = await nativeSyncAcknowledgements()
+  const binding = sync.binding
+  const service = await authority(binding)
   await using runtime = await testRuntime({ register: () => registerSessionSchema(binding) })
   await runtime.run(async () => {
     using wake = spyOn(SessionManager, "scheduleWake").mockImplementation(() => {})
-    const native = await session()
+    const native = await session(binding, sync.sessionID)
     const receiver = service.receiver()
     const input = await receiver.input(await service.input(native.id, {}, "Queued task", "task"))
     const runID = input.accepted!.effect.messageID
@@ -451,6 +541,9 @@ test("cancel observations preserve reception while rejecting changed or unreadab
       execution: { state: "unavailable", runID, reason: "transfer_in_progress" },
     })
     await Storage.remove(["session_transfer_gate", native.id])
+    await expect(Session.remove(native.id)).rejects.toThrow("original outbox acknowledgement")
+    expect((await Session.get(native.id)).organization).toEqual(binding)
+    await sync.acknowledge(native.id)
     await Session.remove(native.id)
     expect(await receiver.query(delivery.authorization)).toMatchObject({
       result: receipt,
@@ -962,7 +1055,10 @@ test("creation rolls back the real Session and Scope with its receipt and never 
 
 test("a committed creation survives restart and replay cannot recreate a removed Session", async () => {
   await using home = await tmpdir()
-  const service = await authority()
+  await using sync = await nativeSyncAcknowledgements()
+  const binding = sync.binding
+  const service = await authority(binding)
+  await sync.reserve("ses_retained_creation")
   const delivery = await service.create("ses_retained_creation")
   let receipt: Command.CreatedResult
   {
@@ -977,6 +1073,11 @@ test("a committed creation survives restart and replay cannot recreate a removed
       result: receipt,
     })
     expect((await Session.get(delivery.authorization.permit.sessionID)).title).toBe(delivery.creation.title!)
+    await expect(Session.remove(delivery.authorization.permit.sessionID)).rejects.toThrow(
+      "original outbox acknowledgement",
+    )
+    expect((await Session.get(delivery.authorization.permit.sessionID)).organization).toEqual(binding)
+    await sync.acknowledge(delivery.authorization.permit.sessionID)
     await Session.remove(delivery.authorization.permit.sessionID)
     expect(await receiver.create(delivery)).toEqual(receipt)
     await expect(Session.get(delivery.authorization.permit.sessionID)).rejects.toBeInstanceOf(Storage.NotFoundError)

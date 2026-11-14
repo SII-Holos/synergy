@@ -181,6 +181,32 @@ jobs:
       - name: Start the original native peer and keep its process alive
         shell: bash
         run: |
+          python3 - <<'PY_REPORT'
+          import json, os, pathlib, re
+          try:
+            run = {
+              'repository': os.environ['GITHUB_REPOSITORY'],
+              'id': os.environ['GITHUB_RUN_ID'],
+              'attempt': os.environ['GITHUB_RUN_ATTEMPT'],
+              'sha': os.environ['SYNERGY_CROSS_OS_SHA'],
+            }
+            role = os.environ['SYNERGY_CROSS_OS_ROLE']
+            if not re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', run['repository']):
+              raise ValueError('Invalid public run identity')
+            if not re.fullmatch(r'[0-9]+', run['id']) or not re.fullmatch(r'[0-9]+', run['attempt']):
+              raise ValueError('Invalid public run identity')
+            if not re.fullmatch(r'[a-f0-9]{40}', run['sha']) or role not in ('darwin', 'linux'):
+              raise ValueError('Invalid public peer identity')
+            directory = pathlib.Path(os.environ['SYNERGY_CROSS_OS_STATE'])
+            if not directory.is_absolute() or not directory.is_dir():
+              raise ValueError('Task-owned peer state is unavailable')
+            (directory / 'report.json').write_text(json.dumps({
+              'version': 1, 'run': run, 'role': role, 'passed': False,
+              'phase': 'peer-import', 'status': 'pending',
+            }))
+          except Exception as error:
+            raise SystemExit('Cross-OS pre-import diagnostic failed: ' + type(error).__name__)
+          PY_REPORT
           (
             set +e
             cd packages/organization-runtime

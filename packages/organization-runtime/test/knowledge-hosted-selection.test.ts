@@ -14,6 +14,7 @@ import { prepareHostedHome } from "../src/home"
 import { enrollHostedRuntime } from "../src/enrollment"
 import { openHostedRuntime } from "../src/runtime"
 import { fixture } from "./support/organization"
+import { observeTaskFailure } from "./support/task-failure"
 import { applySelection, publish } from "./support/knowledge"
 import { ModelRequest, SkillEvidence, runtimeContext, modelResponse, waitKnowledgeTask } from "./support/knowledge-task"
 import { activeKnowledge } from "../src/knowledge"
@@ -279,6 +280,16 @@ test("actual Hosted Sessions inherit their creators' collections once and isolat
       )
       try {
         await firstRequest.promise
+      } catch (error) {
+        await observeTaskFailure({
+          runtime,
+          accepted,
+          stage: "hosted-model-start",
+          upstreamCalls: requests.length - beforeRequests,
+          contextCalls: requests.slice(beforeRequests).filter((request) => runtimeContext(request) !== undefined)
+            .length,
+        })
+        throw error
       } finally {
         clearTimeout(firstRequestTimer)
         conversationStarted = undefined

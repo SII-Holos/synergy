@@ -126,11 +126,28 @@ test("an exited full-access Bash does not block another worktree while its turn 
 
 for (const shared of [false, true])
   test(`an active full-access command permits tools in ${shared ? "the same Workspace" : "a sibling worktree"}`, async () => {
+    const started = performance.now()
+    const stage = (value: string, facts: Record<string, boolean | number | null> = {}) => {
+      if (process.platform === "win32")
+        console.info(
+          JSON.stringify({
+            fixture: "workspace-concurrency",
+            shared,
+            stage: value,
+            elapsedMs: performance.now() - started,
+            ...facts,
+          }),
+        )
+    }
+    stage("test-enter")
     const { ProcessRegistry } = await import("@ericsanchezok/synergy-harness/process/registry")
+    stage("registry-imported")
     await using runtime = await testRuntime({ env: { SHELL: process.platform === "win32" ? "cmd.exe" : "/bin/sh" } })
+    stage("runtime-ready")
     await runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })
       const scope = await tmp.scope()
+      stage("fixture-ready")
       await ScopeContext.provide({
         scope,
         async fn() {
@@ -156,6 +173,7 @@ for (const shared of [false, true])
               originalCheckout: tmp.path,
             },
           })
+          stage("worktrees-and-sessions-ready")
           const context = (identity: { sessionID: string; messageID: string; callID: string }) => ({
             ...identity,
             agent: PrimaryAgentIdentity.names.general,
@@ -172,45 +190,80 @@ for (const shared of [false, true])
                 command: process.platform === "win32" ? "ping -n 30 127.0.0.1 >NUL" : "/bin/sleep 30",
                 yieldSeconds: 0.01,
               }
+              stage("a-run-admission")
               await withToolRun({ session: a, tool: "bash", args: params }, async (identity) => {
+                stage("a-native-execute")
                 const result = await LocalBashBackend.execute(params, { ...context(identity), workBrief: "live work" })
                 const running = ProcessRegistry.get(result.metadata.processId!)!
+                stage("a-native-returned", {
+                  background: result.metadata.background === true,
+                  registryPresent: Boolean(running),
+                })
                 expect(result.metadata.background).toBe(true)
                 try {
+                  stage("b-scope-enter")
                   await ScopeContext.provide({
                     scope,
                     workspace: b.workspace,
                     async fn() {
                       const params = { command: "echo independent > concurrent.txt" }
-                      const written = await withToolRun({ session: b, tool: "bash", args: params }, (identity) =>
-                        LocalBashBackend.execute(params, { ...context(identity), workBrief: "concurrent work" }),
+                      stage("b-run-admission")
+                      const written = await withToolRun(
+                        { session: b, tool: "bash", args: params },
+                        async (identity) => {
+                          stage("b-native-execute")
+                          const value = await LocalBashBackend.execute(params, {
+                            ...context(identity),
+                            workBrief: "concurrent work",
+                          })
+                          stage("b-native-returned", { exit: value.metadata.exit ?? null })
+                          return value
+                        },
                       )
+                      stage("b-run-returned", { exit: written.metadata.exit ?? null })
                       expect(written.metadata.exit).toBe(0)
+                      stage("scan-init")
                       const scanner = await ScanFilesTool.init()
                       const scanParams = { pattern: "independent", include: "concurrent.txt" }
+                      stage("scan-run-admission")
                       const scanned = await withToolRun(
                         { session: b, tool: "scan_files", args: scanParams },
-                        (identity) => scanner.execute(scanParams, context(identity)),
+                        async (identity) => {
+                          stage("scan-execute")
+                          const value = await scanner.execute(scanParams, context(identity))
+                          stage("scan-returned")
+                          return value
+                        },
                       )
+                      stage("scan-run-returned")
                       expect(scanned.output).toContain("independent")
                       expect(running.child?.alive?.()).toBe(true)
+                      stage("exclusive-must-be-busy")
                       await expect(WorkspaceAccess.exclusive([first.path], async () => {})).rejects.toMatchObject({
                         name: "WorkspaceBusyError",
                       })
+                      stage("exclusive-busy-verified")
                     },
                   })
+                  stage("b-scope-returned")
                 } finally {
+                  stage("a-terminate")
                   await ProcessRegistry.terminate(running)
+                  stage("a-terminated")
                 }
+                stage("worktree-lock-inspection")
                 expect(
                   (await Worktree.list())
                     .filter((item) => item.id === first.id || item.id === second.id)
                     .every((item) => !item.locked),
                 ).toBe(true)
+                stage("a-tool-callback-return")
               })
+              stage("a-run-returned")
             },
           })
         },
       })
     })
+    stage("test-body-returned")
   }, 30_000)

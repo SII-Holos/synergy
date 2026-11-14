@@ -6,6 +6,7 @@ import { ProcessInspection } from "@ericsanchezok/synergy-harness/process/inspec
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { RolloutArtifact } from "@ericsanchezok/synergy-harness/session/rollout/artifact"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
 import { StoreTransaction, type RecordQuery } from "@ericsanchezok/synergy-harness/storage/transactional-store"
 import { RuntimeIdentity } from "../../src/home"
 import { openHostedRuntime, openMemberRuntime } from "../../src/runtime"
@@ -13,6 +14,34 @@ import { OrganizationSyncPath as Keys } from "../../src/storage/path"
 
 export function messageChecksum(id: string) {
   return BigInt(`0x${createHash("sha256").update(id).digest("hex")}`)
+}
+
+function countNativeMessageOrder(owner: { scopeID: string; sessionID: string }) {
+  const root = StoragePath.sessionMessageOrderMarkersRoot(
+    Identifier.asScopeID(owner.scopeID),
+    Identifier.asSessionID(owner.sessionID),
+  )
+  const original = Storage.scan
+  let markerScans = 0
+  let nativeTransactions = 0
+  const seen = new WeakSet<StoreTransaction>()
+  Storage.scan = (prefix) => {
+    if (prefix.length === root.length && prefix.every((part, index) => part === root[index])) markerScans++
+    return original(prefix)
+  }
+  return {
+    transaction(tx: StoreTransaction) {
+      if (seen.has(tx)) return
+      seen.add(tx)
+      nativeTransactions++
+    },
+    snapshot() {
+      return { nativeTransactions, markerScans }
+    },
+    [Symbol.dispose]() {
+      Storage.scan = original
+    },
+  }
 }
 
 export function measureOwnedProcessMemory() {
@@ -208,6 +237,8 @@ export const CapacityReply = z.discriminatedUnion("type", [
     elapsedMs: z.number(),
     peakRSS: z.number(),
     peakHeap: z.number(),
+    nativeTransactions: z.number().int().nonnegative().optional(),
+    markerScans: z.number().int().nonnegative().optional(),
   }),
   z.object({ type: z.literal("result"), id: z.string(), result: z.unknown() }),
   z.object({ type: z.literal("failed"), id: z.string().optional(), message: z.string() }),
@@ -266,9 +297,11 @@ async function main() {
                   let checksum = 0n
                   let lastMessageID = ""
                   const started = performance.now()
+                  using nativeOrder = countNativeMessageOrder({ scopeID: session.scope.id, sessionID: session.id })
                   for (let offset = 0; offset < entry.count; offset += 100) {
                     const end = Math.min(entry.count, offset + 100)
-                    await Storage.transaction(async () => {
+                    await Storage.transaction(async (tx) => {
+                      nativeOrder.transaction(tx)
                       for (let index = offset; index < end; index++) {
                         const messageID = Identifier.ascending("message")
                         lastMessageID = messageID
@@ -301,6 +334,7 @@ async function main() {
                         elapsedMs: performance.now() - started,
                         peakRSS: memory.peakRSS,
                         peakHeap: memory.peakHeap,
+                        ...nativeOrder.snapshot(),
                       })
                     }
                   }

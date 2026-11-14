@@ -26,6 +26,10 @@ The Local Runtime suite containing the saved Bash rule controls declares the exi
 
 Modal browser fixtures observe refreshed background metadata through attached DOM while the confirmation surface owns accessibility and focus. They retain the revision captured when the confirmation opened; a correctly aria-hidden background cannot be awaited as an accessible action.
 
+Portable target fixtures validate and publish the actual owner inventory of each sealed member in canonical publication order. A fixed owner list cannot stand in for a newly registered native producer. Command fixtures that remove a shared native Session first verify the pending-dependency refusal, then convert its original deliveries and obtain the immutable batch ACK from the real Service owner under its captured signed connection lease. They retain the original removal, cancellation-query and restart assertions. In-process transport establishes that owner-level COMMIT path; actual enrolled wire transfer remains separate acceptance.
+
+Native platform diagnostics retain original samples, deadlines and behavioral assertions. They report fixed stages, actual transaction identities as counts, bounded queue metadata and whitelisted error names after the original failure. Received frames remain distinct from Service ACKs. A focused resident tail check cannot substitute for the complete multi-process capacity case; failed capacity evidence stays failed until its original scenario passes.
+
 ## Alternatives considered
 
 **Increase global timeouts or rerun failed tests automatically.** This hides ordering and ownership defects while raising feedback cost; it does not demonstrate a repaired invariant.

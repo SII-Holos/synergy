@@ -17,6 +17,7 @@ import { enrollMemberRuntime } from "../src/enrollment"
 import { openMemberRuntime } from "../src/runtime"
 import { readMemberRegistration } from "../src/registration"
 import { fixture } from "./support/organization"
+import { observeTaskFailure } from "./support/task-failure"
 
 async function observed<T>(promise: Promise<T>) {
   const timeout = Promise.withResolvers<never>()
@@ -193,7 +194,10 @@ test("accepted organization tasks execute through the native loop and release re
         )
       ).data
       expect(accepted.effect).toMatchObject({ kind: "inbox", mode: "task" })
-      const completed = await observed(completion.promise)
+      const completed = await observed(completion.promise).catch(async (error) => {
+        await observeTaskFailure({ runtime, accepted, stage: "native-root-completion", upstreamCalls: requests.length })
+        throw error
+      })
       await runtime.run(async () => {
         const session = await Session.get(sessionID)
         expect(session.modelSelection?.selected.model).toEqual({
@@ -229,7 +233,12 @@ test("accepted organization tasks execute through the native loop and release re
           authorization: "Bearer native-upstream-secret",
           body: { model: "native-model", stream: true },
         })
-      expect(await observed(released.promise)).toMatchObject({
+      expect(
+        await observed(released.promise).catch(async (error) => {
+          await observeTaskFailure({ runtime, accepted, stage: "native-release", upstreamCalls: requests.length })
+          throw error
+        }),
+      ).toMatchObject({
         sessionID,
         rootID: completed.rootID,
         generation: 1,

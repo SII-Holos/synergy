@@ -11,6 +11,7 @@ import { prepareHostedHome } from "../src/home"
 import { enrollHostedRuntime } from "../src/enrollment"
 import { openHostedRuntime } from "../src/runtime"
 import { fixture } from "./support/organization"
+import { observeTaskFailure } from "./support/task-failure"
 import { ModelRequest, modelResponse, runtimeContext, waitKnowledgeTask } from "./support/knowledge-task"
 
 const Request = ModelRequest.extend({
@@ -237,7 +238,16 @@ test("actual Hosted session_read preserves the current root and shared access wh
           { headers, throwOnError: true },
         )
       ).data
-      await bounded(started.promise, "The accepted Hosted task did not reach the actual model")
+      await bounded(started.promise, "The accepted Hosted task did not reach the actual model").catch(async (error) => {
+        await observeTaskFailure({
+          runtime,
+          accepted,
+          stage: "hosted-model-start",
+          upstreamCalls: requests.length - before,
+          contextCalls: requests.slice(before).filter((request) => runtimeContext(request) !== undefined).length,
+        })
+        throw error
+      })
       const completed = await waitKnowledgeTask(runtime, accepted, () => requests.length - before)
       active = undefined
       const observed = requests.slice(before)

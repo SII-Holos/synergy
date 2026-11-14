@@ -300,7 +300,7 @@ test.each(["source-cancel", "target-activate"] as const)(
                   const signal = new AbortController().signal
                   await Staging.receive({ handoffID: transfer.handoffID, root: prepared.root, store, signal })
                   const contexts: { ownerID: string; context: Owners.TargetContext }[] = []
-                  for (const ownerID of ["session-core", "organization-runtime"]) {
+                  for (const ownerID of Owners.publicationOrder(Object.keys(prepared.root.owners))) {
                     const context = await Staging.context({
                       handoffID: transfer.handoffID,
                       ownerID,

@@ -110,52 +110,66 @@ async function until<T>(read: () => Promise<T | undefined>, budget: number, mess
 async function tunnel(directory: string, port: number) {
   const cert = path.join(directory, "origin-cert.pem"),
     key = path.join(directory, "origin-key.pem")
-  const generated = Bun.spawn(
-    [
-      "openssl",
-      "req",
-      "-x509",
-      "-newkey",
-      "rsa:2048",
-      "-nodes",
-      "-days",
-      "1",
-      "-subj",
-      "/CN=localhost",
-      "-addext",
-      "subjectAltName=DNS:localhost,IP:127.0.0.1",
-      "-keyout",
-      key,
-      "-out",
-      cert,
-    ],
-    { stdout: "ignore", stderr: "pipe" },
-  )
-  if ((await generated.exited) !== 0) throw new Error("The task origin certificate could not be generated")
-  await fs.chmod(key, 0o600)
-  const child = Bun.spawn(
-    [
-      path.join(state(), "cloudflared"),
-      "tunnel",
-      "--no-autoupdate",
-      "--protocol",
-      "http2",
-      "--url",
-      `https://127.0.0.1:${port}`,
-      "--origin-server-name",
-      "localhost",
-      "--origin-ca-pool",
-      cert,
-      "--metrics",
-      "127.0.0.1:0",
-    ],
-    {
-      stdout: "ignore",
-      stderr: "pipe",
-      env: Object.fromEntries(
-        Object.entries(process.env).filter(([key]) => key !== "GITHUB_TOKEN" && key !== "GH_TOKEN"),
-      ),
+  await setup(
+    "darwin-origin-certificate-exit",
+    async () => {
+      const generated = Bun.spawn(
+        [
+          "openssl",
+          "req",
+          "-x509",
+          "-newkey",
+          "rsa:2048",
+          "-nodes",
+          "-days",
+          "1",
+          "-subj",
+          "/CN=localhost",
+          "-addext",
+          "subjectAltName=DNS:localhost,IP:127.0.0.1",
+          "-keyout",
+          key,
+          "-out",
+          cert,
+        ],
+        { stdout: "ignore", stderr: "pipe" },
+      )
+      const exitCode = await generated.exited
+      if (exitCode !== 0)
+        throw Object.assign(new Error("The task origin certificate could not be generated"), {
+          code: "ORIGIN_CERTIFICATE_FAILED",
+          exitCode,
+        })
+      return exitCode
     },
+    (exitCode) => ({ exitCode }),
+  )
+  await setup("darwin-origin-key-mode", () => fs.chmod(key, 0o600))
+  const child = await setup("darwin-cloudflared-launch", async () =>
+    Bun.spawn(
+      [
+        path.join(state(), "cloudflared"),
+        "tunnel",
+        "--no-autoupdate",
+        "--protocol",
+        "http2",
+        "--url",
+        `https://127.0.0.1:${port}`,
+        "--origin-server-name",
+        "localhost",
+        "--origin-ca-pool",
+        cert,
+        "--metrics",
+        "127.0.0.1:0",
+      ],
+      {
+        stdout: "ignore",
+        stderr: "pipe",
+        env: Object.fromEntries(
+          Object.entries(process.env).filter(([key]) => key !== "GITHUB_TOKEN" && key !== "GH_TOKEN"),
+        ),
+      },
+    ),
   )
   const ready = Promise.withResolvers<string>()
   const reader = (async () => {
@@ -181,7 +195,7 @@ async function tunnel(directory: string, port: number) {
       () => ready.reject(new Error("The task-owned tunnel did not initialize within 120 seconds")),
       120000,
     )
-    const origin = await ready.promise
+    const origin = await setup("darwin-cloudflared-ready", () => ready.promise)
     return {
       origin,
       cert: await Bun.file(cert).text(),
@@ -202,13 +216,67 @@ async function tunnel(directory: string, port: number) {
   }
 }
 
+function safeFailure(value: unknown) {
+  const name = value instanceof Error ? value.name : "UnknownError"
+  const code = value !== null && typeof value === "object" && "code" in value ? value.code : undefined
+  const exitCode = value !== null && typeof value === "object" && "exitCode" in value ? value.exitCode : undefined
+  return {
+    name: /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(name) ? name : "UnknownError",
+    ...(typeof code === "string" && /^[A-Z][A-Z0-9_]{0,63}$/.test(code) ? { code } : {}),
+    ...(typeof exitCode === "number" && Number.isInteger(exitCode) && exitCode >= 0 && exitCode <= 255
+      ? { exitCode }
+      : {}),
+  }
+}
+let setupStage: string | undefined
+async function setup<T>(
+  phase: string,
+  action: () => Promise<T>,
+  completed?: (value: T) => { exitCode: number },
+): Promise<T> {
+  const started = performance.now()
+  setupStage = phase
+  const report = (status: "pending" | "completed" | "failed", error?: unknown, metadata?: { exitCode: number }) =>
+    fs.writeFile(
+      path.join(state(), "report.json"),
+      JSON.stringify({
+        version: 1,
+        run: run(),
+        passed: false,
+        phase: status === "failed" ? (setupStage ?? phase) : phase,
+        status,
+        ...metadata,
+        elapsedMs: performance.now() - started,
+        ...(error === undefined ? {} : { errors: [safeFailure(error)] }),
+      }),
+    )
+  await report("pending")
+  try {
+    const value = await action()
+    setupStage = phase
+    await report("completed", undefined, completed?.(value))
+    return value
+  } catch (error) {
+    try {
+      await report("failed", error)
+    } catch (diagnostic) {
+      throw new AggregateError([error, diagnostic], "Cross-OS setup and its safe diagnostic both failed")
+    }
+    throw error
+  }
+}
+
 async function host() {
   assert.equal(process.platform, "darwin")
-  const secret = await identity()
+  const secret = await setup("darwin-identity", identity)
   const rendezvousStarted = performance.now()
-  const linuxPublic = PublicPeer.parse(await waitArtifact("linux"))
+  const linuxPublic = await setup("darwin-public-peer-rendezvous", async () =>
+    PublicPeer.parse(await waitArtifact("linux")),
+  )
   const artifactWaitMs = performance.now() - rendezvousStarted
-  const root = await fs.mkdtemp(path.join(process.env.SYNERGY_TEST_ROOT!, "cross-os-host-"))
+  const root = await setup("darwin-temporary-root", () =>
+    fs.mkdtemp(path.join(process.env.SYNERGY_TEST_ROOT!, "cross-os-host-")),
+  )
   const probe = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
@@ -217,7 +285,7 @@ async function host() {
   const port = probe.port!
   await probe.stop(true)
   const tunnelStarted = performance.now()
-  const connection = await tunnel(root, port)
+  const connection = await setup("darwin-tunnel-bootstrap", () => tunnel(root, port))
   const cleanups: Array<() => Promise<unknown>> = [() => connection.close()]
   const costs: Record<string, number> = {
     artifactWaitMs,
@@ -226,11 +294,13 @@ async function host() {
   let phase = "service-bootstrap"
   let started = performance.now()
   try {
-    const service = await openOrganizationService({
-      home: path.join(root, "service"),
-      publicOrigin: connection.origin,
-      connections: { heartbeatMs: 100, offlineMs: 5000 },
-    })
+    const service = await setup("darwin-service-bootstrap", () =>
+      openOrganizationService({
+        home: path.join(root, "service"),
+        publicOrigin: connection.origin,
+        connections: { heartbeatMs: 100, offlineMs: 5000 },
+      }),
+    )
     cleanups.push(() => service.close())
     const nonces = new Set<string>(),
       connected = new Map<string, number>(),
@@ -857,9 +927,7 @@ async function host() {
         passed: false,
         phase,
         costs,
-        errors: errors.map((value) => ({
-          name: value instanceof Error ? value.name : "UnknownError",
-        })),
+        errors: errors.map(safeFailure),
       }),
     )
     throw new Error("Actual cross-OS acceptance failed at " + phase + "; original failure retained in the runner", {
@@ -870,18 +938,24 @@ async function host() {
 
 async function linux() {
   assert.equal(process.platform, "linux")
-  const secret = await identity(),
-    bootstrap = Bootstrap.parse(await waitArtifact("darwin", true))
+  const secret = await setup("linux-identity", identity),
+    bootstrap = await setup("linux-bootstrap-rendezvous", async () =>
+      Bootstrap.parse(await waitArtifact("darwin", true)),
+    )
   const nonces = new Set<string>(),
-    root = await fs.mkdtemp(path.join(process.env.SYNERGY_TEST_ROOT!, "cross-os-linux-"))
-  const peer = await createPeer({
-    root,
-    origin: bootstrap.origin,
-    identity: { ...bootstrap.identity, deviceID: "cross-os-linux" },
-    async ticket(publicKey) {
-      return Runtime.Ticket.parse(await exchange(secret, bootstrap, bootstrap.origin, "hello", { publicKey }, nonces))
-    },
-  })
+    root = await setup("linux-temporary-root", () =>
+      fs.mkdtemp(path.join(process.env.SYNERGY_TEST_ROOT!, "cross-os-linux-")),
+    )
+  const peer = await setup("linux-peer-bootstrap", () =>
+    createPeer({
+      root,
+      origin: bootstrap.origin,
+      identity: { ...bootstrap.identity, deviceID: "cross-os-linux" },
+      async ticket(publicKey) {
+        return Runtime.Ticket.parse(await exchange(secret, bootstrap, bootstrap.origin, "hello", { publicKey }, nonces))
+      },
+    }),
+  )
   let closed = false
   try {
     await exchange(

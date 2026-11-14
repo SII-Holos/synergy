@@ -252,12 +252,17 @@ async function roundtrip(mode: "original" | "continued") {
     }))
     for (const binding of bindings) await Epochs.reserve(binding, permit.manifestHash)
     const contexts: { ownerID: string; context: Owners.TargetContext }[] = []
-    for (const session of exported.sessions) {
-      for (const ownerID of ["session-core", "organization-runtime"]) {
+    for await (const member of Staging.members({
+      handoffID: permit.handoffID,
+      rootSessionID: permit.sessionID,
+      scopeID: sourceBinding.projectID,
+      signal: new AbortController().signal,
+    })) {
+      for (const ownerID of Owners.publicationOrder(Object.keys(member.owners))) {
         const context = await Staging.context({
           handoffID: permit.handoffID,
           ownerID,
-          session,
+          session: member.session,
           rootSessionID: permit.sessionID,
           mapping: {},
           signal: new AbortController().signal,
@@ -377,12 +382,17 @@ async function roundtrip(mode: "original" | "continued") {
         manifestHash: permit.manifestHash,
       })
     const contexts: { ownerID: string; context: Owners.TargetContext }[] = []
-    for (const session of returned.sessions) {
-      for (const ownerID of ["session-core", "organization-runtime"]) {
+    for await (const member of Staging.members({
+      handoffID: backPermit.handoffID,
+      rootSessionID: permit.sessionID,
+      scopeID: sourceBinding.projectID,
+      signal: new AbortController().signal,
+    })) {
+      for (const ownerID of Owners.publicationOrder(Object.keys(member.owners))) {
         const context = await Staging.context({
           handoffID: backPermit.handoffID,
           ownerID,
-          session,
+          session: member.session,
           rootSessionID: permit.sessionID,
           mapping: {},
           signal: new AbortController().signal,
