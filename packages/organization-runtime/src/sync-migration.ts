@@ -1,6 +1,9 @@
 import { z } from "zod"
 import { isDeepStrictEqual } from "node:util"
-import { Session } from "@ericsanchezok/synergy-harness/session"
+import { OrganizationSessionProtocol as Sessions } from "@ericsanchezok/synergy-organization-protocol"
+import { SessionTransferCore as Core } from "@ericsanchezok/synergy-harness/session/transfer"
+import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
+import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
 import { RolloutArtifact } from "@ericsanchezok/synergy-harness/session/rollout/artifact"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { MigrationRegistry } from "@ericsanchezok/synergy-harness/migration/registry"
@@ -52,11 +55,23 @@ const migrations: Migration[] = [
         if (!isDeepStrictEqual(row.key, Keys.attachment(orgID, value.sessionID, value.attachmentID)))
           throw new Error("Legacy attachment alias changed its original key")
         if (value.artifact.status !== "complete" || !value.artifact.sha256) continue
-        const session = await Session.get(value.sessionID)
-        if (session.scope.id !== value.scopeID || session.organization?.orgID !== orgID)
+        const session = await Storage.snapshot(async () => {
+          const pair = await Storage.readMany([
+            StoragePath.sessionIndex(Identifier.asSessionID(value.sessionID)),
+            StoragePath.sessionInfo(Identifier.asScopeID(value.scopeID), Identifier.asSessionID(value.sessionID)),
+          ])
+          if (pair.every((entry) => entry === undefined)) return
+          return (await Core.storedInfo({ scopeID: value.scopeID, sessionID: value.sessionID })).info
+        })
+        if (!session) continue
+        if (session.scope.id !== value.scopeID || Sessions.Binding.parse(session.organization).orgID !== orgID)
           throw new Error("Legacy attachment alias changed its original native owner")
         const owner = { kind: "session", scopeID: value.scopeID, sessionID: value.sessionID } as const
-        const actual = await RolloutArtifact.get(owner, value.artifact.id)
+        const actual = await RolloutArtifact.get(owner, value.artifact.id).catch((error: unknown) => {
+          if (error instanceof Storage.NotFoundError) return
+          throw error
+        })
+        if (!actual) continue
         if (!isDeepStrictEqual(actual, value.artifact))
           throw new Error("Legacy attachment content lacks its original native reference")
         let bytes = 0
