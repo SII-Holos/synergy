@@ -254,6 +254,9 @@ test("trace details use the wide window, retry locally and return focus after Es
   await detail.getByRole("button", { name: "Fetch again", exact: true }).click()
   expect(await detail.getByRole("alert").count()).toBe(0)
   await page.setViewportSize({ width: 375, height: 500 })
+  await detail.evaluate(async (element) => {
+    await Promise.all(element.getAnimations().map((animation) => animation.finished))
+  })
   expect(Math.round((await detail.boundingBox())!.width)).toBe(375)
   expect(Math.round((await detail.boundingBox())!.height)).toBe(500)
   await page.keyboard.press("Escape")

@@ -2,12 +2,9 @@ import { afterAll, afterEach, beforeAll, expect, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
 import { chromium, type Browser, type Page } from "playwright"
-import { createServer, type ViteDevServer } from "vite"
-import solid from "vite-plugin-solid"
-import tailwind from "@tailwindcss/vite"
-import { fixturePort } from "@ericsanchezok/synergy-testing/fixture"
+import { createBrowserFixture, type BrowserFixture } from "../../support/browser-fixture"
 
-let server: ViteDevServer
+let server: BrowserFixture
 let browser: Browser
 let page: Page
 let directory: string
@@ -66,41 +63,17 @@ beforeAll(async () => {
     render(()=><I18nProvider i18n={setupI18n({locale:"en",messages:{en:{}}})}><DialogProvider><App/></DialogProvider></I18nProvider>,document.getElementById("root"))
   `,
   )
-  server = await createServer({
-    configFile: false,
+  server = await createBrowserFixture({
     root: directory,
-    cacheDir: path.join(directory, ".vite"),
-    plugins: [
-      {
-        name: "session-transfer-context",
-        enforce: "pre",
-        resolveId(id, importer) {
-          if (
-            importer?.includes("/dialog-session-transfer.tsx") &&
-            (["@/context/global-sdk", "@/context/platform", "@/context/server", "@solidjs/router"].includes(id) ||
-              /\/context\/(global-sdk|platform|server)(\.tsx)?$/.test(id))
-          )
-            return contexts
-        },
-      },
-      solid(),
-      tailwind(),
+    styled: true,
+    localized: false,
+    aliases: [
+      { find: /^.*\/context\/(global-sdk|platform|server)(\.tsx)?$/, replacement: contexts },
+      { find: "@solidjs/router", replacement: contexts },
+      { find: "@", replacement: source },
     ],
-    resolve: { alias: { "@": source } },
-    optimizeDeps: {
-      noDiscovery: true,
-      include: ["solid-js", "solid-js/web", "solid-js/store", "@lingui/core", "@lingui/solid"],
-    },
-    server: {
-      host: "127.0.0.1",
-      port: await fixturePort(),
-      strictPort: true,
-      fs: { allow: [path.resolve(source, "../../.."), directory] },
-    },
   })
-  await server.listen()
-  origin = server.resolvedUrls!.local[0]!
-  await server.warmupRequest("/main.tsx")
+  origin = server.url
   browser = await chromium.launch({ headless: true })
 }, 30_000)
 afterEach(async () => {
