@@ -28,6 +28,71 @@ import {
 } from "./support/cross-os-transport"
 
 const role = process.env.SYNERGY_CROSS_OS_ROLE
+
+const transportFacts = {
+  stderrLines: 0,
+  registrationEvents: 0,
+  firstRegistrationMs: -1,
+  lastRegistrationMs: -1,
+  exitCode: undefined as number | undefined,
+  stderrCategories: {
+    edgeConnect: 0,
+    edgeRegister: 0,
+    edgeLost: 0,
+    edgeServe: 0,
+    originReach: 0,
+    originTLS: 0,
+    requestEnded: 0,
+    otherError: 0,
+  },
+  health: {
+    attempts: 0,
+    headerResponses: 0,
+    headerFailures: 0,
+    headerTimeouts: 0,
+    budgetAborts: 0,
+    nonOKResponses: 0,
+    originHandled: 0,
+    lastHeaderFailure: undefined as ReturnType<typeof safeFailure> | undefined,
+  },
+}
+// Provenance: https://github.com/cloudflare/cloudflared/blob/2026.11.0/connection/observer.go
+// Local adaptation: Count registration events and bounded failure categories without treating a printed URL as readiness.
+function observeTunnelStderr(line: string) {
+  transportFacts.stderrLines++
+  if (line.includes("Registered tunnel connection")) {
+    transportFacts.registrationEvents++
+    if (transportFacts.firstRegistrationMs < 0) transportFacts.firstRegistrationMs = performance.now()
+    transportFacts.lastRegistrationMs = performance.now()
+  }
+  const categories = transportFacts.stderrCategories
+  let classified = false
+  for (const [category, matches] of [
+    ["edgeConnect", line.includes("Unable to establish connection with Cloudflare edge")],
+    ["edgeRegister", line.includes("Register tunnel error from server side")],
+    ["edgeLost", line.includes("Lost connection with the edge")],
+    ["edgeServe", line.includes("Serve tunnel error")],
+    ["originReach", line.includes("Unable to reach the origin service")],
+    ["originTLS", /x509:|tls:|TLS handshake timeout/.test(line)],
+    ["requestEnded", line.includes("Incoming request ended abruptly")],
+  ] as const) {
+    if (!matches) continue
+    categories[category]++
+    classified = true
+  }
+  if (!classified && /(?:^|\s)ERR(?:\s|$)/.test(line)) categories.otherError++
+}
+function transportSnapshot() {
+  return {
+    stderrLines: transportFacts.stderrLines,
+    registrationEvents: transportFacts.registrationEvents,
+    firstRegistrationMs: transportFacts.firstRegistrationMs,
+    lastRegistrationMs: transportFacts.lastRegistrationMs,
+    ...(transportFacts.exitCode === undefined ? {} : { exitCode: transportFacts.exitCode }),
+    stderrCategories: { ...transportFacts.stderrCategories },
+    health: { ...transportFacts.health },
+  }
+}
 const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex")
 const fileHash = (value: Uint8Array) => createHash("sha256").update(value).digest("hex")
 const Json = z.json()
@@ -106,7 +171,8 @@ async function until<T>(read: () => Promise<T | undefined>, budget: number, mess
   }
   throw new Error(message)
 }
-// Provenance: https://developers.cloudflare.com/tunnel/reference/origin-parameters/ — the temporary test edge still verifies its private origin CA.
+// Provenance: https://developers.cloudflare.com/tunnel/reference/origin-parameters/
+// Local adaptation: The temporary test edge still verifies its private origin CA.
 async function tunnel(directory: string, port: number) {
   const cert = path.join(directory, "origin-cert.pem"),
     key = path.join(directory, "origin-key.pem")
@@ -171,19 +237,28 @@ async function tunnel(directory: string, port: number) {
       },
     ),
   )
+  void child.exited.then((code) => {
+    transportFacts.exitCode = code
+  })
   const ready = Promise.withResolvers<string>()
   const reader = (async () => {
     const stream = child.stderr.getReader(),
       decoder = new TextDecoder()
     let buffered = ""
+    let partialLine = ""
     try {
       while (true) {
         const result = await stream.read()
         if (result.done) break
-        buffered = (buffered + decoder.decode(result.value, { stream: true })).slice(-32768)
+        const chunk = decoder.decode(result.value, { stream: true })
+        buffered = (buffered + chunk).slice(-32768)
+        const lines = (partialLine + chunk).split(/\r?\n/)
+        partialLine = lines.pop()!.slice(-32768)
+        for (const line of lines) observeTunnelStderr(line.slice(-32768))
         const found = buffered.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/)
         if (found) ready.resolve(found[0])
       }
+      if (partialLine) observeTunnelStderr(partialLine)
       ready.reject(new Error("The task-owned tunnel exited before a public HTTPS endpoint was ready"))
     } finally {
       stream.releaseLock()
@@ -249,6 +324,7 @@ async function setupReport(
       elapsedMs: performance.now() - started,
       ...(setupHTTPStatus === undefined ? {} : { httpStatus: setupHTTPStatus }),
       ...(error === undefined ? {} : { errors: [safeFailure(error)] }),
+      ...(role === "darwin" ? { transport: transportSnapshot() } : {}),
     }),
   )
 }
@@ -418,7 +494,10 @@ async function host() {
       },
       fetch(request, server) {
         const url = new URL(request.url)
-        if (url.pathname === "/__cross-os-health") return Response.json({ run: run(), native: process.platform })
+        if (url.pathname === "/__cross-os-health") {
+          transportFacts.health.originHandled++
+          return Response.json({ run: run(), native: process.platform })
+        }
         if (url.pathname === "/__cross-os-control") return control(request)
         return service.fetch(request, server)
       },
@@ -428,14 +507,19 @@ async function host() {
       until(
         async () => {
           const requestStarted = performance.now()
+          let headersReceived = false
           try {
             bootstrapSignal.throwIfAborted()
             await setupHTTP("darwin-public-health-headers", requestStarted)
+            transportFacts.health.attempts++
             const response = await fetch(connection.origin + "/__cross-os-health", {
               signal: AbortSignal.any([bootstrapSignal, AbortSignal.timeout(5000)]),
             })
+            headersReceived = true
+            transportFacts.health.headerResponses++
             await setupHTTP("darwin-public-health-body", requestStarted, response)
             if (!response.ok) {
+              transportFacts.health.nonOKResponses++
               await response.body?.cancel()
               return
             }
@@ -444,6 +528,12 @@ async function host() {
             assert.deepEqual(value.run, run())
             return true
           } catch (error) {
+            if (!headersReceived) {
+              transportFacts.health.headerFailures++
+              transportFacts.health.lastHeaderFailure = safeFailure(error)
+              if (error instanceof Error && error.name === "TimeoutError") transportFacts.health.headerTimeouts++
+              if (bootstrapSignal.aborted) transportFacts.health.budgetAborts++
+            }
             if (bootstrapSignal.aborted) throw error
             await setupReport("darwin-public-health-retry", "pending", requestStarted, error)
             return
@@ -981,6 +1071,7 @@ async function host() {
       }),
     )
   } catch (error) {
+    const failedTransport = transportSnapshot()
     const errors: unknown[] = [error]
     for (const close of cleanups.toReversed()) {
       try {
@@ -999,6 +1090,7 @@ async function host() {
         ...(phase === "service-bootstrap" && setupHTTPStatus !== undefined ? { httpStatus: setupHTTPStatus } : {}),
         costs,
         errors: errors.map(safeFailure),
+        transport: failedTransport,
       }),
     )
     throw new Error("Actual cross-OS acceptance failed at " + phase + "; original failure retained in the runner", {

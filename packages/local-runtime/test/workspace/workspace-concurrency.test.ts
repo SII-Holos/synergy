@@ -1,6 +1,7 @@
 import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { expect, spyOn, test } from "bun:test"
 import path from "node:path"
+import { AsyncLocalStorage } from "node:async_hooks"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
@@ -154,7 +155,9 @@ for (const shared of [false, true])
     stage("runtime-ready")
     const selectedRuntime = await runtime.run(() => RuntimeContext.current())
     let diagnosingExclusive = false
-    const selected = () => diagnosingExclusive && RuntimeContext.tryCurrent() === selectedRuntime
+    const exclusiveObservation = new AsyncLocalStorage<boolean>()
+    const selected = () =>
+      diagnosingExclusive && exclusiveObservation.getStore() === true && RuntimeContext.tryCurrent() === selectedRuntime
     const admission = RuntimeMaintenance.assertAdmission
     using admissionStages =
       process.platform === "win32"
@@ -370,8 +373,19 @@ for (const shared of [false, true])
                       stage("exclusive-must-be-busy")
                       diagnosingExclusive = true
                       try {
-                        await expect(WorkspaceAccess.exclusive([first.path], async () => {})).rejects.toMatchObject({
-                          name: "WorkspaceBusyError",
+                        // Await IPC-backed admission before matching: nested matcher waits can
+                        // strand Windows libuv completions while the native request is still pending.
+                        // Provenance: https://github.com/oven-sh/bun/pull/40023
+                        // Local adaptation: Await the original admission before asserting its outcome.
+                        const outcome = await exclusiveObservation.run(true, () =>
+                          WorkspaceAccess.exclusive([first.path], async () => {}).then(
+                            () => ({ kind: "completed" as const }),
+                            (error: unknown) => ({ kind: "rejected" as const, error }),
+                          ),
+                        )
+                        expect(outcome).toMatchObject({
+                          kind: "rejected",
+                          error: { name: "WorkspaceBusyError" },
                         })
                       } finally {
                         diagnosingExclusive = false
