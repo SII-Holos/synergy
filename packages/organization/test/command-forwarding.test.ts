@@ -364,7 +364,7 @@ function answer(socket: WebSocket, frame: Extract<Runtime.ServerFrame, { type: "
 test("online forwarding awaits B and an explicit retry reconciles a lost receipt without another input", async () => {
   await using f = await commandFixture()
   const socket = await f.connect()
-  const forwarder = createCommandForwarder({ admissions: f.commands, connections: f.connections, timeoutMs: 150 })
+  const caller = new AbortController()
   const inputs: Command.InputDelivery[] = []
   let saved: Command.Result | undefined
   socket.onmessage = (event) => {
@@ -390,6 +390,7 @@ test("online forwarding awaits B and an explicit retry reconciles a lost receipt
           effect: { kind: "inbox", itemID: "item", messageID: "message", mode: "context" },
         },
       })
+      caller.abort()
       return
     }
     if (command.kind === "query")
@@ -403,16 +404,16 @@ test("online forwarding awaits B and an explicit retry reconciles a lost receipt
       )
   }
   await f.run(async () => {
-    await expect(forwarder.input(f.credentials.alice, f.request())).rejects.toMatchObject({
+    await expect(f.forwarder.input(f.credentials.alice, f.request(), caller.signal)).rejects.toMatchObject({
       data: { code: "COMMAND_OUTCOME_UNKNOWN", requestID: "request", outcome: "unknown" },
     })
     expect(
       (await f.commands.get(f.credentials.alice, { sessionID: f.sessionID, requestID: "request" })).attempt.state,
     ).toBe("unknown")
-    const result = await forwarder.input(f.credentials.alice, f.request())
+    const result = await f.forwarder.input(f.credentials.alice, f.request())
     expect(result).toMatchObject({ existing: true, receipt: saved!.accepted })
     expect(inputs).toHaveLength(1)
-    await expect(forwarder.input(f.credentials.alice, f.request("request", "Changed"))).rejects.toMatchObject({
+    await expect(f.forwarder.input(f.credentials.alice, f.request("request", "Changed"))).rejects.toMatchObject({
       data: { code: "REVISION_CONFLICT" },
     })
     expect(inputs).toHaveLength(1)
@@ -421,7 +422,7 @@ test("online forwarding awaits B and an explicit retry reconciles a lost receipt
 
 test("native dropped sends are definitely unsent while send exceptions retain uncertainty", async () => {
   for (const outcome of ["drop", "throw"] as const) {
-    await using f = await commandFixture({ timeoutMs: 150 })
+    await using f = await commandFixture()
     await f.connect()
     const send = spyOn(f.wire(), "send").mockImplementation(() => {
       if (outcome === "throw") throw new Error("native send interrupted")

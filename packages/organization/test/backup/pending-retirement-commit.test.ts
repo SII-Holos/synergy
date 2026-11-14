@@ -73,8 +73,10 @@ for (const phase of ["before", "after"] as const)
     const controller = new AbortController()
     const observer = new Error("Observer left after the original SQL commit")
     let injected = false
+    const committing = new AsyncLocalStorage<boolean>()
     using fault = spyOn(store, "transaction").mockImplementation(
       async <T>(body: (tx: StoreTransaction) => Promise<T>, options?: TransactionOptions) => {
+        if (!committing.getStore()) return transaction(body, options)
         if (!injected && phase === "before") {
           injected = true
           throw unknown
@@ -103,11 +105,13 @@ for (const phase of ["before", "after"] as const)
         await expect(commit({ ...input, referenceHash: "f".repeat(64) }, body)).rejects.toBeInstanceOf(
           RuntimeMaintenance.Blocked,
         )
-        const result = await commit(input, async () => {
-          expect(storageQueueSignal()).toBeUndefined()
-          escaped = AsyncLocalStorage.bind(() => new StorageQueue("expired-retirement-tail").run(async () => true))
-          return body()
-        })
+        const result = await committing.run(true, () =>
+          commit(input, async () => {
+            expect(storageQueueSignal()).toBeUndefined()
+            escaped = AsyncLocalStorage.bind(() => new StorageQueue("expired-retirement-tail").run(async () => true))
+            return body()
+          }),
+        )
         if (phase === "after") {
           expect(storageQueueSignal()?.aborted).toBe(true)
           await expect(new StorageQueue("original-observer").run(async () => true)).rejects.toBe(observer)
@@ -127,7 +131,11 @@ for (const phase of ["before", "after"] as const)
         signal: controller.signal,
       })
       if (phase === "before") {
-        await expect(work).rejects.toBe(unknown)
+        const error = await work.then(
+          () => undefined,
+          (error: unknown) => error,
+        )
+        expect(error).toBe(unknown)
         expect(completion).not.toHaveBeenCalled()
         expect(
           await f.source.run(() => RuntimeMaintenance.retirement(f.reference.current.maintenance.maintenanceID)),
@@ -149,15 +157,17 @@ test("an accepted retirement native failure remains an error and retains the sam
     throw failure
   })
   await withPendingTarget(f.directory, async (_target, _reference, target) => {
-    await expect(
-      Current.resumeRetirement({
-        source: f.source.source,
-        target,
-        namespace: f.namespace,
-        native: f.native,
-        keys: pendingKeys,
-      }),
-    ).rejects.toBe(failure)
+    const error = await Current.resumeRetirement({
+      source: f.source.source,
+      target,
+      namespace: f.namespace,
+      native: f.native,
+      keys: pendingKeys,
+    }).then(
+      () => undefined,
+      (error: unknown) => error,
+    )
+    expect(error).toBe(failure)
   })
   expect(
     await f.source.run(() => RuntimeMaintenance.retirement(f.reference.current.maintenance.maintenanceID)),

@@ -8,6 +8,7 @@ import { SessionHistory } from "@ericsanchezok/synergy-harness/session/history"
 import { SessionNav } from "@ericsanchezok/synergy-harness/session/nav"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { StoreTransaction } from "@ericsanchezok/synergy-harness/storage/transactional-store"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { registerLocalRuntime } from "@ericsanchezok/synergy-local-runtime/register"
 import { NoteMarkdown, NoteStore } from "@ericsanchezok/synergy-note"
@@ -491,18 +492,45 @@ test("a failed derived control write rolls back its canonical message and part u
       const data = await seedMessages()
       const keys = [data.messageKey, data.partKey, data.displayMessageKey, data.displayPartKey, data.inboxKey]
       const before = await Storage.readMany(keys)
-      const write = Storage.write
-      const fail = spyOn(Storage, "write").mockImplementation(async (key, value) => {
-        if (key.join("/") === data.displayPartKey.join("/")) throw new Error("derived write interrupted")
-        return write(key, value)
-      })
-      try {
-        await expect(MessageV2.get({ sessionID: data.session.id, messageID: data.message.id })).rejects.toThrow(
-          "derived write interrupted",
+      const store = Storage.current().store
+      const writeMany = StoreTransaction.prototype.writeMany
+      const interrupted = new Error("derived write interrupted")
+      let failures = 0
+      let staged: unknown[] | undefined
+      const fail = spyOn(StoreTransaction.prototype, "writeMany").mockImplementation(async function (
+        this: StoreTransaction,
+        entries,
+      ) {
+        await writeMany.call(this, entries)
+        if (
+          Storage.current().store !== store ||
+          !entries.some(({ key }) => key.join("/") === data.displayPartKey.join("/"))
         )
+          return
+        store.assertWriteTransaction(this)
+        const values = await this.readMany([data.messageKey, data.partKey])
+        const message = MessageV2.User.parse(values[0])
+        const part = MessageV2.ToolPart.parse(values[1])
+        const features: unknown[] = [message.metadata?.requiredFeatures, part.state.metadata?.requiredFeatures]
+        if (features.some((value) => !Array.isArray(value) || !value.includes("lattice"))) return
+        staged = values
+        failures++
+        throw interrupted
+      })
+      let error: unknown
+      try {
+        await MessageV2.get({ sessionID: data.session.id, messageID: data.message.id })
+      } catch (failure) {
+        error = failure
       } finally {
         fail.mockRestore()
       }
+      expect(failures).toBe(1)
+      expect(error).toBe(interrupted)
+      expect(staged).toMatchObject([
+        { metadata: { requiredFeatures: ["blueprint", "lattice"] } },
+        { state: { metadata: { requiredFeatures: ["blueprint", "lattice"] } } },
+      ])
       expect(await Storage.readMany(keys)).toEqual(before)
       expect((await Storage.readMany([receipt(data.session.id)]))[0]).toBeUndefined()
       const message = await MessageV2.get({ sessionID: data.session.id, messageID: data.message.id })

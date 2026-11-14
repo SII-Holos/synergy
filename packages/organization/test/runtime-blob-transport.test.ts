@@ -52,7 +52,8 @@ async function transportFixture() {
     }
     socket.onclose = (event) => {
       closed.resolve(event)
-      for (const next of waiting.splice(0)) next.reject(new Error("Blob transport closed before its reply"))
+      for (const next of waiting.splice(0))
+        next.reject(new Error(`Blob transport closed before its reply (code ${event.code})`))
     }
     await new Promise<void>((resolve, reject) => {
       socket.onopen = () => resolve()
@@ -197,6 +198,7 @@ test("partial blob groups and their aggregate decoded bytes share the original r
     for (let group = 0; group < 15; group++) {
       await peer.send(fragment(peer, { exchangeID: `group-${group}` }))
       await heartbeat(peer, group + 1)
+      await f.drain()
     }
     await peer.send(fragment(peer, { exchangeID: "group-15" }))
     await peer.send(fragment(peer, { exchangeID: "group-16" }))
@@ -211,9 +213,11 @@ test("partial blob groups and their aggregate decoded bytes share the original r
           fragment(peer, { exchangeID: `bytes-${group}`, total: 128, totalBytes: 8_388_608, index, data }),
         )
       await heartbeat(peer, index + 1)
+      await f.drain()
     }
     await peer.send(fragment(peer, { exchangeID: "bytes-0", total: 128, totalBytes: 8_388_608, index: 46, data }))
     await heartbeat(peer, 47)
+    await f.drain()
     await peer.send(fragment(peer, { exchangeID: "bytes-1", total: 128, totalBytes: 8_388_608, index: 46, data }))
     await rejected(peer, "SERVICE_UNAVAILABLE")
   }

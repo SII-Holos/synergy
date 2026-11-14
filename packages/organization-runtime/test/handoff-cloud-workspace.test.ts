@@ -337,8 +337,67 @@ for (const scenario of [
       })
       return { runtime, client, registration, headers: account.headers, sockets, home, input }
     }
+    let readiness = "before-source-member"
     const source = await member("native-source", "a".repeat(64))
+    readiness = "source-original-heartbeat-ready"
     const target = await member("cloud-target", "b".repeat(64), recipient)
+    readiness = "both-original-heartbeats-ready"
+    const closes: Array<{
+      role: string
+      code: number
+      epoch: number
+      leaseRemainingMs: number
+      pendingFrames: number
+      pendingBytes: number
+    }> = []
+    f.observeClose((value) => {
+      if (closes.length >= 4) return
+      closes.push({
+        role:
+          value.runtimeID === source.registration.runtimeID
+            ? "source"
+            : value.runtimeID === target.registration.runtimeID
+              ? "target"
+              : "other",
+        code: value.code,
+        epoch: value.epoch,
+        leaseRemainingMs: value.leaseRemainingMs,
+        pendingFrames: value.pendingFrames,
+        pendingBytes: value.pendingBytes,
+      })
+    })
+    let activeDrive:
+      | {
+          requestID: string
+          operation: Handoff.Drive["operation"]
+          role: ReturnType<typeof Handoff.machineRole>
+          started: number
+          lastReceipt?: { state: string; stage: string; purposes: string[]; runtimeMatches: boolean }
+        }
+      | undefined
+    const originalMessage = f.service.websocket.message
+    using driveWire = spyOn(f.service.websocket, "message").mockImplementation((socket, raw) => {
+      if (activeDrive) {
+        const text = typeof raw === "string" ? raw : Buffer.from(raw).toString()
+        if (text.includes(activeDrive.requestID)) {
+          try {
+            const frame = Runtime.ClientFrame.safeParse(JSON.parse(text))
+            if (frame.success && frame.data.type === "receipt" && frame.data.reply.kind === "handoff") {
+              const result = frame.data.reply.result
+              if (result.requestID === activeDrive.requestID)
+                activeDrive.lastReceipt = {
+                  state: result.state,
+                  stage: result.stage,
+                  purposes: result.facts.map((fact) => fact.proof.purpose),
+                  runtimeMatches:
+                    result.runtimeID === (activeDrive.role === "source" ? source : target).registration.runtimeID,
+                }
+            }
+          } catch {}
+        }
+      }
+      return originalMessage(socket, raw)
+    })
     f.interceptFrames(undefined)
     const directory = path.join(f.root, "source-directory")
     await fs.mkdir(directory)
@@ -587,18 +646,43 @@ for (const scenario of [
       { handoffID, orgHandoffAccept: accept },
       { headers: target.headers, throwOnError: true },
     )
-    const drive = async (operation: Handoff.Drive["operation"]) =>
-      Handoff.MachineResult.parse(
-        (
-          await f.client.orgHandoff.drive(
-            { handoffID, orgHandoffDrive: { operation, requestID: crypto.randomUUID() } },
-            {
-              headers: Handoff.machineRole(operation) === "target" ? target.headers : source.headers,
-              throwOnError: true,
-            },
-          )
-        ).data,
-      )
+    const drive = async (operation: Handoff.Drive["operation"]) => {
+      const role = Handoff.machineRole(operation)
+      const selected: NonNullable<typeof activeDrive> = {
+        requestID: crypto.randomUUID(),
+        operation,
+        role,
+        started: performance.now(),
+      }
+      activeDrive = selected
+      try {
+        return Handoff.MachineResult.parse(
+          (
+            await f.client.orgHandoff.drive(
+              { handoffID, orgHandoffDrive: { operation, requestID: selected.requestID } },
+              { headers: role === "target" ? target.headers : source.headers, throwOnError: true },
+            )
+          ).data,
+        )
+      } catch (error) {
+        console.error(
+          "HANDOFF_ORIGINAL_DRIVE_FAILURE",
+          JSON.stringify({
+            scenario,
+            readiness,
+            operation,
+            role,
+            elapsedMs: performance.now() - selected.started,
+            matchingNativeReceiptSeen: selected.lastReceipt !== undefined,
+            lastReceipt: selected.lastReceipt,
+            closes,
+          }),
+        )
+        throw error
+      } finally {
+        if (activeDrive === selected) activeDrive = undefined
+      }
+    }
     if (scenario === "grant-revoked") {
       await f.client.orgResourceGrants.set(
         {

@@ -90,10 +90,12 @@ test("releases expired payloads while idle without a stamp or replay", async () 
   await Bun.sleep(60)
   const deadline = performance.now() + 1000
   let collected = false
+  // WeakRefDeref retains live targets; cross native jobs before the next GC sample.
+  // Provenance: https://tc39.es/ecma262/multipage/managing-memory.html#sec-weakrefderef
   while (!collected && performance.now() < deadline) {
-    await Bun.sleep(0)
+    await new Promise<void>((resolve) => setImmediate(resolve))
     Bun.gc(true)
-    await Bun.sleep(0)
+    await new Promise<void>((resolve) => setImmediate(resolve))
     collected = payload.deref() === undefined
   }
   if (!collected) {

@@ -46,6 +46,36 @@ async function availablePort() {
 }
 
 async function sharedFilesFixture() {
+  const started = performance.now()
+  let stage = "fixture-start"
+  let lastRequest: { action: string; state: string; status?: number } | undefined
+  const observeStage = (value: string) => {
+    stage = value
+  }
+  async function closeObserved(name: string, body: () => Promise<void>) {
+    const closeStarted = performance.now()
+    console.error(
+      "SHARED_FILES_LIFETIME",
+      JSON.stringify({ stage, closing: name, state: "start", elapsedMs: closeStarted - started, lastRequest }),
+    )
+    let completed = false
+    try {
+      await body()
+      completed = true
+    } finally {
+      console.error(
+        "SHARED_FILES_LIFETIME",
+        JSON.stringify({
+          stage,
+          closing: name,
+          state: completed ? "completed" : "failed",
+          elapsedMs: performance.now() - started,
+          closeMs: performance.now() - closeStarted,
+          lastRequest,
+        }),
+      )
+    }
+  }
   const resources = testResources()
   try {
     const temporary = await tmpdir()
@@ -80,7 +110,7 @@ async function sharedFilesFixture() {
         ],
       },
     })
-    resources.defer("organization service", () => service[Symbol.asyncDispose]())
+    resources.defer("organization service", () => closeObserved("service", () => service[Symbol.asyncDispose]()))
     const wake = spyOn(SessionManager, "scheduleWake").mockImplementation(() => {})
     resources.defer("member wakes", () => wake.mockRestore())
     const options = { headers: service.headers, throwOnError: true as const }
@@ -142,6 +172,7 @@ async function sharedFilesFixture() {
     ).data
 
     async function member(deviceID: string, token: string) {
+      observeStage("member-home")
       const home = await prepareMemberHome({
         baseDirectory: path.join(service.root, "members"),
         identity: { ...service.identity, deviceID },
@@ -163,13 +194,14 @@ async function sharedFilesFixture() {
         return false
       })
       const port = await availablePort()
+      observeStage("member-open")
       let runtime = await openMemberRuntime({
         home: home.home,
         identity: home.identity,
         ca: service.ca,
         listen: { port, token },
       })
-      resources.defer("member Runtime", () => runtime.close())
+      resources.defer("member Runtime", () => closeObserved("member", () => runtime.close()))
       const timeout = setTimeout(() => online.reject(new Error("Member did not connect")), 5000)
       try {
         await online.promise
@@ -191,6 +223,7 @@ async function sharedFilesFixture() {
           options,
         )
       ).data
+      observeStage("member-session-created")
       const sessionID = created.effect.sessionID
       await service.client.orgSessionResources.set(
         {
@@ -239,6 +272,7 @@ async function sharedFilesFixture() {
           },
         })
       })
+      observeStage("member-root-ready")
       const client = createSynergyClient({
         baseUrl: `http://127.0.0.1:${port}`,
         headers: { authorization: `Bearer ${token}` },
@@ -252,7 +286,7 @@ async function sharedFilesFixture() {
         sessionID,
         key: credentials.privateKey,
         async reopen() {
-          await runtime.close()
+          await closeObserved("member-reopen", () => runtime.close())
           online = Promise.withResolvers<void>()
           service.interceptFrames((socket, raw) => {
             const frame = OrganizationRuntimeProtocol.ClientFrame.parse(JSON.parse(String(raw)))
@@ -276,7 +310,9 @@ async function sharedFilesFixture() {
           }
         },
         async request(body: Cloud.LocalFileRequest) {
+          lastRequest = { action: body.operation.action, state: "pending" }
           const result = await client.orgLocalWorkspaceFiles.request({ sessionID, orgCloudLocalFileRequest: body })
+          lastRequest = { action: body.operation.action, state: "completed", status: result.response.status }
           return { status: result.response.status, json: async () => result.data ?? result.error }
         },
       }
@@ -286,6 +322,7 @@ async function sharedFilesFixture() {
       member,
       resource,
       allocations: () => allocations,
+      observeStage,
       beforePut(value: typeof beforePut) {
         beforePut = value
       },
@@ -555,6 +592,7 @@ test("two enrolled member file APIs share one remote Workspace head and retain o
       expect(await Storage.count({ prefix: ["workspace"] })).toBe(0)
     })
   expect(f.allocations()).toBe(0)
+  f.observeStage("two-member-body-complete")
 }, 30_000)
 
 test("final source owner freezing drains an accepted remote file writer before its snapshot", async () => {
@@ -1160,6 +1198,7 @@ test("Cortex child View/Edit/Save retain the child's native tool origin and the 
             callID,
             tool,
           })
+          f.observeStage("child-" + tool + "-resolve")
           await using resources = await EnvironmentResources.resolve({
             scopeID: child.scope.id,
             workspaceID: workspace.id,
@@ -1177,6 +1216,7 @@ test("Cortex child View/Edit/Save retain the child's native tool origin and the 
             tool,
           })
           expect(resources.files!.binding).toMatchObject({ authority: { sessionID: parent.id, rootID: parentRootID } })
+          f.observeStage("child-" + tool + "-body")
           await body({
             sessionID: child.id,
             messageID,
@@ -1187,6 +1227,7 @@ test("Cortex child View/Edit/Save retain the child's native tool origin and the 
             metadata() {},
             resources,
           })
+          f.observeStage("child-" + tool + "-body-complete")
         }
         await invoke("view_file", async (context) => {
           expect((await (await ViewFileTool.init()).execute({ filePath: "note.txt" }, context)).output).toContain(
@@ -1249,4 +1290,5 @@ test("Cortex child View/Edit/Save retain the child's native tool origin and the 
   })
   expect(writes).toBe(1)
   expect(f.allocations()).toBe(0)
+  f.observeStage("child-file-body-complete")
 }, 20000)

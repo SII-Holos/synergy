@@ -4,6 +4,7 @@ import fs from "node:fs/promises"
 import path from "node:path"
 import { createHash } from "node:crypto"
 import { z } from "zod"
+import { ObservabilityRedaction } from "@ericsanchezok/synergy-harness/observability/redaction"
 import { createOrganizationClient } from "@ericsanchezok/synergy-sdk/organization"
 import { openOrganizationService } from "@ericsanchezok/synergy-organization/service"
 import {
@@ -29,8 +30,11 @@ import {
 
 const role = process.env.SYNERGY_CROSS_OS_ROLE
 
+type HeaderFailure = { name: string; code?: string; message?: string; cause?: HeaderFailure }
+
 const transportFacts = {
   stderrLines: 0,
+  firstDiagnosticStderr: [] as string[],
   registrationEvents: 0,
   firstRegistrationMs: -1,
   lastRegistrationMs: -1,
@@ -54,6 +58,13 @@ const transportFacts = {
     nonOKResponses: 0,
     originHandled: 0,
     lastHeaderFailure: undefined as ReturnType<typeof safeFailure> | undefined,
+    firstHeaderFailures: [] as Array<{
+      observedAtMs: number
+      elapsedBeforeFailureMs: number
+      fetchInvoked: boolean
+      failure: HeaderFailure
+    }>,
+    failureKinds: {} as Record<string, number>,
   },
 }
 // Provenance: https://github.com/cloudflare/cloudflared/blob/2026.11.0/connection/observer.go
@@ -81,16 +92,39 @@ function observeTunnelStderr(line: string) {
     classified = true
   }
   if (!classified && /(?:^|\s)ERR(?:\s|$)/.test(line)) categories.otherError++
+  if ((classified || /(?:^|\s)(?:ERR|WRN)(?:\s|$)/.test(line)) && transportFacts.firstDiagnosticStderr.length < 4)
+    transportFacts.firstDiagnosticStderr.push(safeTransportText(line))
 }
 function transportSnapshot() {
   return {
     stderrLines: transportFacts.stderrLines,
+    firstDiagnosticStderr: [...transportFacts.firstDiagnosticStderr],
     registrationEvents: transportFacts.registrationEvents,
     firstRegistrationMs: transportFacts.firstRegistrationMs,
     lastRegistrationMs: transportFacts.lastRegistrationMs,
     ...(transportFacts.exitCode === undefined ? {} : { exitCode: transportFacts.exitCode }),
     stderrCategories: { ...transportFacts.stderrCategories },
-    health: { ...transportFacts.health },
+    health: {
+      ...transportFacts.health,
+      firstHeaderFailures: [...transportFacts.health.firstHeaderFailures],
+      failureKinds: { ...transportFacts.health.failureKinds },
+    },
+    environmentPresence: Object.fromEntries(
+      [
+        "HTTP_PROXY",
+        "http_proxy",
+        "HTTPS_PROXY",
+        "https_proxy",
+        "ALL_PROXY",
+        "all_proxy",
+        "NO_PROXY",
+        "no_proxy",
+        "NODE_EXTRA_CA_CERTS",
+        "SSL_CERT_FILE",
+        "SSL_CERT_DIR",
+        "NODE_TLS_REJECT_UNAUTHORIZED",
+      ].map((key) => [key, Object.hasOwn(process.env, key)]),
+    ),
   }
 }
 const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex")
@@ -303,6 +337,41 @@ function safeFailure(value: unknown) {
       : {}),
   }
 }
+function safeTransportText(value: string) {
+  return ObservabilityRedaction.text(value.slice(0, 2048), 512)
+    .replace(/https?:\/\/[^\s"'<>]+/gi, "[url]")
+    .replace(/\/(?:Users\/runner|home\/runner|private\/var\/folders|var\/folders|tmp)\/[^\s"'<>]+/g, "[runner-path]")
+    .replace(/\b(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?\b/g, "[ip]")
+    .slice(0, 512)
+}
+function safeHeaderFailure(value: unknown, depth = 0): HeaderFailure {
+  function field(name: string, inherited = false): unknown {
+    let current = value
+    try {
+      for (let index = 0; index < (inherited ? 4 : 1); index++) {
+        if (typeof current !== "object" || current === null) return
+        const descriptor = Object.getOwnPropertyDescriptor(current, name)
+        if (descriptor) return "value" in descriptor ? descriptor.value : undefined
+        current = Object.getPrototypeOf(current)
+      }
+    } catch {}
+  }
+  const name = field("name", true),
+    code = field("code"),
+    message = typeof value === "string" ? value : field("message"),
+    cause = field("cause")
+  return {
+    name:
+      typeof name === "string" && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(name) && safeTransportText(name) === name
+        ? name
+        : "UnknownError",
+    ...(typeof code === "string" && /^[A-Z][A-Z0-9_]{0,63}$/.test(code) && safeTransportText(code) === code
+      ? { code }
+      : {}),
+    ...(typeof message === "string" ? { message: safeTransportText(message) } : {}),
+    ...(cause === undefined || depth >= 2 ? {} : { cause: safeHeaderFailure(cause, depth + 1) }),
+  }
+}
 let setupStage: string | undefined
 let setupHTTPStatus: number | undefined
 async function setupReport(
@@ -508,10 +577,12 @@ async function host() {
         async () => {
           const requestStarted = performance.now()
           let headersReceived = false
+          let fetchInvoked = false
           try {
             bootstrapSignal.throwIfAborted()
             await setupHTTP("darwin-public-health-headers", requestStarted)
             transportFacts.health.attempts++
+            fetchInvoked = true
             const response = await fetch(connection.origin + "/__cross-os-health", {
               signal: AbortSignal.any([bootstrapSignal, AbortSignal.timeout(5000)]),
             })
@@ -531,6 +602,26 @@ async function host() {
             if (!headersReceived) {
               transportFacts.health.headerFailures++
               transportFacts.health.lastHeaderFailure = safeFailure(error)
+              const failure = safeHeaderFailure(error)
+              if (transportFacts.health.firstHeaderFailures.length < 4)
+                transportFacts.health.firstHeaderFailures.push({
+                  observedAtMs: performance.now(),
+                  elapsedBeforeFailureMs: performance.now() - requestStarted,
+                  fetchInvoked,
+                  failure,
+                })
+              const kind = [
+                failure.name,
+                failure.code ?? "no-code",
+                failure.cause?.name ?? "no-cause",
+                failure.cause?.code ?? "no-code",
+              ].join(":")
+              const category =
+                Object.hasOwn(transportFacts.health.failureKinds, kind) ||
+                Object.keys(transportFacts.health.failureKinds).length < 16
+                  ? kind
+                  : "other"
+              transportFacts.health.failureKinds[category] = (transportFacts.health.failureKinds[category] ?? 0) + 1
               if (error instanceof Error && error.name === "TimeoutError") transportFacts.health.headerTimeouts++
               if (bootstrapSignal.aborted) transportFacts.health.budgetAborts++
             }
