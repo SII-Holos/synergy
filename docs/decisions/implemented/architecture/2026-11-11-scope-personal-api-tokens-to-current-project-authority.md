@@ -36,9 +36,9 @@ Applications retain Session, artifact and request identities and reconcile uncer
 
 The Account Web fixture exercises masked one-time display, an actual clipboard copy, explicit hiding and reload without another issuance. Lost acknowledgements retain the exact original request, including expiry; a metadata-only recovery requires confirmed revocation before replacement. It also checks narrow control boundaries at 360 pixels and the dark recovery view on desktop. These renderer checks complement the real service and native transport coverage above.
 
-## Related
-
 The joint native lifecycle fixture uses one external API token for creation, uncertain-response reconciliation, cancellation and retained artifact metadata/full-content/Range reads. It holds the original physical cancellation after public acceptance, then verifies actual process, stream, Use and Run settlement before offline reads and revocation. Human creator publication remains an independent product operation. A fixture finalizer consumes only its confirmed terminal Run before explicit Runtime closure; it never invents product completion.
+
+## Related
 
 - [Organization architecture](../../../architecture/organization.md)
 - [Agent storage](../../../architecture/agent-storage.md)

@@ -24,6 +24,8 @@ PR 使用 base/head 两侧的 workspace、测试和静态资源导入关系计�
 
 ## 任务和报告
 
+原生资产生产者明确检出 PR source head，其他触发使用原 commit；跨 OS 联合验收核对同 source head 的原成功 run、artifact 身份与校验后字节。必需 CI 仍按实际 tested merge SHA 记录结果，两种证据不能混称。跨 OS 只发布公钥、密封 bootstrap 与脱敏结果；临时传输在 JSON 和签名校验前计实际流字节，并取消越界 body。相同 SHA 缺少可用资产或 runner 时，保留原有限准备时限，待生产者成功后重跑原验收。
+
 macOS Workspace、签名检查和 Desktop 发行打包使用 `macos-26` ARM64 托管镜像。镜像版本是构建与验证环境，不改变 Desktop 的最低安装版本。Runner 分配失败仍使必需检查失败；镜像切换必须重新取得当前提交的完整验证结果。取舍见 [macOS 托管镜像决策](../decisions/implemented/process/2026-11-05-pin-macos-hosted-runner-image.md)。
 
 Linux browser units retain the hosted image's browser libraries and install `fonts-wqy-zenhei` for Chinese glyph coverage. Localized pixel and geometry assertions run against real glyphs rather than missing-glyph boxes; font readiness alone is not coverage evidence. See [localized browser fonts](../decisions/implemented/testing/2026-10-24-localized-browser-fonts.md).

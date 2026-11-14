@@ -2522,9 +2522,124 @@
       "ref": "DigitalTwinSettings"
     },
     "organization": {
-      "description": "Dedicated organization service authentication, registered clients and machine connection settings; restart the service after changes.",
+      "description": "Dedicated organization service authentication, registered clients, machine connections and explicit infrastructure; restart after changes.",
       "type": "object",
       "properties": {
+        "infrastructure": {
+          "type": "object",
+          "properties": {
+            "version": { "type": "number", "const": 1 },
+            "database": {
+              "type": "object",
+              "properties": {
+                "backend": { "type": "string", "const": "postgres" },
+                "urlFile": { "type": "string", "minLength": 1 },
+                "namespace": { "type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$" },
+                "maxConnections": { "default": 2, "type": "integer", "minimum": 1, "maximum": 32 }
+              },
+              "required": ["backend", "urlFile", "namespace", "maxConnections"],
+              "additionalProperties": false
+            },
+            "stores": {
+              "type": "object",
+              "propertyNames": { "type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$" },
+              "additionalProperties": {
+                "type": "object",
+                "properties": {
+                  "provider": { "type": "string", "enum": ["s3", "oss"] },
+                  "bucket": { "type": "string", "minLength": 1 },
+                  "region": { "type": "string", "minLength": 1 },
+                  "endpoint": { "type": "string", "format": "uri" },
+                  "prefix": { "type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9/_-]*$" },
+                  "credentialsFile": { "type": "string", "minLength": 1 }
+                },
+                "required": ["provider", "bucket", "region", "credentialsFile"],
+                "additionalProperties": false
+              }
+            },
+            "environments": {
+              "type": "object",
+              "propertyNames": { "type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$" },
+              "additionalProperties": {
+                "type": "object",
+                "properties": {
+                  "provider": { "type": "string", "const": "docker" },
+                  "spec": {
+                    "type": "object",
+                    "properties": {
+                      "image": { "type": "string", "minLength": 1 },
+                      "memoryBytes": {
+                        "default": 1073741824,
+                        "type": "integer",
+                        "minimum": 67108864,
+                        "maximum": 9007199254740991
+                      },
+                      "cpus": { "default": 1, "type": "number", "exclusiveMinimum": 0, "maximum": 256 },
+                      "pids": { "default": 256, "type": "integer", "minimum": 16, "maximum": 65536 },
+                      "mounts": {
+                        "default": [],
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "type": { "type": "string", "enum": ["bind", "volume"] },
+                            "source": { "type": "string", "minLength": 1 },
+                            "target": { "type": "string", "format": "starts_with", "pattern": "^\\/.*" },
+                            "readOnly": {
+                              "default": true,
+                              "description": "External mounts are read-only; writable files use a coordinated Workspace",
+                              "type": "boolean",
+                              "const": true
+                            }
+                          },
+                          "required": ["type", "source", "target", "readOnly"],
+                          "additionalProperties": false
+                        }
+                      }
+                    },
+                    "required": ["image", "memoryBytes", "cpus", "pids", "mounts"],
+                    "additionalProperties": false
+                  },
+                  "host": {
+                    "type": "object",
+                    "properties": {
+                      "endpoint": { "type": "string", "format": "uri" },
+                      "engineTLS": {
+                        "type": "object",
+                        "properties": {
+                          "certFile": { "type": "string", "minLength": 1 },
+                          "keyFile": { "type": "string", "minLength": 1 },
+                          "caFile": { "type": "string", "minLength": 1 }
+                        },
+                        "required": ["certFile", "keyFile"],
+                        "additionalProperties": false
+                      },
+                      "executionTLS": {
+                        "type": "object",
+                        "properties": {
+                          "certFile": { "type": "string", "minLength": 1 },
+                          "keyFile": { "type": "string", "minLength": 1 },
+                          "caFile": { "type": "string", "minLength": 1 }
+                        },
+                        "required": ["certFile", "keyFile"],
+                        "additionalProperties": false
+                      },
+                      "executionHostname": { "type": "string", "minLength": 1 },
+                      "publishHostIP": { "type": "string", "minLength": 1 }
+                    },
+                    "required": ["endpoint"],
+                    "additionalProperties": false
+                  },
+                  "idleTimeoutMs": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+                },
+                "required": ["provider", "spec", "host"],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": ["version"],
+          "additionalProperties": false
+        },
         "authentication": {
           "type": "object",
           "properties": {
