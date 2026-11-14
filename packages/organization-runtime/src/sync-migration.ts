@@ -9,6 +9,9 @@ import { OrganizationSyncPath as Keys } from "./storage/path"
 import { registerKnowledgeActiveMigrations } from "./knowledge-active"
 import { handoffTargetMigration, handoffTargetRecoveryMigration } from "./handoff-target-record"
 
+import { originalAttachmentContentRepairMigration } from "./sync-attachment-repair"
+export { repairOrganizationSyncAttachmentContent } from "./sync-attachment-repair"
+
 const Sequence = z.object({ localSequence: z.number().int().nonnegative(), draftID: z.string().min(1) })
 const migrations: Migration[] = [
   handoffTargetMigration,
@@ -67,6 +70,7 @@ const migrations: Migration[] = [
       progress(count + 1, count + 1)
     },
   },
+  originalAttachmentContentRepairMigration,
 ]
 
 export function registerSyncMigrations() {

@@ -26,4 +26,4 @@ Session/history/interaction reads require target authorization/signed permits/ca
 
 Desktop Browser requires private managed launch data/explicit listener auth/lazy pages. Reject inherited native credentials/non-Desktop selection. Hosted/member share bridge/intake/worker composition; Hosted has no human account. Verify desktop/hosted-home/hosted-runtime suites.
 
-Isolate Homes/run focused tests/typecheck. Capture rejects pending generations. Native recovery: `./backup`, `./backup/knowledge`, `./backup/recovery`, `test/backup/`. Preserve active Runtimes.
+Isolate Homes; run focused tests/typecheck. Capture rejects pending generations. Recovery: `./backup{,/knowledge,/recovery}`; repair: `./runtime` with original draining lease/namespace. Preserve active Runtimes. Verify `test/backup/`/`test/sync-attachment-repair.test.ts`.

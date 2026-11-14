@@ -130,6 +130,8 @@ Organization Agent tools use an explicit composition policy for both discovery a
 
 Native shared export captures committed identities through the original durable StorageEventSinks transaction before projecting safe DTOs into the existing outbox. Native and outbox FULL errors retain original failures and dependencies; recovery confirms a local write and pending observation before sending content. Attachment versions retain exact original Ref/hash/bytes independently of the current Part alias. See [durable shared export](../decisions/implemented/architecture/2026-11-09-organization-shared-sync-ledger.md) for Scope/index validation, frozen preparation, ACK and garbage-collection ownership.
 
+Explicit native attachment-reference repair uses the original enrolled Runtime namespace and draining backup cohort. It verifies the same owner, epoch and complete bytes before restoring only the existing derived content index through a genuinely guarded writer; the central maintenance flag does not authorize effects. Unproven evidence retains its original batch with UNKNOWN. See [shared export and repair](../decisions/implemented/architecture/2026-11-09-organization-shared-sync-ledger.md).
+
 ## Command signing identity
 
 The service's central startup migration creates one Ed25519 identity bound to its organization and deployment incarnation. The independent database retains its key ID, public key and private PKCS8 material. Startup validates the stored key pair and deployment before becoming ready. An existing migration receipt with missing, malformed or mismatched credentials fails startup; ordinary startup never replaces the signing identity. Repeating an interrupted migration retains an existing matching record.

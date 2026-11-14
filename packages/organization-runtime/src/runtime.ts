@@ -301,3 +301,5 @@ async function openOrganizationRuntime(input: MemberRuntimeOptions) {
     migrationOutput: input.migrationOutput,
   })
 }
+
+export { repairOrganizationSyncAttachmentContent } from "./sync-attachment-repair"
