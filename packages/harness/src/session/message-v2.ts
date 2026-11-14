@@ -1869,17 +1869,24 @@ export namespace MessageV2 {
     }
   }
 
-  function cacheMessageOrder(scopeID: Identifier.ScopeID, sessionID: Identifier.SessionID, markers: string[]) {
+  function cacheMessageOrder(
+    scopeID: Identifier.ScopeID,
+    sessionID: Identifier.SessionID,
+    markers: string[],
+    byMessageID?: Map<string, string>,
+  ) {
     const key = messageOrderKey(scopeID, sessionID)
     const value: MessageOrderCache = {
       scopeID,
-      markers: markers.slice(),
-      byMessageID: new Map(
-        markers.flatMap((marker) => {
-          const id = markerMessageID(marker)
-          return id ? [[id, marker] as const] : []
-        }),
-      ),
+      markers,
+      byMessageID:
+        byMessageID ??
+        new Map(
+          markers.flatMap((marker) => {
+            const id = markerMessageID(marker)
+            return id ? [[id, marker] as const] : []
+          }),
+        ),
     }
     const state = transactionMessageOrders()
     const cache = state && !state.contended.has(key) ? state.values : undefined
@@ -1891,6 +1898,22 @@ export namespace MessageV2 {
     return value
   }
 
+  function insertMessageOrderMarker(markers: string[], marker: string) {
+    const last = markers.at(-1)
+    if (last === undefined || compareMessageOrderMarker(last, marker) <= 0) {
+      markers.push(marker)
+      return
+    }
+    let start = 0
+    let end = markers.length
+    while (start < end) {
+      const middle = Math.floor((start + end) / 2)
+      if (compareMessageOrderMarker(markers[middle]!, marker) <= 0) start = middle + 1
+      else end = middle
+    }
+    markers.splice(start, 0, marker)
+  }
+
   async function rebuildMessageOrder(scopeID: Identifier.ScopeID, sessionID: Identifier.SessionID) {
     await Storage.write(StoragePath.sessionMessageOrderState(scopeID, sessionID), {
       version: 1,
@@ -1898,7 +1921,7 @@ export namespace MessageV2 {
     })
     const infos = await readInfoList({ scopeID, sessionID })
     await Storage.removeTree(StoragePath.sessionMessageOrderMarkersRoot(scopeID, sessionID))
-    const markers = infos.map(messageOrderMarker)
+    const markers = infos.map(messageOrderMarker).sort(compareMessageOrderMarker)
     await writeMessageOrderMarkers(scopeID, sessionID, markers)
     await Storage.write(StoragePath.sessionMessageOrderState(scopeID, sessionID), {
       version: 1,
@@ -1992,15 +2015,18 @@ export namespace MessageV2 {
       await Storage.write(StoragePath.sessionMessageOrderMarker(input.scopeID, sessionID, nextMarker), {})
 
       const markers = order.markers
-        .filter((marker) => marker !== previousMarker)
-        .concat(nextMarker)
-        .sort(compareMessageOrderMarker)
+      if (previousMarker) {
+        const previousIndex = markers.indexOf(previousMarker)
+        if (previousIndex >= 0) markers.splice(previousIndex, 1)
+      }
+      insertMessageOrderMarker(markers, nextMarker)
+      order.byMessageID.set(info.id, nextMarker)
       await Storage.write(StoragePath.sessionMessageOrderState(input.scopeID, sessionID), {
         version: 1,
         ready: true,
         count: markers.length,
       })
-      cacheMessageOrder(input.scopeID, sessionID, markers)
+      cacheMessageOrder(input.scopeID, sessionID, markers, order.byMessageID)
       return info
     })
   }
@@ -2031,13 +2057,16 @@ export namespace MessageV2 {
         await import("./history-display")
       ).SessionHistoryDisplay.messageRemoved(input.scopeID, input.sessionID, input.messageID)
       await Storage.remove(StoragePath.sessionMessageOrderMarker(input.scopeID, input.sessionID, marker))
-      const markers = order.markers.filter((candidate) => candidate !== marker)
+      const markers = order.markers
+      const previousIndex = markers.indexOf(marker)
+      if (previousIndex >= 0) markers.splice(previousIndex, 1)
+      order.byMessageID.delete(input.messageID)
       await Storage.write(StoragePath.sessionMessageOrderState(input.scopeID, input.sessionID), {
         version: 1,
         ready: true,
         count: markers.length,
       })
-      cacheMessageOrder(input.scopeID, input.sessionID, markers)
+      cacheMessageOrder(input.scopeID, input.sessionID, markers, order.byMessageID)
     })
   }
 

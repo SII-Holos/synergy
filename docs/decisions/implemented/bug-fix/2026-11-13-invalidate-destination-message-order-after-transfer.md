@@ -30,7 +30,7 @@ The change preserves the imported Session identity, message and Part bodies, act
 
 A returning Session exposes messages accepted on either machine without reopening execution. Ordering removal participates in activation rollback, and reconstruction uses the current canonical records. Cloud Environment selection, native download, other destination mappings and independent model continuation remain separate capabilities.
 
-Sequential writes in one transaction reuse verified order without repeated full marker scans. Every new transaction and readonly snapshot establishes its own view. This removes repeated work and deferred cache retention, but order metadata and per-message array work still depend on history size. See [native write amplification](../../../postmortem/0197-native-message-order-repeated-full-history-work.md).
+Sequential writes in one transaction reuse verified order without repeated full marker scans. Every new transaction and readonly snapshot establishes its own view. Sequential appends reuse the verified marker array and ID mapping rather than copying, sorting and rebuilding all earlier entries after every message. Earlier insertions use the original comparator; reordering and removal still move affected array entries. Initial validation and metadata remain proportional to history, and contended owners retain the original scan/repair path. See [native write amplification](../../../postmortem/0197-native-message-order-repeated-full-history-work.md).
 
 ## Verification
 

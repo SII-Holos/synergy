@@ -30,6 +30,51 @@ async function newest(session: Session.Info) {
   return Array.fromAsync(MessageV2.readNewestInfos(owner(session)))
 }
 
+function countMarkerCollectionWork(markers: ReadonlySet<string>, active: () => boolean) {
+  const arraySlice = Array.prototype.slice
+  const arrayFilter = Array.prototype.filter
+  const stringSlice = String.prototype.slice
+  let elements = 0
+  const selected = (value: unknown) =>
+    Array.isArray(value) && value.length > 0 && typeof value[0] === "string" && markers.has(value[0])
+  const slices = spyOn(Array.prototype, "slice").mockImplementation(function (
+    this: unknown[],
+    ...args: Parameters<typeof arraySlice>
+  ) {
+    const result = arraySlice.apply(this, args)
+    if (active() && selected(this)) elements += result.length
+    return result
+  })
+  const filters = spyOn(Array.prototype, "filter").mockImplementation(function (
+    this: unknown[],
+    ...args: Parameters<typeof arrayFilter>
+  ) {
+    if (active() && selected(this)) elements += this.length
+    return arrayFilter.apply(this, args)
+  })
+  const strings = spyOn(String.prototype, "slice").mockImplementation(function (
+    this: string,
+    ...args: Parameters<typeof stringSlice>
+  ) {
+    if (
+      active() &&
+      typeof this === "string" &&
+      markers.has(this) &&
+      ((args[0] === 0 && args[1] === 16) || args[0] === 17)
+    )
+      elements++
+    return stringSlice.apply(this, args)
+  })
+  return {
+    count: () => elements,
+    [Symbol.dispose]() {
+      strings.mockRestore()
+      filters.mockRestore()
+      slices.mockRestore()
+    },
+  }
+}
+
 // Counts are the original work contract; elapsed time is intentionally not an oracle.
 test("one native write transaction scans message order once while retaining every Message and Part commit fact", async () => {
   await using runtime = await testRuntime({
@@ -52,12 +97,25 @@ test("one native write transaction scans message order once while retaining ever
         const session = await Session.create({ workspace: null, environmentID: null })
         const root = StoragePath.sessionMessageOrderMarkersRoot(owner(session).scopeID, owner(session).sessionID)
         const messages: MessageV2.User[] = []
+        const markers = new Set<string>()
+        let orderWrites = 0
+        using work = countMarkerCollectionWork(markers, () => orderWrites > 0)
+        const writeInfo = MessageV2.writeInfo
+        using writes = spyOn(MessageV2, "writeInfo").mockImplementation(async (input) => {
+          orderWrites++
+          try {
+            return await writeInfo(input)
+          } finally {
+            orderWrites--
+          }
+        })
         using scans = spyOn(Storage, "scan")
         for (let offset = 0; offset < 32; offset += 16)
           await Storage.transaction(async () => {
             for (let index = offset; index < offset + 16; index++) {
               const message = user(session.id, index + 1)
               messages.push(message)
+              markers.add(MessageV2.messageOrderMarker(message))
               await Session.updateMessage(message)
               await Session.updatePart({
                 id: Identifier.ascending("part"),
@@ -68,6 +126,7 @@ test("one native write transaction scans message order once while retaining ever
               })
             }
           })
+        const writerMarkerWork = work.count()
         const markerScans = scans.mock.calls.filter(([key]) => JSON.stringify(key) === JSON.stringify(root))
         expect(markerScans).toHaveLength(2)
         const facts = await Storage.query<StorageEventSinks.Delivery>({ kind: "event_delivery", limit: 128 })
@@ -83,6 +142,7 @@ test("one native write transaction scans message order once while retaining ever
         const history = await Array.fromAsync(MessageV2.stream({ sessionID: session.id }))
         expect(history.map((message) => message.info.id)).toEqual(messages.map((message) => message.id).toReversed())
         expect(history.every((message) => message.parts.length === 1)).toBe(true)
+        expect(writerMarkerWork).toBeLessThanOrEqual(8 * messages.length)
       },
     }),
   )
@@ -201,6 +261,17 @@ test("rolled-back message order never crosses original Runtime or Store and the 
         }),
       ).rejects.toBe(rejected)
       expect((await newest(a.session)).map((message) => [message.id, message.time.created])).toEqual([[sharedID, 10]])
+      const cancellation = new AbortController()
+      const cancelled = new Error("Original native order callback was cancelled")
+      await expect(
+        Storage.transaction(async () => {
+          await Session.updateMessage({ ...a.message, time: { created: 300 } })
+          await Session.updateMessage(user(a.session.id, 400))
+          cancellation.abort(cancelled)
+          cancellation.signal.throwIfAborted()
+        }),
+      ).rejects.toBe(cancelled)
+      expect((await newest(a.session)).map((message) => [message.id, message.time.created])).toEqual([[sharedID, 10]])
       const root = StoragePath.sessionMessageOrderMarkersRoot(owner(a.session).scopeID, owner(a.session).sessionID)
       using scans = spyOn(Storage, "scan")
       await Storage.transaction(() => Session.updateMessage(a.message))
@@ -253,4 +324,49 @@ test("native message order caches keep legal Scope and Session delimiter tuples 
         ])
     })
   })
+})
+
+test("incremental native message ordering preserves tied timestamps, earlier inserts and original removal", async () => {
+  await using runtime = await testRuntime()
+  await runtime.run(() =>
+    ScopeContext.provide({
+      scope: Scope.home(),
+      workspace: null,
+      fn: async () => {
+        const session = await Session.create({ workspace: null, environmentID: null })
+        const messages = [
+          user(session.id, 8, Identifier.asMessageID("msg_order_late")),
+          user(session.id, 2, Identifier.asMessageID("msg_order_tie_z")),
+          user(session.id, -2.5, Identifier.asMessageID("msg_order_earliest")),
+          user(session.id, 2, Identifier.asMessageID("msg_order_tie_a")),
+          user(session.id, 0, Identifier.asMessageID("msg_order_middle")),
+        ]
+        await Storage.transaction(async () => {
+          for (const message of messages) await Session.updateMessage(message)
+          expect((await newest(session)).map((message) => message.id)).toEqual(
+            messages
+              .toSorted(MessageV2.compareStorageOrder)
+              .toReversed()
+              .map((message) => message.id),
+          )
+          const moved = { ...messages[0]!, time: { created: -4.25 } }
+          await Session.updateMessage(moved)
+          await Session.removeMessage({ sessionID: session.id, messageID: messages[1]!.id })
+          const expected = [moved, ...messages.slice(2)].toSorted(MessageV2.compareStorageOrder).toReversed()
+          expect((await newest(session)).map((message) => [message.id, message.time.created])).toEqual(
+            expected.map((message) => [message.id, message.time.created]),
+          )
+          expect(
+            await Storage.read(StoragePath.sessionMessageOrderState(owner(session).scopeID, owner(session).sessionID)),
+          ).toMatchObject({ ready: true, count: expected.length })
+        })
+        expect((await newest(session)).map((message) => message.id)).toEqual([
+          messages[3]!.id,
+          messages[4]!.id,
+          messages[2]!.id,
+          messages[0]!.id,
+        ])
+      },
+    }),
+  )
 })
