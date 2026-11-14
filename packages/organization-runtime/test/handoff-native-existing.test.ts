@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test"
+import { expect, spyOn, test } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { createHash } from "node:crypto"
@@ -6,20 +6,48 @@ import { z } from "zod"
 import {
   OrganizationCommandProtocol as Command,
   OrganizationHandoffProtocol as Handoff,
+  OrganizationProtocol,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { EnvironmentExecution } from "@ericsanchezok/synergy-harness/environment/execution"
 import { Session } from "@ericsanchezok/synergy-harness/session"
+import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
 import { SessionTransferWorkspaces as Files } from "@ericsanchezok/synergy-harness/session/transfer"
 import { WorkspacePortableTree } from "@ericsanchezok/synergy-harness/workspace/portable-tree"
 import { WorkspaceArchive } from "@ericsanchezok/synergy-harness/workspace/archive"
 import { WorkspaceMove } from "@ericsanchezok/synergy-harness/workspace/move"
 import { OrganizationHandoffObjects } from "../src/handoff-objects"
 import { readCommandControlVersion } from "../src/command-intake"
+import { OrganizationHandoffEnvironments } from "../src/handoff-environment"
 import { cloudExecutionFixture } from "./support/cloud-execution"
 import { createHandoffCompletion } from "./support/handoff-completion"
 
 type Fixture = Awaited<ReturnType<typeof cloudExecutionFixture>>
 type Scenario = "complete" | "target-changed" | "source-replaced"
+type Stage =
+  | "fixture"
+  | "files"
+  | "git"
+  | "source-member"
+  | "target-member"
+  | "source-command"
+  | "source-process"
+  | "source-history"
+  | "options"
+  | "prepare"
+  | "accept"
+  | "drive"
+  | "target-close"
+  | "target-reopen"
+  | "target-history"
+  | "source-replacement"
+  | "commit"
+  | "published-history"
+  | "continue"
+  | "continue-command"
+  | "continue-process"
+  | "verify"
+  | "cleanup"
+  | "complete"
 const quote = (value: string) => "'" + value.replaceAll("'", "'\\''") + "'"
 const command = (value: string) => [process.execPath, "-e", value].map(quote).join(" ")
 
@@ -65,15 +93,29 @@ async function git(directory: string, args: string[], root: string) {
 }
 
 async function execute(scenario: Scenario) {
+  const started = performance.now()
+  let previousPhase: string | undefined
+  const phase = (stage: Stage, operation?: Handoff.Drive["operation"]) => {
+    const key = JSON.stringify({ stage, operation })
+    if (key === previousPhase) return
+    previousPhase = key
+    console.error(
+      "NATIVE_ADOPTION_PHASE",
+      JSON.stringify({ scenario, stage, operation, elapsedMs: performance.now() - started }),
+    )
+  }
+  phase("fixture")
   const fixture = await cloudExecutionFixture()
   const failures: unknown[] = []
   try {
-    await adopted(fixture, scenario)
+    await adopted(fixture, scenario, phase)
   } catch (error) {
     failures.push(error)
   }
   try {
+    phase("cleanup")
     await fixture[Symbol.asyncDispose]()
+    phase("complete")
   } catch (error) {
     failures.push(error)
   }
@@ -81,7 +123,12 @@ async function execute(scenario: Scenario) {
   if (failures.length) throw new AggregateError(failures, "Native directory adoption and original cleanup failed")
 }
 
-async function adopted(fixture: Fixture, scenario: Scenario) {
+async function adopted(
+  fixture: Fixture,
+  scenario: Scenario,
+  phase: (stage: Stage, operation?: Handoff.Drive["operation"]) => void,
+) {
+  phase("files")
   const sourceDirectory = path.join(fixture.directory, "existing-adoption-source")
   const targetDirectory = path.join(fixture.directory, "existing-adoption-target")
   await Promise.all([fs.mkdir(sourceDirectory), fs.mkdir(targetDirectory)])
@@ -95,6 +142,7 @@ async function adopted(fixture: Fixture, scenario: Scenario) {
     Bun.write(path.join(targetDirectory, "target-only.txt"), "continue with the accepted destination version\n"),
   ])
   if (scenario === "complete") {
+    phase("git")
     for (const [directory, branch] of [
       [sourceDirectory, "source-history"],
       [targetDirectory, "target-version"],
@@ -111,11 +159,15 @@ async function adopted(fixture: Fixture, scenario: Scenario) {
     await Bun.write(path.join(targetDirectory, "tracked.txt"), "accepted target dirty bytes\n")
     await git(targetDirectory, ["rm", "deleted.txt"], fixture.directory)
   }
+  phase("source-member")
   const source = await fixture.member("native-existing-source", { handoff: true, nativeDirectory: sourceDirectory })
+  phase("target-member")
   const target = await fixture.member("native-existing-target", { handoff: true, nativeDirectory: targetDirectory })
   let targetRuntime = target.runtime
+  phase("source-command")
   const originalRun = await source.bash("printf 'native-existing-source-ready\\n'")
-  if (originalRun.result.metadata.processId)
+  if (originalRun.result.metadata.processId) {
+    phase("source-process")
     expect(
       (
         await source.process({
@@ -126,6 +178,8 @@ async function adopted(fixture: Fixture, scenario: Scenario) {
         })
       ).metadata.status,
     ).toBe("completed")
+  }
+  phase("source-history")
   const nativeHistory = await source.runtime.run(() =>
     EnvironmentExecution.get(originalRun.executionID, fixture.project.projectID),
   )
@@ -144,6 +198,7 @@ async function adopted(fixture: Fixture, scenario: Scenario) {
   expect(await Bun.file(path.join(sourceDirectory, "different.bin")).bytes()).toEqual(sourceBytes)
   expect(await Bun.file(path.join(targetDirectory, "different.bin")).bytes()).toEqual(targetBytes)
   const options = { headers: fixture.service.headers, throwOnError: true as const }
+  phase("options")
   const inspected = Handoff.Options.parse(
     (
       await fixture.service.client.orgHandoff.options(
@@ -186,6 +241,7 @@ async function adopted(fixture: Fixture, scenario: Scenario) {
     source: inspected.environment.source,
     target: inspected.environment.native,
   })
+  phase("prepare")
   const requested = Handoff.View.parse(
     (
       await fixture.service.client.orgHandoff.prepare(
@@ -206,6 +262,7 @@ async function adopted(fixture: Fixture, scenario: Scenario) {
     ).data,
   )
   expect(requested.mappingHash).toBe(await Handoff.planHash(mapping, environmentMapping))
+  phase("accept")
   await fixture.service.client.orgHandoff.accept(
     { handoffID, orgHandoffAccept: { mappingPlanRevision: 1, mappingHash: requested.mappingHash } },
     options,
@@ -219,10 +276,25 @@ async function adopted(fixture: Fixture, scenario: Scenario) {
     extra: Pick<Handoff.Drive, "expectedRevision" | "cursor"> = {},
     requestID: string = crypto.randomUUID(),
   ) {
-    return fixture.service.client.orgHandoff.drive(
+    phase("drive", operation)
+    const requestStarted = performance.now()
+    const result = await fixture.service.client.orgHandoff.drive(
       { handoffID, orgHandoffDrive: { operation, requestID, ...extra } },
       { headers: fixture.service.headers },
     )
+    if (scenario === "source-replaced" && operation === "surrender-source") {
+      const failure = OrganizationProtocol.Error.pick({ code: true, outcome: true }).strip().safeParse(result.error)
+      console.error(
+        "NATIVE_ADOPTION_SURRENDER_RESPONSE",
+        JSON.stringify({
+          operation: "surrender-source",
+          status: result.response.status,
+          ...(failure.success ? failure.data : {}),
+          elapsedMs: performance.now() - requestStarted,
+        }),
+      )
+    }
+    return result
   }
   const drive = createHandoffCompletion({
     binding: Handoff.Binding.strip().parse(requested),
@@ -294,6 +366,7 @@ async function adopted(fixture: Fixture, scenario: Scenario) {
       false,
     )
   }
+  phase("accept")
   await fixture.service.client.orgHandoff.accept(
     {
       handoffID,
@@ -305,8 +378,10 @@ async function adopted(fixture: Fixture, scenario: Scenario) {
     true,
   )
   if (scenario === "complete") {
+    phase("target-close")
     await target.close()
     expect(target.runtime.status).toBe("closed")
+    phase("target-reopen")
     targetRuntime = await target.reopen()
     expect(targetRuntime.status).toBe("ready")
     const recovered = await drive("inspect-target")
@@ -337,13 +412,69 @@ async function adopted(fixture: Fixture, scenario: Scenario) {
     await cancel()
     return
   }
-  const prepared = (await drive("prepare-target")).facts[0]?.proof
+  let preparedResult: Handoff.MachineResult
+  if (scenario === "complete") {
+    const entered = Promise.withResolvers<void>()
+    const resume = Promise.withResolvers<void>()
+    const prepareTarget = Files.prepareTarget
+    using preparation = spyOn(Files, "prepareTarget").mockImplementation(async (input) => {
+      if (
+        input.binding.handoffID === handoffID &&
+        input.binding.sessionID === source.sessionID &&
+        input.binding.targetID === target.registration.runtimeID &&
+        input.nativeMode === "existing"
+      ) {
+        expect(input.binding).toEqual({
+          scopeID: fixture.project.projectID,
+          sessionID: source.sessionID,
+          handoffID,
+          sourceID: source.registration.runtimeID,
+          targetID: target.registration.runtimeID,
+          fromEpoch: inspected.bindingEpoch,
+          toEpoch: inspected.bindingEpoch + 1,
+        })
+        entered.resolve()
+        await resume.promise
+      }
+      return prepareTarget(input)
+    })
+    const preparing = drive("prepare-target").then(
+      (value) => ({ kind: "completed" as const, value }),
+      (error: unknown) => ({ kind: "failed" as const, error }),
+    )
+    try {
+      const original = await Promise.race([
+        entered.promise.then(() => ({ kind: "entered" as const })),
+        preparing.then((result) => ({ kind: "finished" as const, result })),
+      ])
+      if (original.kind === "finished") {
+        if (original.result.kind === "failed") throw original.result.error
+        throw new Error("Native target preparation completed without entering its original file owner")
+      }
+      const working = await drive("inspect-target")
+      expect(working).toMatchObject({ state: "working", stage: "preparing" })
+      const retained = working.facts.find((fact) => fact.proof.purpose === "target-difference")
+      expect(retained?.proof).toEqual(difference)
+      if (!retained) throw new Error("Active target preparation lost its original accepted difference")
+      expect(await Handoff.verifyProof(retained.proof, retained.signature, target.home.publicKey)).toBe(true)
+      expect(working.workspaceDifference).toEqual(difference.difference)
+      expect(working.facts.some((fact) => fact.proof.purpose === "target-prepared")).toBe(false)
+    } finally {
+      resume.resolve()
+      await preparing
+    }
+    const result = await preparing
+    if (result.kind === "failed") throw result.error
+    preparedResult = result.value
+  } else preparedResult = await drive("prepare-target")
+  const prepared = preparedResult.facts[0]?.proof
   if (prepared?.purpose !== "target-prepared") throw new Error("The exact adopted target did not prepare")
   expect(prepared.workspaceDifferenceHash).toBe(consent.diffHash)
   const nativeReceiptHash = prepared.workspaceNativeReceiptHash
   if (typeof nativeReceiptHash !== "string") throw new Error("The actual prepared native receipt is absent")
   expect(typeof nativeReceiptHash).toBe("string")
   expect(await Bun.file(path.join(targetDirectory, "different.bin")).bytes()).toEqual(targetBytes)
+  phase("target-history")
   const historical = await targetRuntime.run(() =>
     Files.withTargetCaptured(
       {
@@ -379,11 +510,51 @@ async function adopted(fixture: Fixture, scenario: Scenario) {
     options,
   )
   if (scenario === "source-replaced") {
+    phase("source-replacement")
     const retained = sourceDirectory + "-original"
     await fs.rename(sourceDirectory, retained)
     await fs.cp(retained, sourceDirectory, { recursive: true, verbatimSymlinks: true })
+    const originalBinding = Handoff.Binding.strip().parse(requested)
+    const withPlan = OrganizationHandoffEnvironments.withPlan
+    let nativeIdentityRejected = false
     try {
+      using native = spyOn(OrganizationHandoffEnvironments, "withPlan").mockImplementation(
+        async <T>(authorization: Handoff.SignedMachinePlan, signal: AbortSignal, body: () => Promise<T>) => {
+          const entered = performance.now()
+          try {
+            return await withPlan(authorization, signal, body)
+          } catch (error) {
+            const plan = authorization.plan
+            const selected = Handoff.Binding.strip().safeParse(plan)
+            if (
+              plan.operation === "surrender-source" &&
+              plan.runtimeID === source.registration.runtimeID &&
+              selected.success &&
+              JSON.stringify(selected.data) === JSON.stringify(originalBinding)
+            ) {
+              const failure = WorkspaceCatalog.Unavailable.Schema.safeParse(error)
+              const workspaceMatches = failure.success && failure.data.data.workspaceID === sourceWorkspaceID
+              nativeIdentityRejected ||=
+                failure.success && workspaceMatches && failure.data.data.reason === "identity_changed"
+              console.error(
+                "NATIVE_ADOPTION_SOURCE_REJECTION",
+                JSON.stringify({
+                  operation: "surrender-source",
+                  owner: "original-native-handoff-callback",
+                  kind: failure.success ? "workspace-unavailable" : "other-native-error",
+                  ...(failure.success ? { reason: failure.data.data.reason } : {}),
+                  originalBindingMatches: true,
+                  workspaceMatches,
+                  elapsedMs: performance.now() - entered,
+                }),
+              )
+            }
+            throw error
+          }
+        },
+      )
       expect((await raw("surrender-source")).response.ok).toBe(false)
+      expect(nativeIdentityRejected).toBe(true)
       expect((await fixture.service.client.orgHandoff.get({ handoffID }, options)).data.phase).toBe("prepared")
     } finally {
       await fs.rm(sourceDirectory, { recursive: true, force: true })
@@ -393,6 +564,7 @@ async function adopted(fixture: Fixture, scenario: Scenario) {
     return
   }
   expect((await drive("surrender-source")).facts[0]?.proof.purpose).toBe("source-surrendered")
+  phase("commit")
   const committed = (await fixture.service.client.orgHandoff.commit({ handoffID, body: {} }, options)).data
   expect(committed.currentDriver).toBe(target.registration.runtimeID)
   await fixture.service.client.orgHandoff.permit(
@@ -400,6 +572,7 @@ async function adopted(fixture: Fixture, scenario: Scenario) {
     options,
   )
   expect((await drive("activate-target")).facts[0]?.proof.purpose).toBe("target-activated")
+  phase("published-history")
   const published = await targetRuntime.run(() => Session.get(source.sessionID))
   expect(published.workspaceID).toBe(targetWorkspaceID)
   expect(published.workspace?.path).toBe(await fs.realpath(targetDirectory))
@@ -458,6 +631,7 @@ async function adopted(fixture: Fixture, scenario: Scenario) {
   }))
   const paused = control.paused
   if (!paused) throw new Error("Adoption must require an independent Continue")
+  phase("continue")
   const continued = Command.ControlAccepted.parse(
     (
       await fixture.service.client.orgCommands.control(
@@ -479,6 +653,7 @@ async function adopted(fixture: Fixture, scenario: Scenario) {
   )
   expect(continued.effect.operation).toBe("continue")
   const resumed = await target.attach(source.sessionID, source.accepted)
+  phase("continue-command")
   const checked = await resumed.bash(
     command(
       "const data = await Bun.file('different.bin').bytes(); if(Buffer.from(data).toString('hex') !== '" +
@@ -486,7 +661,8 @@ async function adopted(fixture: Fixture, scenario: Scenario) {
         "') throw new Error('Wrong adopted bytes'); if(await Bun.file('source-only.txt').exists()) throw new Error('Source was silently copied'); if(!(await Bun.file('target-only.txt').text()).includes('destination version')) throw new Error('Missing destination file'); process.stdout.write('NATIVE_ADOPTION_CONTINUED\\n')",
     ),
   )
-  if (checked.result.metadata.processId)
+  if (checked.result.metadata.processId) {
+    phase("continue-process")
     expect(
       (
         await resumed.process({
@@ -497,12 +673,14 @@ async function adopted(fixture: Fixture, scenario: Scenario) {
         })
       ).metadata.status,
     ).toBe("completed")
+  }
   expect(
     (await targetRuntime.run(() => EnvironmentExecution.get(checked.executionID, fixture.project.projectID))).state,
   ).toBe("completed")
   expect(await Bun.file(path.join(sourceDirectory, "different.bin")).bytes()).toEqual(finalSourceBytes)
   expect(await Bun.file(path.join(targetDirectory, "different.bin")).bytes()).toEqual(targetBytes)
   expect((await fixture.service.client.orgHandoff.get({ handoffID }, options)).data.phase).toBe("completed")
+  phase("verify")
   expect(fixture.allocations()).toBe(0)
   expect(fixture.nativeStarts()).toBe(0)
 }

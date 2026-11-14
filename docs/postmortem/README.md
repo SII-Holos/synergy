@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0210](0210-retained-preview-concealed-active-target-preparation.md)
+
 - [0209](0209-compaction-coverage-preparation-opened-one-writer-per-header.md)
 
 - [0208](0208-native-bash-abort-outlived-command-completion.md)

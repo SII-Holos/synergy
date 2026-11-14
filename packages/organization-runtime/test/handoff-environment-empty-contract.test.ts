@@ -22,18 +22,52 @@ async function availablePort() {
 }
 
 test("an explicit native-to-none Environment handoff commits an originally empty organization resource contract without creating resources", async () => {
+  const started = performance.now()
+  let previousPhase: string | undefined
+  function phase(
+    stage:
+      | "service"
+      | "member-home"
+      | "member-enrollment"
+      | "member-runtime"
+      | "member-online"
+      | "member-close"
+      | "service-close"
+      | "project-session"
+      | "options"
+      | "prepare"
+      | "accept"
+      | "drive"
+      | "commit"
+      | "verify",
+    detail: { participant?: "source" | "target"; operation?: Handoff.Drive["operation"] } = {},
+  ) {
+    const key = JSON.stringify({ stage, ...detail })
+    if (key === previousPhase) return
+    previousPhase = key
+    console.error(
+      "EMPTY_ENVIRONMENT_HANDOFF_PHASE",
+      JSON.stringify({ stage, ...detail, elapsedMs: performance.now() - started }),
+    )
+  }
+  phase("service")
   await using resources = testResources()
   const service = await fixture()
-  resources.defer("organization service", () => service[Symbol.asyncDispose]())
+  resources.defer("organization service", () => {
+    phase("service-close")
+    return service[Symbol.asyncDispose]()
+  })
   const options = { headers: service.headers, throwOnError: true as const }
   const coordinator = new WorkspaceCoordinator({ directory: path.join(service.root, "claims") })
 
-  async function member(deviceID: string) {
+  async function member(deviceID: string, participant: "source" | "target") {
+    phase("member-home", { participant })
     const home = await prepareMemberHome({
       baseDirectory: path.join(service.root, "members"),
       identity: { ...service.identity, deviceID },
       origin: service.origin,
     })
+    phase("member-enrollment", { participant })
     const registration = await enrollMemberRuntime({
       home: home.home,
       identity: home.identity,
@@ -52,6 +86,7 @@ test("an explicit native-to-none Environment handoff commits an originally empty
     })
     let timer: ReturnType<typeof setTimeout> | undefined
     try {
+      phase("member-runtime", { participant })
       const runtime = await openMemberRuntime({
         home: home.home,
         identity: home.identity,
@@ -60,8 +95,12 @@ test("an explicit native-to-none Environment handoff commits an originally empty
         listen: { port, token },
         workspaceCoordinator: coordinator,
       })
-      resources.defer(`${deviceID} native Runtime`, () => runtime.close())
+      resources.defer(`${deviceID} native Runtime`, () => {
+        phase("member-close", { participant })
+        return runtime.close()
+      })
       timer = setTimeout(() => online.reject(new Error("The enrolled native Runtime did not connect")), 5000)
+      phase("member-online", { participant })
       await online.promise
       return {
         registration,
@@ -77,8 +116,9 @@ test("an explicit native-to-none Environment handoff commits an originally empty
     }
   }
 
-  const source = await member("empty-contract-source")
-  const target = await member("empty-contract-target")
+  const source = await member("empty-contract-source", "source")
+  const target = await member("empty-contract-target", "target")
+  phase("project-session")
   const project = (
     await service.client.orgProjects.create(
       { orgProjectCreate: { name: "Native handoff without cloud resources", description: "" } },
@@ -106,6 +146,7 @@ test("an explicit native-to-none Environment handoff commits an originally empty
   const original = (await source.client.session.get({ sessionID, scopeID: project.projectID }, { throwOnError: true }))
     .data
   if (!original.organization) throw new Error("The real source Session has no organization binding")
+  phase("options")
   const preview = (
     await service.client.orgHandoff.options(
       {
@@ -127,6 +168,7 @@ test("an explicit native-to-none Environment handoff commits an originally empty
     target: { kind: "none" },
   })
   const environmentMappingHash = await Handoff.environmentMappingHash(environmentMapping)
+  phase("prepare")
   const prepared = (
     await service.client.orgHandoff.prepare(
       {
@@ -144,6 +186,7 @@ test("an explicit native-to-none Environment handoff commits an originally empty
       options,
     )
   ).data
+  phase("accept")
   await service.client.orgHandoff.accept(
     {
       handoffID,
@@ -156,9 +199,11 @@ test("an explicit native-to-none Environment handoff commits an originally empty
     source: { runtimeID: source.registration.runtimeID, publicKey: source.publicKey },
     target: { runtimeID: target.registration.runtimeID, publicKey: target.publicKey },
     async invoke(operation, requestID) {
-      return Handoff.MachineResult.parse(
+      phase("drive", { operation })
+      const result = Handoff.MachineResult.parse(
         (await service.client.orgHandoff.drive({ handoffID, orgHandoffDrive: { operation, requestID } }, options)).data,
       )
+      return result
     },
   })
   const frozen = await drive("prepare-source")
@@ -170,6 +215,7 @@ test("an explicit native-to-none Environment handoff commits an originally empty
     options,
   )
   expect((await drive("surrender-source")).facts[0]?.proof.purpose).toBe("source-surrendered")
+  phase("commit")
   const committed = (await service.client.orgHandoff.commit({ handoffID, body: {} }, options)).data
   expect(committed).toMatchObject({ phase: "committed", currentDriver: target.registration.runtimeID, bindingEpoch: 2 })
   expect((await service.client.orgSessionResources.get({ sessionID }, options)).data).toEqual(empty)
@@ -178,6 +224,7 @@ test("an explicit native-to-none Environment handoff commits an originally empty
     options,
   )
   expect((await drive("activate-target")).facts[0]?.proof.purpose).toBe("target-activated")
+  phase("verify")
   const published = (await target.client.session.get({ sessionID, scopeID: project.projectID }, { throwOnError: true }))
     .data
   expect(published).toMatchObject({

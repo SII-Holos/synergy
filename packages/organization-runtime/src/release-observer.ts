@@ -147,23 +147,26 @@ export function startExecutionReleaseObserver(input: {
     do {
       signal.throwIfAborted()
       const page = await Leases.page(input.connection.runtimeID, { after, limit: 16, target })
+      async function reconcile(entry: Leases.Entry) {
+        try {
+          if (await settle(entry)) retryLater(entry.authority)
+        } catch (error) {
+          if (!signal.aborted) {
+            retryLater(entry.authority)
+            log.warn("execution cleanup remains unresolved", {
+              sessionID: entry.authority.sessionID,
+              rootID: entry.authority.rootID,
+              error,
+            })
+          }
+        }
+      }
       for (let index = 0; index < page.items.length; index += 2) {
-        await Promise.all(
-          page.items.slice(index, index + 2).map(async (entry) => {
-            try {
-              if (await settle(entry)) retryLater(entry.authority)
-            } catch (error) {
-              if (!signal.aborted) {
-                retryLater(entry.authority)
-                log.warn("execution cleanup remains unresolved", {
-                  sessionID: entry.authority.sessionID,
-                  rootID: entry.authority.rootID,
-                  error,
-                })
-              }
-            }
-          }),
-        )
+        const [first, second] = page.items.slice(index, index + 2)
+        if (second && first!.authority.sessionID === second.authority.sessionID) {
+          await reconcile(first!)
+          await reconcile(second)
+        } else await Promise.all(page.items.slice(index, index + 2).map(reconcile))
       }
       after = page.cursor
     } while (after)

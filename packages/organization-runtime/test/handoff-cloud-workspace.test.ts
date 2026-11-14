@@ -14,6 +14,7 @@ import {
   OrganizationHandoffRecovery as Recovery,
   OrganizationRuntimeProtocol as Runtime,
   OrganizationCommandProtocol as Command,
+  OrganizationProtocol,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
@@ -41,6 +42,7 @@ import { WorkspaceCoordinator } from "@ericsanchezok/synergy-local-runtime/works
 import { readCredentials } from "../src/credentials"
 import { OrganizationHandoffTarget as NativeTarget } from "../src/handoff-target"
 import { readHandoffTargetRecord } from "../src/handoff-target-record"
+import { OrganizationRuntimeError } from "../src/error"
 
 async function port() {
   const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() })
@@ -1256,7 +1258,12 @@ for (const scenario of [
               },
         },
       }
-      const nativeAction = async (operation: "accept" | "drive", body: unknown, status = 200) => {
+      const nativeAction = async (
+        operation: "accept" | "drive",
+        body: unknown,
+        status = 200,
+        observation: "required-reply" | "pending-original" = "required-reply",
+      ) => {
         const response =
           operation === "accept"
             ? await f.client.orgHandoff.accept(
@@ -1268,6 +1275,15 @@ for (const scenario of [
                 { headers: receiver.headers, throwOnError: false },
               )
         const result = response.response.status === 200 ? response.data : response.error
+        if (observation === "pending-original" && response.response.status !== 200) {
+          const refused = OrganizationProtocol.Error.safeParse(response.error)
+          expect(
+            refused.success && ["COMMAND_OUTCOME_UNKNOWN", "HANDOFF_BLOCKED"].includes(refused.data.code),
+            JSON.stringify(result),
+          ).toBe(true)
+          if (!refused.success) throw new Error("The original pending native operation returned an invalid error")
+          throw new OrganizationRuntimeError(refused.data)
+        }
         expect(response.response.status, JSON.stringify(result)).toBe(status)
         return result
       }
@@ -2022,7 +2038,12 @@ for (const scenario of [
         await expect(rawBack("prepare-target")).rejects.toMatchObject({ code: "HANDOFF_BLOCKED" })
         if (scenario === "return-adopt-late-preview") {
           nativeBarrier = held
-          const pending = nativeAction("drive", { operation: "preview-target", requestID: "held-native-preview" })
+          const pending = nativeAction(
+            "drive",
+            { operation: "preview-target", requestID: "held-native-preview" },
+            200,
+            "pending-original",
+          )
           void pending.catch(() => {})
           try {
             await Promise.race([
@@ -2344,12 +2365,15 @@ for (const scenario of [
         downloadPreparedHash = await Handoff.proofHash(prepared!)
       } else {
         let validations = 0
+        const validationLost = Promise.withResolvers<void>()
+        void validationLost.promise.catch(() => {})
         f.interceptHTTP(async (request) => {
           if (new URL(request.url).pathname !== "/runtime/v1/handoffs/workspace") return
           const body = Cloud.HandoffWorkspaceRequest.parse(await request.clone().json())
           if (body.proof.handoffID !== returningID || body.proof.operation.action !== "source-validate") return
           const response = await f.service.fetch(request)
           if (++validations !== 2 || response.status !== 200) return response
+          validationLost.resolve()
           return Response.json(
             {
               code: "SERVICE_UNAVAILABLE",
@@ -2361,7 +2385,17 @@ for (const scenario of [
           )
         })
         await expect(rawBack("prepare-target")).rejects.toMatchObject({ outcome: "unknown" })
-        expect((await rawBack("prepare-target")).facts[0]?.proof.purpose).toBe("target-prepared")
+        await validationLost.promise
+        const stopped = await (async () => {
+          for (;;) {
+            const result = await back("inspect-target")
+            if (result.state !== "working") return result
+            await Bun.sleep(25)
+          }
+        })()
+        expect(stopped).toMatchObject({ state: "idle", stage: "idle", facts: [] })
+        expect(validations).toBeGreaterThanOrEqual(2)
+        expect((await back("prepare-target")).facts[0]?.proof.purpose).toBe("target-prepared")
       }
       await f.client.orgHandoff.permit(
         { handoffID: returningID, orgHandoffPermitRequest: { purpose: "handoff-surrender" } },

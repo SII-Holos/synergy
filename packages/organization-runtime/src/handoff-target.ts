@@ -556,12 +556,12 @@ export namespace OrganizationHandoffTarget {
         const input = snapshot(value)
         const { plan, manifestHash } = await authorize(input, "inspect-target")
         if (plan.cleanup) return inspectCleanup(plan, input.signal)
+        const job = jobs.get(plan.handoffID)
         const activated = await receipt(plan, "activated")
         const retired = (await receipt(plan, "retired")) ?? (await receipt(plan, "preview-released"))
         const observedDifference = await receipt(plan, "difference")
         const prepared = activated ?? retired ?? (await receipt(plan, "prepared")) ?? observedDifference
         const fact = prepared?.fact
-        const job = jobs.get(plan.handoffID)
         if (job && (!same(plan, job.plan) || job.plan.manifestHash !== manifestHash))
           fail("Destination inspection belongs to another preparation")
         if (fact) {
@@ -573,6 +573,7 @@ export namespace OrganizationHandoffTarget {
           )
             fail("Destination inspection has no matching permanent native outcome")
         }
+        const terminal = job && fact?.purpose === "target-difference" ? undefined : fact
         assertOwner(input.signal)
         const difference =
           observedDifference?.fact.purpose === "target-difference" ? observedDifference.fact.difference : undefined
@@ -585,10 +586,10 @@ export namespace OrganizationHandoffTarget {
           requestID: plan.requestID,
           runtimeID: plan.runtimeID,
           operation: plan.operation,
-          state: fact ? "complete" : job ? "working" : "idle",
-          stage: fact?.purpose ?? (job ? "preparing" : "idle"),
-          revision: fact
-            ? await Handoff.proofHash(fact)
+          state: terminal ? "complete" : job ? "working" : "idle",
+          stage: terminal?.purpose ?? (job ? "preparing" : "idle"),
+          revision: terminal
+            ? await Handoff.proofHash(terminal)
             : hash({ handoffID: plan.handoffID, manifestHash, stage: job ? "preparing" : "idle" }),
           requirements: [],
           facts: fact

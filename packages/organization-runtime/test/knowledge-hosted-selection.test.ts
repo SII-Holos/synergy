@@ -3,11 +3,14 @@ import { createHash } from "node:crypto"
 import path from "node:path"
 import { z } from "zod"
 import { Session } from "@ericsanchezok/synergy-harness/session"
+import { Bus } from "@ericsanchezok/synergy-harness/bus"
+import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/ledger"
 import { RolloutArtifact } from "@ericsanchezok/synergy-harness/session/rollout/artifact"
 import {
   OrganizationKnowledgeProtocol as Knowledge,
+  OrganizationCommandProtocol as Command,
   OrganizationRuntimeProtocol as Protocol,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { prepareHostedHome } from "../src/home"
@@ -253,47 +256,79 @@ test("actual Hosted Sessions inherit their creators' collections once and isolat
       const firstRequest = Promise.withResolvers<void>()
       conversationStarted = () => firstRequest.resolve()
       const beforeRequests = requests.length
-      const accepted = (
-        await service.client.orgCommands.input(
-          {
-            sessionID: selected.sessionID,
-            orgCommandInputRequest: {
-              schemaVersion: 1,
-              orgID: service.identity.orgID,
-              projectID: project.projectID,
-              runtimeID: registration.runtimeID,
-              sessionID: selected.sessionID,
-              requestID: `load-hosted-knowledge-${selected.expected.version}`,
-              input: {
-                operation: "input",
-                mode: "task",
-                parts: [{ type: "text", text: "Load the selected team-work Skill and finish." }],
-              },
-            },
-          },
-          options,
-        )
-      ).data
-      const firstRequestTimer = setTimeout(
-        () => firstRequest.reject(new Error("The actual Hosted model did not start")),
-        4000,
+      type Failure = { kind: "failed"; rootID: string; error: unknown }
+      const failed = Promise.withResolvers<Failure>()
+      const early = new Map<string, Failure>()
+      let acceptedRootID: string | undefined
+      const stopFailure = await runtime.run(() =>
+        Bus.subscribeGlobal(MessageV2.Event.Updated, (event) => {
+          const info = event.properties.info
+          if (
+            info.sessionID !== selected.sessionID ||
+            info.role !== "assistant" ||
+            info.rootID === undefined ||
+            info.error === undefined ||
+            info.time.completed === undefined
+          )
+            return
+          const failure: Failure = { kind: "failed", rootID: info.rootID, error: info.error }
+          if (acceptedRootID === undefined) early.set(info.rootID, failure)
+          else if (info.rootID === acceptedRootID) failed.resolve(failure)
+        }),
       )
-      try {
-        await firstRequest.promise
-      } catch (error) {
-        await observeTaskFailure({
-          runtime,
-          accepted,
-          stage: "hosted-model-start",
-          upstreamCalls: requests.length - beforeRequests,
-          contextCalls: requests.slice(beforeRequests).filter((request) => runtimeContext(request) !== undefined)
-            .length,
-        })
-        throw error
-      } finally {
-        clearTimeout(firstRequestTimer)
-        conversationStarted = undefined
-      }
+      const accepted = await (async () => {
+        let accepted: Command.InputAccepted | undefined
+        try {
+          accepted = (
+            await service.client.orgCommands.input(
+              {
+                sessionID: selected.sessionID,
+                orgCommandInputRequest: {
+                  schemaVersion: 1,
+                  orgID: service.identity.orgID,
+                  projectID: project.projectID,
+                  runtimeID: registration.runtimeID,
+                  sessionID: selected.sessionID,
+                  requestID: `load-hosted-knowledge-${selected.expected.version}`,
+                  input: {
+                    operation: "input",
+                    mode: "task",
+                    parts: [{ type: "text", text: "Load the selected team-work Skill and finish." }],
+                  },
+                },
+              },
+              options,
+            )
+          ).data
+          acceptedRootID = accepted.effect.messageID
+          const originalFailure = early.get(acceptedRootID)
+          early.clear()
+          if (originalFailure) failed.resolve(originalFailure)
+          const outcome = await Promise.race([
+            firstRequest.promise.then(() => ({ kind: "started" as const })),
+            failed.promise,
+          ])
+          if (outcome.kind === "failed")
+            throw new Error("The original Hosted producer failed before its first model request", {
+              cause: outcome.error,
+            })
+          return accepted
+        } catch (error) {
+          if (accepted)
+            await observeTaskFailure({
+              runtime,
+              accepted,
+              stage: "hosted-model-start",
+              upstreamCalls: requests.length - beforeRequests,
+              contextCalls: requests.slice(beforeRequests).filter((request) => runtimeContext(request) !== undefined)
+                .length,
+            })
+          throw error
+        } finally {
+          stopFailure()
+          conversationStarted = undefined
+        }
+      })()
       const { owner, rootID } = await waitKnowledgeTask(runtime, accepted, () => requests.length - beforeRequests)
       const observed = requests.slice(beforeRequests)
       const conversation = observed.filter((request) => runtimeContext(request) !== undefined)

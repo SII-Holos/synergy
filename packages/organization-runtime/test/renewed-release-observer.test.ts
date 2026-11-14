@@ -238,6 +238,29 @@ test("lost renewed bind reply cannot be mistaken for an older pending terminal r
           )
             Storage.afterCommit(() => committed.resolve())
         })
+        const page = NativeLeases.page
+        let sameSessionPairs = 0
+        using ordering = spyOn(NativeLeases, "page").mockImplementation(async (...args) => {
+          const original = await page(...args)
+          if (args[0] !== connection.runtimeID) return original
+          const terminal = original.items.find(
+            (entry) => entry.authority.rootID === initial.rootID && entry.hint?.generation === 1,
+          )
+          const live =
+            original.items.find((entry) => entry.authority.rootID === initial.rootID && entry.hint?.generation === 2) ??
+            original.items.find(
+              (entry) =>
+                entry.authority.rootID === initial.rootID &&
+                entry.uncertainUntil === undefined &&
+                (!entry.hint || entry.hint.generation === 0),
+            )
+          if (!terminal || !live) return original
+          sameSessionPairs++
+          return {
+            ...original,
+            items: [live, terminal, ...original.items.filter((entry) => entry !== live && entry !== terminal)],
+          }
+        })
         const close = startExecutionReleaseObserver({
           connection,
           intake,
@@ -251,6 +274,7 @@ test("lost renewed bind reply cannot be mistaken for an older pending terminal r
           )
           try {
             await originalCommitted.promise
+            expect(sameSessionPairs).toBeGreaterThan(0)
           } finally {
             clearTimeout(originalTimeout)
           }
