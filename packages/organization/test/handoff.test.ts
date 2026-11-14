@@ -2,12 +2,17 @@ import { expect, spyOn, test } from "bun:test"
 import { createHash } from "node:crypto"
 import { z } from "zod"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
-import { OrganizationRuntimeProtocol as Runtime } from "@ericsanchezok/synergy-organization-protocol"
+import {
+  OrganizationRuntimeProtocol as Runtime,
+  OrganizationSyncProtocol as Sync,
+  OrganizationCommandProtocol as Command,
+} from "@ericsanchezok/synergy-organization-protocol"
 import { OrganizationHandoffProtocol as Handoff } from "../../organization-protocol/src/handoff"
 import { createHandoffs, registerHandoffAuthorityHistory } from "../src/handoff"
 import { AuthorityJournal } from "@ericsanchezok/synergy-harness/storage/authority-journal"
 import { OrganizationAuthorityHistory } from "../src/authority-history"
 import { OrganizationSharing } from "../src/sharing"
+import { OrganizationAuthorityHistory as History } from "../src/authority-history"
 import { OrganizationProjects } from "../src/projects"
 import { OrganizationSessionDirectory } from "../src/session-directory"
 import { OrganizationRecord as Record } from "../src/storage/records"
@@ -18,9 +23,16 @@ import { handoffMachineRoutes } from "../src/routes/handoff"
 import { organizationApp } from "../src/http"
 import { createRuntimeRegistrations } from "../src/runtime-registration"
 
-async function fixture(targetAccountID = "bob", handoffVersion = 1) {
-  const f = await commandFixture()
-  await f.connect(1, true, false, false, true, handoffVersion)
+async function fixture(
+  targetAccountID = "bob",
+  handoffVersion = Handoff.syncTransferBridge,
+  syncTransfer = handoffVersion >= Handoff.syncTransferBridge,
+) {
+  const f = await commandFixture(
+    syncTransfer ? { sync: { receipt: (lease, query) => handoffs.syncBatchReceipt(lease, query) } } : {},
+  )
+  const handoffs = createHandoffs({ connections: f.connections, signing: f.signing })
+  const sourceSocket = await f.connect(1, true, false, false, true, handoffVersion)
   const targetKeys = await keys()
   const target = await f.run(async () => {
     const value = (await Record.read(Record.RuntimeRegistration, Keys.runtime("runtime-bob")))!
@@ -42,6 +54,10 @@ async function fixture(targetAccountID = "bob", handoffVersion = 1) {
   signed.proof.handshake.capabilities.push("commands", "handoffs")
   signed.proof.handshake.schemas.commands = 1
   signed.proof.handshake.schemas.handoffs = handoffVersion
+  if (syncTransfer) {
+    signed.proof.handshake.capabilities.push("sync")
+    signed.proof.handshake.schemas.sync = Sync.observationVersion
+  }
   signed.signature = await Runtime.sign(signed.proof, targetKeys.privateKey)
   const connected = Promise.withResolvers<unknown>()
   socket.onmessage = (event) => connected.resolve(JSON.parse(String(event.data)))
@@ -57,11 +73,11 @@ async function fixture(targetAccountID = "bob", handoffVersion = 1) {
       createdAt: 1,
     })
   })
-  const handoffs = createHandoffs({ connections: f.connections, signing: f.signing })
   return {
     ...f,
     targetKeys,
     targetSocket: socket,
+    sourceSocket,
     handoffs,
     async [Symbol.asyncDispose]() {
       socket.close()
@@ -71,7 +87,7 @@ async function fixture(targetAccountID = "bob", handoffVersion = 1) {
 }
 
 async function nativeInspectionFixture(handoffID: string) {
-  const f = await fixture("bob", 5)
+  const f = await fixture()
   try {
     const native = Handoff.NativeTarget.parse({
       reference: { workspaceID: "original-native", generation: 2, revision: 3 },
@@ -324,9 +340,10 @@ for (const change of ["role-loss", "cancel", "reconnect"] as const)
           socket.onerror = reject
         })
         const signed = await connection(target, f.targetKeys.privateKey, 2)
-        signed.proof.handshake.capabilities.push("commands", "handoffs")
+        signed.proof.handshake.capabilities.push("commands", "handoffs", "sync")
         signed.proof.handshake.schemas.commands = 1
-        signed.proof.handshake.schemas.handoffs = 5
+        signed.proof.handshake.schemas.handoffs = Handoff.syncTransferBridge
+        signed.proof.handshake.schemas.sync = Sync.observationVersion
         signed.signature = await Runtime.sign(signed.proof, f.targetKeys.privateKey)
         const connected = Promise.withResolvers<unknown>()
         socket.onmessage = (event) => connected.resolve(JSON.parse(String(event.data)))
@@ -437,7 +454,7 @@ test("destination discovery keeps its original cancellation signal before the fi
 })
 
 test("handoff destinations page only the current Session's eligible project participants", async () => {
-  await using f = await fixture()
+  await using f = await fixture("bob", 1, false)
   await f.run(async () => {
     await OrganizationSharing.share(f.credentials.alice, f.sessionID, { expectedShareGeneration: 0 })
     for (const id of ["alice", "bob", "reader", "foreign"])
@@ -703,6 +720,12 @@ test("replaying an old target proof after cancellation and unsharing cannot obse
         mappingPlanRevision: 1,
       })
       await f.handoffs.accept(f.credentials.bob, original.handoffID, { mappingPlanRevision: 1 })
+      const declaredEmptyCheckpoint = Handoff.SyncCheckpoint.parse({
+        version: 1,
+        closureHash: "9".repeat(64),
+        pendingBatch: null,
+      })
+      const declaredEmptyCheckpointHash = await Handoff.syncCheckpointHash(declaredEmptyCheckpoint)
       const tuple = (view: Handoff.View) => Handoff.Binding.strip().parse(view)
       const frozen = (view: Handoff.View, manifestHash: string) =>
         Handoff.Proof.parse({
@@ -717,6 +740,7 @@ test("replaying an old target proof after cancellation and unsharing cannot obse
           workspaceMoveReceiptHash: null,
           paused: true,
           drained: true,
+          syncCheckpoint: declaredEmptyCheckpoint,
         })
       const prepared = (view: Handoff.View, manifestHash: string) =>
         Handoff.Proof.parse({
@@ -729,6 +753,7 @@ test("replaying an old target proof after cancellation and unsharing cannot obse
           fileClosureHash: null,
           workspaceMoveReceiptHash: null,
           paused: true,
+          syncCheckpointHash: declaredEmptyCheckpointHash,
         })
       const publish = async (proof: Handoff.Proof, key: CryptoKey) =>
         f.handoffs.proof({ proof, signature: await Handoff.signProof(proof, key) })
@@ -775,9 +800,10 @@ test("replaying an old target proof after cancellation and unsharing cannot obse
         socket.onerror = reject
       })
       const signed = await connection(privateRuntime, privateKeys.privateKey, 1)
-      signed.proof.handshake.capabilities.push("commands", "handoffs")
+      signed.proof.handshake.capabilities.push("commands", "handoffs", "sync")
       signed.proof.handshake.schemas.commands = 1
-      signed.proof.handshake.schemas.handoffs = 1
+      signed.proof.handshake.schemas.handoffs = Handoff.syncTransferBridge
+      signed.proof.handshake.schemas.sync = Sync.observationVersion
       signed.signature = await Runtime.sign(signed.proof, privateKeys.privateKey)
       const connected = Promise.withResolvers<unknown>()
       socket.onmessage = (event) => connected.resolve(JSON.parse(String(event.data)))
@@ -904,6 +930,11 @@ test("signed source and target facts commit once and activation remains a separa
     async function publish(proof: Handoff.Proof, key: CryptoKey) {
       return f.handoffs.proof({ proof, signature: await Handoff.signProof(proof, key) })
     }
+    const declaredEmptyCheckpoint = Handoff.SyncCheckpoint.parse({
+      version: 1,
+      closureHash: "9".repeat(64),
+      pendingBatch: null,
+    })
     const frozen = Handoff.Proof.parse({
       ...tuple,
       purpose: "source-frozen",
@@ -915,6 +946,7 @@ test("signed source and target facts commit once and activation remains a separa
       workspaceMoveReceiptHash: null,
       paused: true,
       drained: true,
+      syncCheckpoint: declaredEmptyCheckpoint,
     })
     await publish(frozen, f.machineKeys.privateKey)
     const prepared = Handoff.Proof.parse({
@@ -926,6 +958,7 @@ test("signed source and target facts commit once and activation remains a separa
       fileClosureHash: null,
       workspaceMoveReceiptHash: null,
       paused: true,
+      syncCheckpointHash: await Handoff.syncCheckpointHash(declaredEmptyCheckpoint),
     })
     if (prepared.purpose !== "target-prepared") throw new Error("Fixture requires its target preparation")
     await expect(
@@ -1228,9 +1261,8 @@ for (const first of ["handoff", "archive"] as const)
   })
 
 test("reader seven rejects explicit Environment mapping before source inspection, freeze, or admission", async () => {
-  await using f = await fixture("bob", 7)
+  await using f = await fixture("alice", 7)
   await f.run(async () => {
-    await OrganizationSharing.share(f.credentials.alice, f.sessionID, { expectedShareGeneration: 0 })
     const original = (await Record.read(Record.SessionDirectory, Keys.session(f.sessionID)))!
     let outcome: unknown
     try {
@@ -1253,8 +1285,420 @@ test("reader seven rejects explicit Environment mapping before source inspection
     }
     expect(outcome).toMatchObject({ data: { code: "HANDOFF_BLOCKED" } })
     if (!(outcome instanceof Error)) throw new Error("Expected the original compatibility refusal")
-    expect(outcome.message).toContain("Environment")
+    expect(outcome.message).toBe("The complete mapping requires both participants' current reader")
     expect(await Record.read(Record.SessionDirectory, Keys.session(f.sessionID))).toEqual(original)
     expect(await Storage.count({ prefix: ["organization", "handoffs"] })).toBe(0)
   })
 })
+
+async function syncMachineClaims(kind: "committed" | "absent" | "wrong-marker" = "committed", accepted = true) {
+  const f = await fixture("bob", Handoff.syncTransferBridge, true)
+  try {
+    return await f.run(async () => {
+      await OrganizationSharing.share(f.credentials.alice, f.sessionID, { expectedShareGeneration: 0 })
+      const directory = await Record.read(Record.SessionDirectory, Keys.session(f.sessionID))
+      if (!directory) throw new Error("Missing actual Service Session")
+      const event = Sync.Event.parse({
+        type: "session",
+        sequence: 1,
+        session: {
+          sessionID: directory.sessionID,
+          projectID: directory.projectID,
+          creatorID: directory.creatorID,
+          driverRuntimeID: directory.driverRuntimeID,
+          bindingEpoch: directory.bindingEpoch,
+          createdAt: directory.createdAt,
+          shareGeneration: directory.shareGeneration,
+        },
+      })
+      const batch = Sync.Batch.parse({
+        schemaVersion: 1,
+        sessionID: directory.sessionID,
+        projectID: directory.projectID,
+        bindingEpoch: directory.bindingEpoch,
+        shareGeneration: directory.shareGeneration,
+        firstSeq: 1,
+        lastSeq: 1,
+        events: [event],
+        payloadHash: createHash("sha256")
+          .update(JSON.stringify({ firstSeq: 1, lastSeq: 1, events: [event] }))
+          .digest("hex"),
+      })
+      if (kind !== "absent") {
+        const received = Promise.withResolvers<Runtime.ServerFrame>()
+        f.sourceSocket.onmessage = (message) => {
+          try {
+            received.resolve(Runtime.ServerFrame.parse(JSON.parse(String(message.data))))
+          } catch (error) {
+            received.reject(error)
+          }
+        }
+        f.sourceSocket.send(
+          JSON.stringify({ type: "sync-batch", connectionEpoch: 1, exchangeID: "original-sync", batch }),
+        )
+        expect(await received.promise).toMatchObject({ type: "sync-ack", ack: { nextSeq: 2 } })
+      }
+      const { sessionID, projectID, bindingEpoch, shareGeneration, firstSeq, lastSeq, payloadHash } = batch
+      const pendingBatch = Sync.BatchIdentity.parse({
+        sessionID,
+        projectID,
+        bindingEpoch,
+        shareGeneration,
+        firstSeq,
+        lastSeq,
+        payloadHash: kind === "wrong-marker" ? "f".repeat(64) : payloadHash,
+      })
+      const state = await f.handoffs.prepare(f.credentials.alice, f.sessionID, {
+        handoffID: `sync-claims-${kind}`,
+        targetRuntimeID: "runtime-bob",
+        expectedBindingEpoch: 1,
+        expectedControlRevision: 0,
+        mappingPlanRevision: 1,
+        workspaceMapping: { kind: "native" },
+      })
+      if (accepted)
+        await f.handoffs.accept(f.credentials.bob, state.handoffID, {
+          mappingPlanRevision: 1,
+          mappingHash: state.mappingHash,
+        })
+      const tuple = Handoff.Binding.strip().parse(state)
+      const checkpoint = Handoff.SyncCheckpoint.parse({ version: 1, closureHash: "e".repeat(64), pendingBatch })
+      const frozen = Handoff.Proof.parse({
+        ...tuple,
+        purpose: "source-frozen",
+        manifestHash: "a".repeat(64),
+        commandSeq: state.commandSeq,
+        receivedSeq: state.commandSeq,
+        compatibilityHash: "b".repeat(64),
+        closureHash: "c".repeat(64),
+        fileClosureHash: null,
+        workspaceMoveReceiptHash: null,
+        paused: true,
+        drained: true,
+        syncCheckpoint: checkpoint,
+      })
+      const prepared = Handoff.Proof.parse({
+        ...tuple,
+        purpose: "target-prepared",
+        manifestHash: "a".repeat(64),
+        compatibilityHash: "b".repeat(64),
+        convertedHash: "d".repeat(64),
+        closureHash: "c".repeat(64),
+        fileClosureHash: null,
+        workspaceMoveReceiptHash: null,
+        paused: true,
+        syncCheckpointHash: await Handoff.syncCheckpointHash(checkpoint),
+      })
+      const signed = async (proof: Handoff.Proof, key: CryptoKey) =>
+        f.handoffs.proof({ proof, signature: await Handoff.signProof(proof, key) })
+      await signed(frozen, f.machineKeys.privateKey)
+      return {
+        ...f,
+        state,
+        tuple,
+        checkpoint,
+        frozen,
+        prepared,
+        publish: signed,
+        pendingBatch,
+        directory: () => Record.read(Record.SessionDirectory, Keys.session(f.sessionID)),
+      }
+    })
+  } catch (error) {
+    await f[Symbol.asyncDispose]()
+    throw error
+  }
+}
+
+async function retainIssuedSurrender(f: Awaited<ReturnType<typeof syncMachineClaims>>, legacy = false) {
+  const key = ["organization", "handoffs", f.state.handoffID]
+  let prepared = f.prepared
+  let frozen = f.frozen
+  if (legacy) {
+    if (prepared.purpose !== "target-prepared" || frozen.purpose !== "source-frozen")
+      throw new Error("Expected original Service machine claims")
+    const { syncCheckpointHash: _targetCheckpoint, ...oldPrepared } = prepared
+    const { syncCheckpoint: _sourceCheckpoint, ...oldFrozen } = frozen
+    prepared = Handoff.Proof.parse(oldPrepared)
+    frozen = Handoff.Proof.parse(oldFrozen)
+  }
+  const directory = await f.directory()
+  if (!directory) throw new Error("Original Service directory is unavailable")
+  const permit = await f.signing.signHandoff(
+    Handoff.Permit.parse({
+      ...f.tuple,
+      purpose: "handoff-surrender",
+      permitID: "historical-source-permit",
+      keyID: f.signing.identity.keyID,
+      manifestHash: "a".repeat(64),
+      preparedHash: await Handoff.proofHash(prepared),
+      createdAt: 1,
+      sourceBinding: {
+        schemaVersion: 1,
+        orgID: directory.orgID,
+        projectID: directory.projectID,
+        creatorID: directory.creatorID,
+        driverRuntimeID: directory.driverRuntimeID,
+        bindingEpoch: directory.bindingEpoch,
+      },
+    }),
+  )
+  await History.system("handoff.permit", async (identify, requestID) => {
+    identify({
+      kind: "system",
+      orgID: "org",
+      subjectID: "service-authority-fixture",
+      displayName: "Retained signed Service authority",
+      clientKind: "runtime",
+      requestID,
+    })
+    const previous = z.record(z.string(), z.unknown()).parse(await Storage.read(key))
+    const { syncTransferVersion: _version, ...old } = previous
+    await Storage.write(
+      key,
+      legacy
+        ? {
+            ...old,
+            version: 4,
+            frozen: { proof: frozen, signature: await Handoff.signProof(frozen, f.machineKeys.privateKey) },
+            prepared: { proof: prepared, signature: await Handoff.signProof(prepared, f.targetKeys.privateKey) },
+            surrenderPermit: permit,
+          }
+        : { ...previous, surrenderPermit: permit },
+    )
+    await f.handoffs.get(f.credentials.alice, f.state.handoffID)
+  })
+  await f.publish(
+    Handoff.Proof.parse({
+      ...f.tuple,
+      purpose: "source-surrendered",
+      manifestHash: "a".repeat(64),
+      permitID: permit.permit.permitID,
+      preparedHash: await Handoff.proofHash(prepared),
+      gatePersisted: true,
+    }),
+    f.machineKeys.privateKey,
+  )
+  return permit
+}
+
+test("Service machine claims cannot rebind a missing or differently hashed original sync marker", async () => {
+  for (const kind of ["absent", "wrong-marker"] as const) {
+    await using f = await syncMachineClaims(kind)
+    await f.run(async () => {
+      await f.publish(f.prepared, f.targetKeys.privateKey)
+      await retainIssuedSurrender(f)
+      const before = await f.directory()
+      await expect(f.handoffs.commit(f.credentials.alice, f.state.handoffID)).rejects.toMatchObject({
+        data: { code: kind === "absent" ? "HANDOFF_BLOCKED" : "REVISION_CONFLICT" },
+      })
+      expect(await f.directory()).toEqual(before)
+      expect(await Storage.count({ prefix: Keys.sharedEvents(f.sessionID, 1) })).toBe(kind === "absent" ? 0 : 1)
+    })
+  }
+}, 15000)
+
+test("Service target machine claims must preserve the original signed sync checkpoint hash", async () => {
+  await using f = await syncMachineClaims()
+  await f.run(async () => {
+    if (f.prepared.purpose !== "target-prepared") throw new Error("Expected Service target machine claim")
+    await expect(
+      f.publish({ ...f.prepared, syncCheckpointHash: "f".repeat(64) }, f.targetKeys.privateKey),
+    ).rejects.toMatchObject({ data: { code: "PROTOCOL_MISMATCH" } })
+    expect((await f.handoffs.get(f.credentials.alice, f.state.handoffID)).phase).toBe("preparing")
+    await f.publish(f.prepared, f.targetKeys.privateKey)
+    const permit = await f.handoffs.permit(f.credentials.alice, f.state.handoffID, { purpose: "handoff-surrender" })
+    await f.publish(
+      Handoff.Proof.parse({
+        ...f.tuple,
+        purpose: "source-surrendered",
+        manifestHash: "a".repeat(64),
+        permitID: permit.permit.permitID,
+        preparedHash: await Handoff.proofHash(f.prepared),
+        gatePersisted: true,
+      }),
+      f.machineKeys.privateKey,
+    )
+    expect((await f.handoffs.commit(f.credentials.alice, f.state.handoffID)).bindingEpoch).toBe(2)
+    expect(await Storage.count({ prefix: Keys.sharedEvents(f.sessionID, 1) })).toBe(2)
+  })
+}, 15000)
+
+test("a fresh surrender permit requires the exact original sync marker before making the Source irreversible", async () => {
+  await using f = await syncMachineClaims("absent")
+  await f.run(async () => {
+    await f.publish(f.prepared, f.targetKeys.privateKey)
+    const before = await Storage.read(["organization", "handoffs", f.state.handoffID])
+    await expect(
+      f.handoffs.permit(f.credentials.alice, f.state.handoffID, { purpose: "handoff-surrender" }),
+    ).rejects.toMatchObject({ data: { code: "HANDOFF_BLOCKED" } })
+    expect(await Storage.read(["organization", "handoffs", f.state.handoffID])).toEqual(before)
+    expect((await f.directory())?.bindingEpoch).toBe(1)
+  })
+}, 15000)
+
+test("retained legacy four signed Service authority cannot turn a surrendered shared claim into a new binding", async () => {
+  await using f = await syncMachineClaims()
+  await f.run(async () => {
+    await f.publish(f.prepared, f.targetKeys.privateKey)
+    await retainIssuedSurrender(f, true)
+    const before = await f.directory()
+    expect((await f.handoffs.get(f.credentials.alice, f.state.handoffID)).phase).toBe("surrendered")
+    const record = await Storage.read(["organization", "handoffs", f.state.handoffID])
+    expect(record).toMatchObject({ version: 4 })
+    expect(record).not.toHaveProperty("syncTransferVersion")
+    await expect(f.handoffs.commit(f.credentials.alice, f.state.handoffID)).rejects.toMatchObject({
+      data: { code: "HANDOFF_BLOCKED" },
+    })
+    expect(await f.directory()).toEqual(before)
+    expect(await Storage.read(["organization", "handoffs", f.state.handoffID])).toEqual(record)
+    expect(await Storage.count({ prefix: Keys.sharedEvents(f.sessionID, 1) })).toBe(1)
+  })
+}, 15000)
+
+test("a prepared sync transfer can replay only its original Source preparation declaration without changing frozen facts", async () => {
+  await using f = await syncMachineClaims("absent")
+  await f.run(async () => {
+    await f.publish(f.prepared, f.targetKeys.privateKey)
+    const key = ["organization", "handoffs", f.state.handoffID]
+    const before = await Storage.read(key)
+    const declaration = Promise.withResolvers<void>()
+    f.sourceSocket.onmessage = (message) => {
+      void (async () => {
+        const frame = Runtime.ServerFrame.parse(JSON.parse(String(message.data)))
+        if (frame.type !== "command" || frame.command.kind !== "handoff")
+          throw new Error("Expected original handoff preparation declaration")
+        const authorization = frame.command.authorization
+        const plan = authorization.plan
+        expect(plan).toMatchObject({
+          operation: "prepare-source",
+          syncTransferVersion: 1,
+          handoffID: f.state.handoffID,
+          fromEpoch: 1,
+          toEpoch: 2,
+          manifestHash: "a".repeat(64),
+          frozen: { proof: f.frozen },
+        })
+        expect(plan.expiresAt - plan.issuedAt).toBeLessThanOrEqual(5000)
+        expect(await Handoff.verifyMachinePlan(plan, authorization.signature, f.signing.identity.publicKey)).toBe(true)
+        const signed = { proof: f.frozen, signature: await Handoff.signProof(f.frozen, f.machineKeys.privateKey) }
+        const result = Handoff.MachineResult.parse({
+          handoffID: plan.handoffID,
+          requestID: plan.requestID,
+          runtimeID: plan.runtimeID,
+          operation: plan.operation,
+          state: "complete",
+          stage: "source-frozen",
+          revision: await Handoff.proofHash(f.frozen),
+          requirements: [],
+          facts: [signed],
+        })
+        f.sourceSocket.send(
+          JSON.stringify(
+            Runtime.Receipt.parse({
+              type: "receipt",
+              connectionEpoch: frame.connectionEpoch,
+              exchangeID: frame.exchangeID,
+              reply: Command.Reply.parse({ kind: "handoff", authorization, result }),
+            }),
+          ),
+        )
+        declaration.resolve()
+      })().catch(declaration.reject)
+    }
+    const result = await f.handoffs.drive(
+      f.credentials.alice,
+      f.state.handoffID,
+      { operation: "prepare-source", requestID: "same-sealed-source" },
+      { signal: new AbortController().signal },
+    )
+    await declaration.promise
+    expect(result).toMatchObject({ state: "complete", stage: "source-frozen" })
+    expect(await Storage.read(key)).toEqual(before)
+    expect((await f.directory())?.bindingEpoch).toBe(1)
+    expect(await Storage.count({ prefix: Keys.sharedEvents(f.sessionID, 1) })).toBe(0)
+  })
+}, 15000)
+
+test("an accepted Target participant can inspect only its original frozen sync receipt before binding commit", async () => {
+  await using f = await syncMachineClaims()
+  const query = async (batch: Sync.BatchIdentity) => {
+    const received = Promise.withResolvers<Runtime.ServerFrame>()
+    f.targetSocket.onmessage = (message) => {
+      try {
+        received.resolve(Runtime.ServerFrame.parse(JSON.parse(String(message.data))))
+      } catch (error) {
+        received.reject(error)
+      }
+    }
+    f.targetSocket.send(
+      JSON.stringify({
+        type: "sync-batch-receipt",
+        connectionEpoch: 1,
+        exchangeID: crypto.randomUUID(),
+        query: { handoffID: f.state.handoffID, batch },
+      }),
+    )
+    return received.promise
+  }
+  expect(await query(f.pendingBatch)).toMatchObject({
+    type: "sync-batch-receipt",
+    receipt: { state: "committed", batch: f.pendingBatch },
+  })
+  await f.run(async () => {
+    expect((await f.directory())?.bindingEpoch).toBe(1)
+    expect((await f.handoffs.get(f.credentials.alice, f.state.handoffID)).phase).toBe("preparing")
+    expect(await Storage.count({ prefix: Keys.sharedEvents(f.sessionID, 1) })).toBe(1)
+  })
+  expect(await query({ ...f.pendingBatch, payloadHash: "f".repeat(64) })).toMatchObject({
+    type: "error",
+    error: { code: "PERMISSION_DENIED" },
+  })
+}, 15000)
+
+test.each(["not-accepted", "revoked"] as const)(
+  "Target receipt metadata preserves its original participant authorization: %s",
+  async (mode) => {
+    await using f = await syncMachineClaims("committed", mode !== "not-accepted")
+    if (mode === "revoked")
+      await f.run(async () => {
+        const project = await Record.read(Record.Project, Keys.project("project"))
+        if (!project) throw new Error("Original actual Project is unavailable")
+        await OrganizationProjects.member(f.credentials.owner, "project", "bob", {
+          expectedRevision: project.revision,
+          role: null,
+        })
+        expect(await Record.read(Record.Account, Keys.account("bob"))).toMatchObject({ state: "active" })
+        expect(await Record.read(Record.RuntimeRegistration, Keys.runtime("runtime-bob"))).toMatchObject({
+          state: "active",
+        })
+      })
+    const before = await f.run(() => Storage.read(["organization", "handoffs", f.state.handoffID]))
+    const received = Promise.withResolvers<Runtime.ServerFrame>()
+    f.targetSocket.onmessage = (message) => {
+      try {
+        received.resolve(Runtime.ServerFrame.parse(JSON.parse(String(message.data))))
+      } catch (error) {
+        received.reject(error)
+      }
+    }
+    f.targetSocket.send(
+      JSON.stringify({
+        type: "sync-batch-receipt",
+        connectionEpoch: 1,
+        exchangeID: "participant-receipt",
+        query: { handoffID: f.state.handoffID, batch: f.pendingBatch },
+      }),
+    )
+    expect(await received.promise).toMatchObject({
+      type: "error",
+      error: { code: mode === "not-accepted" ? "HANDOFF_BLOCKED" : "NOT_FOUND" },
+    })
+    await f.run(async () => {
+      expect(await Storage.read(["organization", "handoffs", f.state.handoffID])).toEqual(before)
+      expect((await f.directory())?.bindingEpoch).toBe(1)
+      expect(await Storage.count({ prefix: Keys.sharedEvents(f.sessionID, 1) })).toBe(1)
+    })
+  },
+  15000,
+)

@@ -6,6 +6,7 @@ import { OrganizationStoragePath as Keys } from "./storage/path"
 import { OrganizationSharedProjection as Projection } from "./shared-projection"
 import { OrganizationSharedTasks as Tasks } from "./shared-tasks"
 import { OrganizationSharedBlobs as Blobs } from "./shared-blob"
+import { OrganizationHandoffHistory as HandoffHistory } from "./handoff-history"
 
 export namespace OrganizationSharedHistory {
   export interface Source extends Record.HistoricalReader {
@@ -22,10 +23,10 @@ export namespace OrganizationSharedHistory {
     return event.sessionID ?? root
   }
   export async function history(source: Source) {
-    transcripts(source)
+    await transcripts(source)
     await Blobs.history(source)
   }
-  export function transcripts(source: Source) {
+  export async function transcripts(source: Source) {
     for (const row of source.entries(["organization", "shared-state"])) {
       const state = Record.SharedState.parse(row.value)
       if (!equal(row.key, Keys.sharedState(state.sessionID))) invalid("has another state address")
@@ -41,6 +42,7 @@ export namespace OrganizationSharedHistory {
         invalid("requires its current synchronized generation")
       const generation = state.shareGeneration
       if (!source.first(["shared-transcript", session.sessionID, String(generation)], state)) continue
+      const bindings = await HandoffHistory.windows(source, session, generation)
       const reference = (content: Sync.Content | undefined) => {
         if (content?.kind !== "blob") return
         Blobs.historicalReference(source, {
@@ -105,11 +107,12 @@ export namespace OrganizationSharedHistory {
         if (event.type === "session") {
           const value = event.session
           const current = projection(id)
+          const original = HandoffHistory.at(bindings, event.sequence)
           if (
             value.projectID !== current.projectID ||
             value.creatorID !== current.creatorID ||
-            value.driverRuntimeID !== current.driverRuntimeID ||
-            value.bindingEpoch !== current.bindingEpoch ||
+            value.driverRuntimeID !== original.driverRuntimeID ||
+            value.bindingEpoch !== original.bindingEpoch ||
             value.shareGeneration !== current.shareGeneration ||
             value.rootSessionID !== current.rootSessionID ||
             value.parentSessionID !== current.parentSessionID ||
@@ -162,10 +165,12 @@ export namespace OrganizationSharedHistory {
         String(generation),
       ])) {
         const batch = Record.SharedBatch.parse(batchRow.value)
+        const original = HandoffHistory.at(bindings, batch.firstSeq)
         if (
           batch.sessionID !== session.sessionID ||
           batch.projectID !== session.projectID ||
-          batch.bindingEpoch !== session.bindingEpoch ||
+          batch.bindingEpoch !== original.bindingEpoch ||
+          HandoffHistory.at(bindings, batch.lastSeq) !== original ||
           batch.shareGeneration !== generation ||
           batch.firstSeq !== firstSeq ||
           batch.lastSeq < firstSeq ||

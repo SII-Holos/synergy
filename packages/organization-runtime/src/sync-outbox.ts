@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { createHash } from "node:crypto"
 import {
   OrganizationIdentity as Identity,
   OrganizationProtocol as Protocol,
@@ -59,6 +60,80 @@ export const Batch = z.strictObject({
   events: z.array(Sync.Event).min(1).max(256),
 })
 export type Batch = z.infer<typeof Batch>
+
+type DraftIdentity =
+  | { type: "session"; sessionID: string }
+  | { type: "message"; sessionID: string; messageID: string }
+  | { type: "part"; sessionID: string; partID: string }
+  | { type: "tool"; sessionID: string; callID: string }
+  | { type: "attachment"; sessionID: string; attachmentID: string }
+  | { type: "cortex"; sessionID: string; taskID: string }
+  | { type: "notification"; sessionID: string; notificationID: string }
+  | { type: "blob"; sessionID: string; blobID: string; kind?: Extract<Sync.Event, { type: "blob" }>["kind"] }
+const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex")
+export function draftID(value: DraftIdentity) {
+  return digest(value).slice(0, 32)
+}
+export function eventDraftID(rootSessionID: string, value: Sync.Event): string {
+  if (value.type === "session") return draftID({ type: "session", sessionID: value.session.sessionID })
+  const sessionID = value.sessionID ?? rootSessionID
+  switch (value.type) {
+    case "message":
+      return draftID({ type: "message", sessionID, messageID: value.messageID })
+    case "part":
+      return draftID({ type: "part", sessionID, partID: value.partID })
+    case "tool":
+      return draftID({ type: "tool", sessionID, callID: value.callID })
+    case "attachment":
+      return draftID({ type: "attachment", sessionID, attachmentID: value.attachmentID })
+    case "cortex":
+      return draftID({ type: "cortex", sessionID, taskID: value.taskID })
+    case "notification":
+      return draftID({ type: "notification", sessionID, notificationID: value.notificationID })
+    case "blob":
+      return draftID({
+        type: "blob",
+        sessionID,
+        blobID: value.blobID,
+        ...(value.kind === "message-content" ? {} : { kind: value.kind }),
+      })
+  }
+}
+export function sequenceDraftEvent(input: Sync.Event, sequence: number, shareGeneration: number) {
+  const event = { ...input, sequence }
+  if (event.type === "session") event.session = { ...event.session, shareGeneration }
+  return Sync.Event.parse(event)
+}
+export function originalBatch(value: unknown, projectID: string) {
+  const stored = Batch.parse(value)
+  const identity = Sync.BatchIdentity.parse({
+    sessionID: stored.sessionID,
+    projectID,
+    bindingEpoch: stored.bindingEpoch,
+    shareGeneration: stored.shareGeneration,
+    firstSeq: stored.firstSeq,
+    lastSeq: stored.lastSeq,
+    payloadHash: stored.payloadHash,
+  })
+  const sent = Sync.Batch.parse({ schemaVersion: 1, ...identity, events: stored.events })
+  if (
+    !stored.draftHashes ||
+    stored.draftHashes.length !== stored.draftIDs.length ||
+    stored.draftIDs.length !== sent.events.length ||
+    new Set(stored.draftIDs).size !== stored.draftIDs.length ||
+    digest({ firstSeq: sent.firstSeq, lastSeq: sent.lastSeq, events: sent.events }) !== sent.payloadHash
+  )
+    throw new Error("Original sync batch lacks its immutable body and original draft identities")
+  for (const [index, event] of sent.events.entries()) {
+    const original = sequenceDraftEvent(event, 1, 0)
+    if (
+      stored.draftIDs[index] !== eventDraftID(stored.sessionID, original) ||
+      stored.draftHashes[index] !== digest(original)
+    )
+      throw new Error("Original sync batch differs from its original draft content or identity")
+  }
+  return { stored, sent, identity }
+}
 
 export type DraftInput = { draftID: string; event: Sync.Event }
 export type Bound = NonNullable<Awaited<ReturnType<typeof binding>>>

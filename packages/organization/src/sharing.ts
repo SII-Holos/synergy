@@ -847,6 +847,61 @@ export namespace OrganizationSharing {
     })
   }
 
+  export async function batchReceipt(input: Sync.BatchIdentity, assertCurrent: () => void) {
+    const selected = Sync.BatchIdentity.parse(input)
+    assertCurrent()
+    const marker = await Record.read(
+      Record.SharedBatch,
+      Keys.sharedBatch(selected.sessionID, selected.shareGeneration, selected.firstSeq),
+    )
+    assertCurrent()
+    if (!marker) return Sync.BatchReceipt.parse({ state: "absent", batch: selected })
+    if (
+      marker.sessionID !== selected.sessionID ||
+      marker.projectID !== selected.projectID ||
+      marker.bindingEpoch !== selected.bindingEpoch ||
+      marker.shareGeneration !== selected.shareGeneration ||
+      marker.firstSeq !== selected.firstSeq ||
+      marker.lastSeq !== selected.lastSeq ||
+      marker.payloadHash !== selected.payloadHash
+    )
+      fail("REVISION_CONFLICT", "Sync receipt belongs to another exact original batch")
+    return Sync.BatchReceipt.parse({ state: "committed", batch: selected, committedAt: marker.committedAt })
+  }
+
+  export async function batchReceiptFromRuntime(connection: RuntimeConnectionLease, input: Sync.BatchIdentity) {
+    const selected = Sync.BatchIdentity.parse(input)
+    return Storage.snapshot(async () => {
+      connection.assertCurrent()
+      const session = await runtimeSession(connection.handshake, selected.sessionID)
+      connection.assertCurrent()
+      if (selected.projectID !== session.projectID) mismatch("Sync receipt project does not match the Session")
+      if (selected.bindingEpoch !== session.bindingEpoch) fail("STALE_BINDING", "Sync receipt binding is stale")
+      if (selected.shareGeneration !== session.shareGeneration) fail("SHARE_REVOKED", "Sync receipt generation changed")
+      return batchReceipt(selected, connection.assertCurrent)
+    })
+  }
+
+  export async function assertTransferredBatch(
+    session: Record.SessionDirectory,
+    input: Sync.BatchIdentity,
+    assertCurrent: () => void,
+  ) {
+    if (!Storage.inWriteTransaction())
+      fail("INVALID_REQUEST", "Sync transfer barrier must join its original Handoff commit")
+    const selected = Sync.BatchIdentity.parse(input)
+    if (
+      selected.sessionID !== session.sessionID ||
+      selected.projectID !== session.projectID ||
+      selected.bindingEpoch !== session.bindingEpoch ||
+      selected.shareGeneration !== session.shareGeneration
+    )
+      fail("STALE_BINDING", "Sync transfer checkpoint changed its original source binding")
+    const receipt = await batchReceipt(selected, assertCurrent)
+    if (receipt.state !== "committed")
+      fail("HANDOFF_BLOCKED", "The original sequenced sync batch has no exact committed receipt")
+  }
+
   export async function getFromRuntime(handshake: Protocol.Handshake, sessionID: string) {
     return Storage.snapshot(async () => view(await runtimeSession(handshake, sessionID)))
   }

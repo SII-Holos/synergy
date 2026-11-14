@@ -4,6 +4,7 @@ import {
   OrganizationHandoffProtocol as Handoff,
   OrganizationExecutionProtocol as Execution,
   OrganizationProtocol,
+  OrganizationSyncProtocol as Sync,
   OrganizationRuntimeProtocol as Runtime,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
@@ -30,6 +31,7 @@ import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
 import { WorkspaceMove } from "@ericsanchezok/synergy-harness/workspace/move"
 import { WorkspaceArchive } from "@ericsanchezok/synergy-harness/workspace/archive"
 import { OrganizationSessionTransfer as Transfer } from "./session-transfer"
+import { OrganizationSyncTransfer as SyncTransfer } from "./sync-transfer"
 import { OrganizationHandoffWorkspaceSource as WorkspaceSource } from "./handoff-workspace-source"
 import { OrganizationHandoffWorkspaceDrain as WorkspaceDrain } from "./handoff-workspace-drain"
 import { OrganizationHandoffSourceReceipts as SourceReceipts } from "./handoff-source-receipts"
@@ -132,6 +134,11 @@ export namespace OrganizationHandoffSource {
       )
         fail("Source controller requires the current finite service authorization")
       input.signal.throwIfAborted()
+      if (
+        plan.syncTransferVersion === Handoff.syncTransferVersion &&
+        connection.syncVersion !== Sync.observationVersion
+      )
+        fail("Source sync transfer requires its negotiated exact batch receipt owner")
       await assertHandoffHome(identity, runtimeID, plan)
       if (plan.environmentPlan) OrganizationHandoffEnvironments.assertPlan(plan, "source")
       const session = await Session.get(plan.sessionID)
@@ -492,13 +499,24 @@ export namespace OrganizationHandoffSource {
             })
             if (!lease) lease = await capture(plan, signal, input.resources)
             await source.sealSource()
+            if (plan.syncTransferVersion === Handoff.syncTransferVersion)
+              await SyncTransfer.settleSource(binding(plan), prepared.manifestHash, signal, { record: source.record })
             await verify()
             const files = prepared.root.owners["session-workspaces"] ? await Files.receipt(binding(plan)) : undefined
             if (prepared.root.owners["session-workspaces"] && !files)
               fail("Source frozen Workspace owner has no completed native file closure")
+            const syncCheckpoint =
+              plan.syncTransferVersion === Handoff.syncTransferVersion
+                ? await SyncTransfer.sourceCheckpoint(binding(plan), prepared.manifestHash, signal, {
+                    record: source.record,
+                  })
+                : undefined
+            if (plan.syncTransferVersion === Handoff.syncTransferVersion && !syncCheckpoint)
+              fail("Source preparation has no exact captured native sync closure")
             const fact = Handoff.Proof.parse({
               ...factBinding(plan),
               purpose: "source-frozen",
+              ...(syncCheckpoint ? { syncCheckpoint } : {}),
               ...(plan.environmentPlan ? { environmentMappingHash: plan.environmentPlan.hash } : {}),
               manifestHash: prepared.manifestHash,
               commandSeq: plan.commandSeq,

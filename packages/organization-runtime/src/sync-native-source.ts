@@ -16,7 +16,15 @@ import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
 import { RolloutEvents } from "@ericsanchezok/synergy-harness/session/rollout/events"
 import { SessionTransferEpochs as Epochs } from "@ericsanchezok/synergy-harness/session/transfer"
 import { OrganizationSyncPath as Keys } from "./storage/path"
-import { binding, mutationBinding, putDrafts, type Bound, type DraftInput, type WriteOwner } from "./sync-outbox"
+import {
+  binding,
+  mutationBinding,
+  putDrafts,
+  draftID as identityDraftID,
+  type Bound,
+  type DraftInput,
+  type WriteOwner,
+} from "./sync-outbox"
 import { createSyncProjection } from "./sync-projection"
 
 const sinkID = "organization-native-sync"
@@ -311,7 +319,7 @@ async function deliver(deliveries: readonly Readonly<StorageEventSinks.Delivery>
             partID: selector.partID,
             removed: true,
           }
-          const draftID = digest({ type: "part", sessionID: captured.sessionID, partID: selector.partID }).slice(0, 32)
+          const draftID = identityDraftID({ type: "part", sessionID: captured.sessionID, partID: selector.partID })
           collected.set(draftID, { draftID, event: Sync.Event.parse({ ...removed, integrity: digest(removed) }) })
         } else if (!part) {
           if (!(await superseded(delivery, captured)))
@@ -401,6 +409,7 @@ export function registerNativeSyncSource(orgID: string) {
     if (!tree) return
     for (const key of keys) {
       if (key[0] !== "sessions" || (key.length > 3 && key[3] !== "rollout")) continue
+      if (key[3] === "rollout" && (key[4] === "tool_parts" || key[4] === "tool_part_schema")) continue
       if (key.length >= 3) {
         const bound = await binding(key[2]!, orgID, key[1])
         if (!bound) continue

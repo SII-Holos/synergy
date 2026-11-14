@@ -1,12 +1,25 @@
 import { z } from "zod"
 import { OrganizationIdentity as Identity } from "./identity.js"
 import { OrganizationProtocol } from "./core.js"
+import { OrganizationSyncProtocol as Sync } from "./sync.js"
 import { SigningSignature, digestProtocol, signedProtocol } from "./signature.js"
 import { ActorStamp } from "@ericsanchezok/synergy-util/actor-stamp"
 import { WorkspacePath } from "./workspace-path.js"
 
 export namespace OrganizationHandoffProtocol {
   export const Hash = z.string().regex(/^[a-f0-9]{64}$/)
+  export const syncTransferVersion = 1
+  export const syncTransferBridge = 10
+  export const SyncCheckpoint = z
+    .strictObject({
+      version: z.literal(syncTransferVersion),
+      closureHash: Hash,
+      pendingBatch: Sync.BatchIdentity.nullable(),
+    })
+    .meta({ ref: "OrgHandoffSyncCheckpoint" })
+  export type SyncCheckpoint = z.infer<typeof SyncCheckpoint>
+  export const syncCheckpointHash = (checkpoint: SyncCheckpoint) =>
+    digestProtocol(SyncCheckpoint, "synergy.organization.handoff.sync-checkpoint.v1\n", checkpoint)
   export const NativeEnvironmentDescriptor = z.strictObject({
     version: z.literal(1),
     kind: z.literal("native"),
@@ -147,6 +160,7 @@ export namespace OrganizationHandoffProtocol {
     .discriminatedUnion("purpose", [
       Binding.extend({
         purpose: z.literal("source-frozen"),
+        syncCheckpoint: SyncCheckpoint.optional(),
         environmentMappingHash: Hash.optional(),
         manifestHash: Hash,
         commandSeq: Identity.Revision,
@@ -161,6 +175,7 @@ export namespace OrganizationHandoffProtocol {
       }),
       Binding.extend({
         purpose: z.literal("target-prepared"),
+        syncCheckpointHash: Hash.optional(),
         environmentMappingHash: Hash.optional(),
         manifestHash: Hash,
         compatibilityHash: Hash,
@@ -611,6 +626,7 @@ export namespace OrganizationHandoffProtocol {
   })
   export const MachinePlan = Binding.extend({
     purpose: z.literal("handoff-machine"),
+    syncTransferVersion: z.literal(syncTransferVersion).optional(),
     requestID: Identity.ID,
     keyID: Identity.ID,
     runtimeID: Identity.ID,

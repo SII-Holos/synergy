@@ -114,6 +114,13 @@ export namespace OrganizationRuntimeProtocol {
     batch: Sync.Batch,
   })
   export type SyncBatch = z.infer<typeof SyncBatch>
+  export const SyncBatchReceipt = z.strictObject({
+    type: z.literal("sync-batch-receipt"),
+    connectionEpoch: Protocol.Epoch,
+    exchangeID: Identity.ID,
+    query: Sync.BatchReceiptQuery,
+  })
+  export type SyncBatchReceipt = z.infer<typeof SyncBatchReceipt>
   export const BlobChunk = z
     .strictObject({
       type: z.literal("blob-chunk"),
@@ -157,6 +164,7 @@ export namespace OrganizationRuntimeProtocol {
     Receipt,
     SyncStateRequest,
     SyncBatch,
+    SyncBatchReceipt,
     BlobChunk,
     z.strictObject({
       type: z.literal("notification"),
@@ -199,6 +207,12 @@ export namespace OrganizationRuntimeProtocol {
       connectionEpoch: Protocol.Epoch,
       exchangeID: Identity.ID,
       ack: Sync.Ack,
+    }),
+    z.strictObject({
+      type: z.literal("sync-batch-receipt"),
+      connectionEpoch: Protocol.Epoch,
+      exchangeID: Identity.ID,
+      receipt: Sync.BatchReceipt,
     }),
     z.strictObject({
       type: z.literal("blob-ack"),

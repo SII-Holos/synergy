@@ -3515,6 +3515,22 @@ export type OrgHandoffPermitRequest = {
   purpose: "handoff-surrender" | "handoff-activation"
 }
 
+export type OrgSyncBatchIdentity = {
+  sessionID: string
+  projectID: string
+  bindingEpoch: number
+  shareGeneration: number
+  firstSeq: number
+  lastSeq: number
+  payloadHash: string
+}
+
+export type OrgHandoffSyncCheckpoint = {
+  version: 1
+  closureHash: string
+  pendingBatch: OrgSyncBatchIdentity | null
+}
+
 export type OrgHandoffProof =
   | {
       schemaVersion: 1
@@ -3529,6 +3545,7 @@ export type OrgHandoffProof =
       mappingPlanRevision: number
       shareGeneration: number
       purpose: "source-frozen"
+      syncCheckpoint?: OrgHandoffSyncCheckpoint
       environmentMappingHash?: string
       manifestHash: string
       commandSeq: number
@@ -3554,6 +3571,7 @@ export type OrgHandoffProof =
       mappingPlanRevision: number
       shareGeneration: number
       purpose: "target-prepared"
+      syncCheckpointHash?: string
       environmentMappingHash?: string
       manifestHash: string
       compatibilityHash: string

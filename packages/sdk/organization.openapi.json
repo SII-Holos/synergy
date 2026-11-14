@@ -14893,6 +14893,30 @@
         "required": ["purpose"],
         "additionalProperties": false
       },
+      "OrgSyncBatchIdentity": {
+        "type": "object",
+        "properties": {
+          "sessionID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "projectID": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$" },
+          "bindingEpoch": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+          "shareGeneration": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "firstSeq": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+          "lastSeq": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+          "payloadHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+        },
+        "required": ["sessionID", "projectID", "bindingEpoch", "shareGeneration", "firstSeq", "lastSeq", "payloadHash"],
+        "additionalProperties": false
+      },
+      "OrgHandoffSyncCheckpoint": {
+        "type": "object",
+        "properties": {
+          "version": { "type": "number", "const": 1 },
+          "closureHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "pendingBatch": { "anyOf": [{ "$ref": "#/components/schemas/OrgSyncBatchIdentity" }, { "type": "null" }] }
+        },
+        "required": ["version", "closureHash", "pendingBatch"],
+        "additionalProperties": false
+      },
       "OrgHandoffProof": {
         "oneOf": [
           {
@@ -14915,6 +14939,7 @@
               "mappingPlanRevision": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
               "shareGeneration": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
               "purpose": { "type": "string", "const": "source-frozen" },
+              "syncCheckpoint": { "$ref": "#/components/schemas/OrgHandoffSyncCheckpoint" },
               "environmentMappingHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
               "manifestHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
               "commandSeq": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
@@ -14976,6 +15001,7 @@
               "mappingPlanRevision": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
               "shareGeneration": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
               "purpose": { "type": "string", "const": "target-prepared" },
+              "syncCheckpointHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
               "environmentMappingHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
               "manifestHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
               "compatibilityHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },

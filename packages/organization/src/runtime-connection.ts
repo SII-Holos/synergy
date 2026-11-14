@@ -6,6 +6,7 @@ import {
   OrganizationRuntimeProtocol as Runtime,
   OrganizationCommandProtocol as Command,
   OrganizationSyncProtocol as Sync,
+  OrganizationHandoffProtocol as Handoff,
   OrganizationNotificationProtocol as Notification,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { OrganizationRecord as Record } from "./storage/records"
@@ -56,6 +57,7 @@ export function createRuntimeConnections(input: {
     sessionID: string,
     observation: Sync.StateObservation,
   ) => Promise<Sync.Share>
+  onSyncBatchReceipt?: (connection: RuntimeConnectionLease, query: Sync.BatchReceiptQuery) => Promise<Sync.BatchReceipt>
   onSyncBatch?: (connection: RuntimeConnectionLease, batch: Sync.Batch) => Promise<Sync.Ack>
   onNotification?: (connection: RuntimeConnectionLease, notice: Notification.Observation) => Promise<void>
   onBlobChunk?: (
@@ -158,7 +160,7 @@ export function createRuntimeConnections(input: {
     if (
       requireCommands === "handoffs" &&
       (!handshake.capabilities.includes("handoffs") ||
-        ![1, 2, 3, 4, 5, 6, 7, 8, 9].includes(handshake.schemas.handoffs))
+        ![1, 2, 3, 4, 5, 6, 7, 8, 9, Handoff.syncTransferBridge].includes(handshake.schemas.handoffs))
     )
       fail("PROTOCOL_MISMATCH", "Runtime does not support the native handoff reader contract")
     Object.freeze(handshake.capabilities)
@@ -226,8 +228,11 @@ export function createRuntimeConnections(input: {
             : handshake.schemas.sync !== undefined
         )
           fail("PROTOCOL_MISMATCH", "Runtime sync capabilities and schema are inconsistent")
-        if (handshake.schemas.sync === Sync.observationVersion && !input.onSyncObservation)
-          fail("PROTOCOL_MISMATCH", "Runtime sync storage observation owner is not installed")
+        if (
+          handshake.schemas.sync === Sync.observationVersion &&
+          (!input.onSyncObservation || !input.onSyncBatchReceipt)
+        )
+          fail("PROTOCOL_MISMATCH", "Runtime sync storage observation and exact receipt owners are not installed")
         if (
           handshake.capabilities.includes("notifications") !==
           (handshake.schemas.notifications === Notification.Version)
@@ -349,6 +354,22 @@ export function createRuntimeConnections(input: {
         connectionEpoch: connection.handshake.connectionEpoch,
         exchangeID: frame.data.exchangeID,
         share: Sync.Share.parse(share),
+      })
+      return
+    }
+    if (frame.data.type === "sync-batch-receipt") {
+      const connection = captureSocket(socket, false)
+      if (frame.data.connectionEpoch !== connection.handshake.connectionEpoch)
+        stale(connection.handshake.connectionEpoch)
+      if (connection.handshake.schemas.sync !== Sync.observationVersion || !input.onSyncBatchReceipt)
+        fail("PROTOCOL_MISMATCH", "Runtime exact batch receipts require their negotiated owner")
+      const receipt = await input.onSyncBatchReceipt(connection, frame.data.query)
+      connection.assertCurrent()
+      send(socket, {
+        type: "sync-batch-receipt",
+        connectionEpoch: connection.handshake.connectionEpoch,
+        exchangeID: frame.data.exchangeID,
+        receipt: Sync.BatchReceipt.parse(receipt),
       })
       return
     }

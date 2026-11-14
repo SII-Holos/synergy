@@ -5,6 +5,7 @@ import {
   OrganizationSyncProtocol as Sync,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { testRuntime } from "@ericsanchezok/synergy-harness/test/support/runtime"
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
@@ -524,7 +525,7 @@ test("an offline native Part removal survives restart and a failed local outbox 
       expect(await MessageV2.readPart(target!)).toBeUndefined()
     } finally {
       try {
-        await exporter.close()
+        await RuntimeContext.exit(() => exporter.close())
       } catch (error) {
         if (error !== full && !(error instanceof AggregateError && error.errors.every((cause) => cause === full)))
           throw error
@@ -558,10 +559,11 @@ test("an offline native Part removal survives restart and a failed local outbox 
   })
 })
 
-test.each(["close", "abort"] as const)(
-  "%s retains an accepted native Part removal for exporter restart without another publication",
+test.each(["close", "abort", "foreign-close"] as const)(
+  "detached %s retains an accepted native Part removal for exporter restart without another publication",
   async (mode) => {
     await using runtime = await testRuntime({ register: () => registerSessionSchema(binding) })
+    await using foreign = mode === "foreign-close" ? await testRuntime() : undefined
     await runtime.run(async () => {
       const f = await fixture()
       const remote = transport(f.session.id)
@@ -599,9 +601,13 @@ test.each(["close", "abort"] as const)(
         const partKey = ["sessions", f.scope.id, f.session.id, "messages", f.info.id, "parts", f.part.id]
         expect((await Storage.readMany([partKey]))[0]).toBeUndefined()
         const publications = remote.batches.length
-        if (mode === "abort") controller.abort(new Error("Original export connection closed"))
+        if (mode === "abort")
+          RuntimeContext.exit(() => controller.abort(new Error("Original export connection closed")))
         let closed = false
-        const closing = exporter.close().then(() => {
+        const close = foreign
+          ? () => foreign.run(() => exporter.close())
+          : () => RuntimeContext.exit(() => exporter.close())
+        const closing = close().then(() => {
           closed = true
         })
         await Promise.resolve()
@@ -625,6 +631,11 @@ test.each(["close", "abort"] as const)(
           removed: true,
         })
         expect(projection?.event).toEqual(draft?.event)
+        if (foreign)
+          await foreign.run(async () => {
+            expect(await Storage.query({ prefix: Keys.sessions(binding.orgID), limit: 1 })).toEqual([])
+            expect(await Storage.query({ kind: "event_delivery", limit: 1 })).toEqual([])
+          })
         const reopened = startMemberSyncExporter({
           identity: { orgID: binding.orgID, accountID: binding.creatorID, deviceID: "device-sync" },
           connection: remote.connection,
@@ -1137,4 +1148,25 @@ test("a committed attachment batch with lost ACK keeps its original content afte
       await exporter.close()
     }
   })
+})
+
+test("a detached exporter close remains idempotent after its original Runtime is disposed", async () => {
+  const runtime = await testRuntime({ register: () => registerSessionSchema(binding) })
+  const remote = transport("closed-original-runtime")
+  const exporter = await runtime.run(() =>
+    startMemberSyncExporter({
+      identity: { orgID: binding.orgID, accountID: binding.creatorID, deviceID: "device-sync" },
+      connection: remote.connection,
+      signal: new AbortController().signal,
+    }),
+  )
+  try {
+    const closed = RuntimeContext.exit(() => exporter.close())
+    await closed
+    await runtime.close()
+    await expect(exporter.close()).resolves.toBeUndefined()
+    expect(remote.batches).toEqual([])
+  } finally {
+    await runtime.close()
+  }
 })

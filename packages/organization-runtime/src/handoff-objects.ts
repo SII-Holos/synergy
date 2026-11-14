@@ -226,6 +226,51 @@ export namespace OrganizationHandoffObjects {
         complete: nextOffset === bytes.length,
       })
     }
-    return { store, contains, inspect, sealSource, range }
+    async function record(value: { manifestHash: string; ownerID: string; key: readonly string[] }): Promise<unknown> {
+      assertOwner()
+      if (Storage.inTransaction()) fail("Sealed source record reads must run outside their native transaction")
+      const selected = z.strictObject({ manifestHash: Hash, ownerID: ID, key: z.array(ID).min(1).max(64) }).parse(value)
+      const sealed = await inspect()
+      const prepared = await sourcePackage()
+      if (
+        !sealed ||
+        sealed.manifestHash !== selected.manifestHash ||
+        prepared.manifestHash !== selected.manifestHash ||
+        prepared.root.owners[selected.ownerID] === undefined
+      )
+        fail("Source record has no exact sealed native owner")
+      const directory = path.join(Global.Path.cache, "organization-handoff-objects")
+      await fs.mkdir(directory, { recursive: true })
+      assertOwner()
+      await using reader = await Stream.open({ root: prepared.root, store, directory, signal })
+      const index = await reader.index()
+      assertOwner()
+      let result: unknown
+      let found = false
+      for await (const entry of index.entries()) {
+        assertOwner()
+        if (
+          entry.metadata.transferOwner !== selected.ownerID ||
+          entry.metadata.transferSessionID !== identity.binding.sessionID
+        )
+          continue
+        const key = z.array(ID).safeParse(entry.metadata.key)
+        if (!key.success || JSON.stringify(key.data) !== JSON.stringify(selected.key)) continue
+        if (found || entry.kind !== "record" || entry.bytes > Stream.pageBytes)
+          fail("Source record is duplicated, not native metadata or exceeds its finite frame")
+        const chunks: Uint8Array[] = []
+        for await (const chunk of index.read(entry.id)) {
+          assertOwner()
+          chunks.push(chunk)
+        }
+        result = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(chunks)))
+        found = true
+      }
+      if (!found) fail("Source record is outside its sealed native owner")
+      if ((await sourcePackage()).manifestHash !== selected.manifestHash) fail("Source record ownership changed")
+      assertOwner()
+      return result
+    }
+    return { store, contains, inspect, sealSource, range, record }
   }
 }

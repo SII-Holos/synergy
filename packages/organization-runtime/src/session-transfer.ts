@@ -24,6 +24,7 @@ import { WorkspaceContent } from "@ericsanchezok/synergy-harness/workspace/conte
 import { WorkspaceArchive } from "@ericsanchezok/synergy-harness/workspace/archive"
 import { drainMemberSync } from "./sync-exporter"
 import { drainMemberFiles } from "./execution-source"
+import { OrganizationSyncTransfer } from "./sync-transfer"
 
 export namespace OrganizationSessionTransfer {
   export const id = "organization-runtime"
@@ -662,4 +663,7 @@ export namespace OrganizationSessionTransfer {
   }
 }
 
-export const registerOrganizationTransferOwner = OrganizationSessionTransfer.register
+export function registerOrganizationTransferOwner() {
+  OrganizationSessionTransfer.register()
+  OrganizationSyncTransfer.register()
+}

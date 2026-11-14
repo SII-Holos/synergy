@@ -5,6 +5,7 @@ import {
   OrganizationRuntimeProtocol as Protocol,
   OrganizationCommandProtocol as Command,
   OrganizationSyncProtocol as Sync,
+  OrganizationIdentity as Identity,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { fileLockPath, withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
 import { prepareMemberHome } from "../src/home"
@@ -13,6 +14,10 @@ import { openMemberConnection } from "../src/connection"
 import { startMemberBridge } from "../src/bridge"
 import { fixture } from "./support/organization"
 import { OrganizationRuntimeError } from "../src/error"
+import { OrganizationSessionDirectory as Directory } from "../../organization/src/session-directory"
+import { OrganizationRecord as Record } from "../../organization/src/storage/records"
+import { OrganizationStoragePath as Paths } from "../../organization/src/storage/path"
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 
 async function enrolled() {
   const f = await fixture()
@@ -1288,3 +1293,138 @@ test("held sync observations keep caller and parent cancellation offline and nev
     }
   }
 })
+
+async function originalReceiptBatch(
+  f: Awaited<ReturnType<typeof enrolled>>,
+  current: Awaited<ReturnType<typeof openMemberConnection>>,
+) {
+  const options = { headers: f.headers, throwOnError: true as const }
+  const project = (
+    await f.client.orgProjects.create({ orgProjectCreate: { name: "Original native receipt" } }, options)
+  ).data
+  const cookie = f.headers.cookie
+  const session = await f.service.maintenance.run(() =>
+    Directory.reservePrivate(
+      {
+        token: Identity.Token.parse(cookie.slice(cookie.indexOf("=") + 1)),
+        csrf: f.headers["x-csrf-token"],
+      },
+      {
+        sessionID: crypto.randomUUID(),
+        projectID: project.projectID,
+        runtimeID: current.connected.runtimeID,
+      },
+    ),
+  )
+  const shared = (
+    await f.client.orgSessions.share(
+      { sessionID: session.sessionID, orgShareChange: { expectedShareGeneration: 0 } },
+      options,
+    )
+  ).data
+  const events: Sync.Event[] = [
+    {
+      type: "session",
+      sequence: 1,
+      session: {
+        sessionID: session.sessionID,
+        projectID: session.projectID,
+        creatorID: session.creatorID,
+        driverRuntimeID: session.driverRuntimeID,
+        bindingEpoch: session.bindingEpoch,
+        createdAt: session.createdAt,
+        shareGeneration: shared.shareGeneration,
+      },
+    },
+  ]
+  const batch = Sync.Batch.parse({
+    schemaVersion: 1,
+    sessionID: session.sessionID,
+    projectID: project.projectID,
+    bindingEpoch: session.bindingEpoch,
+    shareGeneration: shared.shareGeneration,
+    firstSeq: 1,
+    lastSeq: 1,
+    events,
+    payloadHash: new Bun.CryptoHasher("sha256")
+      .update(JSON.stringify({ firstSeq: 1, lastSeq: 1, events }))
+      .digest("hex"),
+  })
+  expect(await current.sync(batch)).toMatchObject({ nextSeq: 2, bindingEpoch: 1, shareGeneration: 1 })
+  const { sessionID, projectID, bindingEpoch, shareGeneration, firstSeq, lastSeq, payloadHash } = batch
+  return {
+    batch: Sync.BatchIdentity.parse({
+      sessionID,
+      projectID,
+      bindingEpoch,
+      shareGeneration,
+      firstSeq,
+      lastSeq,
+      payloadHash,
+    }),
+    marker: () =>
+      f.service.maintenance.run(() =>
+        Record.read(Record.SharedBatch, Paths.sharedBatch(session.sessionID, shared.shareGeneration, 1)),
+      ),
+  }
+}
+
+test("the native connection reads the real signed sync two batch marker without acknowledging a different tuple", async () => {
+  await using f = await enrolled()
+  await using current = await openMemberConnection({ ...f.options, sync: true, syncVersion: 2 })
+  const original = await originalReceiptBatch(f, current)
+  const before = await original.marker()
+  expect(before).toMatchObject(original.batch)
+  expect(await current.syncBatchReceipt({ batch: original.batch })).toMatchObject({
+    state: "committed",
+    batch: original.batch,
+  })
+  expect(await original.marker()).toEqual(before)
+}, 15000)
+
+test("a cancelled native exact receipt read never consumes the original late Service response", async () => {
+  await using f = await enrolled()
+  await using current = await openMemberConnection({ ...f.options, sync: true, syncVersion: 2 })
+  const original = await originalReceiptBatch(f, current)
+  const before = await original.marker()
+  const entered = Promise.withResolvers<void>()
+  const release = Promise.withResolvers<void>()
+  const settled = Promise.withResolvers<void>()
+  const read = Storage.readMany
+  let held = false
+  let consumed = false
+  const intercepted = spyOn(Storage, "readMany").mockImplementation(async <T>(keys: string[][]) => {
+    const value = await read<T>(keys)
+    if (
+      !held &&
+      keys.some((key) => JSON.stringify(key) === JSON.stringify(Paths.sharedBatch(original.batch.sessionID, 1, 1)))
+    ) {
+      held = true
+      entered.resolve()
+      await release.promise
+      settled.resolve()
+    }
+    return value
+  })
+  const caller = new AbortController()
+  const observed = current.syncBatchReceipt({ batch: original.batch }, caller.signal).then(
+    () => {
+      consumed = true
+      return undefined
+    },
+    (error) => error,
+  )
+  try {
+    await within(entered.promise)
+    caller.abort()
+    expect(await observed).toMatchObject({ data: { code: "RUNTIME_OFFLINE", message: "Sync request was cancelled" } })
+  } finally {
+    release.resolve()
+    await within(settled.promise)
+    await observed
+    intercepted.mockRestore()
+  }
+  expect(held).toBe(true)
+  expect(consumed).toBe(false)
+  expect(await original.marker()).toEqual(before)
+}, 15000)

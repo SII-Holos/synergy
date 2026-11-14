@@ -104,8 +104,12 @@ export namespace RolloutArtifact {
     return [...root(owner), "artifacts", z.uuid().parse(id)]
   }
 
+  export function infoKey(owner: Owner, id: string) {
+    return [...artifactRoot(owner, id), "info"]
+  }
+
   export async function get(owner: Owner, id: string): Promise<Ref> {
-    return Ref.parse(await Storage.read([...artifactRoot(owner, id), "info"]))
+    return Ref.parse(await Storage.read(infoKey(owner, id)))
   }
 
   export async function* iterate(input: Owner, options: { signal?: AbortSignal } = {}): AsyncGenerator<Ref> {

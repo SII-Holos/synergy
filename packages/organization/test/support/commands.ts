@@ -2,6 +2,7 @@ import { expect } from "bun:test"
 import {
   OrganizationCommandProtocol as Command,
   OrganizationRuntimeProtocol as Runtime,
+  OrganizationSyncProtocol as Sync,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { directoryFixture } from "./session-directory"
@@ -16,9 +17,16 @@ import { createCommandForwarder } from "../../src/command-forwarding"
 import { createExecutionGrants } from "../../src/execution-grants"
 import { organizationApp } from "../../src/http"
 import { createGatewayCalls } from "../../src/gateway-calls"
+import { OrganizationSharing as Sharing } from "../../src/sharing"
+import type { RuntimeConnectionLease } from "../../src/command-transport"
 import { createConnectionGateway, createModelGateway } from "../../src/gateway"
 
-export async function commandFixture(options: { timeoutMs?: number } = {}) {
+export async function commandFixture(
+  options: {
+    timeoutMs?: number
+    sync?: { receipt: NonNullable<Parameters<typeof createRuntimeConnections>[0]["onSyncBatchReceipt"]> }
+  } = {},
+) {
   const f = await directoryFixture()
   const key = await keys()
   const deployment = { schemaVersion: 1 as const, orgID: "org", deploymentIncarnation: "deployment", createdAt: 1 }
@@ -33,6 +41,19 @@ export async function commandFixture(options: { timeoutMs?: number } = {}) {
     run: async (body) => f.run(body),
     signingIdentity: signing.identity,
     onResult: (lease, result) => commands.observe(lease, result),
+    ...(options.sync
+      ? {
+          onSyncState: (lease: RuntimeConnectionLease, sessionID: string) =>
+            Sharing.getFromRuntime(lease.handshake, sessionID),
+          onSyncObservation: (lease: RuntimeConnectionLease, sessionID: string, observation: Sync.StateObservation) =>
+            Sharing.observeFromRuntime(lease, sessionID, observation),
+          onSyncBatch: (lease: RuntimeConnectionLease, batch: Sync.Batch) =>
+            Sharing.applyBatchFromRuntime(lease, batch),
+          onBlobChunk: (lease: RuntimeConnectionLease, input: Parameters<typeof Sharing.uploadBlobFromRuntime>[1]) =>
+            Sharing.uploadBlobFromRuntime(lease, input),
+          onSyncBatchReceipt: options.sync.receipt,
+        }
+      : {}),
   })
   const commands = createCommandAdmissions({ connections, signing })
   const forwarder = createCommandForwarder({ admissions: commands, connections, timeoutMs: options.timeoutMs })
@@ -148,6 +169,10 @@ export async function commandFixture(options: { timeoutMs?: number } = {}) {
           if (handoffs) {
             signed.proof.handshake.capabilities.push("handoffs")
             signed.proof.handshake.schemas.handoffs = handoffVersion
+          }
+          if (options.sync) {
+            signed.proof.handshake.capabilities.push("sync")
+            signed.proof.handshake.schemas.sync = Sync.observationVersion
           }
           signed.signature = await Runtime.sign(signed.proof, key.privateKey)
         }

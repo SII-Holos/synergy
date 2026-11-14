@@ -31,6 +31,7 @@ export interface MemberConnection {
   close(): Promise<void>
   syncState(sessionID: string, signal?: AbortSignal): Promise<Sync.Share>
   observeSync(sessionID: string, observation: Sync.StateObservation, signal?: AbortSignal): Promise<Sync.Share>
+  syncBatchReceipt(query: Sync.BatchReceiptQuery, signal?: AbortSignal): Promise<Sync.BatchReceipt>
   sync(batch: Sync.Batch, signal?: AbortSignal): Promise<Sync.Ack>
   notify(notice: Notification.Observation): void
   uploadBlob(
@@ -83,7 +84,7 @@ export interface MemberConnectionOptions {
     connection: Connected,
     signal: AbortSignal,
   ) => Promise<Handoff.InspectionResult>
-  handoffVersion?: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9
+  handoffVersion?: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | typeof Handoff.syncTransferBridge
   read?: (authorization: Read.SignedPermit, connection: Connected, signal: AbortSignal) => Promise<Read.Result>
   interactions?: (
     authorization: Interactions.SignedPermit,
@@ -197,8 +198,8 @@ async function attempt(input: {
   const pendingSync = new Map<
     string,
     {
-      kind: "state" | "batch"
-      resolve(value: Sync.Share | Sync.Ack): void
+      kind: "state" | "batch" | "receipt"
+      resolve(value: Sync.Share | Sync.Ack | Sync.BatchReceipt): void
       reject(error: unknown): void
       timer: ReturnType<typeof setTimeout>
       signal?: AbortSignal
@@ -442,16 +443,25 @@ async function attempt(input: {
       )
       return
     }
-    if (frame.type === "sync-state" || frame.type === "sync-ack") {
+    if (frame.type === "sync-state" || frame.type === "sync-ack" || frame.type === "sync-batch-receipt") {
       if (!connected || frame.connectionEpoch !== epoch)
         throw failure("PROTOCOL_MISMATCH", "Sync response does not match an active connection")
       const request = pendingSync.get(frame.exchangeID)
-      if (!request || request.kind !== (frame.type === "sync-state" ? "state" : "batch"))
+      if (
+        !request ||
+        request.kind !== (frame.type === "sync-state" ? "state" : frame.type === "sync-ack" ? "batch" : "receipt")
+      )
         throw failure("PROTOCOL_MISMATCH", "Unknown Runtime sync exchange")
       pendingSync.delete(frame.exchangeID)
       clearTimeout(request.timer)
       request.signal?.removeEventListener("abort", request.cancel!)
-      request.resolve(frame.type === "sync-state" ? Sync.Share.parse(frame.share) : Sync.Ack.parse(frame.ack))
+      request.resolve(
+        frame.type === "sync-state"
+          ? Sync.Share.parse(frame.share)
+          : frame.type === "sync-ack"
+            ? Sync.Ack.parse(frame.ack)
+            : Sync.BatchReceipt.parse(frame.receipt),
+      )
       lease(connected.offlineMs)
       return
     }
@@ -607,11 +617,15 @@ async function attempt(input: {
       if (errors.length) throw new AggregateError(errors, "Member connection owners could not drain")
     })())
   }
-  function syncRequest<T extends "state" | "batch">(
+  function syncRequest<T extends "state" | "batch" | "receipt">(
     kind: T,
-    frame: T extends "state" ? Protocol.SyncStateRequest : Protocol.SyncBatch,
+    frame: T extends "state"
+      ? Protocol.SyncStateRequest
+      : T extends "batch"
+        ? Protocol.SyncBatch
+        : Protocol.SyncBatchReceipt,
     signal?: AbortSignal,
-  ): Promise<T extends "state" ? Sync.Share : Sync.Ack> {
+  ): Promise<T extends "state" ? Sync.Share : T extends "batch" ? Sync.Ack : Sync.BatchReceipt> {
     if (!connected || !options.sync)
       return Promise.reject(failure("PROTOCOL_MISMATCH", "Shared Session sync is not enabled"))
     if (signal?.aborted) return Promise.reject(failure("RUNTIME_OFFLINE", "Sync request was cancelled"))
@@ -630,7 +644,7 @@ async function attempt(input: {
       timer.unref()
       const request = {
         kind,
-        resolve: resolve as (value: Sync.Share | Sync.Ack) => void,
+        resolve: resolve as (value: Sync.Share | Sync.Ack | Sync.BatchReceipt) => void,
         reject,
         timer,
         signal,
@@ -643,7 +657,7 @@ async function attempt(input: {
       pendingSync.set(exchangeID, request)
       signal?.addEventListener("abort", request.cancel, { once: true })
       send(frame)
-    }) as Promise<T extends "state" ? Sync.Share : Sync.Ack>
+    }) as Promise<T extends "state" ? Sync.Share : T extends "batch" ? Sync.Ack : Sync.BatchReceipt>
   }
   function uploadBlob(
     input: {
@@ -814,6 +828,23 @@ async function attempt(input: {
             "Runtime sync storage observation response changed its original checkpoint",
           )
         return share
+      },
+      async syncBatchReceipt(input: Sync.BatchReceiptQuery, signal?: AbortSignal) {
+        const query = Sync.BatchReceiptQuery.parse(input)
+        if (options.syncVersion !== Sync.observationVersion || handshake.syncVersion !== Sync.observationVersion)
+          throw failure("PROTOCOL_MISMATCH", "Runtime exact batch receipts were not negotiated")
+        if (stopped || work.signal.aborted) throw failure("RUNTIME_OFFLINE", "Runtime connection closed")
+        if (signal?.aborted) throw failure("RUNTIME_OFFLINE", "Sync request was cancelled")
+        const receipt = await syncRequest(
+          "receipt",
+          { type: "sync-batch-receipt", connectionEpoch: epoch, exchangeID: crypto.randomUUID(), query },
+          signal,
+        )
+        if (stopped || work.signal.aborted) throw failure("RUNTIME_OFFLINE", "Runtime connection closed")
+        if (signal?.aborted) throw failure("RUNTIME_OFFLINE", "Sync request was cancelled")
+        if (JSON.stringify(Sync.BatchIdentity.parse(receipt.batch)) !== JSON.stringify(query.batch))
+          throw failure("PROTOCOL_MISMATCH", "Runtime exact batch receipt changed its original immutable identity")
+        return receipt
       },
       sync(batch: Sync.Batch, signal?: AbortSignal) {
         return syncRequest(

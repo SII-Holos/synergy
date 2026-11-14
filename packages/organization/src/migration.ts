@@ -32,6 +32,7 @@ const migrations: Migration[] = [
   OrganizationHandoffExecution.workspaceMigration,
   OrganizationHandoffExecution.differenceMigration,
   OrganizationHandoffExecution.environmentMigration,
+  OrganizationHandoffExecution.syncTransferMigration,
   cloudEnvironmentCatalogMigration,
   OrganizationHandoffExecution.cleanupMigration,
   sharedProjectionMigration,

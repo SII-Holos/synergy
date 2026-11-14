@@ -354,6 +354,41 @@ export namespace OrganizationSyncProtocol {
     .meta({ ref: "OrgSyncBatch" })
   export type Batch = z.infer<typeof Batch>
 
+  export const BatchIdentity = z
+    .strictObject({
+      sessionID: Identity.ID,
+      projectID: Identity.ID,
+      bindingEpoch: Protocol.Epoch,
+      shareGeneration: Identity.Revision,
+      firstSeq: Sequence.safe(),
+      lastSeq: Sequence.safe(),
+      payloadHash: Protocol.Digest,
+    })
+    .refine(
+      (value) => value.firstSeq <= value.lastSeq && value.lastSeq - value.firstSeq < 256,
+      "Batch receipt requires its original finite sequence range",
+    )
+    .meta({ ref: "OrgSyncBatchIdentity" })
+  export type BatchIdentity = z.infer<typeof BatchIdentity>
+  export const BatchReceiptQuery = z
+    .strictObject({
+      batch: BatchIdentity,
+      handoffID: Identity.ID.optional(),
+    })
+    .meta({ ref: "OrgSyncBatchReceiptQuery" })
+  export type BatchReceiptQuery = z.infer<typeof BatchReceiptQuery>
+  export const BatchReceipt = z
+    .discriminatedUnion("state", [
+      z.strictObject({
+        state: z.literal("committed"),
+        batch: BatchIdentity,
+        committedAt: z.number().int().nonnegative().safe(),
+      }),
+      z.strictObject({ state: z.literal("absent"), batch: BatchIdentity }),
+    ])
+    .meta({ ref: "OrgSyncBatchReceipt" })
+  export type BatchReceipt = z.infer<typeof BatchReceipt>
+
   export const Ack = z
     .strictObject({
       sessionID: Identity.ID,

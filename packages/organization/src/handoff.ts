@@ -9,6 +9,7 @@ import {
   OrganizationExecutionProtocol as Execution,
   OrganizationCloudProtocol as Cloud,
   OrganizationProtocol as Organization,
+  OrganizationSyncProtocol as Sync,
 } from "@ericsanchezok/synergy-organization-protocol"
 import type { Credentials } from "./auth/session"
 import { authorize, projectView, resourceView } from "./authorization"
@@ -20,6 +21,7 @@ import { OrganizationSharing } from "./sharing"
 import { fail, revision, OrganizationError } from "./error"
 import { assertRuntimeConnection, runtimeAuthority } from "./runtime-authority"
 import type { RuntimeConnections } from "./runtime-connection"
+import type { RuntimeConnectionLease } from "./command-transport"
 import type { CommandSigningAuthority } from "./signing"
 import { AuthorityJournal } from "@ericsanchezok/synergy-harness/storage/authority-journal"
 import { createHash } from "node:crypto"
@@ -35,6 +37,7 @@ import { listHandoffTargets } from "./handoff-discovery"
 import { WorkspaceArchive } from "@ericsanchezok/synergy-harness/workspace/archive"
 import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
 import { OrganizationResources } from "./resources"
+import { OrganizationHandoffRecord as HandoffRecord } from "./handoff-record"
 
 function wholeWorkspace(mapping: Handoff.WorkspaceMapping) {
   return (
@@ -42,182 +45,9 @@ function wholeWorkspace(mapping: Handoff.WorkspaceMapping) {
   )
 }
 
-const LegacyStored = Handoff.LegacyView.omit({
-  missingRequirements: true,
-  canCancel: true,
-  canAccept: true,
-  canContinue: true,
-  currentDriver: true,
-  bindingEpoch: true,
-}).extend({
-  version: z.literal(1),
-  request: Handoff.LegacyPrepare,
-  source: Runtime.Registration,
-  target: Runtime.Registration,
-  cancelRequested: z.boolean(),
-  frozen: Handoff.SignedProof.optional(),
-  prepared: Handoff.SignedProof.optional(),
-  surrendered: Handoff.SignedProof.optional(),
-  cancelled: Handoff.SignedProof.optional(),
-  activated: Handoff.SignedProof.optional(),
-  retired: Handoff.SignedProof.optional(),
-  surrenderPermit: Handoff.SignedPermit.optional(),
-  activationPermit: Handoff.SignedPermit.optional(),
-})
-const MappedStored = LegacyStored.omit({ version: true }).extend({
-  request: Handoff.CurrentPrepare,
-  selectionActor: ActorStamp.Info.nullable(),
-  workspaceContract: Record.SessionResources.optional(),
-  workspaceSource: WorkspaceArchive.Subtree.optional(),
-})
-function sourceSnapshotHash(record: z.infer<typeof MappedStored>) {
-  if (record.request.workspaceMapping.kind === "native-existing") {
-    const frozen = record.frozen?.proof
-    return frozen?.purpose === "source-frozen" && frozen.fileClosureHash ? (frozen.workspaceSourceHash ?? null) : null
-  }
-  return record.workspaceSource ? WorkspaceArchive.subtreeHash(record.workspaceSource) : null
-}
-const selection = (record: z.infer<typeof MappedStored>) =>
-  record.request.workspaceMapping.kind === "native" ||
-  (record.selectionActor?.kind === "account" &&
-    record.selectionActor.subjectID === record.initiator &&
-    record.selectionActor.orgID === record.orgID &&
-    record.selectionActor.requestID === record.handoffID)
-const PreviousStored = MappedStored.extend({ version: z.literal(2) }).refine(
-  (record) => !Handoff.isNativeTargetMapping(record.request.workspaceMapping) && selection(record),
-  "Version-two handoffs require their original mapping reader",
-)
-const FileStored = MappedStored.extend({
-  version: z.union([z.literal(3), z.literal(4)]),
-  targetActor: ActorStamp.Info.optional(),
-  difference: Handoff.SignedDifference.optional(),
-  differenceConsent: Handoff.DifferenceConsent.optional(),
-  differenceActor: ActorStamp.Info.optional(),
-  previewReleased: Handoff.SignedProof.optional(),
-  sourceBinding: Organization.SessionBinding.optional(),
-  sourceControlRevision: Identity.Revision.optional(),
-})
-  .refine(
-    (record) =>
-      record.request.workspaceMapping.kind === "native" ||
-      (record.selectionActor?.kind === "account" &&
-        record.selectionActor.subjectID === record.initiator &&
-        record.selectionActor.orgID === record.orgID &&
-        record.selectionActor.requestID === record.handoffID),
-    "Object mappings require their original authenticated selection actor",
-  )
-  .superRefine((record, context) => {
-    const invalid = (message: string) => context.addIssue({ code: "custom", message })
-    const mapping = record.request.workspaceMapping
-    const native = Handoff.isNativeTargetMapping(mapping)
-    const adopting = Handoff.isNativeTargetMapping(mapping) && mapping.target.kind === "existing"
-    if (!adopting && (record.difference || record.differenceConsent || record.differenceActor))
-      invalid("Only an existing native directory can carry a target difference")
-    if (
-      !native &&
-      !record.request.environmentMapping &&
-      (record.targetActor ||
-        record.difference ||
-        record.differenceConsent ||
-        record.differenceActor ||
-        record.previewReleased ||
-        record.sourceBinding ||
-        record.sourceControlRevision !== undefined)
-    )
-      invalid("Native target facts require their explicit native mapping")
-    if (
-      native &&
-      (!record.sourceBinding ||
-        record.sourceControlRevision === undefined ||
-        record.sourceBinding.orgID !== record.orgID ||
-        record.sourceBinding.driverRuntimeID !== record.sourceRuntimeID ||
-        record.sourceBinding.bindingEpoch !== record.fromEpoch)
-    )
-      invalid("Native cleanup requires its original canonical source binding and control revision")
-    const actor = (value: ActorStamp.Info | undefined) =>
-      value?.kind === "account" &&
-      record.target.runtimeKind === "member" &&
-      value.subjectID === record.target.accountID &&
-      value.orgID === record.orgID &&
-      value.requestID === record.handoffID
-    if (record.targetActor && !actor(record.targetActor)) invalid("Native mapping consent has another target member")
-    if (native && record.targetAccepted && !actor(record.targetActor))
-      invalid("Native mapping requires its original target consent actor")
-    if (mapping.kind === "native-existing" && record.workspaceSource)
-      invalid("Native source capture cannot substitute a service Workspace snapshot")
-    const frozen = record.frozen?.proof,
-      prepared = record.prepared?.proof
-    if (
-      native &&
-      frozen &&
-      (frozen.purpose !== "source-frozen" ||
-        !sourceSnapshotHash(record) ||
-        frozen.workspaceSourceHash !== sourceSnapshotHash(record))
-    )
-      invalid("Native handoff has no complete frozen source snapshot")
-    if (
-      native &&
-      prepared &&
-      (prepared.purpose !== "target-prepared" ||
-        !prepared.workspaceNativeReceiptHash ||
-        (adopting
-          ? !record.differenceConsent ||
-            !record.difference ||
-            prepared.workspaceDifferenceHash !== record.differenceConsent.diffHash
-          : prepared.workspaceDifferenceHash !== undefined))
-    )
-      invalid("Native target preparation has no exact second consent and complete receipt")
-    const difference = record.difference?.proof
-    if (
-      difference &&
-      (bindingFields.some((field) => record[field] !== difference[field]) ||
-        difference.manifestHash !== record.manifestHash ||
-        difference.difference.mappingPlanRevision !== record.mappingPlanRevision ||
-        !sourceSnapshotHash(record) ||
-        difference.difference.sourceSnapshotHash !== sourceSnapshotHash(record))
-    )
-      invalid("Native difference changed its complete frozen source binding")
-    if (
-      record.differenceConsent &&
-      (!difference ||
-        !actor(record.differenceActor) ||
-        !same(record.differenceConsent, Handoff.DifferenceConsent.strip().parse(difference.difference)))
-    )
-      invalid("Native difference consent does not match its exact preview")
-    if (record.differenceActor && !record.differenceConsent) invalid("Native consent actor has no accepted difference")
-    const released = record.previewReleased?.proof
-    if (
-      released &&
-      (record.prepared ||
-        record.surrendered ||
-        record.activated ||
-        released.purpose !== "target-preview-released" ||
-        bindingFields.some((field) => record[field] !== released[field]) ||
-        released.manifestHash !== record.manifestHash ||
-        released.diffHash !== (difference?.difference.diffHash ?? null))
-    )
-      invalid("Native preview release has another inactive preparation")
-  })
-const PreviousFileStored = FileStored.safeExtend({ version: z.literal(3) })
-const Stored = FileStored.safeExtend({ version: z.literal(4) }).superRefine((record, context) => {
-  if (!record.request.environmentMapping) return
-  if (record.request.environmentMapping.expectedSelectionRevision !== (record.workspaceContract?.revision ?? 0))
-    context.addIssue({ code: "custom", message: "Environment mapping lost its original resource contract" })
-  if (
-    !record.selectionActor ||
-    record.selectionActor.kind !== "account" ||
-    record.selectionActor.subjectID !== record.initiator
-  )
-    context.addIssue({ code: "custom", message: "Environment mapping lost its original authenticated selector" })
-  if (
-    record.targetAccepted &&
-    record.target.runtimeKind === "member" &&
-    record.targetActor?.subjectID !== record.target.accountID
-  )
-    context.addIssue({ code: "custom", message: "Environment mapping has no exact destination member consent" })
-})
-const RawStored = z.union([LegacyStored, PreviousStored, PreviousFileStored, Stored])
-type Stored = z.infer<typeof Stored>
+const { LegacyStored, PreviousStored, PreviousFileStored, Stored, RawStored, sourceSnapshotHash, bindingFields, same } =
+  HandoffRecord
+type Stored = HandoffRecord.Stored
 const key = (id: string) => ["organization", "handoffs", id]
 const sessionKey = (sessionID: string) => ["organization", "session-handoffs", sessionID]
 const cleanupRoot = ["organization", "handoff-targets"]
@@ -234,7 +64,6 @@ async function indexCleanup(record: Stored) {
     fail("SERVICE_UNAVAILABLE", "Handoff participant index conflicts with its original record")
   await Storage.write(key, CleanupEntry.parse({ version: 1, handoffID: record.handoffID }))
 }
-const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 interface WorkspaceFrame {
   scopeID: string
   request?: WorkspaceMove.Request
@@ -285,18 +114,6 @@ async function workspaceReleaseRequest(record: Stored) {
     fail("PROTOCOL_MISMATCH", "Workspace release changed its original complete request")
   return request
 }
-const bindingFields = [
-  "orgID",
-  "deploymentIncarnation",
-  "handoffID",
-  "sessionID",
-  "sourceRuntimeID",
-  "targetRuntimeID",
-  "fromEpoch",
-  "toEpoch",
-  "mappingPlanRevision",
-  "shareGeneration",
-] as const
 
 export function registerHandoffAuthorityHistory() {
   AuthorityJournal.register({
@@ -323,18 +140,23 @@ export function registerHandoffAuthorityHistory() {
           .update(
             JSON.stringify([
               record.request,
+              ...(record.version === 5 ? [record.syncTransferVersion] : []),
               ...("selectionActor" in record ? [record.selectionActor] : []),
               ...("workspaceContract" in record && record.workspaceContract ? [record.workspaceContract] : []),
               ...("workspaceSource" in record && record.workspaceSource ? [record.workspaceSource] : []),
-              ...((record.version === 3 || record.version === 4) && record.targetActor ? [record.targetActor] : []),
-              ...((record.version === 3 || record.version === 4) && record.difference ? [record.difference] : []),
-              ...((record.version === 3 || record.version === 4) && record.differenceConsent
+              ...((record.version === 3 || record.version === 4 || record.version === 5) && record.targetActor
+                ? [record.targetActor]
+                : []),
+              ...((record.version === 3 || record.version === 4 || record.version === 5) && record.difference
+                ? [record.difference]
+                : []),
+              ...((record.version === 3 || record.version === 4 || record.version === 5) && record.differenceConsent
                 ? [record.differenceConsent, record.differenceActor]
                 : []),
-              ...((record.version === 3 || record.version === 4) && record.previewReleased
+              ...((record.version === 3 || record.version === 4 || record.version === 5) && record.previewReleased
                 ? [record.previewReleased]
                 : []),
-              ...((record.version === 3 || record.version === 4) && record.sourceBinding
+              ...((record.version === 3 || record.version === 4 || record.version === 5) && record.sourceBinding
                 ? [record.sourceBinding, record.sourceControlRevision]
                 : []),
               record.frozen,
@@ -511,6 +333,18 @@ export namespace OrganizationHandoffExecution {
       Stored.parse(value)
     },
   }
+  export const syncTransferMigration: Migration = {
+    id: "20261114-organization-handoff-sync-transfer-reader",
+    description: "Validate native sync closure records without inventing old Handoff checkpoints",
+    scope: "global",
+    execution: "record",
+    dependsOn: ["organization/20261114-organization-handoff-environment-mapping"],
+    async up() {},
+    upgradeRecord(key, value) {
+      if (key.length !== 3 || key[0] !== "organization" || key[1] !== "handoffs" || value.version !== 5) return
+      Stored.parse(value)
+    },
+  }
   export const cleanupMigration: Migration = {
     id: "20261113-organization-handoff-cleanup-participant-index",
     description: "Index original target participant identities without separate cleanup state",
@@ -566,6 +400,23 @@ export function createHandoffs(options: {
     .max(30_000)
     .parse(options.timeoutMs ?? 5000)
   let inspections = 0
+
+  async function assertSyncCommitted(record: Stored, current: Record.SessionDirectory, guard: () => void) {
+    if (record.version !== 5) return
+    const frozen = record.frozen?.proof
+    const checkpoint = frozen?.purpose === "source-frozen" ? frozen.syncCheckpoint : undefined
+    const prepared = record.prepared?.proof
+    if (
+      !checkpoint ||
+      prepared?.purpose !== "target-prepared" ||
+      prepared.syncCheckpointHash !== (await Handoff.syncCheckpointHash(checkpoint))
+    )
+      fail("HANDOFF_BLOCKED", "Handoff requires the exact closed native sync checkpoint")
+    guard()
+    if (checkpoint.pendingBatch)
+      await OrganizationSharing.assertTransferredBatch(current, checkpoint.pendingBatch, guard)
+    guard()
+  }
 
   async function sourceAccess(credentials: Credentials, sessionID: string) {
     const access = await authorize(credentials, "session.read", { sessionID })
@@ -1332,6 +1183,79 @@ export function createHandoffs(options: {
         })
       })
     },
+    async syncBatchReceipt(connection: RuntimeConnectionLease, value: Sync.BatchReceiptQuery) {
+      const query = Sync.BatchReceiptQuery.parse(value)
+      connection.assertCurrent()
+      if (connection.handshake.schemas.sync !== Sync.observationVersion)
+        fail("PROTOCOL_MISMATCH", "Exact sync receipts require their negotiated owner")
+      if (!query.handoffID) return OrganizationSharing.batchReceiptFromRuntime(connection, query.batch)
+      const handoffID = query.handoffID
+      return Storage.snapshot(async () => {
+        connection.assertCurrent()
+        const record = await load(handoffID)
+        const { runtime } = await runtimeAuthority(connection.handshake)
+        assertRuntimeConnection(runtime, connection.handshake)
+        connection.assertCurrent()
+        if (
+          record.version !== 5 ||
+          record.syncTransferVersion !== Handoff.syncTransferVersion ||
+          connection.handshake.schemas.handoffs < Handoff.syncTransferBridge ||
+          record.cancelRequested ||
+          ["cancelled", "retired"].includes(record.phase)
+        )
+          fail("HANDOFF_BLOCKED", "Sync receipt requires its original retained transfer owner")
+        const current = await session(record)
+        connection.assertCurrent()
+        if (
+          connection.handshake.runtimeID === record.sourceRuntimeID &&
+          current.driverRuntimeID === record.sourceRuntimeID &&
+          current.bindingEpoch === record.fromEpoch
+        ) {
+          if (runtime.publicKey !== record.source.publicKey)
+            fail("PERMISSION_DENIED", "Original sync source machine changed")
+          return OrganizationSharing.batchReceiptFromRuntime(connection, query.batch)
+        }
+        const frozen = record.frozen?.proof
+        const checkpoint = frozen?.purpose === "source-frozen" ? frozen.syncCheckpoint : undefined
+        if (
+          connection.handshake.runtimeID !== record.targetRuntimeID ||
+          runtime.publicKey !== record.target.publicKey ||
+          !checkpoint?.pendingBatch ||
+          !same(Sync.BatchIdentity.parse(checkpoint.pendingBatch), query.batch)
+        )
+          fail("PERMISSION_DENIED", "Sync receipt has no exact original target transfer checkpoint")
+        if (["preparing", "prepared", "surrendered"].includes(record.phase)) {
+          if (
+            current.handoffID !== record.handoffID ||
+            current.driverRuntimeID !== record.sourceRuntimeID ||
+            current.bindingEpoch !== record.fromEpoch
+          )
+            fail("HANDOFF_BLOCKED", "Target sync receipt lost its original source binding")
+          const access = await eligible(record)
+          const guard = () => {
+            connection.assertCurrent()
+            access.guard()
+          }
+          guard()
+          return OrganizationSharing.batchReceipt(query.batch, guard)
+        }
+        if (
+          current.driverRuntimeID !== record.targetRuntimeID ||
+          current.bindingEpoch !== record.toEpoch ||
+          !["committed", "activation_permitted", "completed"].includes(record.phase)
+        )
+          fail("PERMISSION_DENIED", "Target sync receipt is outside its exact retained binding")
+        const prepared = record.prepared?.proof
+        if (
+          !prepared ||
+          prepared.purpose !== "target-prepared" ||
+          prepared.syncCheckpointHash !== (await Handoff.syncCheckpointHash(checkpoint))
+        )
+          fail("PROTOCOL_MISMATCH", "Sync receipt lost its prepared native closure")
+        connection.assertCurrent()
+        return OrganizationSharing.batchReceipt(query.batch, connection.assertCurrent)
+      })
+    },
     async options(
       credentials: Credentials,
       sessionID: string,
@@ -1881,7 +1805,10 @@ export function createHandoffs(options: {
           } else {
             await eligible(record)
             const phases: Record<string, string[]> = {
-              "prepare-source": ["preparing"],
+              "prepare-source":
+                record.version === 5 && record.frozen && !record.surrenderPermit && !record.surrendered
+                  ? ["preparing", "prepared"]
+                  : ["preparing"],
               "preview-target": ["preparing"],
               "prepare-target": ["preparing", "prepared"],
               "surrender-source": ["prepared"],
@@ -1895,6 +1822,20 @@ export function createHandoffs(options: {
         const runtime = role === "source" ? record.source : record.target
         const connection = options.connections.captureHandoff(runtime.runtimeID)
         const mapping = record.request.workspaceMapping
+        if (
+          record.version === 5 &&
+          (connection.handshake.schemas.handoffs < Handoff.syncTransferBridge ||
+            connection.handshake.schemas.sync !== Sync.observationVersion)
+        )
+          fail("HANDOFF_BLOCKED", "Shared handoff requires its complete native sync closure reader")
+        if (
+          ["prepare-source", "preview-target", "prepare-target", "surrender-source", "activate-target"].includes(
+            request.operation,
+          ) &&
+          record.version !== 5 &&
+          (await session(record)).shareState === "shared"
+        )
+          fail("HANDOFF_BLOCKED", "A legacy shared handoff cannot introduce incomplete sync transfer facts")
         if (mapping.kind === "native-existing" && connection.handshake.schemas.handoffs < 9)
           fail("HANDOFF_BLOCKED", "Native existing-directory handoff requires its current reader")
         if (record.request.environmentMapping && connection.handshake.schemas.handoffs < 8)
@@ -2175,9 +2116,19 @@ export function createHandoffs(options: {
           )
             fail("HANDOFF_BLOCKED", "Share this Session before handing it to another member")
           const command = await Record.read(Record.CommandState, Keys.commandState(sessionID))
+          const sourceSync = options.connections.captureHandoff(source.runtimeID)
+          const targetSync = options.connections.captureHandoff(target.runtimeID)
+          const syncTransfer = [sourceSync, targetSync].every(
+            (connection) =>
+              connection.handshake.schemas.handoffs >= Handoff.syncTransferBridge &&
+              connection.handshake.schemas.sync === Sync.observationVersion,
+          )
+          if (current.shareState === "shared" && !syncTransfer)
+            fail("HANDOFF_BLOCKED", "Shared handoff requires both original sync transfer readers")
           const record = Stored.parse({
             schemaVersion: 1,
-            version: 4,
+            version: syncTransfer ? 5 : 4,
+            ...(syncTransfer ? { syncTransferVersion: Handoff.syncTransferVersion } : {}),
             selectionActor: {
               kind: "account",
               orgID: access.account.orgID,
@@ -2411,12 +2362,18 @@ export function createHandoffs(options: {
             fail("PERMISSION_DENIED", "This account cannot request the handoff permit")
           const previous = activation ? record.activationPermit : record.surrenderPermit
           if (previous) return previous
+          if (record.version !== 5 && (await session(record)).shareState === "shared")
+            fail("HANDOFF_BLOCKED", "Legacy shared handoff cannot issue new native sync transfer authority")
           if (record.cancelRequested || !record.frozen || !record.prepared || !record.manifestHash || record.retired)
             fail("HANDOFF_BLOCKED", "Handoff preparation is incomplete")
           if (activation ? record.phase !== "committed" : record.phase !== "prepared")
             fail("HANDOFF_BLOCKED", "Handoff is not ready for this permit")
           const allowed = await eligible(record)
           guards.push(allowed.guard)
+          if (!activation)
+            await assertSyncCommitted(record, allowed.current, () => {
+              for (const guard of guards) guard()
+            })
           const permit = Handoff.Permit.strip().parse({
             ...record,
             purpose: input.purpose,
@@ -2463,6 +2420,8 @@ export function createHandoffs(options: {
             fail("HANDOFF_BLOCKED", "Source surrender and destination preparation are required")
           const allowed = await eligible(record)
           guards.push(allowed.guard)
+          if (record.version !== 5 && allowed.current.shareState === "shared")
+            fail("HANDOFF_BLOCKED", "Legacy shared handoff cannot advance without its exact native sync closure")
           if (allowed.current.retainedExecutionGrants)
             fail("HANDOFF_BLOCKED", "Source execution resources have not drained")
           const mapping = record.request.workspaceMapping
@@ -2502,6 +2461,9 @@ export function createHandoffs(options: {
             )
             resourceIDs = Execution.resourceIDs(mapped.selection!)
           }
+          await assertSyncCommitted(record, allowed.current, () => {
+            for (const guard of guards) guard()
+          })
           const rebound = Record.SessionDirectory.parse({
             ...allowed.current,
             resourceIDs,
@@ -2671,6 +2633,19 @@ export function createHandoffs(options: {
           requestID: actionID,
         })
         if (proof.purpose === "source-frozen") {
+          if (current.version === 5) {
+            const checkpoint = proof.syncCheckpoint
+            if (!checkpoint) fail("PROTOCOL_MISMATCH", "Current source fact omits its original sync closure")
+            const pending = checkpoint.pendingBatch
+            if (
+              pending &&
+              (pending.sessionID !== current.sessionID ||
+                pending.projectID !== directory.projectID ||
+                pending.bindingEpoch !== current.fromEpoch ||
+                pending.shareGeneration !== current.shareGeneration)
+            )
+              fail("PROTOCOL_MISMATCH", "Source sync checkpoint changed its exact original batch binding")
+          }
           if (
             current.phase !== "preparing" ||
             current.cancelRequested ||
@@ -2702,6 +2677,13 @@ export function createHandoffs(options: {
           current.manifestHash = proof.manifestHash
         } else if (proof.purpose === "target-prepared") {
           const frozen = current.frozen?.proof
+          if (
+            current.version === 5 &&
+            (frozen?.purpose !== "source-frozen" ||
+              !frozen.syncCheckpoint ||
+              proof.syncCheckpointHash !== (await Handoff.syncCheckpointHash(frozen.syncCheckpoint)))
+          )
+            fail("PROTOCOL_MISMATCH", "Current target fact changed its original sync checkpoint")
           if (
             !current.targetAccepted ||
             !frozen ||

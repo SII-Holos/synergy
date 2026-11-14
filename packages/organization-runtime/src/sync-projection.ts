@@ -18,7 +18,7 @@ import { currentRunID, observeSessionStatus } from "./session-status"
 import { readCommandControlVersion } from "./command-intake"
 import { OrganizationSyncPath as Keys } from "./storage/path"
 import { projectSharedPart } from "./transcript"
-import { ProjectionRecord, type Bound, type DraftInput } from "./sync-outbox"
+import { ProjectionRecord, draftID as identityDraftID, type Bound, type DraftInput } from "./sync-outbox"
 
 function digest(value: unknown) {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex")
@@ -92,7 +92,7 @@ export function createSyncProjection(input: {
     if (bound.parentSessionID) await ensureSession(bound.parentSessionID)
     if (bound.rootSessionID !== sessionID) await ensureSession(bound.rootSessionID)
     const { session, binding, rootSessionID, parentSessionID } = bound
-    const draftID = digest({ type: "session", sessionID }).slice(0, 32)
+    const draftID = identityDraftID({ type: "session", sessionID })
     const previous = await read(ProjectionRecord, Keys.projection(identity.orgID, rootSessionID, draftID))
     let status = previous?.event.type === "session" ? previous.event.session.status : undefined
     const controlVersion = await readCommandControlVersion(identity.orgID, rootSessionID)
@@ -201,7 +201,7 @@ export function createSyncProjection(input: {
     }
     await putDraft(
       bound.rootSessionID,
-      digest({ type: "cortex", sessionID, taskID: cortex.taskID }).slice(0, 32),
+      identityDraftID({ type: "cortex", sessionID, taskID: cortex.taskID }),
       Sync.Event.parse({
         type: "cortex",
         sequence: 1,
@@ -232,7 +232,7 @@ export function createSyncProjection(input: {
     for (const artifact of projected.blobs) {
       await rememberBlob(part.sessionID, owner, artifact)
       drafts.push({
-        draftID: digest({ type: "blob", sessionID: part.sessionID, blobID: artifact.id }).slice(0, 32),
+        draftID: identityDraftID({ type: "blob", sessionID: part.sessionID, blobID: artifact.id }),
         event: Sync.Event.parse({
           type: "blob",
           sequence: 1,
@@ -247,7 +247,7 @@ export function createSyncProjection(input: {
       })
     }
     drafts.push({
-      draftID: digest({ type: "part", sessionID: part.sessionID, partID: part.id }).slice(0, 32),
+      draftID: identityDraftID({ type: "part", sessionID: part.sessionID, partID: part.id }),
       event: Sync.Event.parse({
         type: "part",
         sequence: 1,
@@ -274,7 +274,7 @@ export function createSyncProjection(input: {
         : safeSummary(info.error?.name ?? info.finish)
     const safe = { messageID: info.id, role: info.role, createdAt: info.time.created, summary }
     return {
-      draftID: digest({ type: "message", sessionID: info.sessionID, messageID: info.id }).slice(0, 32),
+      draftID: identityDraftID({ type: "message", sessionID: info.sessionID, messageID: info.id }),
       event: Sync.Event.parse({
         type: "message",
         sequence: 1,
@@ -335,7 +335,7 @@ export function createSyncProjection(input: {
     const safe = { callID: tool.toolCallID, name: tool.tool, state: status }
     await putDraft(
       bound.rootSessionID,
-      digest({ type: "tool", sessionID: event.sessionID, callID: tool.toolCallID }).slice(0, 32),
+      identityDraftID({ type: "tool", sessionID: event.sessionID, callID: tool.toolCallID }),
       Sync.Event.parse({
         type: "tool",
         sequence: 1,
@@ -354,7 +354,7 @@ export function createSyncProjection(input: {
       await rememberBlob(event.sessionID, owner, artifact)
       await putDraft(
         bound.rootSessionID,
-        digest({ type: "blob", sessionID: event.sessionID, blobID: artifact.id, kind }).slice(0, 32),
+        identityDraftID({ type: "blob", sessionID: event.sessionID, blobID: artifact.id, kind }),
         Sync.Event.parse({
           type: "blob",
           sequence: 1,
@@ -391,7 +391,7 @@ export function createSyncProjection(input: {
     await rememberAttachment(part.sessionID, part)
     await putDraft(
       bound.rootSessionID,
-      digest({ type: "attachment", sessionID: part.sessionID, attachmentID: part.id }).slice(0, 32),
+      identityDraftID({ type: "attachment", sessionID: part.sessionID, attachmentID: part.id }),
       attachment,
     )
   }
@@ -435,7 +435,7 @@ export function createSyncProjection(input: {
     }
     await putDraft(
       bound.rootSessionID,
-      digest({ type: "notification", sessionID, notificationID: value.notificationID }).slice(0, 32),
+      identityDraftID({ type: "notification", sessionID, notificationID: value.notificationID }),
       Sync.Event.parse({
         type: "notification",
         sequence: 1,

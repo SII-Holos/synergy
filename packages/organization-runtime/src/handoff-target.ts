@@ -4,6 +4,7 @@ import {
   OrganizationHandoffProtocol as Handoff,
   OrganizationHandoffRecovery as Recovery,
   OrganizationRuntimeProtocol as Runtime,
+  OrganizationSyncProtocol as Sync,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
@@ -17,6 +18,7 @@ import {
 import { OrganizationHandoffObjects as Objects } from "./handoff-objects"
 import { OrganizationHandoffReceive as Receive } from "./handoff-receive"
 import { OrganizationSessionAdoption as Adoption } from "./session-adoption"
+import { OrganizationSyncTransfer as SyncTransfer } from "./sync-transfer"
 import type { MemberResourceClient } from "./resource-client"
 import { OrganizationRuntimeError } from "./error"
 import { RuntimeIdentity } from "./home"
@@ -158,6 +160,11 @@ export namespace OrganizationHandoffTarget {
       assertOwner(input.signal)
       const { plan, signature } = Handoff.SignedMachinePlan.parse(input.authorization)
       const connection = Runtime.Connected.parse(input.connection)
+      if (
+        plan.syncTransferVersion === Handoff.syncTransferVersion &&
+        connection.syncVersion !== Sync.observationVersion
+      )
+        fail("Target sync transfer requires its negotiated exact batch receipt owner")
       if (
         plan.operation !== operation ||
         plan.runtimeID !== runtimeID ||
@@ -309,6 +316,7 @@ export namespace OrganizationHandoffTarget {
       )
     }
     async function nativeContexts(input: Input, plan: Handoff.MachinePlan, manifestHash: string, retain: boolean) {
+      let syncCheckpoint: Handoff.SyncCheckpoint | undefined
       const core: { ownerID: string; context: Owners.TargetContext }[] = []
       const remaining: typeof core = []
       const bindings: Epochs.Binding[] = []
@@ -387,11 +395,15 @@ export namespace OrganizationHandoffTarget {
             signal: input.signal,
           })
           await Owners.validate(ownerID, context)
+          if (ownerID === SyncTransfer.id && member.session.id === plan.sessionID) {
+            if (syncCheckpoint) fail("Destination contains duplicate root sync closure owners")
+            syncCheckpoint = await SyncTransfer.stagedCheckpoint(context, manifestHash)
+          }
           if (retain) (ownerID === "session-core" ? core : remaining).push({ ownerID, context })
         }
       }
       assertOwner(input.signal)
-      return { convertedHash: converted.digest("hex"), bindings, contexts: [...core, ...remaining] }
+      return { convertedHash: converted.digest("hex"), bindings, contexts: [...core, ...remaining], syncCheckpoint }
     }
     async function inspectCleanup(plan: HandoffTargetPlan, signal: AbortSignal, verify?: () => void) {
       verify?.()
@@ -704,6 +716,14 @@ export namespace OrganizationHandoffTarget {
               }),
             )
           const prepared = await contexts(input, plan, manifestHash, false)
+          let syncCheckpointHash: string | undefined
+          if (plan.syncTransferVersion === Handoff.syncTransferVersion) {
+            if (!prepared.syncCheckpoint || !frozen.syncCheckpoint)
+              fail("Destination preparation omits its exact original sync closure")
+            syncCheckpointHash = await Handoff.syncCheckpointHash(prepared.syncCheckpoint)
+            if (syncCheckpointHash !== (await Handoff.syncCheckpointHash(frozen.syncCheckpoint)))
+              fail("Destination preparation changed its exact original sync closure")
+          }
           const move =
             plan.workspacePlan && Handoff.isNativeTargetMapping(plan.workspacePlan.mapping)
               ? await WorkspaceTarget.status(plan, input.resources, input.signal)
@@ -717,6 +737,7 @@ export namespace OrganizationHandoffTarget {
           const fact = Handoff.Proof.parse({
             ...factBinding(plan),
             purpose: "target-prepared",
+            ...(syncCheckpointHash ? { syncCheckpointHash } : {}),
             ...(plan.environmentPlan ? { environmentMappingHash: plan.environmentPlan.hash } : {}),
             manifestHash,
             compatibilityHash: compatibilityHash(root.owners),
@@ -795,6 +816,12 @@ export namespace OrganizationHandoffTarget {
           }
           await Staging.verify(plan.handoffID, input.signal)
           const prepared = await contexts(input, plan, manifestHash, true)
+          if (
+            plan.syncTransferVersion === Handoff.syncTransferVersion &&
+            (!prepared.syncCheckpoint ||
+              (await Handoff.syncCheckpointHash(prepared.syncCheckpoint)) !== preparedFact.syncCheckpointHash)
+          )
+            fail("Destination activation changed its exact prepared sync closure")
           if (prepared.convertedHash !== preparedFact.convertedHash)
             fail("Destination mapping changed before paused publication")
           const fact = Handoff.Proof.parse({
