@@ -15,6 +15,7 @@ import {
   OrganizationRuntimeProtocol as Runtime,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { Action, Task, Outcome, InitialBytes, LinuxBytes, createPeer, json } from "./support/cross-os-peer"
+import { createHandoffCompletion } from "./support/handoff-completion"
 import {
   Bootstrap,
   PublicPeer,
@@ -27,6 +28,7 @@ import {
   run,
   state,
   waitArtifact,
+  safeCrossOSFailure as safeFailure,
 } from "./support/cross-os-transport"
 
 const role = process.env.SYNERGY_CROSS_OS_ROLE
@@ -368,18 +370,6 @@ async function tunnel(directory: string, port: number) {
   }
 }
 
-function safeFailure(value: unknown) {
-  const name = value instanceof Error ? value.name : "UnknownError"
-  const code = value !== null && typeof value === "object" && "code" in value ? value.code : undefined
-  const exitCode = value !== null && typeof value === "object" && "exitCode" in value ? value.exitCode : undefined
-  return {
-    name: /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(name) ? name : "UnknownError",
-    ...(typeof code === "string" && /^[A-Z][A-Z0-9_]{0,63}$/.test(code) ? { code } : {}),
-    ...(typeof exitCode === "number" && Number.isInteger(exitCode) && exitCode >= 0 && exitCode <= 255
-      ? { exitCode }
-      : {}),
-  }
-}
 function safeTransportText(value: string) {
   return ObservabilityRedaction.text(value.slice(0, 2048), 512)
     .replace(/https?:\/\/[^\s"'<>]+/gi, "[url]")
@@ -497,6 +487,15 @@ async function host() {
     artifactWaitMs,
     tunnelBootstrapMs: performance.now() - tunnelStarted,
   }
+  const requests: Array<{
+    phase: string
+    operation: string
+    elapsedMs: number
+    status?: number
+    content?: string
+    failure?: ReturnType<typeof safeFailure>
+  }> = []
+  const requestFailures: typeof requests = []
   let phase = "service-bootstrap"
   let started = performance.now()
   try {
@@ -517,18 +516,57 @@ async function host() {
     let headers: { cookie: string; "x-csrf-token": string } | undefined
     let account: { orgID: string; accountID: string } | undefined
     let bootstrapRequest: "bootstrap" | "login" | undefined
+    function requestOperation(input: Parameters<typeof fetch>[0]) {
+      try {
+        const pathname = new URL(input instanceof Request ? input.url : String(input)).pathname
+        if (/^\/org\/v1\/sessions\/[^/]+\/handoff-options$/.test(pathname)) return "handoff-options"
+        if (/^\/org\/v1\/sessions\/[^/]+\/handoffs$/.test(pathname)) return "handoff-prepare"
+        const match = pathname.match(/^\/org\/v1\/handoffs\/[^/]+(?:\/(accept|commit|permit|drive))?$/)
+        return match ? "handoff-" + (match[1] ?? "get") : undefined
+      } catch {
+        return undefined
+      }
+    }
+    function recordRequest(value: (typeof requests)[number]) {
+      requests.push(value)
+      if (requests.length > 16) requests.shift()
+      if ((value.failure || (value.status !== undefined && value.status >= 400)) && requestFailures.length < 4)
+        requestFailures.push(value)
+    }
     const client = createOrganizationClient({
       baseUrl: connection.origin,
       headers: { origin: connection.origin },
       fetch: Object.assign(
         async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
-          const phase = bootstrapRequest
-          if (!phase) return fetch(input, init)
+          const bootstrapPhase = bootstrapRequest
+          const operation = requestOperation(input)
+          const requestPhase = phase
           const requestStarted = performance.now()
-          await setupHTTP(`darwin-${phase}-headers`, requestStarted)
-          const response = await fetch(input, init)
-          await setupHTTP(`darwin-${phase}-body`, requestStarted, response)
-          return response
+          try {
+            if (bootstrapPhase) await setupHTTP(`darwin-${bootstrapPhase}-headers`, requestStarted)
+            const response = await fetch(input, init)
+            if (operation) {
+              const contentType = response.headers.get("content-type") ?? ""
+              recordRequest({
+                phase: requestPhase,
+                operation,
+                elapsedMs: performance.now() - requestStarted,
+                status: response.status,
+                content: contentType.includes("json") ? "json" : contentType.includes("html") ? "html" : "other",
+              })
+            }
+            if (bootstrapPhase) await setupHTTP(`darwin-${bootstrapPhase}-body`, requestStarted, response)
+            return response
+          } catch (error) {
+            if (operation)
+              recordRequest({
+                phase: requestPhase,
+                operation,
+                elapsedMs: performance.now() - requestStarted,
+                failure: safeFailure(error),
+              })
+            throw error
+          }
         },
         { preconnect() {} },
       ),
@@ -960,65 +998,44 @@ async function host() {
           },
           options,
         )
+      const participants = [darwin.registration, hello?.ticket.runtime]
+      const source = participants.find((participant) => participant?.runtimeID === sourceID)
+      const target = participants.find((participant) => participant?.runtimeID === targetID)
+      if (!source || !target) throw new Error("Handoff completion requires both original enrolled machine keys")
+      const sourceMachine = { runtimeID: source.runtimeID, publicKey: source.publicKey }
+      const targetMachine = { runtimeID: target.runtimeID, publicKey: target.publicKey }
       async function drive(operation: Handoff.Drive["operation"]) {
         const observedSince = performance.now()
-        try {
-          return Handoff.MachineResult.parse(
-            (
-              await client.orgHandoff.drive(
-                {
-                  handoffID,
-                  orgHandoffDrive: {
-                    operation,
-                    requestID: crypto.randomUUID(),
-                  },
-                },
-                options,
+        const end = observedSince + 120000
+        let foregroundUnknownMs: number | undefined
+        const complete = createHandoffCompletion({
+          binding: Handoff.Binding.strip().parse(prepared),
+          source: sourceMachine,
+          target: targetMachine,
+          async invoke(operation, requestID) {
+            if (performance.now() >= end)
+              throw new Error("The original machine receipt inspection did not settle within its observation window")
+            try {
+              return Handoff.MachineResult.parse(
+                (await client.orgHandoff.drive({ handoffID, orgHandoffDrive: { operation, requestID } }, options)).data,
               )
-            ).data,
-          )
-        } catch (error) {
-          if (
-            operation !== "prepare-target" ||
-            !z
-              .object({
-                code: z.literal("COMMAND_OUTCOME_UNKNOWN"),
-                outcome: z.literal("unknown"),
-              })
-              .safeParse(error).success
-          )
-            throw error
-          costs[handoffID + "ForegroundUnknownMs"] = performance.now() - observedSince
-          const inspectionSince = performance.now()
-          const reconciled = await until(
-            async () => {
-              const inspected = Handoff.MachineResult.parse(
-                (
-                  await client.orgHandoff.drive(
-                    {
-                      handoffID,
-                      orgHandoffDrive: {
-                        operation: "inspect-target",
-                        requestID: crypto.randomUUID(),
-                      },
-                    },
-                    options,
-                  )
-                ).data,
-              )
+            } catch (error) {
               if (
-                inspected.state === "complete" &&
-                inspected.facts.some((fact) => fact.proof.purpose === "target-prepared")
-              )
-                return inspected
-              if (inspected.state !== "working") throw error
-            },
-            120000,
-            "The original target receipt inspection did not confirm its accepted prepare",
-          )
-          costs[handoffID + "InspectionMs"] = performance.now() - inspectionSince
-          return reconciled
-        }
+                operation === "prepare-target" &&
+                z.object({ code: z.literal("COMMAND_OUTCOME_UNKNOWN"), outcome: z.literal("unknown") }).safeParse(error)
+                  .success
+              ) {
+                foregroundUnknownMs = performance.now() - observedSince
+                costs[handoffID + "ForegroundUnknownMs"] = foregroundUnknownMs
+              }
+              throw error
+            }
+          },
+        })
+        const result = await complete(operation)
+        if (foregroundUnknownMs !== undefined)
+          costs[handoffID + "InspectionMs"] = performance.now() - observedSince - foregroundUnknownMs
+        return result
       }
       const frozen = (await drive("prepare-source")).facts[0]?.proof
       assert.equal(frozen?.purpose, "source-frozen")
@@ -1212,6 +1229,7 @@ async function host() {
     )
   } catch (error) {
     const failedTransport = transportSnapshot()
+    const failedRequests = { recent: [...requests], failures: [...requestFailures] }
     const errors: unknown[] = [error]
     for (const close of cleanups.toReversed()) {
       try {
@@ -1230,6 +1248,7 @@ async function host() {
         ...(phase === "service-bootstrap" && setupHTTPStatus !== undefined ? { httpStatus: setupHTTPStatus } : {}),
         costs,
         errors: errors.map(safeFailure),
+        requests: failedRequests,
         transport: failedTransport,
       }),
     )
@@ -1260,6 +1279,23 @@ async function linux() {
     }),
   )
   let closed = false
+  let phase = "linux-ready"
+  const started = performance.now()
+  let ownerFailure: { phase: string; error: unknown } | undefined
+  const errors: unknown[] = []
+  const failed = () =>
+    fs.writeFile(
+      path.join(state(), "report.json"),
+      JSON.stringify({
+        version: 1,
+        run: run(),
+        passed: false,
+        phase: ownerFailure?.phase ?? phase,
+        status: "failed",
+        elapsedMs: performance.now() - started,
+        errors: errors.map(safeFailure),
+      }),
+    )
   try {
     await exchange(
       secret,
@@ -1271,12 +1307,14 @@ async function linux() {
     )
     const deadline = Date.now() + 12 * 60 * 1000
     while (Date.now() < deadline) {
+      phase = "linux-control-next"
       const next = await exchange(secret, bootstrap, bootstrap.origin, "next", null, nonces)
       if (next === null) {
         await Bun.sleep(100)
         continue
       }
       const task = Task.parse(next)
+      phase = "linux-dispatch-" + task.action.kind
       let outcome: z.infer<typeof Outcome>
       try {
         outcome = {
@@ -1285,6 +1323,7 @@ async function linux() {
           value: await peer.dispatch(task.action),
         }
       } catch (error) {
+        ownerFailure = { phase, error }
         outcome = {
           id: task.id,
           ok: false,
@@ -1292,6 +1331,7 @@ async function linux() {
           message: "The actual Linux owner rejected fixture action " + task.action.kind,
         }
       }
+      phase = "linux-control-result"
       await exchange(secret, bootstrap, bootstrap.origin, "result", json(outcome), nonces)
       if (!outcome.ok) throw new Error(outcome.message)
       if (task.action.kind === "close") {
@@ -1311,8 +1351,30 @@ async function linux() {
       }
     }
     throw new Error("The finite cross-OS fixture did not finish")
+  } catch (error) {
+    if (ownerFailure) errors.push(ownerFailure.error)
+    if (error !== ownerFailure?.error) errors.push(error)
+    try {
+      await failed()
+    } catch (diagnostic) {
+      throw new AggregateError([...errors, diagnostic], "Actual Linux peer failure and its safe diagnostic failed")
+    }
+    throw error
   } finally {
-    if (!closed) await peer.close()
+    if (!closed) {
+      try {
+        await peer.close()
+      } catch (cleanup) {
+        if (!errors.length) phase = "linux-cleanup"
+        errors.push(cleanup)
+        try {
+          await failed()
+        } catch (diagnostic) {
+          errors.push(diagnostic)
+        }
+        throw new AggregateError(errors, "Actual Linux peer failure and original cleanup failed")
+      }
+    }
   }
 }
 

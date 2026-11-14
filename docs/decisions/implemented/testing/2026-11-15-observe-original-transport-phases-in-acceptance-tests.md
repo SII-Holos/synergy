@@ -28,6 +28,8 @@ Original Workspace and consented-handoff fixtures retain bounded stage metadata 
 
 Normal Handoff completion issues one mutation and observes only fresh inspection requests after a working or unknown response. Completion requires the original full binding, expected terminal purpose, proof hash and enrolled participant signature. Each return leg supplies its own binding and reversed participants. Explicit lost-reply, rejection and held-operation controls retain raw calls. Composite consented return cases use a ninety-second whole-case guard; native observers, CLI requests, proof expiry and intentional fault barriers retain their individual limits. A dropped actual machine receipt must recover the same signed fact without another preparation call.
 
+Cross-OS completion uses the same enrolled participant keys and full-binding receipt verification for either Source or Target operations, retaining its finite observation window. A successful Linux bootstrap report covers only setup; later control, dispatch and cleanup failures update the same safe report while preserving the original error. Passive observations of original Handoff HTTP requests retain only fixed operation labels, status, content category and elapsed time. Error facts allow canonical codes and bounded relative fixture frames without reading body, credential or header values. These facts distinguish uncertain transport responses from domain rejection without replaying an operation or renewing its proof.
+
 ## Alternatives considered
 
 **Increase product deadlines or transport limits.** That would change supported behavior while leaving phase-sensitive assertions ambiguous.

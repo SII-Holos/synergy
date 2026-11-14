@@ -14,6 +14,7 @@ import {
   verify,
 } from "node:crypto"
 import { z } from "zod"
+import { OrganizationProtocol } from "@ericsanchezok/synergy-organization-protocol"
 
 const pem = z.string().min(32).max(8192)
 const hash = z.string().regex(/^[a-f0-9]{40}$/)
@@ -64,6 +65,68 @@ const Envelope = z.strictObject({
   signature: z.string().max(256),
 })
 const domain = "synergy.synthetic-cross-os-test.v1\n"
+
+const networkCodes = new Set(["ENOTFOUND", "EAI_AGAIN", "ECONNRESET", "ECONNREFUSED", "ETIMEDOUT", "ABORT_ERR"])
+const errorNames = new Set([
+  "Error",
+  "TypeError",
+  "SyntaxError",
+  "AssertionError",
+  "AggregateError",
+  "AbortError",
+  "TimeoutError",
+  "ZodError",
+  "OrganizationError",
+  "OrganizationRuntimeError",
+  "MemberHomeError",
+])
+function failureField(value: unknown, name: string, inherited = false): unknown {
+  try {
+    let current = value
+    for (let index = 0; index < (inherited ? 4 : 1); index++) {
+      if (typeof current !== "object" || current === null) return
+      const descriptor = Object.getOwnPropertyDescriptor(current, name)
+      if (descriptor) return "value" in descriptor ? descriptor.value : undefined
+      current = Object.getPrototypeOf(current)
+    }
+  } catch {}
+}
+export function safeCrossOSFailure(value: unknown) {
+  const data = failureField(value, "data")
+  const code = failureField(value, "code") ?? failureField(data, "code")
+  const knownCode = OrganizationProtocol.ErrorCode.safeParse(code)
+  const name = failureField(value, "name", true)
+  const exitCode = failureField(value, "exitCode")
+  const status = failureField(value, "status")
+  const outcome = failureField(value, "outcome") ?? failureField(data, "outcome")
+  const stack = failureField(value, "stack")
+  const frames: Array<{ file: string; line: number; column: number }> = []
+  if (typeof stack === "string")
+    for (const line of stack.slice(0, 8192).split("\n").slice(1, 13)) {
+      const match = line.match(
+        /(?:^|\/)packages\/organization-runtime\/(test\/(?:handoff-cross-os\.test|support\/(?:cross-os-peer|cross-os-transport))|src\/(?:handoff-source|handoff-target|connection|enrollment|resource-client))\.ts:(\d{1,7}):(\d{1,7})(?:\)|\s|$)/,
+      )
+      if (!match) continue
+      frames.push({ file: match[1] + ".ts", line: Number(match[2]), column: Number(match[3]) })
+      if (frames.length === 3) break
+    }
+  return {
+    name: typeof name === "string" && errorNames.has(name) ? name : "UnknownError",
+    thrownType: value === null ? "null" : typeof value,
+    ...(typeof value === "string" ? { textLength: value.length } : {}),
+    ...(knownCode.success
+      ? { code: knownCode.data }
+      : typeof code === "string" && networkCodes.has(code)
+        ? { code }
+        : {}),
+    ...(typeof outcome === "string" && ["not_dispatched", "rejected", "unknown"].includes(outcome) ? { outcome } : {}),
+    ...(typeof status === "number" && Number.isInteger(status) && status >= 100 && status <= 599 ? { status } : {}),
+    ...(typeof exitCode === "number" && Number.isInteger(exitCode) && exitCode >= 0 && exitCode <= 255
+      ? { exitCode }
+      : {}),
+    ...(frames.length ? { frames } : {}),
+  }
+}
 
 export function run(): Run {
   return Run.parse({
@@ -219,7 +282,10 @@ export async function exchange(
     body: JSON.stringify(encode(secret, peer, action, value)),
     signal: AbortSignal.timeout(10000),
   })
-  if (!response.ok) throw new Error("The signed cross-OS test control returned HTTP " + response.status)
+  if (!response.ok)
+    throw Object.assign(new Error("The signed cross-OS test control returned HTTP " + response.status), {
+      status: response.status,
+    })
   const answer = decode(secret, peer, await readControlJSON(response), nonces)
   if (answer.action !== action) throw new Error("Cross-OS response belongs to another control action")
   return answer.value

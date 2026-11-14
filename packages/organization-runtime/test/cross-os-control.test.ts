@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { readControlJSON } from "./support/cross-os-transport"
+import { readControlJSON, safeCrossOSFailure } from "./support/cross-os-transport"
 
 test("cross-OS JSON transport counts streamed bytes before decoding and cancels an oversized unsigned body", async () => {
   const expected = { label: "跨系统原始字节" }
@@ -49,4 +49,51 @@ test("cross-OS JSON transport counts streamed bytes before decoding and cancels 
     expect(request.body?.locked).toBe(false)
   }
   await expect(readControlJSON(new Response("invalid-json"))).rejects.toBeInstanceOf(SyntaxError)
+})
+
+test("cross-OS failure facts preserve canonical codes and original fixture frames without body, credentials or paths", () => {
+  const secret = "private-body-and-credential"
+  let getters = 0
+  const failure = {
+    name: "OrganizationError",
+    data: { code: "COMMAND_OUTCOME_UNKNOWN", outcome: "unknown", message: secret },
+    status: 504,
+    stack: `Error: ${secret}\n at /private/runner/packages/organization-runtime/test/handoff-cross-os.test.ts:42:7\n at /private/runner/${secret}:1:2`,
+    body: secret,
+    headers: { authorization: secret },
+  }
+  Object.defineProperty(failure, "code", {
+    get() {
+      getters++
+      return secret
+    },
+  })
+  const observed = safeCrossOSFailure(failure)
+  expect(observed).toEqual({
+    name: "OrganizationError",
+    thrownType: "object",
+    code: "COMMAND_OUTCOME_UNKNOWN",
+    outcome: "unknown",
+    status: 504,
+    frames: [{ file: "test/handoff-cross-os.test.ts", line: 42, column: 7 }],
+  })
+  expect(getters).toBe(0)
+  expect(JSON.stringify(observed)).not.toContain(secret)
+  expect(JSON.stringify(observed)).not.toContain("/private/runner")
+  expect(safeCrossOSFailure(`<html>${secret}</html>`)).toEqual({
+    name: "UnknownError",
+    thrownType: "string",
+    textLength: secret.length + 13,
+  })
+  expect(safeCrossOSFailure({ name: secret, code: "PRIVATE_BODY_AND_CREDENTIAL", outcome: secret })).toEqual({
+    name: "UnknownError",
+    thrownType: "object",
+  })
+  expect(
+    safeCrossOSFailure({
+      stack:
+        "x".repeat(1_000_000) +
+        "\n at /private/runner/packages/organization-runtime/test/handoff-cross-os.test.ts:42:7",
+    }),
+  ).toEqual({ name: "UnknownError", thrownType: "object" })
 })
