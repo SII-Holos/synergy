@@ -1,15 +1,12 @@
 import { afterAll, afterEach, beforeAll, beforeEach, expect, test } from "bun:test"
-import { fixturePort } from "@ericsanchezok/synergy-testing/fixture"
 import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
 import { chromium, type Browser, type Page } from "playwright"
-import { createServer, type ViteDevServer } from "vite"
-import solid from "vite-plugin-solid"
-import tailwind from "@tailwindcss/vite"
+import { createBrowserFixture, type BrowserFixture } from "../../support/browser-fixture"
 
 let browser: Browser
 let page: Page
-let server: ViteDevServer
+let server: BrowserFixture
 let directory: string
 const errors: string[] = []
 const source = path.resolve(import.meta.dir, "../../../src")
@@ -72,26 +69,16 @@ beforeAll(async () => {
       `,
     ),
   ])
-  server = await createServer({
-    configFile: false,
+  server = await createBrowserFixture({
     root: directory,
-    cacheDir: path.join(directory, ".vite"),
-    plugins: [solid(), tailwind()],
-    resolve: {
-      alias: [
-        { find: "@/context/locale", replacement: path.join(directory, "locale.ts") },
-        { find: "@/context/local", replacement: path.join(directory, "local.ts") },
-        { find: "@", replacement: source },
-      ],
-    },
-    optimizeDeps: {
-      noDiscovery: true,
-      include: ["solid-js", "solid-js/web", "solid-js/jsx-runtime", "@lingui/core", "@lingui/solid", "fuzzysort"],
-    },
-    server: { host: "127.0.0.1", port: await fixturePort(), fs: { allow: [path.resolve(source, "../../..")] } },
+    styled: true,
+    localized: false,
+    aliases: [
+      { find: "@/context/locale", replacement: path.join(directory, "locale.ts") },
+      { find: "@/context/local", replacement: path.join(directory, "local.ts") },
+      { find: "@", replacement: source },
+    ],
   })
-  await server.listen()
-  await server.warmupRequest("/main.tsx")
   browser = await chromium.launch({ headless: true })
 }, 60_000)
 
@@ -100,7 +87,7 @@ beforeEach(async () => {
   page = await browser.newPage({ viewport: { width: 375, height: 720 }, reducedMotion: "reduce" })
   page.setDefaultTimeout(5000)
   page.on("pageerror", (error) => errors.push(error.message))
-  await page.goto(server.resolvedUrls!.local[0]!)
+  await page.goto(server.url)
   await page.locator(".prompt-input-toolbar-button").waitFor({ timeout: 15000 })
 }, 30_000)
 
@@ -181,7 +168,7 @@ test("external agents become disabled after messages while retaining their expla
 }, 30_000)
 
 test("agent translations and shared selection, hover and keyboard surfaces survive both themes", async () => {
-  await page.goto(`${server.resolvedUrls!.local[0]}?translated`)
+  await page.goto(`${server.url}?translated`)
   const trigger = page.getByRole("button", { name: "Select agent: Localized general", exact: true })
   await trigger.click()
   const selected = page.getByRole("option", { name: "Localized general Localized general description", exact: true })
