@@ -30,6 +30,7 @@ export interface MemberConnection {
   closed: Promise<MemberConnectionClosed>
   close(): Promise<void>
   syncState(sessionID: string, signal?: AbortSignal): Promise<Sync.Share>
+  observeSync(sessionID: string, observation: Sync.StateObservation, signal?: AbortSignal): Promise<Sync.Share>
   sync(batch: Sync.Batch, signal?: AbortSignal): Promise<Sync.Ack>
   notify(notice: Notification.Observation): void
   uploadBlob(
@@ -69,6 +70,7 @@ export interface MemberConnectionOptions {
     close?(): void | Promise<void>
   }
   sync?: boolean
+  syncVersion?: 1 | typeof Sync.observationVersion
   notifications?: boolean
   handoff?: (
     authorization: Handoff.SignedMachinePlan,
@@ -145,7 +147,7 @@ async function attempt(input: {
       schemas: {
         bridge: 1,
         ...(options.commands ? { commands: 1 } : {}),
-        ...(options.sync ? { sync: 1 } : {}),
+        ...(options.sync ? { sync: options.syncVersion ?? 1 } : {}),
         ...(options.notifications ? { notifications: Notification.Version } : {}),
         ...(options.handoff ? { handoffs: options.handoffVersion ?? 1 } : {}),
         ...(options.read ? { reads: 1 } : {}),
@@ -373,7 +375,9 @@ async function attempt(input: {
         frame.runtimeID !== registration.runtimeID ||
         frame.connectionEpoch !== epoch ||
         frame.offlineMs <= frame.heartbeatMs ||
-        frame.offlineMs > timerLimit
+        frame.offlineMs > timerLimit ||
+        frame.syncVersion !==
+          (options.sync && options.syncVersion === Sync.observationVersion ? Sync.observationVersion : undefined)
       )
         throw failure("PROTOCOL_MISMATCH", "Runtime handshake does not match this connection")
       await input.checkpoint.save(epoch, work.signal)
@@ -783,6 +787,36 @@ async function attempt(input: {
           },
           signal,
         )
+      },
+      async observeSync(sessionID: string, input: Sync.StateObservation, signal?: AbortSignal) {
+        const observation = Sync.StateObservation.parse(input)
+        if (
+          stopped ||
+          work.signal.aborted ||
+          options.syncVersion !== Sync.observationVersion ||
+          handshake.syncVersion !== Sync.observationVersion
+        )
+          throw failure("PROTOCOL_MISMATCH", "Runtime sync storage observations were not negotiated")
+        const share = await syncRequest(
+          "state",
+          { type: "sync-state", connectionEpoch: epoch, exchangeID: crypto.randomUUID(), sessionID, observation },
+          signal,
+        )
+        if (
+          stopped ||
+          work.signal.aborted ||
+          share.sessionID !== sessionID ||
+          share.shareState !== "shared" ||
+          share.bindingEpoch !== observation.bindingEpoch ||
+          share.shareGeneration !== observation.shareGeneration ||
+          share.nextSeq !== observation.nextSeq ||
+          share.syncState !== observation.state
+        )
+          throw failure(
+            "PROTOCOL_MISMATCH",
+            "Runtime sync storage observation response changed its original checkpoint",
+          )
+        return share
       },
       sync(batch: Sync.Batch, signal?: AbortSignal) {
         return syncRequest(

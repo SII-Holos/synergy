@@ -51,6 +51,11 @@ export function createRuntimeConnections(input: {
   settings?: RuntimeConnectionSettings
   onResult?: (connection: RuntimeConnectionLease, result: Command.Result) => Promise<unknown>
   onSyncState?: (connection: RuntimeConnectionLease, sessionID: string) => Promise<Sync.Share>
+  onSyncObservation?: (
+    connection: RuntimeConnectionLease,
+    sessionID: string,
+    observation: Sync.StateObservation,
+  ) => Promise<Sync.Share>
   onSyncBatch?: (connection: RuntimeConnectionLease, batch: Sync.Batch) => Promise<Sync.Ack>
   onNotification?: (connection: RuntimeConnectionLease, notice: Notification.Observation) => Promise<void>
   onBlobChunk?: (
@@ -140,7 +145,10 @@ export function createRuntimeConnections(input: {
     const handshake = structuredClone(current(socket))
     if (requireCommands === true && (!handshake.capabilities.includes("commands") || handshake.schemas.commands !== 1))
       fail("PROTOCOL_MISMATCH", "Runtime does not support organization command intake")
-    if (requireCommands === false && (!handshake.capabilities.includes("sync") || handshake.schemas.sync !== 1))
+    if (
+      requireCommands === false &&
+      (!handshake.capabilities.includes("sync") || ![1, Sync.observationVersion].includes(handshake.schemas.sync))
+    )
       fail("PROTOCOL_MISMATCH", "Runtime does not support shared Session sync")
     if (
       requireCommands === "notifications" &&
@@ -212,8 +220,14 @@ export function createRuntimeConnections(input: {
           fail("PERMISSION_DENIED", "Runtime registration is not active")
         if (handshake.schemas.bridge !== 1 || !handshake.capabilities.includes("bridge"))
           fail("PROTOCOL_MISMATCH", "This Runtime does not support the organization bridge protocol")
-        if (handshake.capabilities.includes("sync") !== (handshake.schemas.sync === 1))
+        if (
+          handshake.capabilities.includes("sync")
+            ? ![1, Sync.observationVersion].includes(handshake.schemas.sync)
+            : handshake.schemas.sync !== undefined
+        )
           fail("PROTOCOL_MISMATCH", "Runtime sync capabilities and schema are inconsistent")
+        if (handshake.schemas.sync === Sync.observationVersion && !input.onSyncObservation)
+          fail("PROTOCOL_MISMATCH", "Runtime sync storage observation owner is not installed")
         if (
           handshake.capabilities.includes("notifications") !==
           (handshake.schemas.notifications === Notification.Version)
@@ -269,6 +283,7 @@ export function createRuntimeConnections(input: {
       signingIdentity: input.signingIdentity,
       heartbeatMs: settings.heartbeatMs,
       offlineMs: settings.offlineMs,
+      ...(handshake.schemas.sync === Sync.observationVersion ? { syncVersion: Sync.observationVersion } : {}),
       ...(input.onNotification &&
       handshake.capabilities.includes("notifications") &&
       handshake.schemas.notifications === Notification.Version
@@ -319,8 +334,15 @@ export function createRuntimeConnections(input: {
       const connection = captureSocket(socket, false)
       if (frame.data.connectionEpoch !== connection.handshake.connectionEpoch)
         stale(connection.handshake.connectionEpoch)
-      if (!input.onSyncState) fail("SERVICE_UNAVAILABLE", "Shared Session sync is unavailable")
-      const share = await input.onSyncState(connection, frame.data.sessionID)
+      let share: Sync.Share
+      if (frame.data.observation) {
+        if (connection.handshake.schemas.sync !== Sync.observationVersion || !input.onSyncObservation)
+          fail("PROTOCOL_MISMATCH", "Runtime sync storage observations require their negotiated owner")
+        share = await input.onSyncObservation(connection, frame.data.sessionID, frame.data.observation)
+      } else {
+        if (!input.onSyncState) fail("SERVICE_UNAVAILABLE", "Shared Session sync is unavailable")
+        share = await input.onSyncState(connection, frame.data.sessionID)
+      }
       connection.assertCurrent()
       send(socket, {
         type: "sync-state",
@@ -394,7 +416,7 @@ export function createRuntimeConnections(input: {
 
   function assembleBlob(socket: Socket, frame: Runtime.BlobChunk): CompletedBlob | undefined {
     const handshake = current(socket)
-    if (!handshake.capabilities.includes("sync") || handshake.schemas.sync !== 1)
+    if (!handshake.capabilities.includes("sync") || ![1, Sync.observationVersion].includes(handshake.schemas.sync))
       fail("PROTOCOL_MISMATCH", "Runtime does not support shared Session sync")
     if (frame.connectionEpoch !== handshake.connectionEpoch) stale(handshake.connectionEpoch)
     if (!input.onBlobChunk) fail("SERVICE_UNAVAILABLE", "Shared Session blobs are unavailable")

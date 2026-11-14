@@ -96,6 +96,20 @@ export namespace OrganizationSyncProtocol {
 
   export const SyncState = z.enum(["pending", "syncing", "synced", "blocked", "failed"])
 
+  export const observationVersion = 2
+  const observation = {
+    bindingEpoch: Protocol.Epoch,
+    shareGeneration: Identity.Revision,
+    nextSeq: Identity.Revision,
+  }
+  export const StateObservation = z
+    .discriminatedUnion("state", [
+      z.strictObject({ ...observation, state: z.literal("blocked"), reason: z.literal("storage_full") }),
+      z.strictObject({ ...observation, state: z.literal("pending") }),
+    ])
+    .meta({ ref: "OrgSyncStateObservation" })
+  export type StateObservation = z.infer<typeof StateObservation>
+
   export const CortexStatus = z.enum(["queued", "running", "completed", "error", "cancelled", "interrupted"])
   const statusObservation = {
     observedAt: z.number().int().nonnegative(),

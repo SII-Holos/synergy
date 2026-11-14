@@ -21,6 +21,7 @@ import { OrganizationSharedProjection as Projection } from "./shared-projection"
 import { OrganizationSharedTasks as Tasks } from "./shared-tasks"
 import { runtimeAuthority, assertRuntimeConnection } from "./runtime-authority"
 import { OrganizationAuthorityHistory as History } from "./authority-history"
+import type { RuntimeConnectionLease } from "./command-transport"
 
 function payloadHash(batch: Sync.Batch) {
   return digest(JSON.stringify({ firstSeq: batch.firstSeq, lastSeq: batch.lastSeq, events: batch.events }))
@@ -844,6 +845,50 @@ export namespace OrganizationSharing {
 
   export async function getFromRuntime(handshake: Protocol.Handshake, sessionID: string) {
     return Storage.snapshot(async () => view(await runtimeSession(handshake, sessionID)))
+  }
+
+  export async function observeFromRuntime(
+    connection: RuntimeConnectionLease,
+    sessionID: string,
+    input: Sync.StateObservation,
+  ) {
+    const observation = Sync.StateObservation.parse(input)
+    connection.assertCurrent()
+    if (connection.handshake.schemas.sync !== Sync.observationVersion)
+      fail("PROTOCOL_MISMATCH", "Runtime sync storage observations require their negotiated schema")
+    return Storage.transaction(
+      async () => {
+        const session = await runtimeSession(connection.handshake, sessionID)
+        connection.assertCurrent()
+        if (session.shareState !== "shared" || session.shareGeneration !== observation.shareGeneration)
+          fail("SHARE_REVOKED", "The observed sharing generation is no longer active")
+        if (session.bindingEpoch !== observation.bindingEpoch)
+          fail("STALE_BINDING", "The observed sync binding changed")
+        const state = await Record.read(Record.SharedState, Keys.sharedState(sessionID))
+        connection.assertCurrent()
+        if (
+          !state ||
+          state.sessionID !== sessionID ||
+          state.bindingEpoch !== session.bindingEpoch ||
+          state.shareGeneration !== session.shareGeneration
+        )
+          fail("SERVICE_UNAVAILABLE", "Sync storage observations require their original shared checkpoint")
+        revision(observation.nextSeq, state.nextSeq)
+        const updated = Record.SharedState.parse({ ...state, syncState: observation.state, updatedAt: Date.now() })
+        await Storage.write(Keys.sharedState(sessionID), updated)
+        connection.assertCurrent()
+        return Sync.Share.parse({
+          sessionID,
+          shareState: session.shareState,
+          shareGeneration: updated.shareGeneration,
+          bindingEpoch: updated.bindingEpoch,
+          nextSeq: updated.nextSeq,
+          syncState: updated.syncState,
+          updatedAt: updated.updatedAt,
+        })
+      },
+      { commitGuard: connection.assertCurrent },
+    )
   }
 
   export async function applyBatchFromRuntime(handshake: Protocol.Handshake, input: Sync.Batch) {

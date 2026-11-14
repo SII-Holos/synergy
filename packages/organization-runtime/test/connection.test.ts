@@ -1131,3 +1131,80 @@ test("the member bridge fragments 4 MiB blob chunks and waits for one verified a
     }),
   ).resolves.toMatchObject({ complete: true, bytes: payload.byteLength, hash })
 })
+
+test("the native member connection explicitly negotiates sync two before observing storage failures", async () => {
+  await using f = await enrolled()
+  let advertised = 0
+  let observations = 0
+  f.interceptFrames((_socket, raw) => {
+    const frame = Protocol.ClientFrame.parse(JSON.parse(String(raw)))
+    if (frame.type === "handshake") advertised = frame.proof.handshake.schemas.sync ?? 0
+    if (frame.type === "sync-state" && frame.observation) observations++
+    return false
+  })
+  {
+    await using current = await openMemberConnection({ ...f.options, sync: true, syncVersion: 2 })
+    expect(advertised).toBe(2)
+    expect(current.connected.syncVersion).toBe(2)
+    await expect(
+      current.observeSync("not-an-owned-session", {
+        bindingEpoch: 1,
+        shareGeneration: 1,
+        nextSeq: 1,
+        state: "blocked",
+        reason: "storage_full",
+      }),
+    ).rejects.toMatchObject({ data: { code: "PERMISSION_DENIED" } })
+  }
+  expect(observations).toBe(1)
+  {
+    await using legacy = await openMemberConnection({ ...f.options, sync: true })
+    expect(advertised).toBe(1)
+    expect(legacy.connected.syncVersion).toBeUndefined()
+    await expect(
+      legacy.observeSync("not-an-owned-session", {
+        bindingEpoch: 1,
+        shareGeneration: 1,
+        nextSeq: 1,
+        state: "blocked",
+        reason: "storage_full",
+      }),
+    ).rejects.toMatchObject({ data: { code: "PROTOCOL_MISMATCH" } })
+  }
+  expect(observations).toBe(1)
+})
+
+test("a sync two native caller refuses a legacy server acknowledgement instead of silently downgrading", async () => {
+  await using f = await enrolled()
+  let advertised = 0
+  let stripped = 0
+  let restore = () => {}
+  f.interceptFrames((socket, raw) => {
+    const frame = Protocol.ClientFrame.parse(JSON.parse(String(raw)))
+    if (frame.type !== "handshake") return false
+    advertised = frame.proof.handshake.schemas.sync ?? 0
+    const original = socket.send.bind(socket)
+    const sends = spyOn(socket, "send").mockImplementation((data, compress) => {
+      if (typeof data === "string") {
+        const reply = Protocol.ServerFrame.parse(JSON.parse(data))
+        if (reply.type === "handshake") {
+          const { syncVersion, ...legacy } = reply
+          if (syncVersion !== undefined) stripped++
+          return original(JSON.stringify(legacy), compress)
+        }
+      }
+      return original(data, compress)
+    })
+    restore = () => sends.mockRestore()
+    return false
+  })
+  try {
+    await expect(openMemberConnection({ ...f.options, sync: true, syncVersion: 2 })).rejects.toMatchObject({
+      data: { code: "PROTOCOL_MISMATCH" },
+    })
+    expect(advertised).toBe(2)
+    expect(stripped).toBe(1)
+  } finally {
+    restore()
+  }
+})

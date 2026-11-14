@@ -20,6 +20,8 @@ Reuse the identifier schema of the actual producing domain. A native Use identif
 
 For scoped external credentials, select capability purposes in trusted route code, resolve the target's canonical owner and intersect current authority. Do not accept a purpose from request bodies or reuse a broader browser token. Store only token digests; uncertain issuance must resolve metadata without redisclosing the original secret. Test revoked credentials during a real stream and signed actor attribution through admission.
 
+For storage failure observations, publish only safe classified codes through the original current machine connection and exact binding/generation/checkpoint CAS. A status receipt cannot acknowledge content. Keep SQL failure reporting outside the failing transaction, negotiate strict new frame capabilities explicitly, and verify lost observation replies, old peers, final-commit connection loss and recovery through pending before genuine content ACK.
+
 For authoritative machine observations, trace every writer into the ledger, including browser routes and domain exports. Human visibility control or immutable-byte upload authority does not authenticate the observation producer. Reuse the current machine connection and native writer; test rejected human writes without state changes and accepted genuine machine frames. Preserve separately authorized immutable content uploads.
 
 3. Decide whether the behavior is request/response state, a sequenced state event, or a streaming transport. Do not force WebSocket, SSE, WebRTC, file/blob, or external URL behavior into an ordinary SDK call.

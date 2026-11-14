@@ -104,6 +104,7 @@ export namespace OrganizationRuntimeProtocol {
     connectionEpoch: Protocol.Epoch,
     exchangeID: Identity.ID,
     sessionID: Identity.ID,
+    observation: Sync.StateObservation.optional(),
   })
   export type SyncStateRequest = z.infer<typeof SyncStateRequest>
   export const SyncBatch = z.strictObject({
@@ -175,6 +176,7 @@ export namespace OrganizationRuntimeProtocol {
     heartbeatMs: z.number().int().positive(),
     offlineMs: z.number().int().positive(),
     notifications: z.literal(Notification.Version).optional(),
+    syncVersion: z.literal(Sync.observationVersion).optional(),
   })
   export const ServerFrame = z.discriminatedUnion("type", [
     Connected,

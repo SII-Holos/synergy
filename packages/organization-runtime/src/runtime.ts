@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { OrganizationSyncProtocol as Sync } from "@ericsanchezok/synergy-organization-protocol"
 import { RuntimeMaintenance } from "@ericsanchezok/synergy-harness/storage/runtime-maintenance"
 import { RuntimeContext, type RuntimeLaunch } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { openAgentRuntime, type AgentRuntimeOptions } from "@ericsanchezok/synergy-agent-runtime"
@@ -214,6 +215,7 @@ async function openOrganizationRuntime(input: MemberRuntimeOptions) {
               }
             }),
             sync: true,
+            syncVersion: Sync.observationVersion,
             ...(handoff
               ? {
                   handoff: context.bind(handoff.dispatch),

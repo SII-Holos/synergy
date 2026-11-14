@@ -467,6 +467,8 @@ async function openOrganizationNamespace(
         signingIdentity: signing.identity,
         onResult: (connection, result) => admissions.observe(connection, result),
         onSyncState: (connection, sessionID) => OrganizationSharing.getFromRuntime(connection.handshake, sessionID),
+        onSyncObservation: (connection, sessionID, observation) =>
+          OrganizationSharing.observeFromRuntime(connection, sessionID, observation),
         onSyncBatch: (connection, batch) => OrganizationSharing.applyBatchFromRuntime(connection.handshake, batch),
         onNotification: (connection, notice) => notifications!.publish(connection, notice),
         onBlobChunk: (connection, input) => OrganizationSharing.uploadBlobFromRuntime(connection.handshake, input),
