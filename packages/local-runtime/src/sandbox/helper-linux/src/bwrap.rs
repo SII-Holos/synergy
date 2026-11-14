@@ -308,9 +308,9 @@ fn mount_target(mount: &MountOp) -> &str {
     }
 }
 
-// Bubblewrap v0.11.2 resolves sources in /oldroot and destinations in /newroot.
-// Exact restores therefore bind the original host subroot, not the overlaid /tmp:
 // Provenance: https://github.com/containers/bubblewrap/blob/v0.11.2/bubblewrap.c#L1140-L1189
+// Local adaptation: Bind only admitted strict temporary subroots from /oldroot
+// after controlled /tmp, retaining original visibility and protection in /newroot.
 fn restore_temporary_roots(
     profile: &PermissionProfile,
     policy_cwd: &Path,
