@@ -20,6 +20,8 @@ Finite resource preparation and execution requests retain exact native request o
 
 POSIX workspace-write sandbox preparation also materializes the approved original Session temporary child on the actual Executor. The shared naming owner recognizes the carried path without replacing its controller PID. Descriptor-relative creation retains the selected Workspace and refuses symbolic or replaced parents; the original preparing receipt and operation guards cover the effect. It neither creates arbitrary writable roots nor weakens protected-create monitoring. A prepared retry only verifies the existing directories and original policy. The native preparation and anchored directory suites distinguish this filesystem fact from actual Linux helper execution.
 
+Linux keeps the controlled `/tmp` overlay after all original mounts, including broad writable ancestors. Temporary cwd and writable subroots are reconstructed only as exact authorized descendants, retaining the last original ancestor's visibility and mode plus later local restrictions. Effective read denies remain enforced, including the original deeper-writable exception; a read-only cwd also requires an original readable root. An earlier descendant writer cannot override a later read-only ancestor. This preserves the selected physical Workspace without exposing unrelated host temporary data or changing execution authority. See [the temporary-cwd postmortem](../../../postmortem/0201-linux-controlled-tmp-hid-admitted-workspace.md).
+
 ## Alternatives considered
 
 **Infer ownership from Scope, working directory or an operation hash.** These are shared destinations or opaque identities and cannot prove a Session, root or tool lineage.
@@ -29,6 +31,8 @@ POSIX workspace-write sandbox preparation also materializes the approved origina
 **Treat an empty derived index as proof of drainage.** Missing migration coverage or a request waiting before receipt publication makes that inference false. Coverage and exact native pending lifetimes are separate evidence.
 
 **Drop an undispatched receipt when authority closes.** The original Executor owns cancellation and replay exclusion. A durable no-effect cancellation proves absence of physical execution; a controller assertion does not.
+
+**Move controlled `/tmp` before writable binds.** A later writable `/` or `/tmp` bind exposes host temporary data again. Reconstruct only admitted strict subroots after the overlay, preserving effective denies and read-only state instead of rebinding an ancestor.
 
 ## Consequences
 
@@ -47,3 +51,5 @@ Resolver and Processor fixtures create a real native user root, assistant and Ru
 Installed composition fixtures construct these records through the published Session, ledger and tool leaves, without importing development test helpers. Resource concurrency fixtures acquire their actual Host origin before waiting at a materialization barrier. Fixtures using Cortex register its Session runtime so retained callbacks close before the underlying Runtime is disposed.
 
 Direct Bash adapter fixtures submit their exact command patterns to the original PermissionNext owner; a caller authorization flag cannot suppress that check. Native supervisor environment fixtures open the real Local Runtime with its Store and coordinator. Their selected launcher dispatches the storage-worker role to the published SQLite worker in the same IPC process and records supervisor environment evidence only for the owned-process role. Original command output, environment separation, physical completion and cleanup assertions remain required. Transport refusal checks retain the original input identity and final-saving hold instead of accepting an arbitrary failure.
+
+Linux helper `bwrap::tests` compiles and verifies pure policy on macOS. Actual acceptance uses the selected NativeExecutor in `test/sandbox/linux-readable-roots.test.ts`: temporary cwd, writable `/` and `/tmp` ancestors, host-TMP sentinel and alias isolation, read-only and deny cases, and the deeper-writable exception. Policy tests do not establish Linux kernel behavior; the installed helper must match the tested source.

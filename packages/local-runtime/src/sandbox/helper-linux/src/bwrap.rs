@@ -282,7 +282,9 @@ pub fn build_bwrap_plan(
     }
 
     let tmp_source = controlled_tmp_source(policy_cwd);
+    let temporary_roots = restore_temporary_roots(profile, policy_cwd, &mounts);
     push_bind(&mut mounts, &tmp_source, "/tmp");
+    mounts.extend(temporary_roots);
 
     let unshare_net = matches!(profile.network.mode.as_str(), "restricted" | "proxy_only");
     let _allow_local_binding = profile.network.allow_local_binding;
@@ -294,6 +296,106 @@ pub fn build_bwrap_plan(
         unshare_net,
         command: command.to_vec(),
     })
+}
+
+fn mount_target(mount: &MountOp) -> &str {
+    match mount {
+        MountOp::Tmpfs { target }
+        | MountOp::Bind { target, .. }
+        | MountOp::RoBind { target, .. }
+        | MountOp::Dev { target }
+        | MountOp::Proc { target } => target,
+    }
+}
+
+// Bubblewrap v0.11.2 resolves sources in /oldroot and destinations in /newroot.
+// Exact restores therefore bind the original host subroot, not the overlaid /tmp:
+// Provenance: https://github.com/containers/bubblewrap/blob/v0.11.2/bubblewrap.c#L1140-L1189
+fn restore_temporary_roots(
+    profile: &PermissionProfile,
+    policy_cwd: &Path,
+    policy_mounts: &[MountOp],
+) -> Vec<MountOp> {
+    let temporary = canonical_mount_path("/tmp");
+    let file_system = &profile.file_system;
+    let mut roots: Vec<PathBuf> = std::iter::once(policy_cwd.to_string_lossy().into_owned())
+        .chain(file_system.writable_roots.iter().cloned())
+        .map(|root| canonical_mount_path(&root))
+        .filter(|root| root != &temporary && root.starts_with(&temporary))
+        .collect();
+    roots.sort_by(|left, right| {
+        left.components()
+            .count()
+            .cmp(&right.components().count())
+            .then_with(|| left.cmp(right))
+    });
+    roots.dedup();
+    let mut mounts = Vec::new();
+    for root in roots {
+        if !file_system
+            .readable_roots
+            .iter()
+            .chain(file_system.writable_roots.iter())
+            .any(|allowed| root.starts_with(canonical_mount_path(allowed)))
+        {
+            continue;
+        }
+        if file_system.data_deny_roots.iter().any(|denied| {
+            let denied_path = canonical_mount_path(denied);
+            root.starts_with(&denied_path)
+                && (is_inside_writable_root(denied, &file_system.writable_roots)
+                    || !file_system.writable_roots.iter().any(|writable| {
+                        let writable = canonical_mount_path(writable);
+                        root.starts_with(&writable) && writable.starts_with(&denied_path)
+                    }))
+        }) {
+            continue;
+        }
+        // The last original ancestor mount owns this root's final visibility.
+        // An ancestor cover blocks restoration; an ancestor read-only bind also
+        // keeps earlier descendant write grants from being revived afterwards.
+        let Some((index, original)) = policy_mounts
+            .iter()
+            .enumerate()
+            .rev()
+            .find(|(_, mount)| root.starts_with(canonical_mount_path(mount_target(mount))))
+        else {
+            continue;
+        };
+        let read_only = match original {
+            MountOp::Bind { source, target }
+                if canonical_mount_path(source) == canonical_mount_path(target) =>
+            {
+                false
+            }
+            MountOp::RoBind { source, target }
+                if canonical_mount_path(source) == canonical_mount_path(target) =>
+            {
+                true
+            }
+            _ => continue,
+        };
+        let path = root.to_string_lossy();
+        if read_only {
+            push_ro_bind(&mut mounts, &path, &path);
+        } else {
+            push_bind(&mut mounts, &path, &path);
+        }
+        // Reproduce only later overlays inside this exact admitted root. Never
+        // bind / or /tmp after controlled tmp, even for a writable ancestor.
+        mounts.extend(
+            policy_mounts[index + 1..]
+                .iter()
+                .filter(|mount| canonical_mount_path(mount_target(mount)).starts_with(&root))
+                .cloned(),
+        );
+        for denied in &file_system.data_deny_roots {
+            if canonical_mount_path(denied).starts_with(&root) {
+                push_read_deny(&mut mounts, denied);
+            }
+        }
+    }
+    mounts
 }
 
 fn controlled_tmp_source(policy_cwd: &Path) -> String {
@@ -941,6 +1043,151 @@ mod tests {
     fn proxy_only_network_adds_unshare_net() {
         let profile = make_profile("/ws", "proxy_only", vec![], vec![], vec![]);
         assert!(plan(&profile, "/ws").unshare_net);
+    }
+
+    #[test]
+    fn controlled_tmp_restores_only_precise_authorized_children_after_writable_ancestors() {
+        let fixture = Path::new("/tmp").join(format!("bwrap_tmp_restore_{}", std::process::id()));
+        let workspace = fixture.join("workspace");
+        std::fs::create_dir_all(&workspace).unwrap();
+        let workspace = std::fs::canonicalize(&workspace).unwrap();
+        let ws = workspace.to_string_lossy().into_owned();
+        for ancestor in ["/", "/tmp"] {
+            let profile = make_full_read_profile(&ws, "restricted", vec![ancestor]);
+            let plan = plan(&profile, &ws);
+            let controlled = plan.mounts.iter().position(|mount| matches!(mount,
+                MountOp::Bind { source, target } if source == &format!("{ws}/.synergy/tmp") && target == "/tmp"
+            )).unwrap();
+            let restored = plan
+                .mounts
+                .iter()
+                .rposition(|mount| {
+                    matches!(mount,
+                        MountOp::Bind { source, target } if source == &ws && target == &ws
+                    )
+                })
+                .expect("an authorized temporary child must remain the original physical cwd");
+            assert!(controlled < restored);
+            for mount in &plan.mounts[controlled + 1..] {
+                let target = match mount {
+                    MountOp::Tmpfs { target }
+                    | MountOp::Bind { target, .. }
+                    | MountOp::RoBind { target, .. }
+                    | MountOp::Dev { target }
+                    | MountOp::Proc { target } => target,
+                };
+                assert!(
+                    !canonical_mount_path("/tmp").starts_with(canonical_mount_path(target)),
+                    "no late ancestor mount may expose host temporary files"
+                );
+            }
+        }
+        std::fs::remove_dir_all(fixture).unwrap();
+    }
+
+    #[test]
+    fn temporary_read_only_cwd_requires_a_read_root_and_keeps_ancestor_covers() {
+        let fixture = Path::new("/tmp").join(format!("bwrap_tmp_read_{}", std::process::id()));
+        let workspace = fixture.join("workspace");
+        std::fs::create_dir_all(&workspace).unwrap();
+        let ws = std::fs::canonicalize(&workspace)
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        let denied = std::fs::canonicalize(&fixture)
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        let unreadable = make_profile(&ws, "full", vec![], vec![], vec![]);
+        let mut covered = make_full_read_profile(&ws, "full", vec![]);
+        covered.file_system.data_deny_roots = vec![denied.clone()];
+        covered.file_system.protected_paths = vec![denied];
+        for profile in [unreadable, covered] {
+            let plan = plan(&profile, &ws);
+            let controlled = plan.mounts.iter().position(|mount| matches!(mount,
+                MountOp::Bind { source, target } if source == &format!("{ws}/.synergy/tmp") && target == "/tmp"
+            )).unwrap();
+            assert!(
+                plan.mounts[controlled + 1..].is_empty(),
+                "an unreadable cwd must not gain a restore grant"
+            );
+        }
+        let profile = make_full_read_profile(&ws, "full", vec![]);
+        let plan = plan(&profile, &ws);
+        let controlled = plan.mounts.iter().position(|mount| matches!(mount,
+            MountOp::Bind { source, target } if source == &format!("{ws}/.synergy/tmp") && target == "/tmp"
+        )).unwrap();
+        assert!(
+            plan.mounts[controlled + 1..]
+                .iter()
+                .any(|mount| matches!(mount,
+                    MountOp::RoBind { source, target } if source == &ws && target == &ws
+                )),
+            "an admitted read-only cwd must be restored without writer authority"
+        );
+        std::fs::remove_dir_all(fixture).unwrap();
+    }
+
+    #[test]
+    fn temporary_cwd_keeps_later_restrictions_and_ancestor_read_only_state() {
+        let fixture = Path::new("/tmp").join(format!("bwrap_tmp_policy_{}", std::process::id()));
+        let workspace = fixture.join("workspace");
+        std::fs::create_dir_all(workspace.join("private")).unwrap();
+        std::fs::create_dir_all(workspace.join("glob")).unwrap();
+        std::fs::write(workspace.join("protected"), "protected").unwrap();
+        let ws = std::fs::canonicalize(&workspace)
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        let private = format!("{ws}/private");
+        let protected = format!("{ws}/protected");
+        let glob = format!("{ws}/glob");
+        let mut profile = make_full_read_profile(&ws, "full", vec!["/", &ws]);
+        profile.file_system.data_deny_roots = vec![private.clone()];
+        profile.file_system.protected_paths = vec![protected.clone()];
+        profile.file_system.unreadable_globs = vec![glob.clone()];
+        let initial = plan(&profile, &ws);
+        let restored = initial
+            .mounts
+            .iter()
+            .rposition(|mount| {
+                matches!(mount,
+                    MountOp::Bind { source, target } if source == &ws && target == &ws
+                )
+            })
+            .unwrap();
+        for target in [private, glob] {
+            assert!(
+                initial.mounts[restored + 1..]
+                    .iter()
+                    .any(|mount| matches!(mount,
+                        MountOp::Tmpfs { target: covered } if covered == &target
+                    )),
+                "an original descendant read cover must follow restoration"
+            );
+        }
+        assert!(initial.mounts[restored + 1..]
+            .iter()
+            .any(|mount| matches!(mount,
+                MountOp::RoBind { target, .. } if target == &protected
+            )));
+        profile.file_system.protected_paths = vec!["/tmp".into()];
+        let plan = plan(&profile, &ws);
+        let controlled = plan.mounts.iter().position(|mount| matches!(mount,
+            MountOp::Bind { source, target } if source == &format!("{ws}/.synergy/tmp") && target == "/tmp"
+        )).unwrap();
+        assert!(
+            matches!(&plan.mounts[controlled + 1], MountOp::RoBind { target, .. } if target == &ws)
+        );
+        assert!(
+            !plan.mounts[controlled + 1..]
+                .iter()
+                .any(|mount| matches!(mount,
+                    MountOp::Bind { target, .. } if target == &ws
+                )),
+            "an earlier child write grant must not bypass the last ancestor read-only mount"
+        );
+        std::fs::remove_dir_all(fixture).unwrap();
     }
 
     #[test]

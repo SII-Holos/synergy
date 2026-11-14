@@ -23,6 +23,8 @@ Declare execution needs separately from Workspace needs. Resolve the target befo
 
 For remote sandbox preparation, carry an approved temporary path with a controller PID different from the Executor. Verify directory creation through the original target operation and anchored filesystem owner, symbolic-parent rejection and absence of effects on unrelated writable roots. Preserve the carried path and prepared-retry checks. A prepared receipt does not replace actual Linux helper execution; see [native operation origins](../../../docs/decisions/implemented/architecture/2026-11-12-retain-native-environment-operation-origins.md).
 
+For Linux temporary-mount changes, test a real temporary cwd with writable `/` and `/tmp` ancestors, direct and aliased host-TMP sentinel isolation, effective read-only and deny rules, and the deeper-writable exception. Pure Rust policy tests do not prove Linux execution; see [the temporary-cwd record](../../../docs/postmortem/0201-linux-controlled-tmp-hid-admitted-workspace.md).
+
 Native stream greetings do not prove cancellation readiness. Wait for the worker's prepared acknowledgement before binding its process claim, and send it only after cancellation and activation handlers are installed. Exercise a binding failure with a real worker delayed after its greetings; verify the original cause, no command effects and released ownership.
 
 Do not forward a queued stdin EOF after the native worker confirms whole-tree drainage. Exercise a late EOF against a real drained worker, retaining output bytes, exit status and lease release; keep pre-completion transport failures observable and preserve byte-counted EOF for live readers.
