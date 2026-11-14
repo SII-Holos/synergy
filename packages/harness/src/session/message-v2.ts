@@ -34,6 +34,7 @@ import { SnapshotSchema } from "./snapshot-schema"
 import { fn } from "../util/fn"
 import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
+import { StorageIntegrityError } from "../storage/errors"
 import { PartContent } from "./part-content"
 import { ProviderTransform } from "../provider/transform"
 import { ProviderAuthRecoveryError } from "../provider/auth-recovery-error"
@@ -1899,6 +1900,27 @@ export namespace MessageV2 {
   }
 
   async function messageOrderSnapshot(scopeID: Identifier.ScopeID, sessionID: Identifier.SessionID) {
+    const captured = await Storage.snapshot(async () => {
+      const [raw] = await Storage.readMany([StoragePath.sessionMessageOrderState(scopeID, sessionID)])
+      const state = MessageOrderState.safeParse(raw)
+      if (!state.success || !state.data.ready) return
+      const markers: string[] = []
+      let after: string | undefined
+      for (;;) {
+        const page = await Storage.childKeys({
+          prefix: StoragePath.sessionMessageOrderMarkersRoot(scopeID, sessionID),
+          after,
+          limit: 128,
+        })
+        markers.push(...page.keys.map((key) => key.at(-1)!))
+        after = page.after
+        if (!after) break
+      }
+      const ids = new Set(markers.map(markerMessageID).filter((id): id is string => id !== undefined))
+      if (state.data.count !== markers.length || ids.size !== markers.length) return
+      return markers.sort(compareMessageOrderMarker)
+    })
+    if (captured !== undefined) return captured
     return Storage.transaction(async () => {
       const key = messageOrderKey(scopeID, sessionID)
       if (messageOrderCache().has(key)) {
@@ -2054,6 +2076,23 @@ export namespace MessageV2 {
     return candidates.sort(
       (a, b) => positions.get(a.messageID)! - positions.get(b.messageID)! || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
     )
+  }
+
+  export async function readPart(input: { scopeID: string; sessionID: string; messageID: string; partID: string }) {
+    const key = StoragePath.messagePart(
+      Identifier.asScopeID(input.scopeID),
+      Identifier.asSessionID(input.sessionID),
+      Identifier.asMessageID(input.messageID),
+      Identifier.asPartID(input.partID),
+    )
+    return Storage.snapshot(async () => {
+      const [stored] = await Storage.readMany<PartContent.Stored>([key])
+      if (stored === undefined) return
+      const part = canonicalPart(upgradeAccessRecord(key, await PartContent.hydrate(key, stored)))
+      if (part.id !== input.partID || part.sessionID !== input.sessionID || part.messageID !== input.messageID)
+        throw new StorageIntegrityError("Native Part identity does not match its original storage owner")
+      return withoutPrunedOutput(part)
+    })
   }
 
   export async function readToolPart(input: { scopeID: string; sessionID: string; messageID: string; partID: string }) {

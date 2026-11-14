@@ -122,11 +122,20 @@ export function startMemberSyncExporter(input: {
   signal: AbortSignal
 }): MemberSyncExporter {
   const { identity, connection, signal } = input
+  const originalRuntime = RuntimeContext.current()
+  const originalStore = Storage.current().store
+  const originalConnection = connection.connected
+  const connectionIdentity = JSON.stringify([
+    originalConnection.orgID,
+    originalConnection.deploymentIncarnation,
+    originalConnection.runtimeID,
+    originalConnection.connectionEpoch,
+  ])
   const sessions = new Set<string>()
   const tails = new Map<string, Promise<void>>()
   const unsubs: Array<() => void> = []
-  const pendingParts = new Map<string, MessageV2.Part>()
-  const partWorkers = new Set<string>()
+  const pendingNative = new Map<string, Map<string, NativeChange>>()
+  const nativeWorkers = new Set<string>()
   let timer: ReturnType<typeof setTimeout> | undefined
   const retryTimer = setInterval(() => {
     if (sessions.size) schedule()
@@ -166,7 +175,24 @@ export function startMemberSyncExporter(input: {
     timer.unref()
   }
 
+  function assertSource() {
+    if (
+      RuntimeContext.current() !== originalRuntime ||
+      Storage.current().store !== originalStore ||
+      connection.connected !== originalConnection ||
+      connectionIdentity !==
+        JSON.stringify([
+          connection.connected.orgID,
+          connection.connected.deploymentIncarnation,
+          connection.connected.runtimeID,
+          connection.connected.connectionEpoch,
+        ])
+    )
+      throw new Error("Shared export lost its original Runtime, Store or connection")
+  }
+
   async function sessionBinding(sessionID: string) {
+    assertSource()
     const initial = await Session.get(sessionID).catch(() => undefined)
     if (!initial) return
     const chain: Session.Info[] = []
@@ -209,58 +235,129 @@ export function startMemberSyncExporter(input: {
     }
   }
 
-  async function putDraft(rootSessionID: string, draftID: string, event: Sync.Event) {
-    const bound = await sessionBinding(rootSessionID)
-    if (!bound) return
-    const draftKey = Keys.draft(identity.orgID, rootSessionID, draftID)
-    await Storage.transaction(async () => {
-      const current = await read(State, Keys.state(identity.orgID, rootSessionID))
-      const previous = await read(Draft, draftKey)
-      const retained =
-        previous ?? (await read(ProjectionRecord, Keys.projection(identity.orgID, rootSessionID, draftID)))
-      if (retained && JSON.stringify(retained.event) === JSON.stringify(event)) return
-      const bytes = Buffer.byteLength(JSON.stringify(event))
-      const localSequence = retained?.localSequence ?? current?.nextDraft ?? 1
-      const nextDraft = Math.max(current?.nextDraft ?? 1, localSequence + 1)
-      await Storage.write(
-        draftKey,
-        Draft.parse({
-          schemaVersion: 1,
-          draftID,
-          sessionID: rootSessionID,
-          localSequence,
-          event: Sync.Event.parse({ ...event, sequence: 1 }),
-          queuedAt: previous?.queuedAt ?? Date.now(),
-          bytes,
-        }),
+  type Bound = NonNullable<Awaited<ReturnType<typeof sessionBinding>>>
+  async function assertBinding(original: Bound) {
+    const current = await sessionBinding(original.session.id)
+    if (
+      !current ||
+      current.session.scope.id !== original.session.scope.id ||
+      current.root.scope.id !== original.root.scope.id ||
+      current.rootSessionID !== original.rootSessionID ||
+      JSON.stringify(current.binding) !== JSON.stringify(original.binding)
+    )
+      throw new Error("Shared export lost its original native Session binding")
+    return current
+  }
+
+  type DraftInput = { draftID: string; event: Sync.Event }
+
+  function sameDraft(value: Draft | ProjectionRecord | undefined, rootSessionID: string, input: DraftInput) {
+    return (
+      value !== undefined &&
+      value.draftID === input.draftID &&
+      (!("sessionID" in value) ||
+        (value.sessionID === rootSessionID && value.bytes === Buffer.byteLength(JSON.stringify(input.event)))) &&
+      JSON.stringify(value.event) === JSON.stringify(input.event)
+    )
+  }
+
+  async function putDrafts(rootSessionID: string, inputs: DraftInput[], original?: Bound) {
+    if (!inputs.length) return
+    const captured = original ?? (await sessionBinding(rootSessionID))
+    if (!captured) return
+    const bound = captured
+    if (bound.rootSessionID !== rootSessionID) throw new Error("Shared events changed their original native root")
+    for (let offset = 0; offset < inputs.length; offset += 128) {
+      const window = inputs.slice(offset, offset + 128)
+      await assertBinding(bound)
+      const drafts = await Storage.readMany<unknown>(
+        window.map((entry) => Keys.draft(identity.orgID, rootSessionID, entry.draftID)),
       )
-      await Storage.write(
-        Keys.projection(identity.orgID, rootSessionID, draftID),
-        ProjectionRecord.parse({
-          schemaVersion: 1,
-          draftID,
-          localSequence,
-          event: Sync.Event.parse({ ...event, sequence: 1 }),
-        }),
+      const projections = await Storage.readMany<unknown>(
+        window.map((entry) => Keys.projection(identity.orgID, rootSessionID, entry.draftID)),
       )
-      await Storage.write(
-        Keys.state(identity.orgID, rootSessionID),
-        State.parse({
-          schemaVersion: 1,
-          orgID: identity.orgID,
-          sessionID: rootSessionID,
-          nextDraft,
-          shareGeneration: current?.shareGeneration,
-          projectionVersion: current?.projectionVersion,
-          syncState: current?.syncState === "failed" ? "pending" : (current?.syncState ?? "pending"),
-          updatedAt: Date.now(),
-        }),
+      const changed = window.some(
+        (entry, index) =>
+          !sameDraft(
+            drafts[index] === undefined
+              ? projections[index] === undefined
+                ? undefined
+                : ProjectionRecord.parse(projections[index])
+              : Draft.parse(drafts[index]),
+            rootSessionID,
+            entry,
+          ),
       )
-      await Storage.write(Keys.orderedDraft(identity.orgID, rootSessionID, localSequence), { draftID })
-      await Storage.write(Keys.registeredRoot(identity.orgID, rootSessionID), { sessionID: rootSessionID })
-    })
+      if (!changed) {
+        await assertBinding(bound)
+        continue
+      }
+      await Storage.transaction(
+        async () => {
+          await assertBinding(bound)
+          const current = await read(State, Keys.state(identity.orgID, rootSessionID))
+          let nextDraft = current?.nextDraft ?? 1
+          let written = false
+          for (const input of window) {
+            const draftKey = Keys.draft(identity.orgID, rootSessionID, input.draftID)
+            const previous = await read(Draft, draftKey)
+            const retained =
+              previous ?? (await read(ProjectionRecord, Keys.projection(identity.orgID, rootSessionID, input.draftID)))
+            if (sameDraft(retained, rootSessionID, input)) continue
+            const localSequence = retained?.localSequence ?? nextDraft
+            nextDraft = Math.max(nextDraft, localSequence + 1)
+            const event = Sync.Event.parse({ ...input.event, sequence: 1 })
+            await Storage.write(
+              draftKey,
+              Draft.parse({
+                schemaVersion: 1,
+                draftID: input.draftID,
+                sessionID: rootSessionID,
+                localSequence,
+                event,
+                queuedAt: previous?.queuedAt ?? Date.now(),
+                bytes: Buffer.byteLength(JSON.stringify(event)),
+              }),
+            )
+            await Storage.write(
+              Keys.projection(identity.orgID, rootSessionID, input.draftID),
+              ProjectionRecord.parse({
+                schemaVersion: 1,
+                draftID: input.draftID,
+                localSequence,
+                event,
+              }),
+            )
+            await Storage.write(Keys.orderedDraft(identity.orgID, rootSessionID, localSequence), {
+              draftID: input.draftID,
+            })
+            written = true
+          }
+          if (!written) return
+          await Storage.write(
+            Keys.state(identity.orgID, rootSessionID),
+            State.parse({
+              schemaVersion: 1,
+              orgID: identity.orgID,
+              sessionID: rootSessionID,
+              nextDraft,
+              shareGeneration: current?.shareGeneration,
+              projectionVersion: current?.projectionVersion,
+              syncState: current?.syncState === "failed" ? "pending" : (current?.syncState ?? "pending"),
+              updatedAt: Date.now(),
+            }),
+          )
+          await Storage.write(Keys.registeredRoot(identity.orgID, rootSessionID), { sessionID: rootSessionID })
+        },
+        { commitGuard: assertSource },
+      )
+    }
     sessions.add(rootSessionID)
     schedule()
+  }
+
+  async function putDraft(rootSessionID: string, draftID: string, event: Sync.Event) {
+    await putDrafts(rootSessionID, [{ draftID, event }])
   }
 
   async function ensureSession(sessionID: string, observed?: StatusInfo) {
@@ -388,19 +485,16 @@ export function startMemberSyncExporter(input: {
     })
   }
 
-  async function projectPart(part: MessageV2.Part) {
-    const bound = await sessionBinding(part.sessionID)
-    if (!bound) return
-    await ensureSession(part.sessionID)
+  async function partDrafts(part: MessageV2.Part, bound: Bound): Promise<DraftInput[]> {
+    const drafts: DraftInput[] = []
     const owner = { kind: "session", scopeID: bound.session.scope.id, sessionID: part.sessionID } as const
     const projected = await projectSharedPart(part, owner)
-    if (!projected.part) return
+    if (!projected.part) return drafts
     for (const artifact of projected.blobs) {
       await rememberBlob(part.sessionID, owner, artifact)
-      await putDraft(
-        bound.rootSessionID,
-        digest({ type: "blob", sessionID: part.sessionID, blobID: artifact.id }).slice(0, 32),
-        Sync.Event.parse({
+      drafts.push({
+        draftID: digest({ type: "blob", sessionID: part.sessionID, blobID: artifact.id }).slice(0, 32),
+        event: Sync.Event.parse({
           type: "blob",
           sequence: 1,
           sessionID: part.sessionID,
@@ -411,12 +505,11 @@ export function startMemberSyncExporter(input: {
           hash: artifact.sha256,
           state: "available",
         }),
-      )
+      })
     }
-    await putDraft(
-      bound.rootSessionID,
-      digest({ type: "part", sessionID: part.sessionID, partID: part.id }).slice(0, 32),
-      Sync.Event.parse({
+    drafts.push({
+      draftID: digest({ type: "part", sessionID: part.sessionID, partID: part.id }).slice(0, 32),
+      event: Sync.Event.parse({
         type: "part",
         sequence: 1,
         sessionID: part.sessionID,
@@ -425,76 +518,181 @@ export function startMemberSyncExporter(input: {
         part: projected.part,
         integrity: digest(projected.part),
       }),
-    )
+    })
+    return drafts
   }
 
-  function observePart(part: MessageV2.Part) {
-    const key = `${part.sessionID}:${part.id}`
-    pendingParts.set(key, part)
-    if (partWorkers.has(key)) return
-    partWorkers.add(key)
-    queue(part.sessionID, async () => {
+  async function projectPart(part: MessageV2.Part) {
+    const bound = await sessionBinding(part.sessionID)
+    if (!bound) return
+    await putDrafts(bound.rootSessionID, await partDrafts(part, bound), bound)
+  }
+
+  type NativeChange =
+    | { kind: "message"; sessionID: string; messageID: string }
+    | { kind: "part" | "part-removed"; sessionID: string; messageID: string; partID: string }
+
+  function changeKey(change: NativeChange) {
+    return change.kind === "message" ? `message:${change.messageID}` : `part:${change.messageID}:${change.partID}`
+  }
+
+  function observeNative(change: NativeChange) {
+    if (closed || signal.aborted) return
+    let pending = pendingNative.get(change.sessionID)
+    if (!pending) {
+      pending = new Map<string, NativeChange>()
+      pendingNative.set(change.sessionID, pending)
+    }
+    pending.set(changeKey(change), change)
+    startNativeWorker(change.sessionID)
+  }
+
+  function startNativeWorker(sessionID: string) {
+    if (closed || signal.aborted || nativeWorkers.has(sessionID)) return
+    nativeWorkers.add(sessionID)
+    queue(sessionID, async () => {
       try {
-        while (pendingParts.has(key)) {
-          const latest = pendingParts.get(key)!
-          pendingParts.delete(key)
-          await projectPart(latest)
+        while (pendingNative.get(sessionID)?.size) {
+          if (closed || signal.aborted) return
+          const pending = pendingNative.get(sessionID)!
+          const window: Array<[string, NativeChange]> = []
+          for (const entry of pending) {
+            window.push(entry)
+            if (window.length === 128) break
+          }
+          for (const [key] of window) pending.delete(key)
+          try {
+            const captured = await sessionBinding(sessionID)
+            if (!captured) {
+              if (!pending.size) pendingNative.delete(sessionID)
+              continue
+            }
+            const bound = captured
+            await ensureSession(sessionID)
+            let drafts: DraftInput[] = []
+            let bytes = 0
+            async function publish() {
+              if (!drafts.length) return
+              await putDrafts(bound.rootSessionID, drafts, bound)
+              drafts = []
+              bytes = 0
+            }
+            for (const [, change] of window) {
+              assertSource()
+              let prepared: DraftInput[]
+              if (change.kind === "message") {
+                const info = await MessageV2.readInfo({
+                  scopeID: bound.session.scope.id,
+                  sessionID,
+                  messageID: change.messageID,
+                }).catch((error) => {
+                  if (error instanceof Storage.NotFoundError) return
+                  throw error
+                })
+                if (info && (info.id !== change.messageID || info.sessionID !== sessionID))
+                  throw new Error("Shared native message does not match its original storage owner")
+                prepared = info ? [await messageDraft(info, bound)] : []
+              } else if (change.kind === "part-removed") {
+                const removed = {
+                  type: "part",
+                  sequence: 1,
+                  sessionID,
+                  messageID: change.messageID,
+                  partID: change.partID,
+                  removed: true,
+                }
+                prepared = [
+                  {
+                    draftID: digest({ type: "part", sessionID, partID: change.partID }).slice(0, 32),
+                    event: Sync.Event.parse({ ...removed, integrity: digest(removed) }),
+                  },
+                ]
+              } else {
+                const part = await MessageV2.readPart({
+                  scopeID: bound.session.scope.id,
+                  sessionID,
+                  messageID: change.messageID,
+                  partID: change.partID,
+                })
+                prepared = part ? await partDrafts(part, bound) : []
+              }
+              for (const draft of prepared) {
+                const weight = Buffer.byteLength(JSON.stringify(draft.event))
+                if (drafts.length && (drafts.length >= 128 || bytes + weight > 1024 * 1024)) await publish()
+                drafts.push(draft)
+                bytes += weight
+              }
+            }
+            await publish()
+          } catch (error) {
+            for (const [key, change] of window) if (!pending.has(key)) pending.set(key, change)
+            throw error
+          }
+          if (!pending.size) pendingNative.delete(sessionID)
         }
       } finally {
-        partWorkers.delete(key)
+        nativeWorkers.delete(sessionID)
       }
     })
   }
 
+  function observePart(part: MessageV2.Part) {
+    observeNative({ kind: "part", sessionID: part.sessionID, messageID: part.messageID, partID: part.id })
+  }
+
   function observeMessage(info: MessageV2.Info) {
-    queue(info.sessionID, async () => {
-      const bound = await sessionBinding(info.sessionID)
-      if (!bound) return
-      await ensureSession(info.sessionID)
-      const summary =
-        info.role === "user"
-          ? safeSummary(info.summary?.body ?? info.summary?.title)
-          : safeSummary(info.error?.name ?? info.finish)
-      const safe = { messageID: info.id, role: info.role, createdAt: info.time.created, summary }
-      await putDraft(
-        bound.rootSessionID,
-        digest({ type: "message", sessionID: info.sessionID, messageID: info.id }).slice(0, 32),
-        Sync.Event.parse({
-          type: "message",
-          sequence: 1,
-          ...(info.sessionID === bound.rootSessionID ? {} : { sessionID: info.sessionID }),
-          messageID: info.id,
-          role: info.role,
-          createdAt: info.time.created,
-          summary,
-          actor: info.actor,
-          agent: info.agent,
-          rootID: info.rootID,
-          model: info.role === "user" ? info.model : { providerID: info.providerID, modelID: info.modelID },
-          ...(info.role === "assistant"
-            ? {
-                mode: info.mode,
-                cost: info.cost,
-                tokens: info.tokens,
-                error: info.error && {
-                  code: info.error.name,
-                  message: (
-                    await SecretMask.apply(
-                      "message" in info.error.data && typeof info.error.data.message === "string"
-                        ? info.error.data.message
-                        : info.error.name,
-                    )
-                  ).slice(0, 32 * 1024),
-                },
-              }
-            : {}),
-          ...(info.role === "assistant"
-            ? { parentID: info.parentID, completedAt: info.time.completed, finish: info.finish }
-            : {}),
-          integrity: digest(safe),
-        }),
-      )
-    })
+    observeNative({ kind: "message", sessionID: info.sessionID, messageID: info.id })
+  }
+
+  async function messageDraft(info: MessageV2.Info, bound: Bound): Promise<DraftInput> {
+    const summary =
+      info.role === "user"
+        ? safeSummary(info.summary?.body ?? info.summary?.title)
+        : safeSummary(info.error?.name ?? info.finish)
+    const safe = { messageID: info.id, role: info.role, createdAt: info.time.created, summary }
+    return {
+      draftID: digest({ type: "message", sessionID: info.sessionID, messageID: info.id }).slice(0, 32),
+      event: Sync.Event.parse({
+        type: "message",
+        sequence: 1,
+        ...(info.sessionID === bound.rootSessionID ? {} : { sessionID: info.sessionID }),
+        messageID: info.id,
+        role: info.role,
+        createdAt: info.time.created,
+        summary,
+        actor: info.actor,
+        agent: info.agent,
+        rootID: info.rootID,
+        model: info.role === "user" ? info.model : { providerID: info.providerID, modelID: info.modelID },
+        ...(info.role === "assistant"
+          ? {
+              mode: info.mode,
+              cost: info.cost,
+              tokens: info.tokens,
+              error: info.error && {
+                code: info.error.name,
+                message: (
+                  await SecretMask.apply(
+                    "message" in info.error.data && typeof info.error.data.message === "string"
+                      ? info.error.data.message
+                      : info.error.name,
+                  )
+                ).slice(0, 32 * 1024),
+              },
+            }
+          : {}),
+        ...(info.role === "assistant"
+          ? { parentID: info.parentID, completedAt: info.time.completed, finish: info.finish }
+          : {}),
+        integrity: digest(safe),
+      }),
+    }
+  }
+
+  async function projectMessage(info: MessageV2.Info) {
+    const bound = await sessionBinding(info.sessionID)
+    if (!bound) return
+    await putDrafts(bound.rootSessionID, [await messageDraft(info, bound)], bound)
   }
 
   function observeTool(event: { sessionID: string; record: RolloutEvents.Record }) {
@@ -689,8 +887,11 @@ export function startMemberSyncExporter(input: {
   async function prepareGeneration(rootSessionID: string, share: Sync.Share) {
     const current = await read(State, Keys.state(identity.orgID, rootSessionID))
     if (current?.shareGeneration === share.shareGeneration && current.projectionVersion === 2) return
-    const bound = await sessionBinding(rootSessionID)
-    if (!bound) return
+    const captured = await sessionBinding(rootSessionID)
+    if (!captured) return
+    const bound = captured
+    if (bound.binding.bindingEpoch !== share.bindingEpoch)
+      throw new Error("Shared export generation changed its original native binding epoch")
     const pending = [rootSessionID]
     const visited = new Set<string>()
     while (pending.length) {
@@ -701,7 +902,7 @@ export function startMemberSyncExporter(input: {
       await ensureSession(sessionID)
       for await (const message of MessageV2.stream({ sessionID })) {
         if (closed || signal.aborted) return
-        observeMessage(message.info)
+        queue(sessionID, () => projectMessage(message.info))
         await tails.get(sessionID)
         for (const part of message.parts) {
           await projectPart(part)
@@ -715,50 +916,119 @@ export function startMemberSyncExporter(input: {
       await tails.get(sessionID)
       pending.push(...(await Session.children(sessionID)).map((child) => child.id))
     }
+    async function requeueProjections(keys: string[][]) {
+      await assertBinding(bound)
+      const values = await Storage.readMany<unknown>(keys)
+      const projections = values.flatMap((value, index) => {
+        if (value === undefined) return []
+        const projection = ProjectionRecord.parse(value)
+        if (
+          JSON.stringify(keys[index]) !==
+          JSON.stringify(Keys.projection(identity.orgID, rootSessionID, projection.draftID))
+        )
+          throw new Error("Shared projection belongs to another native draft")
+        return [projection]
+      })
+      const drafts = await Storage.readMany<unknown>(
+        projections.map((projection) => Keys.draft(identity.orgID, rootSessionID, projection.draftID)),
+      )
+      const orders = await Storage.readMany<unknown>(
+        projections.map((projection, index) =>
+          Keys.orderedDraft(
+            identity.orgID,
+            rootSessionID,
+            drafts[index] === undefined ? projection.localSequence : Draft.parse(drafts[index]).localSequence,
+          ),
+        ),
+      )
+      const changed = projections.filter((projection, index) => {
+        const previous = drafts[index] === undefined ? undefined : Draft.parse(drafts[index])
+        const order =
+          orders[index] === undefined ? undefined : z.strictObject({ draftID: Identity.ID }).parse(orders[index])
+        return (
+          !previous ||
+          previous.draftID !== projection.draftID ||
+          previous.sessionID !== rootSessionID ||
+          previous.bytes !== Buffer.byteLength(JSON.stringify(projection.event)) ||
+          JSON.stringify(previous.event) !== JSON.stringify(projection.event) ||
+          order?.draftID !== projection.draftID
+        )
+      })
+      await assertBinding(bound)
+      if (!changed.length) return
+      await Storage.transaction(
+        async () => {
+          await assertBinding(bound)
+          for (const captured of changed) {
+            const projection = await read(
+              ProjectionRecord,
+              Keys.projection(identity.orgID, rootSessionID, captured.draftID),
+            )
+            if (!projection) continue
+            const draftKey = Keys.draft(identity.orgID, rootSessionID, projection.draftID)
+            const previous = await read(Draft, draftKey)
+            const localSequence = previous?.localSequence ?? projection.localSequence
+            const event = Sync.Event.parse({ ...projection.event, sequence: 1 })
+            await Storage.write(
+              draftKey,
+              Draft.parse({
+                schemaVersion: 1,
+                draftID: projection.draftID,
+                sessionID: rootSessionID,
+                localSequence,
+                event,
+                queuedAt: previous?.queuedAt ?? Date.now(),
+                bytes: Buffer.byteLength(JSON.stringify(event)),
+              }),
+            )
+            await Storage.write(Keys.orderedDraft(identity.orgID, rootSessionID, localSequence), {
+              draftID: projection.draftID,
+            })
+          }
+        },
+        {
+          commitGuard: () => {
+            assertSource()
+          },
+        },
+      )
+    }
+    let window: string[][] = []
     for await (const row of Storage.records<unknown>({
       prefix: Keys.projections(identity.orgID, rootSessionID),
-      limit: 256,
+      limit: 128,
     })) {
-      await Storage.transaction(async () => {
-        const projection = await read(ProjectionRecord, row.key)
-        if (!projection) return
-        const draftKey = Keys.draft(identity.orgID, rootSessionID, projection.draftID)
-        const previous = await read(Draft, draftKey)
-        const localSequence = previous?.localSequence ?? projection.localSequence
-        const event = Sync.Event.parse({ ...projection.event, sequence: 1 })
+      if (closed || signal.aborted) return
+      window.push(row.key)
+      if (window.length < 128) continue
+      await requeueProjections(window)
+      window = []
+    }
+    if (window.length) await requeueProjections(window)
+    await Storage.transaction(
+      async () => {
+        await assertBinding(bound)
+        const latest = await read(State, Keys.state(identity.orgID, rootSessionID))
         await Storage.write(
-          draftKey,
-          Draft.parse({
+          Keys.state(identity.orgID, rootSessionID),
+          State.parse({
             schemaVersion: 1,
-            draftID: projection.draftID,
+            orgID: identity.orgID,
             sessionID: rootSessionID,
-            localSequence,
-            event,
-            queuedAt: previous?.queuedAt ?? Date.now(),
-            bytes: Buffer.byteLength(JSON.stringify(event)),
+            nextDraft: latest?.nextDraft ?? 1,
+            shareGeneration: share.shareGeneration,
+            syncState: "pending",
+            projectionVersion: 2,
+            updatedAt: Date.now(),
           }),
         )
-        await Storage.write(Keys.orderedDraft(identity.orgID, rootSessionID, localSequence), {
-          draftID: projection.draftID,
-        })
-      })
-    }
-    await Storage.transaction(async () => {
-      const latest = await read(State, Keys.state(identity.orgID, rootSessionID))
-      await Storage.write(
-        Keys.state(identity.orgID, rootSessionID),
-        State.parse({
-          schemaVersion: 1,
-          orgID: identity.orgID,
-          sessionID: rootSessionID,
-          nextDraft: latest?.nextDraft ?? 1,
-          shareGeneration: share.shareGeneration,
-          syncState: "pending",
-          projectionVersion: 2,
-          updatedAt: Date.now(),
-        }),
-      )
-    })
+      },
+      {
+        commitGuard: () => {
+          assertSource()
+        },
+      },
+    )
     sessions.add(rootSessionID)
     schedule()
   }
@@ -886,6 +1156,7 @@ export function startMemberSyncExporter(input: {
     if (running || closed || signal.aborted) return running
     running = (async () => {
       await startup
+      for (const sessionID of pendingNative.keys()) startNativeWorker(sessionID)
       await Promise.all([...tails.values()])
       for (const sessionID of [...sessions]) {
         if (closed || signal.aborted) return
@@ -936,17 +1207,7 @@ export function startMemberSyncExporter(input: {
   unsubs.push(
     Bus.subscribeGlobal(MessageV2.Event.PartRemoved, (event) => {
       const { sessionID, messageID, partID } = event.properties
-      pendingParts.delete(`${sessionID}:${partID}`)
-      queue(sessionID, async () => {
-        const bound = await sessionBinding(sessionID)
-        if (!bound) return
-        const removed = { type: "part", sequence: 1, sessionID, messageID, partID, removed: true }
-        await putDraft(
-          bound.rootSessionID,
-          digest({ type: "part", sessionID, partID }).slice(0, 32),
-          Sync.Event.parse({ ...removed, integrity: digest(removed) }),
-        )
-      })
+      observeNative({ kind: "part-removed", sessionID, messageID, partID })
     }),
   )
   unsubs.push(
@@ -979,12 +1240,12 @@ export function startMemberSyncExporter(input: {
     closed = true
     clearTimeout(timer)
     clearInterval(retryTimer)
-    pendingParts.clear()
     for (const unsubscribe of unsubs) unsubscribe()
     signal.removeEventListener("abort", onAbort)
     closing = (async () => {
       const settled = await Promise.allSettled([startup, ...tails.values(), ...(running ? [running] : [])])
-      partWorkers.clear()
+      pendingNative.clear()
+      nativeWorkers.clear()
       tails.clear()
       sessions.clear()
       registeredExporters.delete(drain)

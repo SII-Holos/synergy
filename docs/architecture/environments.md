@@ -44,6 +44,8 @@ Lease release closes admission, drains accepted callbacks and retries the origin
 
 `Environment.registerRecovery({ allocation: "inspect-only" })` preserves pending original allocations and retained admissions without resuming them. `reconcileInspection` observes the same original request; ordinary recovery keeps its existing resume behavior. Releasing allocations retain their original release path. Canonical paged Environment and execution inventories are metadata readers, not allocation or completion proof. See [finite execution sources](../decisions/implemented/architecture/2026-11-13-register-finite-environment-execution-sources.md).
 
+Closing an `OriginalOperation` seals new controls after its actual completed row is committed. Already accepted callbacks retain their original owner until their tracked finalizer settles. Their return still requires the same Runtime, Store, source, native origin and exact canonical completed identity. Operation closure does not wait on its own callback; full Source shutdown drains those callbacks before releasing registration.
+
 ## Execution and saving
 
 `EnvironmentExecution` persists an operation identity, input digest and allocation target before dispatch. Repeated submissions inspect the existing operation. Different inputs for an occupied operation identity fail. A missing executor receipt produces an unknown result, not a repeated command. Cancellation is persisted before transmission and requires executor confirmation.

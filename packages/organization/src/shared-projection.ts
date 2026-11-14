@@ -259,6 +259,44 @@ export namespace OrganizationSharedProjection {
     }
   }
 
+  export async function initialize(session: Record.SessionDirectory) {
+    if (!Storage.inWriteTransaction())
+      throw new Error("New transcript coverage requires its original sharing transaction")
+    const [current, state] = await Promise.all([
+      Record.read(Record.SessionDirectory, Keys.session(session.sessionID)),
+      Record.read(Record.SharedState, Keys.sharedState(session.sessionID)),
+    ])
+    if (
+      !current ||
+      current.sessionID !== session.sessionID ||
+      current.orgID !== session.orgID ||
+      current.projectID !== session.projectID ||
+      current.creatorID !== session.creatorID ||
+      current.driverRuntimeID !== session.driverRuntimeID ||
+      current.bindingEpoch !== session.bindingEpoch ||
+      current.shareState !== "shared" ||
+      current.shareGeneration !== session.shareGeneration ||
+      !state ||
+      state.sessionID !== current.sessionID ||
+      state.shareGeneration !== current.shareGeneration ||
+      state.bindingEpoch !== current.bindingEpoch ||
+      state.nextSeq !== 1 ||
+      state.syncState !== "pending"
+    )
+      fail("SERVICE_UNAVAILABLE", "New transcript coverage requires its original empty sharing generation")
+    const prefixes = [
+      Keys.sharedEvents(current.sessionID, current.shareGeneration),
+      base(current.sessionID, current.shareGeneration),
+    ]
+    for (const prefix of prefixes)
+      if ((await Storage.query({ prefix, limit: 1 })).length)
+        fail("SERVICE_UNAVAILABLE", "New sharing generation already retains transcript state")
+    await Storage.write(
+      [...base(current.sessionID, current.shareGeneration), "preparation-v3"],
+      Preparation.parse({ schemaVersion: 3, complete: true }),
+    )
+  }
+
   export async function prepare(sessionID: string, generation: number, authorize: () => Promise<unknown>) {
     const key = [...base(sessionID, generation), "preparation-v3"]
     for (;;) {

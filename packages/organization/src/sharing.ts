@@ -809,6 +809,7 @@ export namespace OrganizationSharing {
       await Storage.write(Keys.session(sessionID), updated)
       await writeVisibility(updated, "shared")
       await Storage.write(Keys.sharedState(sessionID), stateRecord(updated, "pending"))
+      await Projection.initialize(updated)
       return view(updated)
     })
   }

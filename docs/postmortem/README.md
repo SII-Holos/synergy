@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0196](0196-shared-export-replayed-unchanged-history-through-writers.md)
+
 - [0195](0195-portable-index-rebuild-used-the-ambient-writer.md)
 
 - [0194](0194-organization-controls-overrode-shared-keyboard-focus.md)
