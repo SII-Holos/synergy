@@ -26,9 +26,12 @@ services:
       retries: 30
   objects:
     profiles: ["objects"]
-    # Provenance: https://github.com/minio/minio/releases/tag/RELEASE.2025-09-07T16-13-09Z
-    # Local adaptation: pin the test backend and read credentials from private mounted files.
-    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    image: synergy-organization-minio:RELEASE.2025-09-07T16-13-09Z
+    pull_policy: build
+    build:
+      context: .
+      dockerfile: Dockerfile.objects
+      target: minio
     user: "0:0"
     command: ["server", "/data", "--address", ":9000", "--console-address", "127.0.0.1:9001"]
     environment:
@@ -41,7 +44,12 @@ services:
       - "127.0.0.1:${SYNERGY_ORGANIZATION_OBJECT_PORT:-9000}:9000"
   object-initialize:
     profiles: ["objects"]
-    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
+    image: synergy-organization-mc:RELEASE.2025-08-13T08-35-41Z
+    pull_policy: build
+    build:
+      context: .
+      dockerfile: Dockerfile.objects
+      target: mc
     user: "${SYNERGY_ORGANIZATION_OPERATOR_UID:-1000}:${SYNERGY_ORGANIZATION_OPERATOR_GID:-1000}"
     command: ["--config-dir", "/configuration", "mb", "--ignore-existing", "deployment/organization"]
     volumes:
