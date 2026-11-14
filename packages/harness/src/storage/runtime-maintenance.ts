@@ -1755,8 +1755,7 @@ export namespace RuntimeMaintenance {
     receipts.set(receipt, { ...identity(lease), revision: info.revision, tailRevision: info.tailRevision })
     return receipt
   }
-  export async function freeze(lease: Lease, receipt: DrainReceipt) {
-    const held = identity(lease)
+  function originalDrainReceipt(held: LeaseIdentity, receipt: DrainReceipt) {
     const proof = receipts.get(receipt)
     if (
       !proof ||
@@ -1766,6 +1765,25 @@ export namespace RuntimeMaintenance {
       proof.cohortHash !== held.cohortHash
     )
       throw new Blocked({ message: "Native freeze requires this operation's actual owner drainage receipt" })
+    return proof
+  }
+  export async function assertDrained(lease: Lease, receipt: DrainReceipt) {
+    const tx = Storage.current().transaction
+    if (!tx || !Storage.inWriteTransaction())
+      throw new Blocked({ message: "Native drainage inspection requires its original live write callback" })
+    const held = identity(lease)
+    const proof = originalDrainReceipt(held, receipt)
+    held.store.assertWriteTransaction(tx)
+    const info = await requireCurrent(tx, lease)
+    held.store.assertWriteTransaction(tx)
+    identity(lease)
+    if (info.phase !== "draining" || info.revision !== proof.revision || info.tailRevision !== proof.tailRevision)
+      throw new Blocked({ message: "Native drainage receipt no longer matches its original draining tail" })
+    return info
+  }
+  export async function freeze(lease: Lease, receipt: DrainReceipt) {
+    const held = identity(lease)
+    const proof = originalDrainReceipt(held, receipt)
     using lock = await Lock.write("runtime-maintenance")
     await verifyNativeOperation(lease)
     if (held.homeUpgrade || held.sourcePreparation) return nativeTransition(lease, "frozen", proof)

@@ -6,7 +6,7 @@ Own lifecycle/features/`./host/identity`; `context` owns attribution, `agent/pri
 - Session L/progress: `session/long-term-memory`, never workflows/Library. [State](../../docs/architecture/session-and-messages.md#session-long-term-summary).
 - `SessionSchemaRegistry` owns fields/inheritance/indexes/portability/epoch adoption/notifications. Capture original body-free Info synchronously; verify `test/session/notification-source.test.ts`. Domains own execution/recovery. Seal `ConfigExtensions` before startup; retain unregistered fields outside client output.
 - `RuntimeHandle` owns Host/composition/storage; seal before startup, enter through `run`/`bind`. `HomeOwnershipFile` fences readers/recovery/retirement; `lifecycle/namespace-identity` binds primary evidence. `lifecycle/home-restoration` owns permits; Node-safe metadata grants no authority. Verify `test/lifecycle/{namespace-identity,namespace-retirement,home-restoration,home-retirement-file,home-reader-advance}.test.ts`; isolate tests/migrations.
-- Unsealed fixtures; settle Rollouts last. `Core.storedInfo`/`Source.retainedReceipt`: read-only.
+- Unsealed fixtures; settle Rollouts last. `Core.storedInfo`/`Source.retainedReceipt`/`RuntimeMaintenance.assertDrained`: read-only.
 
 - Hosts select `ProviderSdkSource`/`AttachmentImageInput`/`InstructionSource`/`ConfigSource`; `ProjectConfig` reads allowlisted project fields. Verify absence and `test/attachment/model-input.test.ts`.
 - Instruction consumers forward Session IDs; omission preserves personal catalogs. SessionReadSource/ProcessAccessSource gate history/process access; domains own provenance/authorization.
