@@ -68,6 +68,21 @@ test("ten authenticated clients replay a shared 10000-message history while thre
     type Frame = Parameters<typeof service.service.websocket.message>[1]
     const sockets = new Map<Socket, string>()
     const online = new Set<string>()
+    const activity = new Map<
+      string,
+      { handshakes: number; heartbeats: number; states: number; batches: number; at: number; epoch: number }
+    >()
+    const connectionActivity = (runtimeID: string) => {
+      const current = activity.get(runtimeID)
+      return {
+        handshakes: current?.handshakes ?? 0,
+        heartbeats: current?.heartbeats ?? 0,
+        states: current?.states ?? 0,
+        runtimeBatches: current?.batches ?? 0,
+        heartbeatAgeMs: current?.at ? Math.round(performance.now() - current.at) : -1,
+        heartbeatEpoch: current?.epoch ?? 0,
+      }
+    }
     let gatedSession: string | undefined
     let observedSession: string | undefined
     let tailStarted = false
@@ -77,7 +92,30 @@ test("ten authenticated clients replay a shared 10000-message history while thre
     const firstHeld = Promise.withResolvers<void>()
     service.interceptFrames((socket, raw) => {
       const frame = Protocol.ClientFrame.parse(JSON.parse(String(raw)))
-      if (frame.type === "handshake") sockets.set(socket, frame.proof.handshake.runtimeID)
+      if (frame.type === "handshake") {
+        const runtimeID = frame.proof.handshake.runtimeID
+        sockets.set(socket, runtimeID)
+        const current = activity.get(runtimeID) ?? {
+          handshakes: 0,
+          heartbeats: 0,
+          states: 0,
+          batches: 0,
+          at: 0,
+          epoch: 0,
+        }
+        current.handshakes++
+        activity.set(runtimeID, current)
+      }
+      const current = activity.get(sockets.get(socket) ?? "")
+      if (current) {
+        if (frame.type === "heartbeat") {
+          current.heartbeats++
+          current.at = performance.now()
+          current.epoch = frame.connectionEpoch
+        }
+        if (frame.type === "sync-state") current.states++
+        if (frame.type === "sync-batch") current.batches++
+      }
       if (frame.type === "heartbeat") {
         const runtimeID = sockets.get(socket)
         if (runtimeID) online.add(runtimeID)
@@ -572,7 +610,7 @@ test("ten authenticated clients replay a shared 10000-message history while thre
     )[0]
     phase("tail-appended", { messages: tail.count, batches: wire.batches, ...lastLongBatch })
     const tailNativeBacklog = await runtimes[0].request(
-      { operation: "backlog", sessions: [long.sessionID] },
+      { operation: "backlog", sessions: [long.sessionID], inspectNative: true },
       CapacityBacklog,
     )
     phase("tail-native-backlog", {
@@ -580,6 +618,8 @@ test("ten authenticated clients replay a shared 10000-message history while thre
       drafts: tailNativeBacklog.drafts,
       pendingBatches: tailNativeBacklog.pendingBatches,
       synced: tailNativeBacklog.synced,
+      ...tailNativeBacklog.native,
+      ...connectionActivity(runtimes[0].runtimeID),
       ...lastLongBatch,
     })
     phase("tail-events", { clients: clients.length, watermark })
@@ -594,7 +634,23 @@ test("ten authenticated clients replay a shared 10000-message history while thre
                 .data,
           ),
         )
-        if (++tailPolls === 1 || tailPolls % 20 === 0)
+        if (++tailPolls === 20) {
+          const backlog = await runtimes[0].request(
+            { operation: "backlog", sessions: [long.sessionID], inspectNative: true },
+            CapacityBacklog,
+          )
+          phase("tail-native-backlog", {
+            polls: tailPolls,
+            drafts: backlog.drafts,
+            pendingBatches: backlog.pendingBatches,
+            synced: backlog.synced,
+            ...backlog.native,
+            bindingAbsent:
+              backlog.sessions - (backlog.native?.boundSessions ?? 0) - (backlog.native?.bindingUnavailable ?? 0),
+            ...connectionActivity(runtimes[0].runtimeID),
+          })
+        }
+        if (tailPolls === 1 || tailPolls % 20 === 0)
           phase("tail-events", {
             polls: tailPolls,
             clients: entries.length,
@@ -606,6 +662,7 @@ test("ten authenticated clients replay a shared 10000-message history while thre
               entry.items.some((event) => event.type === "message" && event.messageID === tail.lastMessageID),
             ).length,
             tailBatchFrames,
+            ...connectionActivity(runtimes[0].runtimeID),
             ...lastLongBatch,
           })
         return entries

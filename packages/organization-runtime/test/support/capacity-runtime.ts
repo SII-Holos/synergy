@@ -11,6 +11,8 @@ import { StoreTransaction, type RecordQuery } from "@ericsanchezok/synergy-harne
 import { RuntimeIdentity } from "../../src/home"
 import { openHostedRuntime, openMemberRuntime } from "../../src/runtime"
 import { OrganizationSyncPath as Keys } from "../../src/storage/path"
+import { binding as nativeBinding } from "../../src/sync-outbox"
+import { nativeSyncFaults } from "../../src/sync-native-source"
 
 export function messageChecksum(id: string) {
   return BigInt(`0x${createHash("sha256").update(id).digest("hex")}`)
@@ -207,6 +209,16 @@ export const CapacityBacklog = z.object({
   drafts: z.number(),
   pendingBatches: z.number(),
   synced: z.number(),
+  native: z
+    .object({
+      deliveriesInStore: z.number(),
+      projections: z.number(),
+      orderedDrafts: z.number(),
+      boundSessions: z.number(),
+      bindingUnavailable: z.number(),
+      faultsInRuntime: z.number(),
+    })
+    .optional(),
   metrics: CapacityMetrics,
 })
 const Request = z.discriminatedUnion("operation", [
@@ -223,7 +235,12 @@ const Request = z.discriminatedUnion("operation", [
       )
       .max(100),
   }),
-  z.object({ id: z.string(), operation: z.literal("backlog"), sessions: z.array(z.string()).max(100) }),
+  z.object({
+    id: z.string(),
+    operation: z.literal("backlog"),
+    sessions: z.array(z.string()).max(100),
+    inspectNative: z.boolean().optional(),
+  }),
   z.object({ id: z.string(), operation: z.literal("close") }),
 ])
 export type CapacityRequest = z.infer<typeof Request>
@@ -297,6 +314,16 @@ async function main() {
               let drafts = 0
               let pendingBatches = 0
               let synced = 0
+              const native = request.inspectNative
+                ? {
+                    deliveriesInStore: await Storage.count({ prefix: ["event_delivery", "organization-native-sync"] }),
+                    projections: 0,
+                    orderedDrafts: 0,
+                    boundSessions: 0,
+                    bindingUnavailable: 0,
+                    faultsInRuntime: nativeSyncFaults().length,
+                  }
+                : undefined
               for (const sessionID of request.sessions) {
                 drafts += await Storage.count({ prefix: Keys.drafts(input.identity.orgID, sessionID) })
                 const [state, batch] = await Storage.readMany<unknown>([
@@ -305,8 +332,28 @@ async function main() {
                 ])
                 if (batch) pendingBatches++
                 if (z.object({ syncState: z.string() }).optional().parse(state)?.syncState === "synced") synced++
+                if (native) {
+                  native.projections += await Storage.count({
+                    prefix: Keys.projections(input.identity.orgID, sessionID),
+                  })
+                  native.orderedDrafts += await Storage.count({
+                    prefix: Keys.orderedDrafts(input.identity.orgID, sessionID),
+                  })
+                  try {
+                    if (await nativeBinding(sessionID, input.identity.orgID)) native.boundSessions++
+                  } catch {
+                    native.bindingUnavailable++
+                  }
+                }
               }
-              return { sessions: request.sessions.length, drafts, pendingBatches, synced, metrics: metrics.snapshot() }
+              return {
+                sessions: request.sessions.length,
+                drafts,
+                pendingBatches,
+                synced,
+                ...(native ? { native } : {}),
+                metrics: metrics.snapshot(),
+              }
             }
             const written: z.infer<typeof WrittenHistory>[] = []
             for (const entry of request.sessions) {

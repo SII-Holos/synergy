@@ -1,5 +1,5 @@
 import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
-import { expect, test } from "bun:test"
+import { expect, spyOn, test } from "bun:test"
 import path from "node:path"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
@@ -11,6 +11,14 @@ import { Worktree } from "../../src/workspace/worktree"
 import { ScanFilesTool } from "../../src/tools/scan-files"
 import { LocalBashBackend } from "../../src/tools/bash/local"
 import { testRuntime } from "../support/runtime"
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
+import * as FileLocks from "@ericsanchezok/synergy-util/fs-lock"
+import * as ProcessIdentity from "@ericsanchezok/synergy-util/process-identity"
+import * as FilesystemIdentity from "@ericsanchezok/synergy-util/filesystem-identity"
+import { FileCoordination } from "../../src/file/coordination"
+import { RuntimeMaintenance } from "@ericsanchezok/synergy-harness/storage/runtime-maintenance"
+import { AtomicFile } from "@ericsanchezok/synergy-util/atomic-file"
+import { OwnedTree } from "../../src/process/owned-tree"
 
 test("an exited full-access Bash does not block another worktree while its turn continues", async () => {
   await using runtime = await testRuntime({ env: { SHELL: process.platform === "win32" ? "cmd.exe" : "/bin/sh" } })
@@ -127,7 +135,7 @@ test("an exited full-access Bash does not block another worktree while its turn 
 for (const shared of [false, true])
   test(`an active full-access command permits tools in ${shared ? "the same Workspace" : "a sibling worktree"}`, async () => {
     const started = performance.now()
-    const stage = (value: string, facts: Record<string, boolean | number | null> = {}) => {
+    const stage = (value: string, facts: Record<string, boolean | number | string | null> = {}) => {
       if (process.platform === "win32")
         console.info(
           JSON.stringify({
@@ -144,6 +152,127 @@ for (const shared of [false, true])
     stage("registry-imported")
     await using runtime = await testRuntime({ env: { SHELL: process.platform === "win32" ? "cmd.exe" : "/bin/sh" } })
     stage("runtime-ready")
+    const selectedRuntime = await runtime.run(() => RuntimeContext.current())
+    let diagnosingExclusive = false
+    const selected = () => diagnosingExclusive && RuntimeContext.tryCurrent() === selectedRuntime
+    const admission = RuntimeMaintenance.assertAdmission
+    using admissionStages =
+      process.platform === "win32"
+        ? spyOn(RuntimeMaintenance, "assertAdmission").mockImplementation(async (...args) => {
+            if (!selected()) return admission(...args)
+            stage("exclusive-owner-admission-enter")
+            try {
+              return await admission(...args)
+            } finally {
+              stage("exclusive-owner-admission-settled")
+            }
+          })
+        : undefined
+    const publish = AtomicFile.writeJsonAtomic
+    using publicationStages =
+      process.platform === "win32"
+        ? spyOn(AtomicFile, "writeJsonAtomic").mockImplementation(async (...args) => {
+            if (!selected() || path.basename(args[0]) !== "workspace-claims-v1.json") return publish(...args)
+            stage("exclusive-ledger-publication-enter")
+            try {
+              return await publish(...args)
+            } finally {
+              stage("exclusive-ledger-publication-settled")
+            }
+          })
+        : undefined
+    const inspectTree = OwnedTree.inspect
+    using treeStages =
+      process.platform === "win32"
+        ? spyOn(OwnedTree, "inspect").mockImplementation((reference) => {
+            if (!selected()) return inspectTree(reference)
+            stage("exclusive-native-tree-inspect-enter")
+            try {
+              const result = inspectTree(reference)
+              stage("exclusive-native-tree-inspect-returned", { active: result.state === "active" })
+              return result
+            } finally {
+              stage("exclusive-native-tree-inspect-settled")
+            }
+          })
+        : undefined
+    const acquire = WorkspaceCoordinator.prototype.acquire
+    using acquireStages =
+      process.platform === "win32"
+        ? spyOn(WorkspaceCoordinator.prototype, "acquire").mockImplementation(function (
+            this: WorkspaceCoordinator,
+            input,
+          ) {
+            if (!selected() || input.kind !== "exclusive") return acquire.call(this, input)
+            stage("exclusive-native-enter", { timeoutMs: input.timeoutMs ?? null, roots: input.roots?.length ?? null })
+            return acquire.call(this, input).then(
+              (lease) => {
+                stage("exclusive-native-acquired")
+                return lease
+              },
+              (error: unknown) => {
+                stage("exclusive-native-rejected", { name: error instanceof Error ? error.name : "unknown" })
+                throw error
+              },
+            )
+          })
+        : undefined
+    const canonical = FileCoordination.canonical
+    using canonicalStages =
+      process.platform === "win32"
+        ? spyOn(FileCoordination, "canonical").mockImplementation(async (input) => {
+            if (!selected()) return canonical(input)
+            stage("exclusive-canonical-enter")
+            try {
+              return await canonical(input)
+            } finally {
+              stage("exclusive-canonical-settled")
+            }
+          })
+        : undefined
+    const physical = FilesystemIdentity.identifyFilesystemObject
+    using physicalStages =
+      process.platform === "win32"
+        ? spyOn(FilesystemIdentity, "identifyFilesystemObject").mockImplementation(async (...args) => {
+            if (!selected()) return physical(...args)
+            stage("exclusive-physical-enter")
+            try {
+              return await physical(...args)
+            } finally {
+              stage("exclusive-physical-settled")
+            }
+          })
+        : undefined
+    const identity = ProcessIdentity.processStartIdentity
+    using identityStages =
+      process.platform === "win32"
+        ? spyOn(ProcessIdentity, "processStartIdentity").mockImplementation(async (pid) => {
+            if (!selected()) return identity(pid)
+            stage("exclusive-process-identity-enter", { own: pid === process.pid })
+            try {
+              const result = await identity(pid)
+              stage("exclusive-process-identity-returned", { known: result !== undefined })
+              return result
+            } finally {
+              stage("exclusive-process-identity-settled")
+            }
+          })
+        : undefined
+    const lock = FileLocks.withFileLock
+    const observeLock = <T>(options: Parameters<typeof lock>[0], body: () => Promise<T>): Promise<T> => {
+      if (!selected() || options.key !== "workspace-coordinator-v1") return lock(options, body)
+      stage("exclusive-ledger-lock-enter", { timeoutMs: options.timeoutMs ?? null })
+      return lock(options, async () => {
+        stage("exclusive-ledger-body-enter")
+        try {
+          return await body()
+        } finally {
+          stage("exclusive-ledger-body-settled")
+        }
+      }).finally(() => stage("exclusive-ledger-lock-settled"))
+    }
+    using lockStages =
+      process.platform === "win32" ? spyOn(FileLocks, "withFileLock").mockImplementation(observeLock) : undefined
     await runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })
       const scope = await tmp.scope()
@@ -239,9 +368,14 @@ for (const shared of [false, true])
                       expect(scanned.output).toContain("independent")
                       expect(running.child?.alive?.()).toBe(true)
                       stage("exclusive-must-be-busy")
-                      await expect(WorkspaceAccess.exclusive([first.path], async () => {})).rejects.toMatchObject({
-                        name: "WorkspaceBusyError",
-                      })
+                      diagnosingExclusive = true
+                      try {
+                        await expect(WorkspaceAccess.exclusive([first.path], async () => {})).rejects.toMatchObject({
+                          name: "WorkspaceBusyError",
+                        })
+                      } finally {
+                        diagnosingExclusive = false
+                      }
                       stage("exclusive-busy-verified")
                     },
                   })

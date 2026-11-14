@@ -9,21 +9,40 @@ import { execute, makePlan, report } from "../../script/acceptance/runner"
 test("attachment acceptance drives actual isolated Runtime queues and validates transmitted content", async () => {
   const create = RuntimeContext.create
   let sequence = 0
+  let scenarioID: string | undefined
   using tracked = spyOn(RuntimeContext, "create").mockImplementation((...args) => {
     const runtime = create(...args)
     const index = ++sequence
     const created = new Error("Runtime creation").stack
+    const createdScenario = scenarioID
+    let disposed = false
+    const dispose = runtime.dispose
+    runtime.dispose = () => {
+      disposed = true
+      return dispose()
+    }
     const run = runtime.run
+    const observe = (error: unknown, invocation: string | undefined) => {
+      if (error instanceof Error && error.message === "Runtime is closed")
+        console.error("attachment-runtime-closed", {
+          index,
+          createdScenario,
+          currentScenario: scenarioID,
+          disposed,
+          created,
+          invocation,
+        })
+    }
     runtime.run = <T>(body: () => T): T => {
       try {
-        return run(body)
+        const result = run(body)
+        if (result instanceof Promise) {
+          const invocation = new Error("Asynchronous Runtime invocation").stack
+          void result.then(undefined, (error: unknown) => observe(error, invocation))
+        }
+        return result
       } catch (error) {
-        if (error instanceof Error && error.message === "Runtime is closed")
-          console.error("attachment-runtime-closed", {
-            index,
-            created,
-            invocation: new Error("Closed Runtime invocation").stack,
-          })
+        observe(error, new Error("Synchronous Runtime invocation").stack)
         throw error
       }
     }
@@ -100,7 +119,19 @@ test("attachment acceptance drives actual isolated Runtime queues and validates 
   })
   const cases = selectCases("attachments-home,attachments-project,attachments-workspace")
   const plan = await makePlan({ source: "a".repeat(40), directory: path.join(tmp.path, "run"), cases, inputs: [] })
-  await execute(plan, Object.fromEntries(cases.map((scenario) => [scenario.id, driver])), { source: plan.source })
+  await execute(
+    plan,
+    Object.fromEntries(
+      cases.map((scenario) => [
+        scenario.id,
+        (context: Parameters<typeof driver>[0]) => {
+          scenarioID = context.scenario.id
+          return driver(context)
+        },
+      ]),
+    ),
+    { source: plan.source },
+  )
   const outcome = await report(plan)
   if (!outcome.passed)
     for (const scenario of cases) {

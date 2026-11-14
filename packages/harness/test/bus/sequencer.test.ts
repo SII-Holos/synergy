@@ -86,6 +86,7 @@ function retainPayload(sequencer: SyncSequencer) {
 test("releases expired payloads while idle without a stamp or replay", async () => {
   const sequencer = new SyncSequencer("idle", 4096, 20)
   const payload = retainPayload(sequencer)
+  const unowned = (() => new WeakRef({ control: true }))()
   await Bun.sleep(60)
   const deadline = performance.now() + 1000
   let collected = false
@@ -94,6 +95,17 @@ test("releases expired payloads while idle without a stamp or replay", async () 
     Bun.gc(true)
     await Bun.sleep(0)
     collected = payload.deref() === undefined
+  }
+  if (!collected) {
+    const entries: unknown = Reflect.get(sequencer, "entries")
+    console.error(
+      "idle payload collection diagnostic",
+      JSON.stringify({
+        retainedEntries: Array.isArray(entries) ? entries.length : null,
+        cleanupPending: Reflect.get(sequencer, "cleanupTimer") !== undefined,
+        unownedControlCollected: unowned.deref() === undefined,
+      }),
+    )
   }
   expect(payload.deref()).toBeUndefined()
   expect(sequencer.current).toBe(1)

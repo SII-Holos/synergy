@@ -229,6 +229,34 @@ function safeFailure(value: unknown) {
   }
 }
 let setupStage: string | undefined
+let setupHTTPStatus: number | undefined
+async function setupReport(
+  phase: string,
+  status: "pending" | "completed" | "failed",
+  started: number,
+  error?: unknown,
+  metadata?: { exitCode: number },
+) {
+  return fs.writeFile(
+    path.join(state(), "report.json"),
+    JSON.stringify({
+      version: 1,
+      run: run(),
+      passed: false,
+      phase,
+      status,
+      ...metadata,
+      elapsedMs: performance.now() - started,
+      ...(setupHTTPStatus === undefined ? {} : { httpStatus: setupHTTPStatus }),
+      ...(error === undefined ? {} : { errors: [safeFailure(error)] }),
+    }),
+  )
+}
+async function setupHTTP(phase: string, started: number, response?: Response) {
+  setupStage = phase
+  setupHTTPStatus = response?.status
+  await setupReport(phase, "pending", started)
+}
 async function setup<T>(
   phase: string,
   action: () => Promise<T>,
@@ -236,20 +264,9 @@ async function setup<T>(
 ): Promise<T> {
   const started = performance.now()
   setupStage = phase
+  setupHTTPStatus = undefined
   const report = (status: "pending" | "completed" | "failed", error?: unknown, metadata?: { exitCode: number }) =>
-    fs.writeFile(
-      path.join(state(), "report.json"),
-      JSON.stringify({
-        version: 1,
-        run: run(),
-        passed: false,
-        phase: status === "failed" ? (setupStage ?? phase) : phase,
-        status,
-        ...metadata,
-        elapsedMs: performance.now() - started,
-        ...(error === undefined ? {} : { errors: [safeFailure(error)] }),
-      }),
-    )
+    setupReport(status === "failed" ? (setupStage ?? phase) : phase, status, started, error, metadata)
   await report("pending")
   try {
     const value = await action()
@@ -268,6 +285,7 @@ async function setup<T>(
 
 async function host() {
   assert.equal(process.platform, "darwin")
+  const bootstrapSignal = AbortSignal.timeout(Math.max(0, Math.ceil(120000 - process.uptime() * 1000)))
   const secret = await setup("darwin-identity", identity)
   const rendezvousStarted = performance.now()
   const linuxPublic = await setup("darwin-public-peer-rendezvous", async () =>
@@ -310,9 +328,22 @@ async function host() {
     const linuxReady = Promise.withResolvers<string>()
     let headers: { cookie: string; "x-csrf-token": string } | undefined
     let account: { orgID: string; accountID: string } | undefined
+    let bootstrapRequest: "bootstrap" | "login" | undefined
     const client = createOrganizationClient({
       baseUrl: connection.origin,
       headers: { origin: connection.origin },
+      fetch: Object.assign(
+        async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+          const phase = bootstrapRequest
+          if (!phase) return fetch(input, init)
+          const requestStarted = performance.now()
+          await setupHTTP(`darwin-${phase}-headers`, requestStarted)
+          const response = await fetch(input, init)
+          await setupHTTP(`darwin-${phase}-body`, requestStarted, response)
+          return response
+        },
+        { preconnect() {} },
+      ),
     })
     let hello: { publicKey: string; ticket: z.infer<typeof Runtime.Ticket> } | undefined
     let linuxRuntimeID: string | undefined
@@ -393,42 +424,75 @@ async function host() {
       },
     })
     cleanups.splice(1, 0, () => server.stop(false))
-    await until(
-      async () => {
-        try {
-          const response = await fetch(connection.origin + "/__cross-os-health", { signal: AbortSignal.timeout(5000) })
-          if (!response.ok) return
-          const value = z.object({ run: z.unknown(), native: z.literal("darwin") }).parse(await response.json())
-          equalRun(run())
-          assert.deepEqual(value.run, run())
-          return true
-        } catch {
-          return
-        }
-      },
-      120000,
-      "The task TLS tunnel did not reach its actual native origin",
+    await setup("darwin-public-health", () =>
+      until(
+        async () => {
+          const requestStarted = performance.now()
+          try {
+            bootstrapSignal.throwIfAborted()
+            await setupHTTP("darwin-public-health-headers", requestStarted)
+            const response = await fetch(connection.origin + "/__cross-os-health", {
+              signal: AbortSignal.any([bootstrapSignal, AbortSignal.timeout(5000)]),
+            })
+            await setupHTTP("darwin-public-health-body", requestStarted, response)
+            if (!response.ok) {
+              await response.body?.cancel()
+              return
+            }
+            const value = z.object({ run: z.unknown(), native: z.literal("darwin") }).parse(await response.json())
+            equalRun(run())
+            assert.deepEqual(value.run, run())
+            return true
+          } catch (error) {
+            if (bootstrapSignal.aborted) throw error
+            await setupReport("darwin-public-health-retry", "pending", requestStarted, error)
+            return
+          }
+        },
+        120000,
+        "The task TLS tunnel did not reach its actual native origin",
+      ),
     )
+    const setupToken = await setup("darwin-bootstrap-token", async () => {
+      bootstrapSignal.throwIfAborted()
+      const token = await service.bootstrapToken()
+      bootstrapSignal.throwIfAborted()
+      return token
+    })
     const password = "synthetic-" + crypto.randomUUID()
     account = (
-      await client.orgSetup.bootstrap(
-        {
-          orgBootstrapInput: {
-            token: await service.bootstrapToken(),
-            requestID: crypto.randomUUID(),
-            organizationName: "Cross-OS synthetic acceptance",
-            loginName: "cross-os-owner",
-            displayName: "Synthetic Owner",
-            password,
-          },
-        },
-        { throwOnError: true },
-      )
+      await setup("darwin-setup-bootstrap", async () => {
+        bootstrapRequest = "bootstrap"
+        try {
+          return await client.orgSetup.bootstrap(
+            {
+              orgBootstrapInput: {
+                token: setupToken,
+                requestID: crypto.randomUUID(),
+                organizationName: "Cross-OS synthetic acceptance",
+                loginName: "cross-os-owner",
+                displayName: "Synthetic Owner",
+                password,
+              },
+            },
+            { throwOnError: true, signal: bootstrapSignal },
+          )
+        } finally {
+          bootstrapRequest = undefined
+        }
+      })
     ).data
-    const login = await client.orgAuth.login(
-      { orgLoginInput: { loginName: "cross-os-owner", password } },
-      { throwOnError: true },
-    )
+    const login = await setup("darwin-setup-login", async () => {
+      bootstrapRequest = "login"
+      try {
+        return await client.orgAuth.login(
+          { orgLoginInput: { loginName: "cross-os-owner", password } },
+          { throwOnError: true, signal: bootstrapSignal },
+        )
+      } finally {
+        bootstrapRequest = undefined
+      }
+    })
     headers = {
       cookie: login.response.headers.get("set-cookie")!.split(";")[0]!,
       "x-csrf-token": login.data.csrfToken,
@@ -440,7 +504,13 @@ async function host() {
       origin: connection.origin,
       identity: { orgID: account.orgID, accountID: account.accountID },
     })
-    await fs.writeFile(path.join(state(), "bootstrap.json"), JSON.stringify(bootstrap), { mode: 0o600, flag: "wx" })
+    await setup("darwin-bootstrap-publication", () =>
+      fs.writeFile(path.join(state(), "bootstrap.json"), JSON.stringify(bootstrap), {
+        mode: 0o600,
+        flag: "wx",
+        signal: bootstrapSignal,
+      }),
+    )
     const darwin = await createPeer({
       root: path.join(root, "darwin"),
       origin: connection.origin,
@@ -925,7 +995,8 @@ async function host() {
         version: 1,
         run: run(),
         passed: false,
-        phase,
+        phase: phase === "service-bootstrap" ? (setupStage ?? phase) : phase,
+        ...(phase === "service-bootstrap" && setupHTTPStatus !== undefined ? { httpStatus: setupHTTPStatus } : {}),
         costs,
         errors: errors.map(safeFailure),
       }),
