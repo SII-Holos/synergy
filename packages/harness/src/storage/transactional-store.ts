@@ -1072,6 +1072,23 @@ export class StoreTransaction {
     return removed
   }
 
+  async pruneTreeWithinBudget(
+    prefix: string[],
+    input: { limits: PruneLimits; cutoff: number; active(): boolean; maintenance?: boolean; signal?: AbortSignal },
+  ) {
+    this.check(true)
+    if (input.active()) return { deferred: "active" as const, records: 0 }
+    const deferred = input.maintenance
+      ? await this.pruneEvidenceRecency(prefix, input.cutoff)
+      : await this.pruneDeferral(prefix, input.limits, input.cutoff)
+    if (deferred) return { deferred, records: 0 }
+    if (input.active()) return { deferred: "active" as const, records: 0 }
+    return {
+      records: await this.pruneTree(prefix, { maintenance: input.maintenance, signal: input.signal }),
+      deferred: undefined,
+    }
+  }
+
   async pruneEvidenceRecency(prefix: string[], cutoff: number): Promise<PruneDeferral | undefined> {
     this.check()
     if (this.backend === "sqlite") {
@@ -1799,25 +1816,8 @@ export class TransactionalStore {
     return this.transaction((tx) => tx.pruneTree(prefix))
   }
 
-  pruneTreeWithinBudget(
-    prefix: string[],
-    input: { limits: PruneLimits; cutoff: number; active(): boolean; maintenance?: boolean; signal?: AbortSignal },
-  ) {
-    return this.transaction(
-      async (tx) => {
-        if (input.active()) return { deferred: "active" as const, records: 0 }
-        const deferred = input.maintenance
-          ? await tx.pruneEvidenceRecency(prefix, input.cutoff)
-          : await tx.pruneDeferral(prefix, input.limits, input.cutoff)
-        if (deferred) return { deferred, records: 0 }
-        if (input.active()) return { deferred: "active" as const, records: 0 }
-        return {
-          records: await tx.pruneTree(prefix, { maintenance: input.maintenance, signal: input.signal }),
-          deferred: undefined,
-        }
-      },
-      { priority: "background" },
-    )
+  pruneTreeWithinBudget(prefix: string[], input: Parameters<StoreTransaction["pruneTreeWithinBudget"]>[1]) {
+    return this.transaction((tx) => tx.pruneTreeWithinBudget(prefix, input), { priority: "background" })
   }
 
   get sqliteFilename() {
