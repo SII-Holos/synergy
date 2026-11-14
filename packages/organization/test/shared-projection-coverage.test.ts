@@ -113,6 +113,7 @@ async function signedFixture(messages: number, readers = 10) {
             "x-csrf-token": login.data.csrfToken,
           },
         }),
+        headers: { cookie, "x-csrf-token": login.data.csrfToken },
         credentials: { token, csrf: login.data.csrfToken },
       }
     }
@@ -250,6 +251,13 @@ async function signedFixture(messages: number, readers = 10) {
     expect(new Set(clients.map((value) => value.credentials.token)).size).toBe(readers)
     return {
       owner: owner.client,
+      invalidQuery(endpoint: "events" | "snapshot" | "search", value: string) {
+        const target = new URL(`/org/v1/sessions/${session.sessionID}/sync/${endpoint}`, url)
+        target.searchParams.set("limit", "1")
+        target.searchParams.set(endpoint === "snapshot" ? "watermark" : "cursor", value)
+        if (endpoint === "search") target.searchParams.set("q", "Message")
+        return fetch(target, { headers: owner.headers })
+      },
       clients: clients.map((value) => value.client),
       projectID: project.projectID,
       sessionID: session.sessionID,
@@ -388,3 +396,72 @@ test("a retained generation without its coverage fact still reconstructs from th
   await f.owner.orgSessionSync.snapshot({ sessionID: f.sessionID, limit: 50 }, { throwOnError: true })
   expect(replay.pages()).toBe(pages)
 }, 30_000)
+
+for (const endpoint of ["events", "snapshot", "search"] as const) {
+  test(`shared numeric URL ${endpoint} revisions accept generated SDK requests and reject malformed values`, async () => {
+    await using f = await signedFixture(2, 0)
+    if (endpoint === "events") {
+      const checkpoint = (
+        await f.owner.orgSessionSync.events(
+          { sessionID: f.sessionID, limit: 1, cursor: f.watermark },
+          { throwOnError: true },
+        )
+      ).data
+      expect(checkpoint.items).toEqual([])
+      expect(checkpoint.nextSeq).toBe(f.watermark + 1)
+      await f.appendMessage()
+      const tail = (
+        await f.owner.orgSessionSync.events(
+          { sessionID: f.sessionID, limit: 1, cursor: f.watermark },
+          { throwOnError: true },
+        )
+      ).data
+      expect(tail.items).toHaveLength(1)
+      expect(tail.items[0]).toMatchObject({ type: "message", messageID: "later-message", sequence: f.watermark + 1 })
+    } else if (endpoint === "snapshot") {
+      const checkpoint = (
+        await f.owner.orgSessionSync.snapshot(
+          { sessionID: f.sessionID, limit: 50, watermark: f.watermark },
+          { throwOnError: true },
+        )
+      ).data
+      expect(checkpoint.watermark).toBe(f.watermark)
+      expect(checkpoint.items).toHaveLength(f.watermark)
+      await f.appendMessage()
+      const fixed = (
+        await f.owner.orgSessionSync.snapshot(
+          { sessionID: f.sessionID, limit: 50, watermark: checkpoint.watermark },
+          { throwOnError: true },
+        )
+      ).data
+      expect(fixed.watermark).toBe(checkpoint.watermark)
+      expect(fixed.items).toHaveLength(checkpoint.items.length)
+      expect(fixed.items.every((event) => event.sequence <= checkpoint.watermark)).toBe(true)
+    } else {
+      const first = (
+        await f.owner.orgSessionSync.search({ sessionID: f.sessionID, q: "Message", limit: 1 }, { throwOnError: true })
+      ).data
+      expect(first.items).toHaveLength(1)
+      const cursor = first.cursor
+      if (cursor === undefined) throw new Error("The original shared search did not retain its next sequence")
+      const next = (
+        await f.owner.orgSessionSync.search(
+          { sessionID: f.sessionID, q: "Message", limit: 1, cursor },
+          { throwOnError: true },
+        )
+      ).data
+      expect(next.items).toHaveLength(1)
+      expect(next.items[0]!.sequence).toBeGreaterThan(cursor)
+      expect(next.items[0]!.id).toBe("message-0001")
+    }
+    for (const value of ["NaN", "Infinity", "0.5", "-1", "9007199254740992", "not-a-revision"]) {
+      const response = await f.invalidQuery(endpoint, value)
+      expect(response.status).toBe(400)
+      expect(await response.json()).toMatchObject({
+        code: "INVALID_REQUEST",
+        outcome: "not_dispatched",
+        retryable: false,
+      })
+    }
+  }, 30_000)
+}

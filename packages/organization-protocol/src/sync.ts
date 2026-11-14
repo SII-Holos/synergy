@@ -377,14 +377,14 @@ export namespace OrganizationSyncProtocol {
 
   export const EventPageQuery = z.strictObject({
     limit: z.coerce.number().int().min(1).max(256).default(256),
-    cursor: Identity.Revision.optional(),
+    cursor: z.coerce.number().int().nonnegative().safe().optional(),
   })
   export type EventPageQuery = z.infer<typeof EventPageQuery>
 
   export const SnapshotQuery = z.strictObject({
     limit: z.coerce.number().int().min(1).max(256).default(128),
     cursor: Identity.ID.optional(),
-    watermark: Identity.Revision.optional(),
+    watermark: z.coerce.number().int().nonnegative().safe().optional(),
   })
   export type SnapshotQuery = z.infer<typeof SnapshotQuery>
   export const SnapshotPage = z
@@ -401,7 +401,7 @@ export namespace OrganizationSyncProtocol {
   export const SearchQuery = z.strictObject({
     q: z.string().trim().min(1).max(256),
     limit: z.coerce.number().int().min(1).max(64).default(32),
-    cursor: Identity.Revision.optional(),
+    cursor: z.coerce.number().int().nonnegative().safe().optional(),
   })
   export type SearchQuery = z.infer<typeof SearchQuery>
 
