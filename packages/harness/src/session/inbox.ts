@@ -197,6 +197,16 @@ export namespace SessionInbox {
     })
   }
 
+  export const RecordCommitted = {
+    type: "session.inbox.item.committed" as const,
+    properties: z.strictObject({
+      scopeID: z.string(),
+      sessionID: Item.shape.sessionID,
+      itemID: Item.shape.id,
+      revision: z.string().regex(/^\d+$/),
+    }),
+  }
+
   export const Event = {
     Updated: BusEvent.define(
       "session.inbox.updated",
@@ -307,10 +317,23 @@ export namespace SessionInbox {
         }
         const session = await readSession(item.sessionID)
         const scopeID = Identifier.asScopeID((session.scope as Scope).id)
-        await Storage.write(
-          StoragePath.sessionInboxItem(scopeID, Identifier.asSessionID(item.sessionID), item.id),
-          item,
-        )
+        const key = StoragePath.sessionInboxItem(scopeID, Identifier.asSessionID(item.sessionID), item.id)
+        await Storage.write(key, item)
+        const [revision] = await Storage.revisions([key])
+        if (revision === undefined) throw new StorageIntegrityError("Committed Inbox item has no native revision")
+        await Storage.capture({
+          id: crypto.randomUUID(),
+          scopeID,
+          type: RecordCommitted.type,
+          payload: {
+            properties: RecordCommitted.properties.parse({
+              scopeID,
+              sessionID: item.sessionID,
+              itemID: item.id,
+              revision: String(revision),
+            }),
+          },
+        })
         await SessionPauseRecovery.mark({ scopeID, sessionID: item.sessionID })
       }
       await publish(item.sessionID)
