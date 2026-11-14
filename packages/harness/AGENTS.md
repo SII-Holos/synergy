@@ -39,7 +39,7 @@ Cortex holds preserve task/root/input/budget/deadline/notification identity; nev
 
 Portability requires atomic cohorts/epochs, ordered publication/dependencies, permanent surrender/retirement, prepared pins/`session-workspaces`/Environment owners. Verify `test/session/{transfer-*,workspace-*}.test.ts` and `test/storage/{artifact-stream,storage-binary-stream,object-artifacts}.test.ts`.
 
-`session/part-commit` exposes body-free Part facts, without private writers. `RolloutEvents.readCommitted` reads one original revision without recovery. Verify `test/session/{native-commit-reader,streaming-persistence}.test.ts`.
+`session/part-commit` exposes body-free facts; `RolloutEvents.readCommitted` reads original revisions. `RolloutArtifact.iterate` pages metadata; maintenance owns tree stability. Verify `test/session/{native-commit-reader,streaming-persistence,rollout-artifact-iterate}.test.ts`.
 
 `SessionInbox.RecordCommitted` captures admission identities. Retain needed public metadata before consumption; failed capture rolls back admission. Verify `test/session/inbox-record-committed.test.ts`.
 

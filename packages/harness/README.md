@@ -10,6 +10,8 @@ Hosts import `SessionPartCommit` from `session/part-commit` without the private 
 
 Automatic `StorageRetention` pruning enters the original business transaction and native mutation guards before deleting evidence. A rejected owner retains its records, and guard writes roll back with the attempted deletion. Verify `test/storage/retention-mutation-guard.test.ts`.
 
+`RolloutArtifact.iterate(owner, { signal })` pages original metadata without collecting every Ref. It stops on early return or cancellation and propagates missing or corrupt metadata. It is a live cursor; explicit maintenance owns tree stability. See [durable Rollout evidence](../../docs/decisions/implemented/architecture/2026-09-07-durable-rollout-execution-contract.md).
+
 `Storage.afterFailure()` registers synchronous in-memory diagnostics on the original live write transaction. It observes the actual outer failure after writer exit, including unknown commit outcomes, without granting recovery effects or hiding the original error. See [durable event sinks](../../docs/decisions/implemented/architecture/2026-10-01-durable-external-event-sinks.md) and `test/storage/after-failure.test.ts`.
 
 Process sampling preserves an existing tracked close completion after physical child exit. The original close owner records terminal status after output and recording tails; stale-PID recovery applies only without that owner. Verify `test/process/registry.test.ts`; see [tracked completion](../../docs/decisions/implemented/bug-fix/2026-11-13-preserve-tracked-process-close-ownership-during-sampling.md).

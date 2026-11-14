@@ -108,6 +108,28 @@ export namespace RolloutArtifact {
     return Ref.parse(await Storage.read([...artifactRoot(owner, id), "info"]))
   }
 
+  export async function* iterate(input: Owner, options: { signal?: AbortSignal } = {}): AsyncGenerator<Ref> {
+    const owner = Owner.parse(input)
+    const signal = options.signal
+    const prefix = [...root(owner), "artifacts"]
+    let after: string | undefined
+    do {
+      signal?.throwIfAborted()
+      const page = await Storage.childKeys({ prefix, after, limit: 128, includeBranches: true })
+      signal?.throwIfAborted()
+      for (const key of page.keys) {
+        signal?.throwIfAborted()
+        const id = key.at(-1)!
+        const ref = await get(owner, id)
+        signal?.throwIfAborted()
+        if (ref.id !== id) throw new Error("Rollout artifact metadata does not match its original identity")
+        yield ref
+        signal?.throwIfAborted()
+      }
+      after = page.after
+    } while (after !== undefined)
+  }
+
   export async function list(owner: Owner): Promise<Ref[]> {
     const ids = await Storage.scan([...root(owner), "artifacts"])
     const result: Ref[] = []
