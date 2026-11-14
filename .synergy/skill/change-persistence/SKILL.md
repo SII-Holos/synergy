@@ -13,6 +13,8 @@ description: Add or modify Synergy durable state, JSON storage keys, SQLite tabl
 
 ## Implement the Current Model
 
+When preparing a derived index without changing canonical content, preserve an unchanged display projection and its generation. Compare the schema-known summary fields rather than only the content hash, retain unknown extensions, and keep adjacent search maintenance. Test cold rebuilding, a stale summary with the same hash and an interrupted earlier migration receipt; do not hide the interaction by prewriting another receipt.
+
 Offline data operations borrow the actual Store covered by their original Home and native directory claims. Keep the configured storage root distinct from the canonical physical path, reuse the destination writer through import, and close source readers before removal. With `await using`, await the complete asynchronous operation before returning so locks survive all accepted work; verify this with real competing lock acquisition on success and failure.
 
 Maintenance previews inspect canonical metadata through its owning readonly reader when display projections intentionally hide unavailable fields. Keep Scope resolution and owner availability, supply a cloned snapshot, and verify preview performs no writes. Apply the same planned change through an independent exact metadata comparison in the original writer; test a newer replacement and retained immutable versions.

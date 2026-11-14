@@ -274,6 +274,11 @@ test("central owning migration prepares a historical tool once and restart pagin
   let target: { sessionID: string; messageID: string; partID: string }
   let key: string[]
   let original: unknown
+  let displayKey: string[]
+  let stateKey: string[]
+  let dirtyKey: string[]
+  let originalDisplay: unknown
+  let originalState: unknown
   {
     await using runtime = await testRuntime({ home: directory.path })
     await runtime.run(() =>
@@ -285,6 +290,17 @@ test("central owning migration prepares a historical tool once and restart pagin
           target = value.target
           key = value.key
           original = await Storage.read(key)
+          displayKey = StoragePath.sessionDisplayPart("home", value.session.id, value.target.messageID, value.part.id)
+          stateKey = StoragePath.sessionDisplayPartsState("home", value.session.id, value.target.messageID)
+          dirtyKey = StoragePath.sessionTextDirty("home", value.session.id, value.target.messageID, value.part.id)
+          originalDisplay = {
+            ...(await Storage.read<Record<string, unknown>>(displayKey)),
+            future: { keep: true },
+          }
+          originalState = { ...(await Storage.read<Record<string, unknown>>(stateKey)), future: { keep: true } }
+          await Storage.write(displayKey, originalDisplay)
+          await Storage.write(stateKey, originalState)
+          await Storage.remove(dirtyKey)
           await Storage.removeTree([...key.slice(0, 3), "attachment_index", key[4], key[6]])
           await Storage.remove([
             "sessions",
@@ -309,6 +325,9 @@ test("central owning migration prepares a historical tool once and restart pagin
           expect(first.total).toBe(41)
           expect(first.items).toHaveLength(32)
           expect(await Storage.read(key!)).toEqual(original)
+          expect(await Storage.read(displayKey!)).toEqual(originalDisplay)
+          expect(await Storage.read(stateKey!)).toEqual(originalState)
+          expect(await Storage.read(dirtyKey!)).toEqual({ key })
           const versioned = StoreTransaction.prototype.versioned
           using noBody = spyOn(StoreTransaction.prototype, "versioned").mockImplementation(async function <T>(
             this: StoreTransaction,
@@ -343,6 +362,21 @@ test("owning presentation upgrade filters hidden files without losing an empty p
         }))
         await Session.updatePart({ ...value.part, state: { ...state, attachments: files } })
         const canonical = await Storage.read(value.key)
+        const displayKey = StoragePath.sessionDisplayPart(
+          "home",
+          value.session.id,
+          value.target.messageID,
+          value.part.id,
+        )
+        const stateKey = StoragePath.sessionDisplayPartsState("home", value.session.id, value.target.messageID)
+        const originalDisplay = await Storage.read<MessageV2.PartSummary>(displayKey)
+        const originalState = await Storage.read<{ generation: number }>(stateKey)
+        await Storage.write(displayKey, {
+          ...originalDisplay,
+          attachments: { evidence: 3, deliverable: 0 },
+          future: { keep: true },
+        })
+        await Storage.write(stateKey, { ...originalState, future: { keep: true } })
         const root = [...value.key.slice(0, 3), "attachment_index", value.key[4], value.key[6]]
         const header = await Storage.read<{ revision: string }>([...root, "header"])
         await Storage.write([...root, "header"], { version: 1, revision: header.revision, kind: "tool", count: 3 })
@@ -362,6 +396,12 @@ test("owning presentation upgrade filters hidden files without losing an empty p
         ])
         const first = await SessionHistory.attachmentPage({ ...value.target, limit: 1 })
         expect(first.total).toBe(1)
+        expect(await Storage.read(displayKey)).toEqual({ ...originalDisplay, future: { keep: true } })
+        expect(await Storage.read(stateKey)).toEqual({
+          ...originalState,
+          generation: originalState.generation + 1,
+          future: { keep: true },
+        })
         expect(first.items).toEqual([])
         expect(first.cursor).toBeDefined()
         const retained = await SessionHistory.attachmentContent({
@@ -397,6 +437,9 @@ test("owning presentation upgrade filters hidden files without losing an empty p
         expect(third.cursor).toBeUndefined()
         noBody.mockRestore()
         expect(await Storage.read(value.key)).toEqual(canonical)
+        const prepared = await Storage.readMany([displayKey, stateKey])
+        await SessionHistory.attachmentPage({ ...value.target, limit: 1 })
+        expect(await Storage.readMany([displayKey, stateKey])).toEqual(prepared)
       },
     }),
   )

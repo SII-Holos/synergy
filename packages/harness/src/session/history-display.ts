@@ -503,8 +503,8 @@ export namespace SessionHistoryDisplay {
     })
   }
 
-  export async function partWritten(scopeID: string, part: SessionPartContent.Stored, summary?: PartSummary) {
-    summary ??= SessionPartContent.summary(
+  function summarizeStoredPart(scopeID: string, part: SessionPartContent.Stored) {
+    return SessionPartContent.summary(
       upgradeAccessRecord(
         StoragePath.messagePart(
           Identifier.asScopeID(scopeID),
@@ -515,6 +515,25 @@ export namespace SessionHistoryDisplay {
         part,
       ),
     )
+  }
+
+  export async function refreshPart(scopeID: string, part: SessionPartContent.Stored) {
+    await Storage.transaction(async () => {
+      const summary = summarizeStoredPart(scopeID, part)
+      const [previous] = await Storage.readMany<StoredPartSummary>([
+        StoragePath.sessionDisplayPart(scopeID, part.sessionID, part.messageID, part.id),
+      ])
+      const current = PartSummary.safeParse(previous)
+      if (current.success && JSON.stringify(current.data) === JSON.stringify(PartSummary.parse(summary))) {
+        await SessionHistorySearch.partWritten(scopeID, part)
+        return
+      }
+      await partWritten(scopeID, part, { ...previous, ...summary })
+    })
+  }
+
+  export async function partWritten(scopeID: string, part: SessionPartContent.Stored, summary?: PartSummary) {
+    summary ??= summarizeStoredPart(scopeID, part)
     await SessionHistorySearch.partWritten(scopeID, part)
     const partKey = StoragePath.messagePart(
       Identifier.asScopeID(scopeID),
