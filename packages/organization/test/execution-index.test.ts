@@ -41,7 +41,14 @@ test("retained grant pages rebuild from canonical accepted work without a local 
     await Storage.removeTree(["organization", "retained-execution-grants"])
     await Storage.write(
       Keys.executionGrant(f.grant.grantID),
-      Execution.LegacyGrant3.parse({ ...f.grant, schemaVersion: 3 }),
+      Execution.LegacyGrant3.parse({
+        ...f.grant,
+        schemaVersion: 3,
+        selection: {
+          modelResourceID: f.grant.selection.modelResourceID,
+          connectionResourceIDs: f.grant.selection.connectionResourceIDs,
+        },
+      }),
     )
     await Index.migration.up(() => {})
     const session = (await Record.read(Record.SessionDirectory, Keys.session(f.sessionID)))!

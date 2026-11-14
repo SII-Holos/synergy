@@ -12,6 +12,7 @@ import { collectChannelTerminalInfos, loadChannelDeliveryPlans } from "../../src
 import { executeChannelDeliveryPlan } from "../../src/channel/delivery"
 import type { Provider } from "../../src/channel/types"
 import { testRuntime } from "../support/runtime"
+import { measurePhase } from "@ericsanchezok/synergy-harness/test/support/rollout"
 
 const runtime = await testRuntime()
 afterAll(() => runtime.close())
@@ -42,24 +43,34 @@ async function fixture(
         time: { created: 10_000 },
         metadata: { channelInboundMessageId: "inbound", channelRequesterId: "requester" },
       }
-      await Storage.transaction(async () => {
+      await measurePhase("delivery-work.seed." + count, async () => {
+        const rows: Array<{ key: string[]; value: unknown }> = []
         for (let index = 0; index < count; index++) {
           const id = Identifier.ascending("message")
-          await Storage.write(StoragePath.messageInfo(scopeID, sessionID, id), {
-            ...root,
-            id,
-            rootID: id,
-            time: { created: index + 1 },
+          rows.push({
+            key: StoragePath.messageInfo(scopeID, sessionID, id),
+            value: {
+              ...root,
+              id,
+              rootID: id,
+              time: { created: index + 1 },
+            },
           })
           const partID = Identifier.ascending("part")
-          await Storage.write(StoragePath.messagePart(scopeID, sessionID, id, partID), {
-            id: partID,
-            sessionID,
-            messageID: id,
-            type: "text",
-            text: "Unrelated historical body",
+          rows.push({
+            key: StoragePath.messagePart(scopeID, sessionID, id, partID),
+            value: {
+              id: partID,
+              sessionID,
+              messageID: id,
+              type: "text",
+              text: "Unrelated historical body",
+            },
           })
         }
+        await Storage.transaction(async (tx) => {
+          for (let offset = 0; offset < rows.length; offset += 256) await tx.writeMany(rows.slice(offset, offset + 256))
+        })
       })
       await Session.updateMessage(root)
       const ids = [rootID]
@@ -101,21 +112,29 @@ async function fixture(
             },
           })
         if (index === 0 && count)
-          await Storage.transaction(async () => {
+          await measurePhase("delivery-work.parts." + count, async () => {
+            const rows: Array<{ key: string[]; value: unknown }> = []
             for (let part = 0; part < 2_001; part++) {
               const partID = Identifier.ascending("part")
-              await Storage.write(StoragePath.messagePart(scopeID, sessionID, id, partID), {
-                id: partID,
-                sessionID,
-                messageID: id,
-                type: "reasoning",
-                text: "Private reasoning chunk",
-                time: { start: 10_001, end: 10_002 },
+              rows.push({
+                key: StoragePath.messagePart(scopeID, sessionID, id, partID),
+                value: {
+                  id: partID,
+                  sessionID,
+                  messageID: id,
+                  type: "reasoning",
+                  text: "Private reasoning chunk",
+                  time: { start: 10_001, end: 10_002 },
+                },
               })
             }
+            await Storage.transaction(async (tx) => {
+              for (let offset = 0; offset < rows.length; offset += 256)
+                await tx.writeMany(rows.slice(offset, offset + 256))
+            })
           })
       }
-      await SessionHistory.prepareDisplay(sessionID)
+      await measurePhase("delivery-work.prepare." + count, () => SessionHistory.prepareDisplay(sessionID))
       await fn({ sessionID, rootID, ids })
     },
   })
@@ -143,10 +162,14 @@ for (const count of [500, 5_000])
           }
           using bodies = spyOn(MessageV2, "parts")
           using history = spyOn(Session, "messages")
-          const terminals = await collectChannelTerminalInfos({ sessionID, rootID })
+          const terminals = await measurePhase("delivery-work.infos." + count, () =>
+            collectChannelTerminalInfos({ sessionID, rootID }),
+          )
           expect(terminals.map((info) => info.id)).toEqual(ids.slice(1))
           expect(bodies).not.toHaveBeenCalled()
-          const plans = await loadChannelDeliveryPlans({ sessionID, rootID, replyToMessageId: "topic" })
+          const plans = await measurePhase("delivery-work.bodies." + count, () =>
+            loadChannelDeliveryPlans({ sessionID, rootID, replyToMessageId: "topic" }),
+          )
           expect(plans.map((plan) => plan.kind)).toEqual(["reply", "reaction", "reply"])
           expect(plans[0].terminal.parts.length).toBeGreaterThan(2_000)
           for (const plan of plans)

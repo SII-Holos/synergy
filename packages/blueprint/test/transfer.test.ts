@@ -237,7 +237,7 @@ test("native Blueprint, Cortex audit and exact Note versions activate together f
         }
         const receipts = []
         for (const member of members) receipts.push(await Owners.freeze(member.context, member.owners))
-        for (const [index, member] of members.entries())
+        for (const [index, member] of [...members.entries()].toReversed())
           await Epochs.freeze(member.binding, index ? { owner: receipts[index] } : {})
         const ownerIDs = [...new Set(members.flatMap((member) => member.owners))]
         const exported = await Stream.write({

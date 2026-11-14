@@ -1,5 +1,6 @@
 import { expect, spyOn, test } from "bun:test"
 import path from "node:path"
+import { z } from "zod"
 import { Environment } from "@ericsanchezok/synergy-harness/environment"
 import { EnvironmentResources } from "@ericsanchezok/synergy-harness/environment/resources"
 import { WorkspaceBinding } from "@ericsanchezok/synergy-harness/workspace"
@@ -83,7 +84,9 @@ for (const unknown of [false, true])
             JSON.stringify({
               stage,
               unknown,
-              requirements: error.data.requirements?.map(({ owner, code }) => ({ owner, code })),
+              requirements: z
+                .array(z.object({ owner: z.string(), code: z.string() }))
+                .safeParse(error.data.requirements).data,
             }),
           )
       }

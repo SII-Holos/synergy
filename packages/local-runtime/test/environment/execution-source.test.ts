@@ -6,6 +6,8 @@ import { EnvironmentProviders } from "@ericsanchezok/synergy-harness/environment
 import { EnvironmentOrigin } from "@ericsanchezok/synergy-harness/environment/origin"
 import { ExecutionProtocol } from "@ericsanchezok/synergy-harness/environment/executor"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
+import { ObservabilityMetrics } from "@ericsanchezok/synergy-harness/observability/metrics"
+import { ObservabilityStore } from "@ericsanchezok/synergy-harness/observability/store"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { TransactionalStore } from "@ericsanchezok/synergy-harness/storage/transactional-store"
 import { testEnvironmentRuntime } from "@ericsanchezok/synergy-harness/test/support/environment-origin"
@@ -406,7 +408,15 @@ test("a readonly actual primary permits retained inspection but cannot enter an 
           try {
             await Source.close()
           } finally {
-            await store.close()
+            try {
+              ObservabilityMetrics.stop()
+            } finally {
+              try {
+                await ObservabilityStore.stop()
+              } finally {
+                await store.close()
+              }
+            }
           }
         }
       })

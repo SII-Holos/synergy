@@ -4,6 +4,8 @@ import { RolloutArtifact } from "@ericsanchezok/synergy-harness/session/rollout/
 import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/ledger"
 import { RolloutContext } from "@ericsanchezok/synergy-harness/session/rollout/context"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { Session } from "@ericsanchezok/synergy-harness/session"
+import { withToolRun } from "@ericsanchezok/synergy-harness/test/support/rollout"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
@@ -98,20 +100,18 @@ test("bash records stdout and stderr before its bounded display buffer", () =>
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const args = input()
         const script = 'process.stdout.write("x".repeat(260000)); process.stderr.write("e".repeat(180000))'
         const quote = (value: string) => "'" + value.replaceAll("'", "'\\''") + "'"
-        const result = await RolloutTool.execute({ ...args, tool: "bash" }, () =>
-          LocalBashBackend.execute(
-            {
-              command: `${quote(process.execPath)} -e ${quote(script)}`,
-
-              yieldSeconds: 0,
-            },
-            {
+        const params = { command: `${quote(process.execPath)} -e ${quote(script)}`, yieldSeconds: 0 }
+        const session = await Session.create({})
+        try {
+          await withToolRun({ session, tool: "bash", args: params }, async (identity) => {
+            const args = RolloutContext.current()
+            if (!args || args.owner.kind !== "session" || args.owner.sessionID !== session.id)
+              throw new Error("Output capture requires its original Session tool Run")
+            const result = await LocalBashBackend.execute(params, {
               ...{
-                sessionID: "fixture",
-                messageID: "fixture",
+                ...identity,
                 agent: "test",
                 abort: new AbortController().signal,
                 metadata() {},
@@ -119,25 +119,27 @@ test("bash records stdout and stderr before its bounded display buffer", () =>
                 openProcessEvidence: RolloutTool.openProcess,
               },
               workBrief: "Output capture fixture",
-            },
-          ),
-        )
-        expect(result.output.length).toBeLessThan(440000)
-        const [recordedProcess] = await RolloutLedger.processes(args.owner, args.runID)
-        expect(recordedProcess.status).toBe("completed")
-        const chunks: Uint8Array[] = []
-        for await (const chunk of RolloutArtifact.read(args.owner, recordedProcess.stream.id)) chunks.push(chunk)
-        const bytes = Buffer.concat(chunks)
-        const output = { stdout: "", stderr: "" }
-        let offset = 0
-        while (offset < bytes.length) {
-          const channel = bytes[offset] === 1 ? "stdout" : "stderr"
-          const length = bytes.readUInt32BE(offset + 1)
-          output[channel] += bytes.subarray(offset + 5, offset + 5 + length).toString()
-          offset += 5 + length
+            })
+            expect(result.output.length).toBeLessThan(440000)
+            const [recordedProcess] = await RolloutLedger.processes(args.owner, args.runID)
+            expect(recordedProcess.status).toBe("completed")
+            const chunks: Uint8Array[] = []
+            for await (const chunk of RolloutArtifact.read(args.owner, recordedProcess.stream.id)) chunks.push(chunk)
+            const bytes = Buffer.concat(chunks)
+            const output = { stdout: "", stderr: "" }
+            let offset = 0
+            while (offset < bytes.length) {
+              const channel = bytes[offset] === 1 ? "stdout" : "stderr"
+              const length = bytes.readUInt32BE(offset + 1)
+              output[channel] += bytes.subarray(offset + 5, offset + 5 + length).toString()
+              offset += 5 + length
+            }
+            expect(output.stdout).toBe("x".repeat(260000))
+            expect(output.stderr).toBe("e".repeat(180000))
+          })
+        } finally {
+          await Session.remove(session.id)
         }
-        expect(output.stdout).toBe("x".repeat(260000))
-        expect(output.stderr).toBe("e".repeat(180000))
       },
     })
   }))

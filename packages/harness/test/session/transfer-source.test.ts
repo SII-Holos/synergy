@@ -250,16 +250,15 @@ test("source rejects membership created after drainage before publishing its fin
           fromEpoch: 1,
           toEpoch: 2,
         }
-        let barriers = 0
         let lateID = ""
         await expect(
           Source.prepare({
             binding,
             store: objectStore(),
             signal: new AbortController().signal,
-            async verify() {
-              if (++barriers === 2)
-                lateID = (await Session.create({ parentID: root.id, workspaceID: null, environmentID: null })).id
+            async verify() {},
+            async beforeFreeze() {
+              lateID = (await Session.create({ parentID: root.id, workspaceID: null, environmentID: null })).id
             },
           }),
         ).rejects.toThrow("membership changed")

@@ -10,6 +10,7 @@ import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
 import { ToolDiscovery } from "@ericsanchezok/synergy-harness/test/internal/tool/discovery"
 import { ToolPolicySource } from "@ericsanchezok/synergy-harness/tool/policy-source"
+import { ProcessAccessSource } from "@ericsanchezok/synergy-harness/process/access-source"
 import { OrganizationRuntimeProtocol as Protocol } from "@ericsanchezok/synergy-organization-protocol"
 import { prepareHostedHome } from "../src/home"
 import { enrollHostedRuntime } from "../src/enrollment"
@@ -126,14 +127,22 @@ test("the actual Hosted catalog and execution gate reject unowned global tools w
           includeMCP: false,
         })
         const visible = catalog.tools.filter((tool) => !catalog.disabled.has(tool.id)).map((tool) => tool.id)
-        for (const id of ["session_read", "task", "task_list", "task_output", "task_cancel", "organization_knowledge"])
+        for (const id of [
+          "session_read",
+          "task",
+          "task_list",
+          "task_output",
+          "task_cancel",
+          "organization_knowledge",
+          "process",
+        ])
           expect(visible).toContain(id)
+        expect(ProcessAccessSource.has()).toBe(true)
         const blocked = [
           "session_list",
           "session_search",
           "session_send",
           "scope_list",
-          "process",
           "runtime_reload",
           "agent_config",
           "unowned_history_probe",
@@ -152,7 +161,7 @@ test("the actual Hosted catalog and execution gate reject unowned global tools w
             }),
           ).rejects.toBeInstanceOf(ToolPolicySource.DeniedError)
         }
-        for (const id of ["session_read", "task_output"])
+        for (const id of ["session_read", "task_output", "process"])
           await expect(
             ToolPolicySource.authorize({
               toolID: id,
@@ -163,6 +172,13 @@ test("the actual Hosted catalog and execution gate reject unowned global tools w
               signal: new AbortController().signal,
             }),
           ).resolves.toBeUndefined()
+        let processInspected = false
+        await expect(
+          ProcessAccessSource.withAccess({ signal: new AbortController().signal }, async () => {
+            processInspected = true
+          }),
+        ).rejects.toThrow("genuine current Session Run")
+        expect(processInspected).toBe(false)
         await expect(
           ToolDiscovery.collect({ providerID: model.providerID, model, agent, includeMCP: false }),
         ).rejects.toBeInstanceOf(ToolPolicySource.DeniedError)

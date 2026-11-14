@@ -817,9 +817,9 @@ test("foreground task uses child waiting through capacity handoff and retains ca
       let child: Awaited<ReturnType<typeof Cortex.prepare>> | undefined
       const entered = Promise.withResolvers<void>()
       const waitFor = Cortex.waitFor
-      const cancel = Cortex.cancel
+      const cancel = Cortex.cancelOnParentAbort
       const cancelling: Promise<unknown>[] = []
-      using cancellation = spyOn(Cortex, "cancel").mockImplementation((...args) => {
+      using cancellation = spyOn(Cortex, "cancelOnParentAbort").mockImplementation((...args) => {
         const result = cancel(...args)
         cancelling.push(result)
         return result
@@ -857,6 +857,7 @@ test("foreground task uses child waiting through capacity handoff and retains ca
         expect(span.stalled).toBe(0)
         SessionManager.signalAbort(current.session.id)
         await expect(execution).rejects.toThrow()
+        expect(cancelling).toHaveLength(1)
         await Promise.all(cancelling)
         expect(Cortex.get(child!.id)?.status).toBe("cancelled")
         expect(ObservabilityStore.queryInflight({ sessionID: current.session.id })).toEqual([])

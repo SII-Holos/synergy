@@ -23,7 +23,7 @@ test("sealed aggregate edges reject a wholly omitted child and unrelated or cycl
         const contexts: Owners.SourceContext[] = []
         for (const session of [root, child, sibling])
           await SessionLifecycle.pause({ sessionID: session.id, reason: "interrupted" })
-        for (const session of [root, child, sibling]) {
+        for (const session of [sibling, child, root]) {
           await Epochs.freeze({
             sessionID: session.id,
             scopeID: "home",
@@ -34,6 +34,8 @@ test("sealed aggregate edges reject a wholly omitted child and unrelated or cycl
             fromEpoch: 1,
             toEpoch: 2,
           })
+        }
+        for (const session of [root, child, sibling]) {
           contexts.push({
             session: await Session.get(session.id),
             handoffID,

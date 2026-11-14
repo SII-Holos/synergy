@@ -1,11 +1,34 @@
-import { expect, test } from "bun:test"
+import { expect, spyOn, test } from "bun:test"
 import path from "node:path"
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { attachments } from "../../script/acceptance/attachments"
 import { selectCases } from "../../script/acceptance/catalog"
 import { execute, makePlan, report } from "../../script/acceptance/runner"
 
 test("attachment acceptance drives actual isolated Runtime queues and validates transmitted content", async () => {
+  const create = RuntimeContext.create
+  let sequence = 0
+  using tracked = spyOn(RuntimeContext, "create").mockImplementation((...args) => {
+    const runtime = create(...args)
+    const index = ++sequence
+    const created = new Error("Runtime creation").stack
+    const run = runtime.run
+    runtime.run = <T>(body: () => T): T => {
+      try {
+        return run(body)
+      } catch (error) {
+        if (error instanceof Error && error.message === "Runtime is closed")
+          console.error("attachment-runtime-closed", {
+            index,
+            created,
+            invocation: new Error("Closed Runtime invocation").stack,
+          })
+        throw error
+      }
+    }
+    return runtime
+  })
   await using tmp = await tmpdir()
   using upstream = Bun.serve({
     hostname: "127.0.0.1",

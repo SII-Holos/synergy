@@ -67,13 +67,13 @@ test("owned child transfer freezes machine scheduling without forging a human pa
           toEpoch: 2,
         }
         const childBinding = { ...rootBinding, sessionID: child.id, rootSessionID: root.id }
-        await Epochs.freeze(rootBinding)
         await expect(Epochs.freeze(childBinding)).rejects.toThrow("paused")
         const receipt = await Owners.freeze(
           { session: child, rootSessionID: root.id, handoffID: "owned", signal: new AbortController().signal },
           ["machine-fixture"],
         )
         await Epochs.freeze(childBinding, { owner: receipt })
+        await Epochs.freeze(rootBinding)
         expect((await Session.get(child.id)).paused).toBeUndefined()
         await expect(Gate.assert(child.id)).rejects.toThrow("transfer")
         await Epochs.seal(rootBinding, "a".repeat(64))
@@ -138,7 +138,6 @@ test("owned child transfer freezes machine scheduling without forging a human pa
           toEpoch: 3,
         }
         const returningChild = { ...returningRoot, sessionID: aggregate.child.id, rootSessionID: aggregate.root.id }
-        await Epochs.freeze(returningRoot)
         const receipt = await Owners.freeze(
           {
             session: await Session.get(aggregate.child.id),
@@ -149,8 +148,9 @@ test("owned child transfer freezes machine scheduling without forging a human pa
           ["machine-fixture"],
         )
         await Epochs.freeze(returningChild, { owner: receipt })
+        await Epochs.freeze(returningRoot)
         await expect(Epochs.assertFrozen(aggregate.child.id, "owned")).rejects.toThrow("exact")
-        await expect(Epochs.assertFrozen(aggregate.child.id, "returning")).resolves.toBeUndefined()
+        await expect(Epochs.assertFrozen(aggregate.child.id, "returning")).resolves.toEqual(returningChild)
         await expect(Epochs.assertOwnerResume(resume)).rejects.toThrow("resume")
         await Epochs.cancel(returningRoot)
         await Epochs.cancel(returningChild)
