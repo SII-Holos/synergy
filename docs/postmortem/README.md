@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0206](0206-authority-inspection-issued-one-lookup-per-policy-key.md)
+
 - [0205](0205-native-publication-repeated-independent-storage-operations.md)
 
 - [0204](0204-service-sync-writes-blocked-authenticated-heartbeats.md)

@@ -266,6 +266,18 @@ async function* rows(tx: StoreTransaction, prefix: string[]) {
   }
 }
 
+async function* inspectionPages<T>(entries: AsyncIterable<T> | Iterable<T>) {
+  let page: T[] = []
+  for await (const entry of entries) {
+    page.push(entry)
+    if (page.length === 128) {
+      yield page
+      page = []
+    }
+  }
+  if (page.length) yield page
+}
+
 function domains() {
   return [...registry().domains.values()].sort((left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0))
 }
@@ -854,31 +866,43 @@ export namespace AuthorityJournal {
         { projection: expected.projection },
       )
       let fingerprintGaps = 0
-      for await (const row of rows(tx, fingerprints(head.journalID))) {
-        const retained = Fingerprint.parse(row.value)
-        const domain = registry().domains.get(retained.domainID)
-        const [value] = await tx.readMany([retained.key])
-        const current = value === undefined || !domain ? undefined : project(domain, retained.key, value)
-        if (
-          current === undefined ||
-          digest(current) !== retained.hash ||
-          row.key.length !== 4 ||
-          row.key.at(-1) !== keyHash(retained.key) ||
-          !expected.matches(retained)
-        )
-          fingerprintGaps++
+      for await (const page of inspectionPages(rows(tx, fingerprints(head.journalID)))) {
+        const retained = page.map((row) => Fingerprint.parse(row.value))
+        const values = await tx.readMany(retained.map((value) => value.key))
+        for (const [index, fingerprint] of retained.entries()) {
+          const row = page[index]!
+          const value = values[index]
+          const domain = registry().domains.get(fingerprint.domainID)
+          const current = value === undefined || !domain ? undefined : project(domain, fingerprint.key, value)
+          if (
+            current === undefined ||
+            digest(current) !== fingerprint.hash ||
+            row.key.length !== 4 ||
+            row.key.at(-1) !== keyHash(fingerprint.key) ||
+            !expected.matches(fingerprint)
+          )
+            fingerprintGaps++
+        }
       }
-      for (const fingerprint of expected.entries()) {
-        const retained = await read(tx, Fingerprint, [...fingerprints(head.journalID), keyHash(fingerprint.key)])
-        if (!retained || !expected.matches(retained)) fingerprintGaps++
+      for await (const page of inspectionPages(expected.entries())) {
+        const values = await tx.readMany(page.map((value) => [...fingerprints(head.journalID), keyHash(value.key)]))
+        for (const value of values) {
+          const retained = value === undefined ? undefined : Fingerprint.parse(value)
+          if (!retained || !expected.matches(retained)) fingerprintGaps++
+        }
       }
       for (const domain of domains())
         for (const prefix of domain.prefixes)
-          for await (const row of rows(tx, [...prefix])) {
-            const current = project(domain, row.key, row.value)
-            if (current === undefined) continue
-            const expected = await read(tx, Fingerprint, [...fingerprints(head.journalID), keyHash(row.key)])
-            if (!expected) fingerprintGaps++
+          for await (const page of inspectionPages(rows(tx, [...prefix]))) {
+            const projected = page.filter((row) => project(domain, row.key, row.value) !== undefined)
+            if (!projected.length) continue
+            const values = await tx.readMany(
+              projected.map((row) => [...fingerprints(head.journalID), keyHash(row.key)]),
+            )
+            for (const value of values) {
+              const expected = value === undefined ? undefined : Fingerprint.parse(value)
+              if (!expected) fingerprintGaps++
+            }
           }
       return {
         head,
