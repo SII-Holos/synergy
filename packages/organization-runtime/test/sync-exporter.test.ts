@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test"
+import { expect, spyOn, test } from "bun:test"
 import {
   OrganizationSessionProtocol as Sessions,
   OrganizationSyncProtocol as Sync,
@@ -7,6 +7,7 @@ import { testRuntime } from "@ericsanchezok/synergy-harness/test/support/runtime
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
+import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
@@ -377,6 +378,98 @@ test("closing the exporter waits for in-flight publication before releasing its 
     }
   })
 })
+
+test.each(["close", "abort"] as const)(
+  "%s retains an accepted native Part removal for exporter restart without another publication",
+  async (mode) => {
+    await using runtime = await testRuntime({ register: () => registerSessionSchema(binding) })
+    await runtime.run(async () => {
+      const f = await fixture()
+      const remote = transport(f.session.id)
+      const controller = new AbortController()
+      const exporter = startMemberSyncExporter({
+        identity: { orgID: binding.orgID, accountID: binding.creatorID, deviceID: "device-sync" },
+        connection: remote.connection,
+        signal: controller.signal,
+      })
+      const entered = Promise.withResolvers<void>()
+      const release = Promise.withResolvers<void>()
+      const removal = Promise.withResolvers<void>()
+      const stopRemoval = Bus.subscribeGlobal(MessageV2.Event.PartRemoved, (event) => {
+        if (event.properties.sessionID === f.session.id && event.properties.partID === f.part.id) removal.resolve()
+      })
+      const heldPart = { ...f.part, id: Identifier.ascending("part"), text: "Accepted selector before removal" }
+      const readPart = MessageV2.readPart
+      using held = spyOn(MessageV2, "readPart").mockImplementation(async (input) => {
+        if (input.sessionID === f.session.id && input.partID === heldPart.id) {
+          entered.resolve()
+          await release.promise
+        }
+        return readPart(input)
+      })
+      try {
+        await exporter.flush()
+        await ScopeContext.provide({ scope: f.scope, workspace: null, fn: () => Session.updatePart(heldPart) })
+        await entered.promise
+        await ScopeContext.provide({
+          scope: f.scope,
+          workspace: null,
+          fn: () => Session.removePart({ sessionID: f.session.id, messageID: f.info.id, partID: f.part.id }),
+        })
+        await removal.promise
+        const partKey = ["sessions", f.scope.id, f.session.id, "messages", f.info.id, "parts", f.part.id]
+        expect((await Storage.readMany([partKey]))[0]).toBeUndefined()
+        const publications = remote.batches.length
+        if (mode === "abort") controller.abort(new Error("Original export connection closed"))
+        let closed = false
+        const closing = exporter.close().then(() => {
+          closed = true
+        })
+        await Promise.resolve()
+        expect(closed).toBe(false)
+        release.resolve()
+        await closing
+        expect(remote.batches.length).toBe(publications)
+        const draftID = createHash("sha256")
+          .update(JSON.stringify({ type: "part", sessionID: f.session.id, partID: f.part.id }))
+          .digest("hex")
+          .slice(0, 32)
+        const [draft, projection] = await Storage.readMany<{ event: Sync.Event }>([
+          Keys.draft(binding.orgID, f.session.id, draftID),
+          Keys.projection(binding.orgID, f.session.id, draftID),
+        ])
+        expect(draft?.event).toMatchObject({
+          type: "part",
+          sessionID: f.session.id,
+          messageID: f.info.id,
+          partID: f.part.id,
+          removed: true,
+        })
+        expect(projection?.event).toEqual(draft?.event)
+        const reopened = startMemberSyncExporter({
+          identity: { orgID: binding.orgID, accountID: binding.creatorID, deviceID: "device-sync" },
+          connection: remote.connection,
+          signal: new AbortController().signal,
+        })
+        try {
+          await reopened.flush()
+          const latest = remote.batches
+            .flatMap((batch) => batch.events)
+            .filter((event) => event.type === "part" && event.partID === f.part.id)
+            .at(-1)
+          expect(latest).toMatchObject({ partID: f.part.id, removed: true })
+          expect((await Storage.readMany([partKey]))[0]).toBeUndefined()
+        } finally {
+          await reopened.close()
+        }
+      } finally {
+        stopRemoval()
+        release.resolve()
+        await exporter.close()
+      }
+    })
+  },
+)
 
 test("an acknowledgement cannot erase a newer part update received during its flight", async () => {
   await using runtime = await testRuntime({ register: () => registerSessionSchema(binding) })

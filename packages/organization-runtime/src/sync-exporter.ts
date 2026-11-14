@@ -156,7 +156,6 @@ export function startMemberSyncExporter(input: {
     const next = previous
       .catch(() => {})
       .then(async () => {
-        if (closed || signal.aborted) return
         await work()
       })
       .catch(() => {})
@@ -553,7 +552,6 @@ export function startMemberSyncExporter(input: {
     queue(sessionID, async () => {
       try {
         while (pendingNative.get(sessionID)?.size) {
-          if (closed || signal.aborted) return
           const pending = pendingNative.get(sessionID)!
           const window: Array<[string, NativeChange]> = []
           for (const entry of pending) {
