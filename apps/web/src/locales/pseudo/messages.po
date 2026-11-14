@@ -15181,6 +15181,10 @@ msgid "organization.session.syncPending"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "organization.session.syncStorageFull"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "organization.session.task"
 msgstr ""
 

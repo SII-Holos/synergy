@@ -90,6 +90,10 @@ export const organizationSessionMessages = {
   lastSync: { id: "organization.session.lastSync", message: "Last synchronized {date}" },
   syncPending: { id: "organization.session.syncPending", message: "Waiting for synchronization" },
   syncFailed: { id: "organization.session.syncFailed", message: "Synchronization needs attention" },
+  syncStorageFull: {
+    id: "organization.session.syncStorageFull",
+    message: "Runtime storage is full. Free space on the runtime to resume synchronization.",
+  },
   historyUnavailable: {
     id: "organization.session.historyUnavailable",
     message: "This historical record contains metadata only. Full message content is not available.",

@@ -15181,6 +15181,10 @@ msgid "organization.session.syncPending"
 msgstr "Waiting for synchronization"
 
 #. js-lingui-explicit-id
+msgid "organization.session.syncStorageFull"
+msgstr "Runtime storage is full. Free space on the runtime to resume synchronization."
+
+#. js-lingui-explicit-id
 msgid "organization.session.task"
 msgstr "New task"
 

@@ -403,9 +403,11 @@ function OrganizationSessionPage(props: {
               <Show when={state.share?.shareState === "shared" && state.share?.syncState !== "synced"}>
                 <span>
                   {_(
-                    state.share?.syncState === "failed" || state.share?.syncState === "blocked"
-                      ? messages.syncFailed
-                      : messages.syncPending,
+                    state.share?.syncState === "blocked"
+                      ? messages.syncStorageFull
+                      : state.share?.syncState === "failed"
+                        ? messages.syncFailed
+                        : messages.syncPending,
                   )}
                 </span>
               </Show>

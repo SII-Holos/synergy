@@ -1883,3 +1883,109 @@ for (const width of [375, 1100])
       await page.close()
     }
   }, 45000)
+
+test.each([
+  ["shared", "blocked", "Runtime storage is full. Free space on the runtime to resume synchronization.", 375, "en"],
+  ["shared", "failed", "Synchronization needs attention", 1100, "en"],
+  ["shared", "pending", "Waiting for synchronization", 1100, "en"],
+  ["shared", "synced", undefined, 1100, "en"],
+  ["private", "blocked", undefined, 375, "en"],
+  ["shared", "blocked", "运行端存储空间不足。请释放空间以恢复同步。", 375, "zh-CN"],
+] as const)(
+  "the %s/%s synchronization state identifies local storage pressure without replacing other status labels",
+  async (shareState, syncState, expected, width, locale) => {
+    const variant = { shareState, syncState, expected, width, locale }
+    const page = await browser.newPage({ viewport: { width: variant.width, height: 760 }, locale })
+    let shareReads = 0
+    await page.exposeFunction("hostList", () => ({ ok: true, value: [entry] }))
+    await page.exposeFunction("hostRequest", (request: Desktop.Request) => {
+      const url = new URL(request.path, entry.issuer)
+      let body: unknown
+      if (url.pathname === "/org/v1/organization") body = { orgID: "org-a", name: "Research team", revision: 1 }
+      else if (url.pathname === "/org/v1/projects/project-a")
+        body = {
+          projectID: "project-a",
+          orgID: "org-a",
+          name: "Field notes",
+          description: "",
+          state: "active",
+          revision: 1,
+          createdAt: 1,
+          role: "reader",
+          permissions: { read: true, execute: false, manage: false },
+        }
+      else if (url.pathname === "/org/v1/sessions/session-a")
+        body = {
+          ...session,
+          shareState: variant.shareState,
+          title: "Storage state conversation",
+          permissions: { read: true, execute: false, stop: false },
+          runtime: {
+            runtimeID: "runtime-a",
+            runtimeKind: "member",
+            name: "Member runtime",
+            state: "online",
+            connectionEpoch: 1,
+          },
+        }
+      else if (url.pathname.endsWith("/share")) {
+        expect(request.method).toBe("GET")
+        shareReads++
+        body = {
+          sessionID: "session-a",
+          shareState: variant.shareState,
+          shareGeneration: 1,
+          bindingEpoch: 1,
+          nextSeq: 1,
+          syncState: variant.syncState,
+          updatedAt: 1,
+        }
+      } else if (url.pathname.endsWith("/sync/messages")) body = { shareGeneration: 1, watermark: 0, items: [] }
+      else if (url.pathname.endsWith("/sync/events")) body = { shareGeneration: 1, nextSeq: 1, items: [] }
+      else body = { items: [] }
+      return { ok: true, value: { status: 200, body: JSON.stringify(body) } }
+    })
+    try {
+      await page.goto(
+        new URL(
+          "/organization/org-a/account-a/deployment-a/projects/project-a/sessions/session-a?fixture=app",
+          server.url,
+        ).href,
+      )
+      await page.getByRole("heading", { name: "Storage state conversation", exact: true }).waitFor()
+      const status = page.locator(".organization-session-status")
+      await status
+        .getByText(
+          locale === "zh-CN"
+            ? "已分享给项目"
+            : variant.shareState === "shared"
+              ? "Shared with project"
+              : "Private conversation",
+          { exact: true },
+        )
+        .waitFor()
+      expect(shareReads).toBeGreaterThan(0)
+      for (const label of [
+        "Runtime storage is full. Free space on the runtime to resume synchronization.",
+        "运行端存储空间不足。请释放空间以恢复同步。",
+        "Synchronization needs attention",
+        "Waiting for synchronization",
+      ])
+        expect(await status.getByText(label, { exact: true }).count()).toBe(label === variant.expected ? 1 : 0)
+      expect(await status.getByText(/^Last synchronized /).count()).toBe(variant.syncState === "synced" ? 1 : 0)
+      const geometry = await status.evaluate((element) => ({
+        wrap: getComputedStyle(element).flexWrap,
+        content: element.scrollWidth,
+        width: element.clientWidth,
+        right: element.getBoundingClientRect().right,
+        viewport: innerWidth,
+      }))
+      expect(geometry.wrap).toBe("wrap")
+      expect(geometry.content).toBeLessThanOrEqual(geometry.width + 1)
+      expect(geometry.right).toBeLessThanOrEqual(geometry.viewport + 1)
+    } finally {
+      await page.close()
+    }
+  },
+  20_000,
+)

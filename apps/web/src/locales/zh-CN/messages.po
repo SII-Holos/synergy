@@ -15181,6 +15181,10 @@ msgid "organization.session.syncPending"
 msgstr "等待同步"
 
 #. js-lingui-explicit-id
+msgid "organization.session.syncStorageFull"
+msgstr "运行端存储空间不足。请释放空间以恢复同步。"
+
+#. js-lingui-explicit-id
 msgid "organization.session.task"
 msgstr "新建任务"
 
