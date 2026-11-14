@@ -477,11 +477,14 @@ export namespace SessionPartFieldSource {
           return current.data.revision !== String(revisions[index])
         })
       })
-      for (const key of pending) {
-        UpgradeWork.signal()?.throwIfAborted()
-        const record = await Storage.versioned(key)
-        await Storage.transaction((tx) => captureRecord(tx, key, record.value, record.revision))
-      }
+      if (pending.length)
+        await Storage.transaction(async (tx) => {
+          for (const key of pending) {
+            UpgradeWork.signal()?.throwIfAborted()
+            const record = await tx.versioned(key)
+            await captureRecord(tx, key, record.value, record.revision)
+          }
+        })
       count += canonical.length
       progress(count, 0)
       if (keys.length < 32) break
