@@ -87,6 +87,7 @@ function bindPhysicalExecutor(
   preparedSandbox: (input: ExecutionProtocol.SandboxInput, result: ExecutionProtocol.Sandbox) => Promise<void>,
   started: () => void,
   effect: (action: "cancel" | "release" | "preparation", id: string) => void,
+  beforeCancel: (id: string, digest: string) => Promise<void>,
 ) {
   const files = executor.files
   return {
@@ -134,6 +135,7 @@ function bindPhysicalExecutor(
     resize: physical.bind(executor.resize.bind(executor)),
     cancel: physical.bind(async (id: string, digest: string) => {
       effect("cancel", id)
+      await beforeCancel(id, digest)
       return executor.cancel(id, digest)
     }),
     release: physical.bind(async (id: string) => {
@@ -159,6 +161,8 @@ function controlledEnvironment(
     starts = 0
   type HeldSandbox = { operationID: string; target: Environment.Target; sandboxed: boolean }
   let sandboxGate: { enter(value: HeldSandbox): void; resume: Promise<void>; done(): void } | undefined
+  type HeldCancel = { id: string; digest: string; target: Environment.Target }
+  let cancelGate: { enter(value: HeldCancel): void; resume: Promise<void>; original?: HeldCancel } | undefined
   const location = (request: EnvironmentRequest) =>
     path.join(directory, createHash("sha256").update(request.environmentID).digest("hex"))
   const target = (request: EnvironmentRequest) =>
@@ -227,6 +231,21 @@ function controlledEnvironment(
           current[action]++
           effects.set(id, current)
         },
+        async (id, digest) => {
+          const gate = cancelGate
+          if (!gate) return
+          if (!gate.original) {
+            gate.original = { id, digest, target: selected }
+            gate.enter(gate.original)
+          }
+          if (
+            gate.original.id !== id ||
+            gate.original.digest !== digest ||
+            !Environment.sameTarget(gate.original.target, selected)
+          )
+            return
+          await gate.resume
+        },
       )
       executors.set(request.requestID, executor)
     }
@@ -290,6 +309,20 @@ function controlledEnvironment(
     allocations: () => allocations,
     nativeStarts: () => starts,
     nativeEffects: (id: string) => ({ ...(effects.get(id) ?? { cancel: 0, release: 0, preparation: 0 }) }),
+    holdCancelOnce() {
+      if (cancelGate) throw new Error("A native cancellation is already held")
+      const entered = Promise.withResolvers<HeldCancel>(),
+        released = Promise.withResolvers<void>()
+      const gate = { enter: entered.resolve, resume: released.promise }
+      cancelGate = gate
+      return {
+        entered: entered.promise,
+        release() {
+          if (cancelGate === gate) cancelGate = undefined
+          released.resolve()
+        },
+      }
+    },
     holdSandboxOnce() {
       if (sandboxGate) throw new Error("A native sandbox is already held")
       const entered = Promise.withResolvers<HeldSandbox>(),
@@ -342,7 +375,14 @@ function controlledEnvironment(
   }
 }
 
-export async function cloudExecutionFixture() {
+export async function cloudExecutionFixture(
+  settings: {
+    automatic?: true
+    modelEndpoint?: string
+    modelContext?: number
+    controlProfile?: "guarded" | "autonomous"
+  } = {},
+) {
   const resources = testResources()
   try {
     const directory = await fs.mkdtemp(path.join(process.env.SYNERGY_TEST_ROOT!, "cloud-execution-"))
@@ -375,8 +415,8 @@ export async function cloudExecutionFixture() {
       },
     })
     resources.defer("organization TLS service", () => service[Symbol.asyncDispose]())
-    const wake = spyOn(SessionManager, "scheduleWake").mockImplementation(() => {})
-    resources.defer("controlled native scheduling", () => wake.mockRestore())
+    const wake = settings.automatic ? undefined : spyOn(SessionManager, "scheduleWake").mockImplementation(() => {})
+    resources.defer("controlled native scheduling", () => wake?.mockRestore())
     const options = { headers: service.headers, throwOnError: true as const }
     const project = (
       await service.client.orgProjects.create({ orgProjectCreate: { name: "Remote execution" } }, options)
@@ -408,8 +448,12 @@ export async function cloudExecutionFixture() {
     }
     const model = await resource("Selected model", {
       protocol: "openai-compatible",
-      endpoint: "https://provider.example/v1",
-      model: Resource.Model.parse({ id: "controlled", name: "Controlled", limit: { context: 8192, output: 1024 } }),
+      endpoint: settings.modelEndpoint ?? "https://provider.example/v1",
+      model: Resource.Model.parse({
+        id: "controlled",
+        name: "Controlled",
+        limit: { context: settings.modelContext ?? 8192, output: 1024 },
+      }),
     })
     const storage = await resource("Selected shared files", { protocol: "workspace-storage", profile: "shared" })
     const compute = await resource("Selected execution host", { protocol: "environment", profile: "controlled" })
@@ -457,7 +501,12 @@ export async function cloudExecutionFixture() {
     const nativeOperations = new Map<string, () => Promise<EnvironmentExecution.Info>>()
     async function machine(
       deviceID: string,
-      configuration?: { handoff?: true; nativeDirectory?: string; hosted?: true },
+      configuration?: {
+        handoff?: true
+        nativeDirectory?: string
+        hosted?: true
+        inputHeaders?: Record<string, string>
+      },
     ) {
       const installed = await (async () => {
         if (configuration?.hosted) {
@@ -575,7 +624,7 @@ export async function cloudExecutionFixture() {
         inputHeaders?: Record<string, string>
         environment?: null
         workspace?: null
-        existing?: { sessionID: string; accepted: Command.InputAccepted }
+        existing?: { sessionID: string; accepted: Command.InputAccepted; queued?: true }
       }) {
         const sessionKey = ++sequence === 1 ? deviceID : `${deviceID}-${sequence}`
         const sessionID =
@@ -621,6 +670,16 @@ export async function cloudExecutionFixture() {
           )
         if (input?.inputHeaders && !input.existing)
           await service.client.orgSessions.share({ sessionID, orgShareChange: { expectedShareGeneration: 0 } }, options)
+        const profile = settings.controlProfile
+        if (!input?.existing && profile)
+          await runtime.run(async () => {
+            const session = await Session.get(sessionID)
+            await ScopeContext.provide({
+              scope: session.scope,
+              workspace: session.workspace,
+              fn: () => Session.updateControlProfile(sessionID, profile),
+            })
+          })
         let accepted =
           input?.existing?.accepted ??
           (
@@ -644,22 +703,44 @@ export async function cloudExecutionFixture() {
               { headers: input?.inputHeaders ?? service.headers, throwOnError: true },
             )
           ).data
-        let rootID: string | undefined = input?.existing?.accepted.effect.messageID
-        resources.defer("native accepted Run", () =>
-          runtime.run(async () => {
-            if (!rootID) return
-            if (await SessionTransferEpochs.isFrozen(sessionID)) return
+        let rootID: string | undefined = input?.existing?.queued
+          ? undefined
+          : input?.existing?.accepted.effect.messageID
+        let finalizedRootID: string | undefined
+        async function finalizeFixtureTask(mode: "cleanup" | "terminal" = "cleanup") {
+          const selectedRoot = rootID,
+            selectedRuntime = runtime
+          if (!selectedRoot || finalizedRootID === selectedRoot) return
+          await selectedRuntime.run(async () => {
+            const assert = () => {
+              if (rootID !== selectedRoot || runtime !== selectedRuntime)
+                throw new Error("The fixture task changed its original Runtime or Root during finalization")
+            }
+            assert()
+            if (await SessionTransferEpochs.isFrozen(sessionID)) {
+              if (mode === "terminal") throw new Error("A frozen fixture task must retain its original owner")
+              return
+            }
             if (configuration?.handoff) {
               const current = (await service.client.orgSessions.get({ sessionID }, options)).data
-              if (current.driverRuntimeID !== registration.runtimeID) return
+              if (current.driverRuntimeID !== registration.runtimeID) {
+                if (mode === "terminal") throw new Error("A surrendered fixture task has another current owner")
+                return
+              }
             }
             const session = await Session.get(sessionID)
             const owner = RolloutLifecycle.owner(session)
-            const run = await RolloutLedger.getRun(owner, rootID)
+            const run = await RolloutLedger.getRun(owner, selectedRoot)
+            assert()
+            if (mode === "terminal" && !["completed", "failed", "cancelled"].includes(run.status))
+              throw new Error("The fixture task requires its actual terminal Run before finalization")
             if (run.status === "running")
-              await RolloutLedger.finishRun(owner, rootID, run.recording === "failed" ? "failed" : "completed")
-          }),
-        )
+              await RolloutLedger.finishRun(owner, selectedRoot, run.recording === "failed" ? "failed" : "completed")
+            assert()
+            finalizedRootID = selectedRoot
+          })
+        }
+        resources.defer("native accepted Run", () => finalizeFixtureTask())
         async function inRun<T>(
           body: (
             session: Session.Info,
@@ -826,6 +907,7 @@ export async function cloudExecutionFixture() {
             rootID = undefined
             return next
           },
+          finalizeTerminalTask: () => finalizeFixtureTask("terminal"),
           close: () => runtime.close(),
           async reopen() {
             if (runtime.status !== "closed")
@@ -852,11 +934,16 @@ export async function cloudExecutionFixture() {
         }
       }
       return Object.assign(
-        await newSession(configuration?.nativeDirectory ? { workspace: null, environment: null } : undefined),
+        await newSession({
+          ...(configuration?.nativeDirectory ? { workspace: null, environment: null } : {}),
+          ...(configuration?.inputHeaders ? { inputHeaders: configuration.inputHeaders } : {}),
+        }),
         {
           sibling: newSession,
           attach: (sessionID: string, accepted: Command.InputAccepted) =>
             newSession({ existing: { sessionID, accepted } }),
+          attachQueued: (sessionID: string, accepted: Command.InputAccepted) =>
+            newSession({ existing: { sessionID, accepted, queued: true } }),
         },
       )
     }
@@ -866,8 +953,8 @@ export async function cloudExecutionFixture() {
       const identity = current.home.identity
       return { ...current, home: { ...current.home, identity } }
     }
-    async function hosted(hostID: string) {
-      const current = await machine(hostID, { hosted: true, handoff: true })
+    async function hosted(hostID: string, inputHeaders?: Record<string, string>) {
+      const current = await machine(hostID, { hosted: true, handoff: true, inputHeaders })
       if (!("hostID" in current.home.identity))
         throw new Error("The real Hosted Runtime has another installed identity")
       const identity = current.home.identity
@@ -890,6 +977,7 @@ export async function cloudExecutionFixture() {
       nativeStarts: controlled.nativeStarts,
       nativeEffects: controlled.nativeEffects,
       holdSandboxOnce: controlled.holdSandboxOnce,
+      holdCancelOnce: controlled.holdCancelOnce,
       preparation: controlled.preparation,
       async observation(id: string) {
         const original = nativeOperations.get(id)

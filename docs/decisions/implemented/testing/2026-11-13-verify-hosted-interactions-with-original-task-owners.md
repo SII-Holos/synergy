@@ -14,6 +14,8 @@ Shutdown and reopening have separate assertions. A metadata-only cold open retai
 
 The shared task-wait helper treats only the native missing-Run error as not-yet-materialized while accepted Inbox work schedules asynchronously. Its deadline and terminal/release checks remain unchanged; it never repeats input or swallows other Store errors.
 
+The native always-permission fixture completes real Hosted work in Project P and reuses its saved target rules for Project Q on that Runtime. A separately enrolled Home receives the same native prompt and stores no rules after rejection. It verifies the original failed callback and idle Runtime while retaining the partial Run and pending release when another model call is still required. Explicit fixture finalization accepts only a genuine terminal native Root before closing its Runtime.
+
 ## Alternatives considered
 
 **Mark interrupted private work cancelled to drain the fixture.** This changes product behavior and bypasses the original waiting task. The native owner requires genuine terminal and drainage evidence before release.

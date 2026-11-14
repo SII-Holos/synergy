@@ -1,7 +1,8 @@
 import { expect, spyOn, test } from "bun:test"
 import { z } from "zod"
 import { Environment } from "@ericsanchezok/synergy-harness/environment"
-import { EnvironmentExecutionSource } from "@ericsanchezok/synergy-harness/environment/execution-source"
+import { EnvironmentExecution } from "@ericsanchezok/synergy-harness/environment/execution"
+import { Session } from "@ericsanchezok/synergy-harness/session"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { AsyncLocalStorage } from "node:async_hooks"
 import { OrganizationCloudExecutionProtocol as CloudExecution } from "@ericsanchezok/synergy-organization-protocol"
@@ -215,6 +216,9 @@ test.skipIf(process.platform === "win32")(
         gate.mockRestore()
         service.interceptHTTP(undefined)
       }
+      const originalRuntime = machine.runtime
+      const physical = await f.physical(started.executionID)
+      const scopeID = await machine.runtime.run(async () => (await Session.get(accepted.sessionID)).scope.id)
       let retirements = 0,
         inspections = 0
       let retirementReply: { status: number; code?: string; message?: string; outcome?: string } | undefined
@@ -242,19 +246,33 @@ test.skipIf(process.platform === "win32")(
       try {
         let failure: unknown
         try {
-          await machine.runtime.run(() => EnvironmentExecutionSource.close())
+          await machine.close()
         } catch (error) {
           failure = error
         }
         expect(retirementReply, JSON.stringify(retirementReply)).toMatchObject({ status: 200 })
         expect(unknownOutcome(failure)).toBe(true)
-        const original = await f.physical(started.executionID)
+        expect(originalRuntime.status).toBe("closed")
+        const original = await service.service.maintenance.run(async () => ({
+          execution: await EnvironmentExecution.get(physical.execution.id, physical.execution.scopeID),
+          uses: await Environment.uses(physical.execution.target.environmentID),
+        }))
         expect(original.execution.state).toBe("completed")
         expect(original.uses.some((use) => use.kind === "operation" && use.ownership.kind === "execution")).toBe(false)
-        const before = inspections
-        await machine.runtime.run(() => EnvironmentExecutionSource.close())
+        const before = inspections,
+          effects = f.nativeEffects(physical.execution.id)
+        const reopened = await machine.reopen()
+        expect(reopened === originalRuntime).toBe(false)
+        const signal = AbortSignal.timeout(5000)
+        for (;;) {
+          signal.throwIfAborted()
+          if ((await reopened.run(() => EnvironmentExecution.get(started.executionID, scopeID))).state === "completed")
+            break
+          await Bun.sleep(10)
+        }
         expect(inspections).toBeGreaterThan(before)
         expect(retirements).toBe(1)
+        expect(f.nativeEffects(physical.execution.id)).toEqual(effects)
       } finally {
         service.interceptHTTP(undefined)
       }
