@@ -84,8 +84,11 @@ function partition(value: Pick<Capture, "rootSessionID" | "binding">) {
 function same(first: unknown, second: unknown) {
   return JSON.stringify(first) === JSON.stringify(second)
 }
+const EventPayload = z.object({ properties: z.unknown() })
+const RegisteredRoot = z.strictObject({ sessionID: NativeID })
+
 function properties(event: Parameters<StorageEventSinks.Sink["capture"]>[0]) {
-  return z.object({ properties: z.unknown() }).parse(event.payload).properties
+  return EventPayload.parse(event.payload).properties
 }
 function full(error: unknown) {
   const seen = new Set<object>()
@@ -423,7 +426,7 @@ export function registerNativeSyncSource(orgID: string) {
         continue
       }
       for await (const row of Storage.records<{ sessionID: string }>({ prefix: Keys.roots(orgID), limit: 128 })) {
-        const root = z.strictObject({ sessionID: NativeID }).parse(row.value)
+        const root = RegisteredRoot.parse(row.value)
         const actual = await binding(root.sessionID, orgID)
         if (key[1] && actual && actual.session.scope.id !== key[1]) continue
         if (await retainedNativeRoot(root.sessionID, orgID))
@@ -496,7 +499,7 @@ export function registerNativeSyncSource(orgID: string) {
       const key = Keys.registeredRoot(orgID, captured.rootSessionID)
       const [root] = await Storage.readMany([key])
       if (root === undefined) await Storage.write(key, { sessionID: captured.rootSessionID })
-      else if (z.strictObject({ sessionID: NativeID }).parse(root).sessionID !== captured.rootSessionID)
+      else if (RegisteredRoot.parse(root).sessionID !== captured.rootSessionID)
         throw new Error("Native shared root index changed its original identity")
       Storage.afterCommit(() => {
         for (const wake of sources().wake) wake(captured.rootSessionID)

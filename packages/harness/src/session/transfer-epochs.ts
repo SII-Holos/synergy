@@ -62,6 +62,13 @@ export namespace SessionTransferEpochs {
   const HandoffIndex = z.strictObject({ version: z.literal(1), fromEpoch: Epoch })
   const legacyKey = (sessionID: string) => ["session_transfer_epoch_legacy", sessionID]
   const Watermark = z.strictObject({ version: z.literal(1), scopeID: ID, epoch: Epoch })
+  const SessionIndex = z.object({ scopeID: ID })
+  const SessionParent = z.object({ id: ID, parentID: ID.optional() })
+  const SessionRoot = z.object({
+    id: ID,
+    paused: z.unknown().optional(),
+    time: z.object({ archived: z.number().optional() }),
+  })
   const stateKey = (binding: Pick<Binding, "sessionID" | "fromEpoch" | "handoffID">) => [
     "session_transfer_epochs",
     binding.sessionID,
@@ -136,22 +143,15 @@ export namespace SessionTransferEpochs {
       const intent = await optional(SourceIntent, sourceIntentKey(sessionID))
       if (intent && (await existing(intent.binding)).phase === "draining") return true
     }
-    const index = await optional(z.object({ scopeID: ID }), ["session_index", sessionID])
+    const index = await optional(SessionIndex, ["session_index", sessionID])
     if (index) {
-      const info = await optional(z.object({ id: ID, parentID: ID.optional() }), [
-        "sessions",
-        index.scopeID,
-        sessionID,
-        "info",
-      ])
+      const info = await optional(SessionParent, ["sessions", index.scopeID, sessionID, "info"])
       if (info?.id === sessionID && info.parentID && (await frozen(info.parentID, visited, ignoreAdmissionHolds)))
         return true
     }
     if (current?.rootSessionID && !ignoreAdmissionHolds) {
       const [root] = await Storage.readMany<unknown>([["sessions", current.scopeID, current.rootSessionID, "info"]])
-      const info = z
-        .object({ id: ID, paused: z.unknown().optional(), time: z.object({ archived: z.number().optional() }) })
-        .safeParse(root)
+      const info = SessionRoot.safeParse(root)
       if (
         !info.success ||
         info.data.id !== current.rootSessionID ||

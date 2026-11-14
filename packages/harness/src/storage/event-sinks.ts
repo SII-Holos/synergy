@@ -5,12 +5,15 @@ import { StorageIntegrityError } from "./errors"
 import type { StoredEvent, StoreTransaction, TransactionalStore } from "./transactional-store"
 
 export namespace StorageEventSinks {
+  const Partition = z.string().min(1).max(256)
+  const FlushLimit = z.number().int().min(1).max(1024)
+  const SinkID = z.string().regex(/^[a-zA-Z0-9._-]{1,128}$/)
   const DeliverySchema = z
     .object({
       version: z.literal(1),
       sinkID: z.string().min(1),
       eventID: z.string().min(1),
-      partition: z.string().min(1).max(256),
+      partition: Partition,
       sequence: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
       payload: z.unknown(),
     })
@@ -49,7 +52,7 @@ export namespace StorageEventSinks {
     for (const sink of state().sinks.values()) {
       const selected = await sink.capture(structuredClone(event))
       if (selected === undefined) continue
-      const partition = z.string().min(1).max(256).parse(selected.partition)
+      const partition = Partition.parse(selected.partition)
       const meta = ["event_delivery_meta", sink.id, partition]
       const [previous] = await tx.readMany<{ sequence: number }>([meta])
       const sequence = (previous?.sequence ?? 0) + 1
@@ -74,20 +77,9 @@ export namespace StorageEventSinks {
     options: { limit?: number; sinkID?: string; partition?: string } = {},
   ): Promise<{ delivered: number }> {
     if (Storage.inTransaction()) throw new Error("Flush storage event sinks outside a transaction")
-    const limit = z
-      .number()
-      .int()
-      .min(1)
-      .max(1024)
-      .parse(options.limit ?? 128)
-    const sinkID =
-      options.sinkID === undefined
-        ? undefined
-        : z
-            .string()
-            .regex(/^[a-zA-Z0-9._-]{1,128}$/)
-            .parse(options.sinkID)
-    const partition = options.partition === undefined ? undefined : z.string().min(1).max(256).parse(options.partition)
+    const limit = FlushLimit.parse(options.limit ?? 128)
+    const sinkID = options.sinkID === undefined ? undefined : SinkID.parse(options.sinkID)
+    const partition = options.partition === undefined ? undefined : Partition.parse(options.partition)
     if (partition !== undefined && sinkID === undefined)
       throw new Error("A delivery partition requires its sink identity")
     const prefix =

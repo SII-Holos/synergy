@@ -43,6 +43,9 @@ import path from "node:path"
 import { Database } from "bun:sqlite"
 
 export namespace SessionTransferCore {
+  const StoredInfoSelector = z.strictObject({ scopeID: z.string().min(1), sessionID: z.string().min(1) })
+  const StoredInfoRecord = z.record(z.string(), z.unknown())
+  const StoredInfoScope = z.object({ scopeID: z.string().min(1) })
   const Mapping = z.object({
     workspaceIDs: z.record(z.string(), z.string()).default({}),
     environmentID: z.string().nullable().default(null),
@@ -175,7 +178,7 @@ export namespace SessionTransferCore {
   }
 
   function decodeInfo(value: unknown) {
-    const raw = z.record(z.string(), z.unknown()).parse(value)
+    const raw = StoredInfoRecord.parse(value)
     const info = Session.PersistedInfo.parse({ ...raw, workspace: null })
     return { raw, info }
   }
@@ -196,16 +199,14 @@ export namespace SessionTransferCore {
     complete: true,
   ): Promise<ReturnType<typeof decodeInfo> | undefined>
   async function readStoredInfo(input: { scopeID: string; sessionID: string }, complete: boolean) {
-    const { scopeID, sessionID } = z
-      .strictObject({ scopeID: z.string().min(1), sessionID: z.string().min(1) })
-      .parse(input)
+    const { scopeID, sessionID } = StoredInfoSelector.parse(input)
     return Storage.snapshot(async () => {
       const [indexValue, value] = await Storage.readMany([
         StoragePath.sessionIndex(Identifier.asSessionID(sessionID)),
         StoragePath.sessionInfo(Identifier.asScopeID(scopeID), Identifier.asSessionID(sessionID)),
       ])
       if (complete && indexValue !== undefined) {
-        const selected = z.object({ scopeID: z.string().min(1) }).parse(indexValue)
+        const selected = StoredInfoScope.parse(indexValue)
         if (selected.scopeID !== scopeID) fail("Stored Session metadata index changed its actual Scope")
       }
       if (indexValue === undefined || value === undefined) {
@@ -213,7 +214,7 @@ export namespace SessionTransferCore {
         fail("Stored Session metadata or index is absent")
       }
       const { raw, info } = decodeInfo(value)
-      const index = z.record(z.string(), z.unknown()).parse(indexValue)
+      const index = StoredInfoRecord.parse(indexValue)
       if (
         info.id !== sessionID ||
         info.scope.id !== scopeID ||

@@ -1810,20 +1810,27 @@ export namespace MessageV2 {
     if (timeA !== timeB) return timeA < timeB ? -1 : 1
     return a.slice(17).localeCompare(b.slice(17))
   }
-  const MESSAGE_ORDER_REBUILD_CONCURRENCY = 32
+  const MESSAGE_ORDER_REBUILD_BATCH = 128
 
   async function writeMessageOrderMarkers(
     scopeID: Identifier.ScopeID,
     sessionID: Identifier.SessionID,
     markers: string[],
   ) {
-    for (let index = 0; index < markers.length; index += MESSAGE_ORDER_REBUILD_CONCURRENCY) {
-      await Promise.all(
-        markers
-          .slice(index, index + MESSAGE_ORDER_REBUILD_CONCURRENCY)
-          .map((marker) => Storage.write(StoragePath.sessionMessageOrderMarker(scopeID, sessionID, marker), {})),
-      )
+    let entries: Array<{ key: string[]; value: unknown }> = []
+    const selected = new Set<string>()
+    async function flush() {
+      if (!entries.length) return
+      await Storage.transaction((tx) => tx.writeMany(entries))
+      entries = []
+      selected.clear()
     }
+    for (const marker of markers) {
+      if (entries.length >= MESSAGE_ORDER_REBUILD_BATCH || selected.has(marker)) await flush()
+      entries.push({ key: StoragePath.sessionMessageOrderMarker(scopeID, sessionID, marker), value: {} })
+      selected.add(marker)
+    }
+    await flush()
   }
 
   function transactionMessageOrders() {

@@ -8,6 +8,8 @@ import { SessionPartCommit } from "../../src/session/part-commit"
 import { Storage } from "../../src/storage/storage"
 import { StoragePath } from "../../src/storage/path"
 import { StorageEventSinks } from "../../src/storage/event-sinks"
+import { StorageMutationGuard } from "../../src/storage/mutation-guard"
+import type { SqlQueryOptions, SqlRow, SqlValue } from "../../src/storage/sql-contract"
 import { testRuntime } from "../support/runtime"
 
 function user(sessionID: string, created: number, id = Identifier.ascending("message")): MessageV2.User {
@@ -366,6 +368,174 @@ test("incremental native message ordering preserves tied timestamps, earlier ins
           messages[2]!.id,
           messages[0]!.id,
         ])
+      },
+    }),
+  )
+})
+
+for (const count of [129, 5_000])
+  test(`cold message order rebuild batches original marker SQL for ${count} legacy headers`, async () => {
+    let selected: { state: string[]; markerKeys: Set<string> } | undefined
+    let guarded: string[] = []
+    let stagingValid = true
+    await using runtime = await testRuntime({
+      register() {
+        StorageMutationGuard.register("cold-order-staging", async (tx, keys) => {
+          if (!selected) return
+          const markers = keys.filter((key) => selected!.markerKeys.has(JSON.stringify(key)))
+          if (!markers.length) return
+          guarded.push(...markers.map((key) => JSON.stringify(key)))
+          const [current] = await tx.readMany<{ ready: boolean }>([selected.state])
+          stagingValid &&= current?.ready === false
+        })
+      },
+    })
+    await runtime.run(() =>
+      ScopeContext.provide({
+        scope: Scope.home(),
+        workspace: null,
+        fn: async () => {
+          const session = await Session.create({ workspace: null, environmentID: null })
+          const original = owner(session)
+          const messages = Array.from({ length: count }, (_, index) => user(session.id, count - index))
+          const infoKeys = messages.map((message) =>
+            StoragePath.messageInfo(original.scopeID, original.sessionID, Identifier.asMessageID(message.id)),
+          )
+          await Storage.transaction(async (tx) => {
+            for (let offset = 0; offset < messages.length; offset += 128)
+              await tx.writeMany(
+                messages.slice(offset, offset + 128).map((value, index) => ({ key: infoKeys[offset + index], value })),
+              )
+          })
+          const revisions = await Storage.revisions(infoKeys)
+          const markers = messages.map((message) =>
+            StoragePath.sessionMessageOrderMarker(
+              original.scopeID,
+              original.sessionID,
+              MessageV2.messageOrderMarker(message),
+            ),
+          )
+          const state = StoragePath.sessionMessageOrderState(original.scopeID, original.sessionID)
+          const stale = StoragePath.sessionMessageOrderMarker(
+            original.scopeID,
+            original.sessionID,
+            "old-incomplete-marker",
+          )
+          await Storage.write(stale, {})
+          await Storage.write(state, { version: 1, ready: false, count: 1 })
+          selected = { state, markerKeys: new Set(markers.map((key) => JSON.stringify(key))) }
+          let markerSQL = 0
+          let observed: MessageV2.Info[] = []
+          await Storage.transaction(async (tx) => {
+            const raw = tx.raw
+            const query = raw.query
+            raw.query = <Row extends SqlRow>(statement: string, values?: SqlValue[], options?: SqlQueryOptions) => {
+              if (
+                statement.startsWith("INSERT INTO storage_records") &&
+                values?.some((value) => typeof value === "string" && selected!.markerKeys.has(value))
+              )
+                markerSQL++
+              return query<Row>(statement, values, options)
+            }
+            try {
+              observed = await newest(session)
+            } finally {
+              raw.query = query
+            }
+          })
+          selected = undefined
+          expect(markerSQL).toBeGreaterThan(0)
+          expect(markerSQL).toBeLessThanOrEqual(Math.ceil(count / 64))
+          expect(guarded.length).toBe(count)
+          expect(new Set(guarded)).toEqual(new Set(markers.map((key) => JSON.stringify(key))))
+          expect(stagingValid).toBe(true)
+          expect(observed.map((message) => message.id)).toEqual(messages.map((message) => message.id))
+          expect(
+            await Storage.scan(StoragePath.sessionMessageOrderMarkersRoot(original.scopeID, original.sessionID)),
+          ).toEqual(markers.map((key) => key.at(-1)!).sort())
+          expect(await Storage.readMany([state])).toEqual([{ version: 1, ready: true, count }])
+          expect(await Storage.revisions(infoKeys)).toEqual(revisions)
+          expect(await Storage.readMany(infoKeys)).toEqual(messages)
+        },
+      }),
+    )
+  }, 60_000)
+
+test("a rejected cold marker page rolls back its original index and duplicate legacy markers do not acquire a new rejection", async () => {
+  const rejected = new Error("Original cold marker publication rejected")
+  let failingKey: string | undefined
+  await using runtime = await testRuntime({
+    register() {
+      StorageMutationGuard.register("cold-order-failure", async (_tx, keys) => {
+        if (failingKey && keys.some((key) => JSON.stringify(key) === failingKey)) throw rejected
+      })
+    },
+  })
+  await runtime.run(() =>
+    ScopeContext.provide({
+      scope: Scope.home(),
+      workspace: null,
+      fn: async () => {
+        const session = await Session.create({ workspace: null, environmentID: null })
+        const original = owner(session)
+        const messages = Array.from({ length: 129 }, (_, index) => user(session.id, index + 1))
+        const infoKeys = messages.map((message) =>
+          StoragePath.messageInfo(original.scopeID, original.sessionID, Identifier.asMessageID(message.id)),
+        )
+        await Storage.transaction((tx) =>
+          tx.writeMany(messages.map((value, index) => ({ key: infoKeys[index], value }))),
+        )
+        const state = StoragePath.sessionMessageOrderState(original.scopeID, original.sessionID)
+        const root = StoragePath.sessionMessageOrderMarkersRoot(original.scopeID, original.sessionID)
+        const stale = StoragePath.sessionMessageOrderMarker(
+          original.scopeID,
+          original.sessionID,
+          "old-incomplete-marker",
+        )
+        await Storage.write(stale, {})
+        await Storage.write(state, { version: 1, ready: false, count: 1 })
+        const revisions = await Storage.revisions(infoKeys)
+        failingKey = JSON.stringify(
+          StoragePath.sessionMessageOrderMarker(
+            original.scopeID,
+            original.sessionID,
+            MessageV2.messageOrderMarker(messages[100]),
+          ),
+        )
+        const outcome = await newest(session).then(
+          () => ({ kind: "resolved" as const }),
+          (error: unknown) => ({ kind: "rejected" as const, error }),
+        )
+        expect(outcome.kind).toBe("rejected")
+        if (outcome.kind === "rejected") expect(outcome.error).toBe(rejected)
+        failingKey = undefined
+        expect(await Storage.scan(root)).toEqual(["old-incomplete-marker"])
+        expect(await Storage.readMany([state])).toEqual([{ version: 1, ready: false, count: 1 }])
+        expect(await Storage.revisions(infoKeys)).toEqual(revisions)
+        expect((await newest(session)).map((message) => message.id)).toEqual(
+          messages.toReversed().map((message) => message.id),
+        )
+        const legacy = await Session.create({ workspace: null, environmentID: null })
+        const legacyOwner = owner(legacy)
+        const repeated = user(legacy.id, 1)
+        const alias = Identifier.ascending("message")
+        await Storage.transaction((tx) =>
+          tx.writeMany([
+            {
+              key: StoragePath.messageInfo(
+                legacyOwner.scopeID,
+                legacyOwner.sessionID,
+                Identifier.asMessageID(repeated.id),
+              ),
+              value: repeated,
+            },
+            { key: StoragePath.messageInfo(legacyOwner.scopeID, legacyOwner.sessionID, alias), value: repeated },
+          ]),
+        )
+        expect((await newest(legacy)).map((message) => message.id)).toEqual([repeated.id, repeated.id])
+        expect(
+          await Storage.readMany([StoragePath.sessionMessageOrderState(legacyOwner.scopeID, legacyOwner.sessionID)]),
+        ).toEqual([{ version: 1, ready: true, count: 2 }])
       },
     }),
   )

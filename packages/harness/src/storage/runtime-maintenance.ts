@@ -21,6 +21,7 @@ import type { VaultKeyProvider } from "../secrets/encrypted-store"
 const ID = z.string().min(1).max(128)
 const Count = z.number().int().nonnegative().safe()
 const Hash = z.string().regex(/^[a-f0-9]{64}$/)
+const CurrentPointer = z.strictObject({ maintenanceID: ID })
 const root = ["runtime_maintenance"]
 const currentKey = [...root, "current"]
 const operationKey = (id: string) => [...root, "operations", id]
@@ -193,7 +194,7 @@ export namespace RuntimeMaintenance {
     return value === undefined ? undefined : schema.parse(value)
   }
   async function current(tx: StoreTransaction) {
-    const pointer = await read(tx, z.strictObject({ maintenanceID: ID }), currentKey)
+    const pointer = await read(tx, CurrentPointer, currentKey)
     if (!pointer) {
       if ((await tx.queryKeys({ prefix: root, limit: 1 })).length)
         throw new Blocked({ message: "Maintenance history has no current operation pointer" })

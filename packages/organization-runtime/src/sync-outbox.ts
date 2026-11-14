@@ -143,6 +143,8 @@ export interface WriteOwner {
   afterFailure?(originalError: unknown): undefined
 }
 
+const StoredSessionIndex = z.object({ scopeID: z.string().min(1) })
+
 async function storedSession(sessionID: string, scopeID: string | undefined, incomplete: boolean) {
   if (incomplete && scopeID !== undefined) {
     const present = await Core.storedInfoIfComplete({ scopeID, sessionID })
@@ -159,7 +161,7 @@ async function storedSession(sessionID: string, scopeID: string | undefined, inc
     }
     return
   }
-  const selected = z.object({ scopeID: z.string().min(1) }).parse(index)
+  const selected = StoredSessionIndex.parse(index)
   if (scopeID !== undefined && scopeID !== selected.scopeID)
     throw new Error("Native shared binding index changed its actual Scope")
   if (incomplete) {
