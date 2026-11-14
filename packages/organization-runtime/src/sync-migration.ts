@@ -1,4 +1,7 @@
 import { z } from "zod"
+import { isDeepStrictEqual } from "node:util"
+import { Session } from "@ericsanchezok/synergy-harness/session"
+import { RolloutArtifact } from "@ericsanchezok/synergy-harness/session/rollout/artifact"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { MigrationRegistry } from "@ericsanchezok/synergy-harness/migration/registry"
 import type { Migration } from "@ericsanchezok/synergy-harness/migration/types"
@@ -26,6 +29,39 @@ const migrations: Migration[] = [
           const draft = Sequence.parse(row.value)
           await Storage.write(Keys.orderedDraft(orgID, sessionID, draft.localSequence), { draftID: draft.draftID })
         }
+        progress(++count, count + 1)
+      }
+      progress(count + 1, count + 1)
+    },
+  },
+  {
+    id: "20261114-organization-sync-attachment-content",
+    description: "Retain exact original attachment content references for immutable sync batches",
+    scope: "global",
+    execution: "startup",
+    async up(progress) {
+      const { AttachmentRecord, retainAttachmentContent } = await import("./sync-projection")
+      let count = 0
+      for await (const row of Storage.records<unknown>({ prefix: ["organization-sync"], limit: 128 })) {
+        if (row.key.length !== 6 || row.key[2] !== "sessions" || row.key[4] !== "attachments") continue
+        const value = AttachmentRecord.parse(row.value)
+        const orgID = row.key[1]!
+        if (!isDeepStrictEqual(row.key, Keys.attachment(orgID, value.sessionID, value.attachmentID)))
+          throw new Error("Legacy attachment alias changed its original key")
+        if (value.artifact.status !== "complete" || !value.artifact.sha256) continue
+        const session = await Session.get(value.sessionID)
+        if (session.scope.id !== value.scopeID || session.organization?.orgID !== orgID)
+          throw new Error("Legacy attachment alias changed its original native owner")
+        const owner = { kind: "session", scopeID: value.scopeID, sessionID: value.sessionID } as const
+        const actual = await RolloutArtifact.get(owner, value.artifact.id)
+        if (!isDeepStrictEqual(actual, value.artifact))
+          throw new Error("Legacy attachment content lacks its original native reference")
+        let bytes = 0
+        for await (const chunk of RolloutArtifact.read(owner, actual)) bytes += chunk.byteLength
+        if (bytes !== actual.bytes) throw new Error("Legacy attachment content has an incomplete original body")
+        await retainAttachmentContent(orgID, value, async (key, retained) => {
+          await Storage.write(key, retained)
+        })
         progress(++count, count + 1)
       }
       progress(count + 1, count + 1)

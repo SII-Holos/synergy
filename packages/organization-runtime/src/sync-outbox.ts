@@ -1,0 +1,246 @@
+import { z } from "zod"
+import {
+  OrganizationIdentity as Identity,
+  OrganizationProtocol as Protocol,
+  OrganizationSyncProtocol as Sync,
+} from "@ericsanchezok/synergy-organization-protocol"
+import { SessionTransferCore as Core } from "@ericsanchezok/synergy-harness/session/transfer"
+import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
+import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
+import { Session } from "@ericsanchezok/synergy-harness/session"
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { OrganizationSyncPath as Keys } from "./storage/path"
+
+function read<T>(schema: z.ZodType<T>, key: string[]) {
+  return Storage.readMany<unknown>([key]).then(([value]) => (value === undefined ? undefined : schema.parse(value)))
+}
+
+export const State = z.strictObject({
+  schemaVersion: z.literal(1),
+  orgID: Identity.ID,
+  sessionID: Identity.ID,
+  nextDraft: Identity.Revision,
+  shareGeneration: Identity.Revision.optional(),
+  projectionVersion: z.literal(2).optional(),
+  syncState: Sync.SyncState,
+  updatedAt: z.number().int().nonnegative(),
+})
+export type State = z.infer<typeof State>
+
+export const Draft = z.strictObject({
+  schemaVersion: z.literal(1),
+  draftID: Identity.ID,
+  sessionID: Identity.ID,
+  localSequence: Identity.Revision,
+  event: Sync.Event,
+  queuedAt: z.number().int().nonnegative(),
+  bytes: z.number().int().nonnegative(),
+})
+export type Draft = z.infer<typeof Draft>
+
+export const ProjectionRecord = z.strictObject({
+  schemaVersion: z.literal(1),
+  draftID: Identity.ID,
+  localSequence: Identity.Revision,
+  event: Sync.Event,
+})
+export type ProjectionRecord = z.infer<typeof ProjectionRecord>
+
+export const Batch = z.strictObject({
+  schemaVersion: z.literal(1),
+  sessionID: Identity.ID,
+  bindingEpoch: Protocol.Epoch,
+  shareGeneration: Identity.Revision,
+  firstSeq: Sync.Sequence,
+  lastSeq: Sync.Sequence,
+  payloadHash: Protocol.Digest,
+  draftIDs: z.array(Identity.ID).min(1).max(256),
+  draftHashes: z.array(Protocol.Digest).min(1).max(256).optional(),
+  events: z.array(Sync.Event).min(1).max(256),
+})
+export type Batch = z.infer<typeof Batch>
+
+export type DraftInput = { draftID: string; event: Sync.Event }
+export type Bound = NonNullable<Awaited<ReturnType<typeof binding>>>
+export interface WriteOwner {
+  check(): Promise<void>
+  assertCurrent(): void
+  afterFailure?(originalError: unknown): undefined
+}
+
+async function storedSession(sessionID: string, scopeID: string | undefined, incomplete: boolean) {
+  const indexKey = StoragePath.sessionIndex(Identifier.asSessionID(sessionID))
+  const [index] = await Storage.readMany([indexKey])
+  if (index === undefined) {
+    if (scopeID && !incomplete) {
+      const [value] = await Storage.readMany([
+        StoragePath.sessionInfo(Identifier.asScopeID(scopeID), Identifier.asSessionID(sessionID)),
+      ])
+      if (value !== undefined) await Core.storedInfo({ scopeID, sessionID })
+    }
+    return
+  }
+  const selected = z.object({ scopeID: z.string().min(1) }).parse(index)
+  if (scopeID !== undefined && scopeID !== selected.scopeID)
+    throw new Error("Native shared binding index changed its actual Scope")
+  if (incomplete) {
+    const [value] = await Storage.readMany([
+      StoragePath.sessionInfo(Identifier.asScopeID(selected.scopeID), Identifier.asSessionID(sessionID)),
+    ])
+    if (value === undefined) return
+  }
+  const { raw } = await Core.storedInfo({ scopeID: selected.scopeID, sessionID })
+  return Session.Info.parse({ ...raw, workspace: null })
+}
+
+export function binding(sessionID: string, orgID: string, scopeID?: string) {
+  return Storage.snapshot(() => resolveBinding(sessionID, orgID, scopeID, false))
+}
+
+/** Before a native creation pair exists, diagnostics have no committed owner to attribute. */
+export function mutationBinding(sessionID: string, orgID: string, scopeID?: string) {
+  return Storage.snapshot(() => resolveBinding(sessionID, orgID, scopeID, true))
+}
+
+async function resolveBinding(sessionID: string, orgID: string, scopeID: string | undefined, incomplete: boolean) {
+  const initial = await storedSession(sessionID, scopeID, incomplete)
+  if (!initial) return
+  const chain: Session.Info[] = []
+  const visited = new Set<string>()
+  let current = initial
+  while (true) {
+    if (!visited.add(current.id)) return
+    chain.push(current)
+    if (!current.parentID) break
+    if (!current.cortex || current.cortex.parentSessionID !== current.parentID) return
+    const parent = await storedSession(current.parentID, current.scope.id, false)
+    if (!parent) return
+    current = parent
+  }
+  const root = chain.at(-1)!
+  const binding = root.organization
+  if (
+    !binding ||
+    binding.orgID !== orgID ||
+    binding.projectID !== root.scope.id ||
+    chain.some(
+      (entry) =>
+        entry.organization?.orgID !== binding.orgID ||
+        entry.organization?.projectID !== binding.projectID ||
+        entry.organization?.creatorID !== binding.creatorID ||
+        entry.organization?.driverRuntimeID !== binding.driverRuntimeID ||
+        entry.organization?.bindingEpoch !== binding.bindingEpoch ||
+        entry.scope.id !== binding.projectID,
+    )
+  )
+    return
+  return {
+    session: initial,
+    root,
+    binding,
+    rootSessionID: root.id,
+    parentSessionID: initial.parentID,
+  }
+}
+
+function sameDraft(value: Draft | ProjectionRecord | undefined, rootSessionID: string, input: DraftInput) {
+  return (
+    value !== undefined &&
+    value.draftID === input.draftID &&
+    (!("sessionID" in value) ||
+      (value.sessionID === rootSessionID && value.bytes === Buffer.byteLength(JSON.stringify(input.event)))) &&
+    JSON.stringify(value.event) === JSON.stringify(input.event)
+  )
+}
+
+export async function putDrafts(bound: Bound, inputs: readonly DraftInput[], owner: WriteOwner) {
+  const rootSessionID = bound.rootSessionID
+  const identity = { orgID: bound.binding.orgID }
+  if (!inputs.length) return
+  for (let offset = 0; offset < inputs.length; offset += 128) {
+    const window = inputs.slice(offset, offset + 128)
+    await owner.check()
+    const drafts = await Storage.readMany<unknown>(
+      window.map((entry) => Keys.draft(identity.orgID, rootSessionID, entry.draftID)),
+    )
+    const projections = await Storage.readMany<unknown>(
+      window.map((entry) => Keys.projection(identity.orgID, rootSessionID, entry.draftID)),
+    )
+    const changed = window.some(
+      (entry, index) =>
+        !sameDraft(
+          drafts[index] === undefined
+            ? projections[index] === undefined
+              ? undefined
+              : ProjectionRecord.parse(projections[index])
+            : Draft.parse(drafts[index]),
+          rootSessionID,
+          entry,
+        ),
+    )
+    if (!changed) {
+      await owner.check()
+      continue
+    }
+    await Storage.transaction(
+      async () => {
+        if (owner.afterFailure) Storage.afterFailure(owner.afterFailure)
+        await owner.check()
+        const current = await read(State, Keys.state(identity.orgID, rootSessionID))
+        let nextDraft = current?.nextDraft ?? 1
+        let written = false
+        for (const input of window) {
+          const draftKey = Keys.draft(identity.orgID, rootSessionID, input.draftID)
+          const previous = await read(Draft, draftKey)
+          const retained =
+            previous ?? (await read(ProjectionRecord, Keys.projection(identity.orgID, rootSessionID, input.draftID)))
+          if (sameDraft(retained, rootSessionID, input)) continue
+          const localSequence = retained?.localSequence ?? nextDraft
+          nextDraft = Math.max(nextDraft, localSequence + 1)
+          const event = Sync.Event.parse({ ...input.event, sequence: 1 })
+          await Storage.write(
+            draftKey,
+            Draft.parse({
+              schemaVersion: 1,
+              draftID: input.draftID,
+              sessionID: rootSessionID,
+              localSequence,
+              event,
+              queuedAt: previous?.queuedAt ?? Date.now(),
+              bytes: Buffer.byteLength(JSON.stringify(event)),
+            }),
+          )
+          await Storage.write(
+            Keys.projection(identity.orgID, rootSessionID, input.draftID),
+            ProjectionRecord.parse({
+              schemaVersion: 1,
+              draftID: input.draftID,
+              localSequence,
+              event,
+            }),
+          )
+          await Storage.write(Keys.orderedDraft(identity.orgID, rootSessionID, localSequence), {
+            draftID: input.draftID,
+          })
+          written = true
+        }
+        if (!written) return
+        await Storage.write(
+          Keys.state(identity.orgID, rootSessionID),
+          State.parse({
+            schemaVersion: 1,
+            orgID: identity.orgID,
+            sessionID: rootSessionID,
+            nextDraft,
+            shareGeneration: current?.shareGeneration,
+            projectionVersion: current?.projectionVersion,
+            syncState: current?.syncState === "failed" ? "pending" : (current?.syncState ?? "pending"),
+            updatedAt: Date.now(),
+          }),
+        )
+        await Storage.write(Keys.registeredRoot(identity.orgID, rootSessionID), { sessionID: rootSessionID })
+      },
+      { commitGuard: owner.assertCurrent },
+    )
+  }
+}

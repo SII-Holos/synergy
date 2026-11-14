@@ -637,7 +637,7 @@ export namespace OrganizationSessionTransfer {
           handoffID: context.handoffID,
         })
         await drainMemberFiles(binding, context.signal)
-        if (context.session.id === context.rootSessionID) await drainMemberSync(context.session.id)
+        if (context.session.id === context.rootSessionID) await drainMemberSync(context.session.id, binding)
         await Storage.snapshot(async () => {
           const binding = current(context.session)
           const [state] = await Storage.readMany([Keys.state(binding.orgID, context.session.id)])

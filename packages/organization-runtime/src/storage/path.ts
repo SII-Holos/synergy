@@ -64,6 +64,13 @@ export namespace OrganizationSyncPath {
     ...attachments(orgID, sessionID),
     attachmentID,
   ]
+  export const attachmentContent = (
+    orgID: string,
+    sessionID: string,
+    attachmentID: string,
+    hash: string,
+    bytes: number,
+  ) => [...attachment(orgID, sessionID, attachmentID), "content", hash, String(bytes)]
   export const blobs = (orgID: string, sessionID: string) => [...root(orgID, sessionID), "blobs"]
   export const blob = (orgID: string, sessionID: string, blobID: string) => [...blobs(orgID, sessionID), blobID]
   export const batch = (orgID: string, sessionID: string) => [...root(orgID, sessionID), "batch"]
