@@ -52,7 +52,7 @@ async function executeLocalBash(
   context: Parameters<typeof LocalBashBackend.execute>[1],
 ) {
   const session = await Session.create({})
-  return withToolRun({ session, tool: "bash", args: params }, (identity) =>
+  return withToolRun({ session, tool: "bash", args: { ...params } }, (identity) =>
     LocalBashBackend.execute(params, { ...context, ...identity }),
   )
 }

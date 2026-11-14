@@ -35,6 +35,7 @@ For authoritative machine observations, trace every writer into the ledger, incl
    For routes mounted in Server, a custom HTTP 503 schema must union its domain errors with the public Server `RuntimeShuttingDownError`; the assembler only adds shutdown metadata when 503 is absent. Verify the mounted operation retains both variants, including when an optional owner supplies its route.
 
    For credential-bearing routes, replace validator response hooks that echo submitted data with the owning structured error. Exercise malformed bodies containing secret-like values and confirm neither responses nor logs reproduce them. Declare required request bodies in mounted OpenAPI metadata and test the generated caller; runtime validation alone does not make the SDK argument required.
+
 3. Keep business logic in the owning domain rather than the route handler. For binary media, document the supported MIME types, preserve structured error reasons and propagate the request abort signal. Test the generated SDK blob path as well as the mounted route; request previews must use saved owner configuration without creating task sessions.
 
    Native attachment reads require canonical producer evidence for the exact current message/part version. Never capture a global asset hash on demand to establish read authority. Verify owner/reference mismatches, unavailable retained bytes and part changes across a held bounded read. Native saves derive their immutable descriptor before choosing a destination and abort staged output if evidence disappears during transfer.
