@@ -1208,3 +1208,83 @@ test("a sync two native caller refuses a legacy server acknowledgement instead o
     restore()
   }
 })
+
+test("closed sync two observation owners retain the original offline error instead of a negotiation error", async () => {
+  await using f = await enrolled()
+  for (const mode of ["close", "parent-abort"] as const) {
+    const parent = new AbortController()
+    await using current = await openMemberConnection({
+      ...f.options,
+      sync: true,
+      syncVersion: 2,
+      signal: parent.signal,
+    })
+    expect(current.connected.syncVersion).toBe(2)
+    const caller = new AbortController()
+    caller.abort()
+    await expect(current.syncState("lifetime-observation", caller.signal)).rejects.toMatchObject({
+      data: { code: "RUNTIME_OFFLINE", retryable: true, outcome: "not_dispatched" },
+    })
+    if (mode === "close") await current.close()
+    else parent.abort()
+    await within(current.closed)
+    expect(current.signal.aborted).toBe(true)
+    await expect(
+      current.observeSync("lifetime-observation", {
+        bindingEpoch: 1,
+        shareGeneration: 1,
+        nextSeq: 1,
+        state: "pending",
+      }),
+    ).rejects.toMatchObject({ data: { code: "RUNTIME_OFFLINE", retryable: true, outcome: "not_dispatched" } })
+  }
+})
+
+test("held sync observations keep caller and parent cancellation offline and never dispatch recovery after abort", async () => {
+  await using f = await enrolled()
+  for (const mode of ["caller-abort", "parent-abort"] as const) {
+    const parent = new AbortController()
+    const caller = new AbortController()
+    const entered = Promise.withResolvers<void>()
+    let observations = 0
+    f.interceptFrames((_socket, raw) => {
+      const frame = Protocol.ClientFrame.parse(JSON.parse(String(raw)))
+      if (frame.type !== "sync-state" || !frame.observation) return false
+      observations++
+      entered.resolve()
+      return true
+    })
+    await using current = await openMemberConnection({
+      ...f.options,
+      sync: true,
+      syncVersion: 2,
+      signal: parent.signal,
+    })
+    expect(current.connected.syncVersion).toBe(2)
+    const body = { bindingEpoch: 1, shareGeneration: 1, nextSeq: 1, state: "pending" as const }
+    const reported = current.observeSync("held-observation", body, caller.signal).then(
+      () => ({ kind: "resolved" as const }),
+      (error: unknown) => ({ kind: "rejected" as const, error }),
+    )
+    try {
+      await within(entered.promise)
+      if (mode === "caller-abort") caller.abort()
+      else parent.abort()
+      expect(await within(reported)).toMatchObject({
+        kind: "rejected",
+        error: { data: { code: "RUNTIME_OFFLINE", retryable: true, outcome: "not_dispatched" } },
+      })
+      expect(observations).toBe(1)
+      expect(current.signal.aborted).toBe(mode === "parent-abort")
+      await expect(
+        current.observeSync("held-observation", body, mode === "caller-abort" ? caller.signal : undefined),
+      ).rejects.toMatchObject({ data: { code: "RUNTIME_OFFLINE", retryable: true, outcome: "not_dispatched" } })
+      expect(observations).toBe(1)
+    } finally {
+      parent.abort()
+      caller.abort()
+      await within(reported)
+      f.interceptFrames(undefined)
+    }
+  }
+})

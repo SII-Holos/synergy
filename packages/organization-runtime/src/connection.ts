@@ -790,21 +790,18 @@ async function attempt(input: {
       },
       async observeSync(sessionID: string, input: Sync.StateObservation, signal?: AbortSignal) {
         const observation = Sync.StateObservation.parse(input)
-        if (
-          stopped ||
-          work.signal.aborted ||
-          options.syncVersion !== Sync.observationVersion ||
-          handshake.syncVersion !== Sync.observationVersion
-        )
+        if (options.syncVersion !== Sync.observationVersion || handshake.syncVersion !== Sync.observationVersion)
           throw failure("PROTOCOL_MISMATCH", "Runtime sync storage observations were not negotiated")
+        if (stopped || work.signal.aborted) throw failure("RUNTIME_OFFLINE", "Runtime connection closed")
+        if (signal?.aborted) throw failure("RUNTIME_OFFLINE", "Sync request was cancelled")
         const share = await syncRequest(
           "state",
           { type: "sync-state", connectionEpoch: epoch, exchangeID: crypto.randomUUID(), sessionID, observation },
           signal,
         )
+        if (stopped || work.signal.aborted) throw failure("RUNTIME_OFFLINE", "Runtime connection closed")
+        if (signal?.aborted) throw failure("RUNTIME_OFFLINE", "Sync request was cancelled")
         if (
-          stopped ||
-          work.signal.aborted ||
           share.sessionID !== sessionID ||
           share.shareState !== "shared" ||
           share.bindingEpoch !== observation.bindingEpoch ||
