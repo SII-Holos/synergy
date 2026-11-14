@@ -295,6 +295,7 @@ function observeReplay(sessionID: string, generation: number) {
   const prefix = Keys.sharedEvents(sessionID, generation)
   let pages = 0
   let rows = 0
+  let versions = 0
   const observation = spyOn(Storage, "query").mockImplementation(
     async <T>(input: Parameters<typeof Storage.query>[0]) => {
       const result = await original<T>(input)
@@ -302,12 +303,21 @@ function observeReplay(sessionID: string, generation: number) {
         pages++
         rows += result.length
       }
+      if (
+        input.prefix?.[0] === "organization" &&
+        input.prefix[1] === "transcript" &&
+        input.prefix[2] === sessionID &&
+        input.prefix[3] === String(generation) &&
+        input.prefix[4] === "versions-v3"
+      )
+        versions++
       return result
     },
   )
   return {
     pages: () => pages,
     rows: () => rows,
+    versions: () => versions,
     [Symbol.dispose]: () => observation.mockRestore(),
   }
 }
@@ -315,6 +325,20 @@ function observeReplay(sessionID: string, generation: number) {
 test("ten authenticated HTTP readers use the projection atomically maintained by signed batches without replaying its fresh generation", async () => {
   await using f = await signedFixture(512)
   using replay = observeReplay(f.sessionID, f.generation)
+  const eventReads: number[] = []
+  const readMany = Storage.readMany
+  using immutableReads = spyOn(Storage, "readMany").mockImplementation(async <T>(keys: string[][]) => {
+    const result = await readMany<T>(keys)
+    const count = keys.filter(
+      (key) =>
+        key[0] === "organization" &&
+        key[1] === "shared-events" &&
+        key[2] === f.sessionID &&
+        key[3] === String(f.generation),
+    ).length
+    if (count) eventReads.push(count)
+    return result
+  })
   const pages = await Promise.all(
     f.clients.map(async (client) => {
       const [directory, snapshot, messages] = await Promise.all([
@@ -334,6 +358,10 @@ test("ten authenticated HTTP readers use the projection atomically maintained by
   )
   expect(replay.pages()).toBe(0)
   expect(replay.rows()).toBe(0)
+  expect(replay.versions()).toBe(50 * f.clients.length)
+  expect(eventReads.reduce((sum, count) => sum + count, 0)).toBe(50 * f.clients.length)
+  expect(eventReads.length).toBeLessThanOrEqual(f.clients.length)
+  expect(eventReads.every((count) => count <= 128)).toBe(true)
   const first = pages[0]
   if (!first?.messages.cursor) throw new Error("Signed first message page has no replay cursor")
   await f.appendMessage()

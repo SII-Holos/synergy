@@ -14,7 +14,7 @@ The owner serializes updates to one blob and verifies its complete receipt order
 
 Browser uploads require the Session creator. Runtime uploads retain current registered-driver authority. Every upload, status and download checks the current share generation. Download streams recheck access before reading and transmitting each range; an authorized reader cannot turn their read grant into an upload capability.
 
-The central migration converts retained v1 metadata into paged receipts. It preserves original binary objects and does not trust an ambiguous historical completion flag. A current authorized download can reverify complete retained bytes and publish their integrity checkpoint without requiring the source to upload them again.
+The central migration converts retained v1 metadata into paged receipts. It preserves original binary objects and does not trust an ambiguous historical completion flag. A current authorized download can reverify complete retained bytes and publish their integrity checkpoint without requiring the source to upload them again. The same original per-blob transaction writes at most 128 validated receipt descriptors through its native bulk writer at a time, then publishes the constant-size v2 header. A malformed later range or changed aggregate count rolls back all staged pages and the header. This reduces native SQL dispatch without changing the chunk format, central migration identity, byte objects, authority checks or completion evidence.
 
 ## Alternatives considered
 

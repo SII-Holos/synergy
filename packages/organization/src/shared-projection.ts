@@ -8,6 +8,7 @@ import { OrganizationRecord as Record } from "./storage/records"
 import { fail } from "./error"
 
 const base = (sessionID: string, generation: number) => ["organization", "transcript", sessionID, String(generation)]
+const VersionReference = z.strictObject({ sequence: Sync.Sequence })
 const Preparation = z.strictObject({
   schemaVersion: z.literal(3),
   cursor: z.string().optional(),
@@ -106,17 +107,35 @@ export namespace OrganizationSharedProjection {
     "versions-v3",
     objectID,
   ]
-  export async function at(sessionID: string, generation: number, objectID: string, watermark: number) {
-    const prefix = versions(sessionID, generation, objectID)
-    const rows = await Storage.query({
-      prefix,
-      after: [...prefix, String(watermark).padStart(20, "0") + "~"],
-      descending: true,
-      limit: 1,
+  export async function atMany(sessionID: string, generation: number, objectIDs: readonly string[], watermark: number) {
+    if (!objectIDs.length) return []
+    return Storage.snapshot(async () => {
+      const references = await Promise.all(
+        objectIDs.map(async (objectID) => {
+          const prefix = versions(sessionID, generation, objectID)
+          const rows = await Storage.query({
+            prefix,
+            after: [...prefix, String(watermark).padStart(20, "0") + "~"],
+            descending: true,
+            limit: 1,
+          })
+          return rows.length ? VersionReference.parse(rows[0]!.value).sequence : undefined
+        }),
+      )
+      const selected = references.flatMap((sequence, index) =>
+        sequence === undefined ? [] : [{ index, key: Keys.sharedEvent(sessionID, generation, sequence) }],
+      )
+      const values = await Record.readMany(
+        Record.SharedEvent,
+        selected.map((entry) => entry.key),
+      )
+      const result: Array<Record.SharedEvent | undefined> = Array.from({ length: objectIDs.length }, () => undefined)
+      for (const [index, value] of values.entries()) result[selected[index]!.index] = value
+      return result
     })
-    if (!rows.length) return
-    const { sequence } = z.strictObject({ sequence: Sync.Sequence }).parse(rows[0]!.value)
-    return Record.read(Record.SharedEvent, Keys.sharedEvent(sessionID, generation, sequence))
+  }
+  export async function at(sessionID: string, generation: number, objectID: string, watermark: number) {
+    return (await atMany(sessionID, generation, [objectID], watermark))[0]
   }
   export function message(
     sessionID: string,

@@ -1,10 +1,14 @@
 import { expect, test } from "bun:test"
+import { z } from "zod"
 import { OrganizationSyncProtocol as Sync } from "@ericsanchezok/synergy-organization-protocol"
 import { OrganizationSessionDirectory as Directory } from "../src/session-directory"
 import { OrganizationSharing as Sharing } from "../src/sharing"
 import { digest } from "../src/auth/secret"
 import { sharedProducerFixture } from "./support/shared-producer"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { OrganizationSharedProjection as Projection } from "../src/shared-projection"
+import { OrganizationStoragePath as Keys } from "../src/storage/path"
+import { OrganizationRecord as Record } from "../src/storage/records"
 
 test("shared message windows page by chronology and parts finish independently within the replay watermark", async () => {
   await using f = await sharedProducerFixture()
@@ -104,6 +108,15 @@ test("shared message windows page by chronology and parts finish independently w
       removed: true,
       integrity: digest("part deleted"),
     }),
+    Sync.Event.parse({
+      type: "message",
+      sequence: 14,
+      messageID: "message-newborn",
+      role: "user",
+      createdAt: 5,
+      summary: "Born after the original watermark",
+      integrity: digest("newborn"),
+    }),
   ]
   await f.run(() =>
     f.sync({
@@ -113,11 +126,37 @@ test("shared message windows page by chronology and parts finish independently w
       bindingEpoch: 1,
       shareGeneration: 1,
       firstSeq: 10,
-      lastSeq: 13,
+      lastSeq: 14,
       events: updates,
-      payloadHash: digest(JSON.stringify({ firstSeq: 10, lastSeq: 13, events: updates })),
+      payloadHash: digest(JSON.stringify({ firstSeq: 10, lastSeq: 14, events: updates })),
     }),
   )
+  const staleHead = await f.run(async () => {
+    const rows = await Storage.query({ prefix: Projection.root(sessionID, 1), limit: 32 })
+    const row = rows.find((entry) => {
+      const value = Record.SharedEvent.parse(entry.value)
+      return value.event.type === "message" && value.event.messageID === "message-2"
+    })
+    if (!row) throw new Error("The actual current message projection is missing")
+    const original = events.find((event) => event.type === "message" && event.messageID === "message-2")
+    if (!original) throw new Error("The original message event is missing")
+    await Storage.write(row.key, { schemaVersion: 1, event: original })
+    return row.key
+  })
+  const fixedAll = await f.run(() =>
+    Sharing.messages(f.credentials.bob, sessionID, { limit: 50, watermark: first.watermark }),
+  )
+  expect(fixedAll.items.map((event) => event.messageID)).toEqual([
+    "message-1",
+    "message-2",
+    "message-3",
+    "message-4",
+    "message-5",
+  ])
+  const tied = await f.run(() => Sharing.messages(f.credentials.bob, sessionID, { limit: 1 }))
+  expect(tied.items.map((event) => event.messageID)).toEqual(["message-newborn"])
+  const nextTied = await f.run(() => Sharing.messages(f.credentials.bob, sessionID, { limit: 1, cursor: tied.cursor }))
+  expect(nextTied.items.map((event) => event.messageID)).toEqual(["message-5"])
   const older = await f.run(() =>
     Sharing.messages(f.credentials.bob, sessionID, { limit: 2, cursor: first.cursor, watermark: first.watermark }),
   )
@@ -146,7 +185,7 @@ test("shared message windows page by chronology and parts finish independently w
   const live = await f.run(() =>
     Sharing.messages(f.credentials.bob, sessionID, { limit: 2, cursor: first.cursor, latest: true }),
   )
-  expect(live.watermark).toBe(13)
+  expect(live.watermark).toBe(14)
   expect(live.items.map((item) => item.messageID)).toEqual(["message-2", "message-3"])
   expect(live.items[0]!.summary).toBe("updated later")
   const liveOldest = await f.run(() =>
@@ -158,6 +197,46 @@ test("shared message windows page by chronology and parts finish independently w
   )
   expect(liveParts.items.map((item) => item.partID)).toEqual(["part-b", "part-c"])
   expect(liveParts.items[1]?.part).toMatchObject({ type: "text", content: { text: "updated later" } })
+  await f.run(async () => {
+    const immutableKey = Keys.sharedEvent(sessionID, 1, 10)
+    const immutable = await Storage.read<Record.SharedEvent>(immutableKey)
+    try {
+      await Storage.remove(immutableKey)
+      const missing = await Sharing.messages(f.credentials.bob, sessionID, { limit: 50 })
+      expect(missing.items.some((event) => event.messageID === "message-2")).toBe(false)
+      await Storage.write(immutableKey, { ...immutable, event: { ...immutable.event, sequence: "malformed" } })
+      const malformed = await Sharing.messages(f.credentials.bob, sessionID, { limit: 50 }).then(
+        (value) => ({ ok: true as const, value }),
+        (error: unknown) => ({ ok: false as const, error }),
+      )
+      if (malformed.ok) throw new Error("A malformed immutable event was accepted")
+      expect(malformed.error).toBeInstanceOf(z.ZodError)
+    } finally {
+      await Storage.write(immutableKey, immutable)
+    }
+    const versionKey = [
+      ...Projection.generationPrefix(sessionID, 1),
+      "versions-v3",
+      staleHead.at(-1)!,
+      String(10).padStart(20, "0"),
+    ]
+    const reference = await Storage.read(versionKey)
+    try {
+      await Storage.write(versionKey, { sequence: 6 })
+      const foreign = await Sharing.messages(f.credentials.bob, sessionID, { limit: 50 })
+      expect(foreign.items.some((event) => event.messageID === "message-2")).toBe(false)
+      expect(foreign.items.filter((event) => event.messageID === "message-4")).toHaveLength(1)
+      await Storage.write(versionKey, { sequence: "malformed" })
+      const malformed = await Sharing.messages(f.credentials.bob, sessionID, { limit: 50 }).then(
+        (value) => ({ ok: true as const, value }),
+        (error: unknown) => ({ ok: false as const, error }),
+      )
+      if (malformed.ok) throw new Error("A malformed version reference was accepted")
+      expect(malformed.error).toBeInstanceOf(z.ZodError)
+    } finally {
+      await Storage.write(versionKey, reference)
+    }
+  })
   const http = await f.request(
     "bob",
     `/sessions/${sessionID}/sync/messages?limit=2&watermark=${first.watermark}&latest=false&cursor=${first.cursor}`,

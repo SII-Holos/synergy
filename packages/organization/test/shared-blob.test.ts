@@ -143,53 +143,155 @@ test("shared blob receipts survive out-of-order delivery, exact retry and restar
 })
 
 test("legacy shared blob manifests page beyond the old total chunk cap without enlarging their header", async () => {
+  const started = performance.now()
+  function stage(value: string) {
+    console.info(
+      JSON.stringify({ test: "legacy-shared-blob-pages", stage: value, elapsedMs: performance.now() - started }),
+    )
+  }
+  stage("import")
+  const { sharedBlobMigration } = await import("../src/shared-blob")
+  stage("fixture-open")
+  {
+    await using f = await directoryFixture()
+    try {
+      stage("share")
+      await shared(f)
+      const chunkBytes = 4 * 1024 * 1024
+      const oldCount = 16_384
+      const hash = "a".repeat(64)
+      const key = Keys.sharedBlob("blob-pages", 1, hash)
+      stage("seed-legacy")
+      await f.run(() =>
+        Storage.write(key, {
+          schemaVersion: 1,
+          sessionID: "blob-pages",
+          shareGeneration: 1,
+          hash,
+          bytes: (oldCount + 2) * chunkBytes,
+          chunkBytes,
+          chunks: Array.from({ length: oldCount }, (_, index) => ({ offset: index * chunkBytes, bytes: chunkBytes })),
+          receivedBytes: oldCount * chunkBytes,
+          complete: false,
+          createdAt: 1,
+          updatedAt: 1,
+        }),
+      )
+      stage("migration")
+      await f.run(() => sharedBlobMigration.up(() => {}))
+      stage("append")
+      const next = await f.run(() =>
+        Sharing.uploadBlob(f.credentials.alice, "blob-pages", {
+          shareGeneration: 1,
+          hash,
+          offset: oldCount * chunkBytes,
+          totalBytes: (oldCount + 2) * chunkBytes,
+          bytes: new Uint8Array(chunkBytes),
+        }),
+      )
+      expect(next).toMatchObject({
+        complete: false,
+        nextOffset: (oldCount + 1) * chunkBytes,
+        receivedBytes: (oldCount + 1) * chunkBytes,
+      })
+      stage("header")
+      const header = await f.run(() => Storage.read(key))
+      expect(header).toMatchObject({ schemaVersion: 2, receivedChunks: oldCount + 1 })
+      expect(header).not.toHaveProperty("chunks")
+      expect(JSON.stringify(header).length).toBeLessThan(1024)
+      stage("enumerate")
+      let count = 0
+      await f.run(async () => {
+        for await (const _ of Storage.records({ prefix: [...key, "chunk-manifest"], limit: 37 })) count++
+      })
+      expect(count).toBe(oldCount + 1)
+    } finally {
+      stage("cleanup")
+    }
+  }
+  stage("complete")
+}, 30000)
+
+test("legacy shared blob migration bounds native receipt writes and rolls back a malformed suffix", async () => {
   const { sharedBlobMigration } = await import("../src/shared-blob")
   await using f = await directoryFixture()
   await shared(f)
   const chunkBytes = 4 * 1024 * 1024
-  const oldCount = 16_384
-  const hash = "a".repeat(64)
+  const count = 129
+  const hash = "b".repeat(64)
   const key = Keys.sharedBlob("blob-pages", 1, hash)
-  await f.run(() =>
-    Storage.write(key, {
-      schemaVersion: 1,
-      sessionID: "blob-pages",
-      shareGeneration: 1,
-      hash,
-      bytes: (oldCount + 2) * chunkBytes,
-      chunkBytes,
-      chunks: Array.from({ length: oldCount }, (_, index) => ({ offset: index * chunkBytes, bytes: chunkBytes })),
-      receivedBytes: oldCount * chunkBytes,
-      complete: false,
-      createdAt: 1,
-      updatedAt: 1,
-    }),
-  )
-  await f.run(() => sharedBlobMigration.up(() => {}))
-  const next = await f.run(() =>
-    Sharing.uploadBlob(f.credentials.alice, "blob-pages", {
-      shareGeneration: 1,
-      hash,
-      offset: oldCount * chunkBytes,
-      totalBytes: (oldCount + 2) * chunkBytes,
-      bytes: new Uint8Array(chunkBytes),
-    }),
-  )
-  expect(next).toMatchObject({
+  const chunks = Array.from({ length: count }, (_, index) => ({ offset: index * chunkBytes, bytes: chunkBytes }))
+  const legacy = {
+    schemaVersion: 1,
+    sessionID: "blob-pages",
+    shareGeneration: 1,
+    hash,
+    bytes: (count + 1) * chunkBytes,
+    chunkBytes,
+    chunks,
+    receivedBytes: count * chunkBytes,
     complete: false,
-    nextOffset: (oldCount + 1) * chunkBytes,
-    receivedBytes: (oldCount + 1) * chunkBytes,
+    createdAt: 1,
+    updatedAt: 1,
+  }
+  const malformed = { ...legacy, chunks: [...chunks.slice(0, -1), chunks[count - 2]] }
+  await f.run(() => Storage.write(key, malformed))
+  const rejected = await (async () => {
+    try {
+      await f.run(() => sharedBlobMigration.up(() => {}))
+      return { kind: "fulfilled" as const }
+    } catch (error) {
+      return { kind: "rejected" as const, error }
+    }
+  })()
+  expect(rejected.kind).toBe("rejected")
+  if (rejected.kind !== "rejected") throw new Error("A malformed legacy receipt suffix was accepted")
+  expect(rejected.error).toMatchObject({
+    data: { code: "SERVICE_UNAVAILABLE", message: "Retained shared blob chunk range is inconsistent" },
   })
-  const header = await f.run(() => Storage.read(key))
-  expect(header).toMatchObject({ schemaVersion: 2, receivedChunks: oldCount + 1 })
-  expect(header).not.toHaveProperty("chunks")
-  expect(JSON.stringify(header).length).toBeLessThan(1024)
-  let count = 0
-  await f.run(async () => {
-    for await (const _ of Storage.records({ prefix: [...key, "chunk-manifest"], limit: 37 })) count++
+  expect(await f.run(() => Storage.read(key))).toEqual(malformed)
+  expect(await f.run(() => Storage.query({ prefix: [...key, "chunk-manifest"], limit: 1 }))).toEqual([])
+  await f.run(() => Storage.write(key, legacy))
+  let dispatches = 0
+  await f.run(() =>
+    Storage.transaction(async (tx) => {
+      const raw = tx.raw
+      const query = raw.query
+      type Row = Awaited<ReturnType<typeof query>>[number]
+      raw.query = <Result extends Row>(...args: Parameters<typeof query>) => {
+        dispatches++
+        return query<Result>(...args)
+      }
+      try {
+        await sharedBlobMigration.up(() => {})
+      } finally {
+        raw.query = query
+      }
+    }),
+  )
+  const migrated = await f.run(() => Storage.read(key))
+  expect(migrated).toMatchObject({
+    schemaVersion: 2,
+    bytes: legacy.bytes,
+    receivedBytes: legacy.receivedBytes,
+    receivedChunks: count,
+    nextOffset: count * chunkBytes,
+    complete: false,
   })
-  expect(count).toBe(oldCount + 1)
-}, 30000)
+  expect(migrated).not.toHaveProperty("chunks")
+  const receipts = await f.run(async () => {
+    const rows: unknown[] = []
+    for await (const row of Storage.records({ prefix: [...key, "chunk-manifest"], limit: 37 })) rows.push(row.value)
+    return rows
+  })
+  expect(receipts).toEqual(chunks)
+  console.info(
+    JSON.stringify({ test: "shared-blob-migration-native-work", receipts: count, sqlDispatches: dispatches }),
+  )
+  expect(dispatches).toBeLessThan(count)
+  await f.run(() => sharedBlobMigration.up(() => {}))
+  expect(await f.run(() => Storage.read(key))).toEqual(migrated)
+})
 
 test("migration revalidates retained complete bytes for an authorized reader and revoked streams cannot emit later chunks", async () => {
   const { sharedBlobMigration } = await import("../src/shared-blob")

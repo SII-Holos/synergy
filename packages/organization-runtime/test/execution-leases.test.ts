@@ -1,7 +1,8 @@
-import { expect, test } from "bun:test"
+import { expect, spyOn, test } from "bun:test"
 import path from "node:path"
 import { OrganizationExecutionProtocol as Execution } from "@ericsanchezok/synergy-organization-protocol"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { TransactionalStore } from "@ericsanchezok/synergy-harness/storage/transactional-store"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
@@ -9,6 +10,7 @@ import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/le
 import { RolloutLifecycle } from "@ericsanchezok/synergy-harness/session/rollout/lifecycle"
 import { OrganizationExecutionLeases as Leases } from "../src/execution-leases"
 import { executionFixture } from "./support/execution"
+import { OrganizationRuntimeError } from "../src/error"
 
 test("cleanup intents fence the native Store and artifacts and settle only their exact generation", async () => {
   await using f = await executionFixture({ execution: true })
@@ -154,3 +156,109 @@ test("pending cleanup pages retain every native root while root events address o
     ).toEqual([])
   })
 }, 15000)
+
+for (const partition of ["runtime", "root"] as const)
+  test(`a ${partition} pending cleanup page stays coherent across a real terminal settlement and rejects a retained corrupt marker`, async () => {
+    await using f = await executionFixture({ execution: true })
+    const proof = await f.binding()
+    const grant = await f.connection.resources.bind(proof)
+    await f.runtime.run(async () => {
+      const originalRuntime = RuntimeContext.current()
+      const originalStore = Storage.current().store
+      const known = await Leases.confirm(await Leases.begin(proof), grant)
+      const session = await Session.get(f.sessionID)
+      await ScopeContext.provide({
+        scope: session.scope,
+        workspace: null,
+        fn: async () => {
+          await RolloutLedger.finishRun(RolloutLifecycle.owner(session), proof.rootID, "completed")
+          const receipt = await f.connection.resources.release(
+            Execution.ReleaseProof.parse({
+              ...proof,
+              purpose: "execution-resources-release",
+              grantID: grant.grantID,
+              generation: 1,
+              outcome: "completed",
+              materialized: true,
+            }),
+          )
+          const input = {
+            limit: 64,
+            ...(partition === "root" ? { target: { sessionID: f.sessionID, rootID: proof.rootID } } : {}),
+          }
+          const before = await Leases.page(grant.runtimeID, input)
+          expect(before.items).toContainEqual(known)
+          const prefix = [
+            "organization-execution-leases",
+            ...(partition === "root"
+              ? ["pending-root", grant.runtimeID, f.sessionID, proof.rootID]
+              : ["pending", grant.runtimeID]),
+          ]
+          const selected = Promise.withResolvers<void>()
+          const release = Promise.withResolvers<void>()
+          const held: { marker?: { key: string[]; value: unknown } } = {}
+          let holding = true
+          const query = Storage.query
+          using queries = spyOn(Storage, "query").mockImplementation(async <T>(value: Parameters<typeof query>[0]) => {
+            const rows = await query<T>(value)
+            if (
+              !holding ||
+              RuntimeContext.current() !== originalRuntime ||
+              Storage.current().store !== originalStore ||
+              JSON.stringify(value.prefix) !== JSON.stringify(prefix)
+            )
+              return rows
+            const found = rows.find((row) => row.key.at(-1) === known.entryID)
+            if (!found) return rows
+            holding = false
+            held.marker = { key: [...found.key], value: found.value }
+            selected.resolve()
+            await release.promise
+            return rows
+          })
+          const reading = Leases.page(grant.runtimeID, input).then(
+            (value) => ({ ok: true as const, value }),
+            (error: unknown) => ({ ok: false as const, error }),
+          )
+          try {
+            await selected.promise
+            expect(await Leases.settle(known, { kind: "terminal", receipt })).toMatchObject({
+              state: "settled",
+              settlement: { kind: "terminal", receipt },
+            })
+          } finally {
+            release.resolve()
+            await reading
+          }
+          const observed = await reading
+          if (!observed.ok) throw observed.error
+          const stable = before.items.filter((entry) => entry.entryID !== known.entryID)
+          expect(observed.value.items.filter((entry) => entry.entryID !== known.entryID)).toEqual(stable)
+          expect(observed.value.items.every((entry) => entry.state === "pending")).toBe(true)
+          const concurrent = observed.value.items.find((entry) => entry.entryID === known.entryID)
+          if (concurrent) expect(concurrent).toEqual(known)
+          expect(observed.value.cursor).toBe(before.cursor)
+          expect((await Leases.page(grant.runtimeID, input)).items).toEqual(stable)
+          const marker = held.marker
+          if (!marker) throw new Error("The original pending marker was not observed")
+          await Storage.write(marker.key, marker.value)
+          try {
+            const corrupt = await Leases.page(grant.runtimeID, input).then(
+              (value) => ({ ok: true as const, value }),
+              (error: unknown) => ({ ok: false as const, error }),
+            )
+            if (corrupt.ok) throw new Error("A settled canonical entry cannot retain its pending marker")
+            if (!(corrupt.error instanceof OrganizationRuntimeError)) throw corrupt.error
+            expect(corrupt.error.data).toEqual({
+              code: "PROTOCOL_MISMATCH",
+              message: "Native cleanup pending index is inconsistent",
+              outcome: "rejected",
+              retryable: false,
+            })
+          } finally {
+            await Storage.remove(marker.key)
+          }
+        },
+      })
+    })
+  }, 15_000)

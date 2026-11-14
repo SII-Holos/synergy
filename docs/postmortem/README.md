@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0211](0211-cleanup-page-mixed-pending-and-settled-snapshots.md)
+
 - [0210](0210-retained-preview-concealed-active-target-preparation.md)
 
 - [0209](0209-compaction-coverage-preparation-opened-one-writer-per-header.md)

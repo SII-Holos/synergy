@@ -387,25 +387,27 @@ export namespace OrganizationExecutionLeases {
       .max(64)
       .parse(input.limit ?? 16)
     owner()
-    const [registered] = await Storage.readMany([schema])
-    if (!Schema.safeParse(registered).success) fail("Native cleanup requires its owning migration")
-    const prefix = target ? rootPending({ runtimeID: selected, ...target }) : pending(selected)
-    const rows = await Storage.query({ prefix, after: after ? [...prefix, after] : undefined, limit })
-    owner()
-    const items: Entry[] = []
-    for (const row of rows) {
-      const indexed = Pending.parse(row.value)
-      if (row.key.at(-1) !== indexed.entryID) fail("Native cleanup pending index has another identity")
-      const entry = await read(indexed.entryID)
-      if (
-        entry.state !== "pending" ||
-        entry.authority.runtimeID !== selected ||
-        (target && (entry.authority.sessionID !== target.sessionID || entry.authority.rootID !== target.rootID))
-      )
-        fail("Native cleanup pending index is inconsistent")
-      items.push(entry)
-    }
-    return { items, cursor: rows.length === limit ? rows.at(-1)!.key.at(-1) : undefined }
+    return Storage.snapshot(async () => {
+      const [registered] = await Storage.readMany([schema])
+      if (!Schema.safeParse(registered).success) fail("Native cleanup requires its owning migration")
+      const prefix = target ? rootPending({ runtimeID: selected, ...target }) : pending(selected)
+      const rows = await Storage.query({ prefix, after: after ? [...prefix, after] : undefined, limit })
+      owner()
+      const items: Entry[] = []
+      for (const row of rows) {
+        const indexed = Pending.parse(row.value)
+        if (row.key.at(-1) !== indexed.entryID) fail("Native cleanup pending index has another identity")
+        const entry = await read(indexed.entryID)
+        if (
+          entry.state !== "pending" ||
+          entry.authority.runtimeID !== selected ||
+          (target && (entry.authority.sessionID !== target.sessionID || entry.authority.rootID !== target.rootID))
+        )
+          fail("Native cleanup pending index is inconsistent")
+        items.push(entry)
+      }
+      return { items, cursor: rows.length === limit ? rows.at(-1)!.key.at(-1) : undefined }
+    })
   }
   export function subscribe(listener: (authority: Authority) => void) {
     const listeners = owner().listeners

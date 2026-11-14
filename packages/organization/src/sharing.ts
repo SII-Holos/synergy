@@ -211,6 +211,7 @@ function decodeWindowCursor<T>(cursor: string | undefined, schema: z.ZodType<T>)
   }
 }
 
+const IndexedObject = z.strictObject({ objectID: Protocol.Digest })
 const WindowPosition = z.strictObject({
   sessionID: Identity.ID,
   sourceSessionID: Identity.ID,
@@ -243,15 +244,11 @@ async function indexedEvents(
   rows: Array<{ key: string[]; value: unknown }>,
   watermark: number,
 ) {
-  const values = await Promise.all(
-    rows.map((row) =>
-      Projection.at(
-        sessionID,
-        generation,
-        z.strictObject({ objectID: Protocol.Digest }).parse(row.value).objectID,
-        watermark,
-      ),
-    ),
+  const values = await Projection.atMany(
+    sessionID,
+    generation,
+    rows.map((row) => IndexedObject.parse(row.value).objectID),
+    watermark,
   )
   return values.flatMap((value, index) =>
     value &&

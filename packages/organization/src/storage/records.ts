@@ -255,8 +255,13 @@ export namespace OrganizationRecord {
   export type SharedBlob = z.infer<typeof SharedBlob>
 
   export async function read<T>(schema: z.ZodType<T>, key: string[]): Promise<T | undefined> {
-    const [value] = await Storage.readMany<unknown>([key])
-    return value === undefined ? undefined : parse(schema, key, value)
+    return (await readMany(schema, [key]))[0]
+  }
+
+  export async function readMany<T>(schema: z.ZodType<T>, keys: string[][]): Promise<Array<T | undefined>> {
+    if (!keys.length) return []
+    const values = await Storage.readMany<unknown>(keys)
+    return values.map((value, index) => (value === undefined ? undefined : parse(schema, keys[index]!, value)))
   }
 
   export function parse<T>(schema: z.ZodType<T>, key: string[], value: unknown): T {

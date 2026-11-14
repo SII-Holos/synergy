@@ -320,7 +320,7 @@ export const sharedBlobMigration: Migration = {
     let count = 0
     for await (const row of Storage.records({ prefix: ["organization", "shared-blobs"], limit: 128 })) {
       if (row.key.length !== 5) continue
-      await Storage.transaction(async () => {
+      await Storage.transaction(async (tx) => {
         const raw = await Storage.read(row.key)
         if (Record.SharedBlob.safeParse(raw).success) return
         const legacy = Legacy.parse(raw)
@@ -333,6 +333,7 @@ export const sharedBlobMigration: Migration = {
         let received = 0
         let nextOffset = 0
         let previous = -1
+        const page: Array<{ key: string[]; value: z.infer<typeof Chunk> }> = []
         for (const chunk of legacy.chunks) {
           if (
             chunk.offset <= previous ||
@@ -340,11 +341,19 @@ export const sharedBlobMigration: Migration = {
             chunk.bytes !== Math.min(chunkBytes, legacy.bytes - chunk.offset)
           )
             fail("SERVICE_UNAVAILABLE", "Retained shared blob chunk range is inconsistent")
-          await Storage.write(receiptKey(legacy.sessionID, legacy.shareGeneration, legacy.hash, chunk.offset), chunk)
+          page.push({
+            key: receiptKey(legacy.sessionID, legacy.shareGeneration, legacy.hash, chunk.offset),
+            value: chunk,
+          })
+          if (page.length === 128) {
+            await tx.writeMany(page)
+            page.length = 0
+          }
           if (chunk.offset === nextOffset) nextOffset += chunk.bytes
           received += chunk.bytes
           previous = chunk.offset
         }
+        if (page.length) await tx.writeMany(page)
         if (received !== legacy.receivedBytes || received > legacy.bytes)
           fail("SERVICE_UNAVAILABLE", "Retained shared blob byte count changed")
         const { chunks, ...metadata } = legacy
