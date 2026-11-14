@@ -30,8 +30,8 @@ import { Batch } from "../src/sync-outbox"
 import { OrganizationSyncPath as Keys } from "../src/storage/path"
 import { fixture } from "./support/organization"
 
-async function until<T>(label: string, read: () => Promise<T>, ready: (value: T) => boolean) {
-  const deadline = Date.now() + 15000
+async function until<T>(label: string, read: () => Promise<T>, ready: (value: T) => boolean, budgetMs = 15000) {
+  const deadline = Date.now() + budgetMs
   for (;;) {
     const value = await read()
     if (ready(value)) return value
@@ -422,7 +422,26 @@ test("a real sealed Source retries the same committed unknown batch and the nati
 
 test("an absent original batch marker keeps the real Source frozen until same-intent settlement commits that immutable body", async () => {
   await using f = await paired("absent")
-  await expect(f.drive("prepare-source")).rejects.toBeDefined()
+  const started = performance.now()
+  const phase = (stage: string) =>
+    console.error("SYNC_ABSENT_BATCH_PHASE", JSON.stringify({ stage, elapsedMs: performance.now() - started }))
+  phase("original-source-dispatch")
+  const unknown = await f.raw("prepare-source")
+  expect(unknown.response.ok).toBe(false)
+  expect(unknown.error).toMatchObject({ code: "COMMAND_OUTCOME_UNKNOWN", outcome: "unknown" })
+  phase("original-source-settlement")
+  const stopped = await until(
+    "The original absent batch settlement did not leave its working job",
+    async () => {
+      const reply = await f.raw("inspect-source")
+      if (!reply.response.ok) throw reply.error
+      return Handoff.MachineResult.parse(reply.data)
+    },
+    (value) => value.state !== "working",
+    30000,
+  )
+  expect(stopped).toMatchObject({ state: "blocked", stage: "source-frozen", facts: [] })
+  phase("original-source-blocked")
   const sealed = await f.source.runtime.run(() => Source.status(f.binding))
   if (!sealed) throw new Error("The failed original batch settlement lost its actual sealed native package")
   expect(await f.marker()).toBeUndefined()
@@ -440,8 +459,10 @@ test("an absent original batch marker keeps the real Source frozen until same-in
       Batch.parse((await Storage.readMany([Keys.batch(f.service.identity.orgID, f.sessionID)]))[0]),
     ),
   ).toEqual(f.originalBatch)
+  phase("same-intent-release")
   f.release()
   const frozen = (await f.drive("prepare-source")).facts.find((fact) => fact.proof.purpose === "source-frozen")?.proof
+  phase("same-intent-recovered")
   if (!frozen || frozen.purpose !== "source-frozen" || !frozen.syncCheckpoint)
     throw new Error("The original Source did not resume its finite settlement")
   expect(frozen.manifestHash).toBe(sealed.manifestHash)
@@ -452,7 +473,9 @@ test("an absent original batch marker keeps the real Source frozen until same-in
   )
   expect(resent.length).toBeGreaterThanOrEqual(2)
   for (const item of resent) expect(item.batch.payloadHash).toBe(f.identity.payloadHash)
+  phase("target-activation")
   await activate(f, frozen)
+  phase("completed")
 }, 45000)
 
 test("a real completed shared handoff retains canonical history from both original binding epochs", async () => {

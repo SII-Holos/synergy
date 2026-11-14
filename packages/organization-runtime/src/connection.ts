@@ -649,8 +649,8 @@ async function attempt(input: {
         timer,
         signal,
         cancel: () => {
-          if (!pendingSync.delete(exchangeID)) return
-          clearTimeout(timer)
+          if (!pendingSync.has(exchangeID)) return
+          signal?.removeEventListener("abort", request.cancel)
           reject(failure("RUNTIME_OFFLINE", "Sync request was cancelled"))
         },
       }

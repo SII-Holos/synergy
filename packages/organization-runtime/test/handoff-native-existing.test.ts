@@ -16,6 +16,7 @@ import { WorkspaceMove } from "@ericsanchezok/synergy-harness/workspace/move"
 import { OrganizationHandoffObjects } from "../src/handoff-objects"
 import { readCommandControlVersion } from "../src/command-intake"
 import { cloudExecutionFixture } from "./support/cloud-execution"
+import { createHandoffCompletion } from "./support/handoff-completion"
 
 type Fixture = Awaited<ReturnType<typeof cloudExecutionFixture>>
 type Scenario = "complete" | "target-changed" | "source-replaced"
@@ -216,46 +217,23 @@ async function adopted(fixture: Fixture, scenario: Scenario) {
   async function raw(
     operation: Handoff.Drive["operation"],
     extra: Pick<Handoff.Drive, "expectedRevision" | "cursor"> = {},
+    requestID: string = crypto.randomUUID(),
   ) {
     return fixture.service.client.orgHandoff.drive(
-      { handoffID, orgHandoffDrive: { operation, requestID: crypto.randomUUID(), ...extra } },
+      { handoffID, orgHandoffDrive: { operation, requestID, ...extra } },
       { headers: fixture.service.headers },
     )
   }
-  async function drive(
-    operation: Handoff.Drive["operation"],
-    extra: Pick<Handoff.Drive, "expectedRevision" | "cursor"> = {},
-  ) {
-    const result = await raw(operation, extra)
-    if (result.response.ok) return Handoff.MachineResult.parse(result.data)
-    if (
-      z.object({ code: z.literal("COMMAND_OUTCOME_UNKNOWN"), outcome: z.literal("unknown") }).safeParse(result.error)
-        .success &&
-      ["preview-target", "prepare-target", "activate-target"].includes(operation)
-    ) {
-      const purpose =
-        operation === "preview-target"
-          ? "target-difference"
-          : operation === "prepare-target"
-            ? "target-prepared"
-            : "target-activated"
-      const deadline = Date.now() + 5000
-      while (Date.now() < deadline) {
-        const response = await raw("inspect-target")
-        if (!response.response.ok)
-          throw new AggregateError(
-            [result.error, response.error],
-            "Original native target dispatch and inspection failed",
-          )
-        const observed = Handoff.MachineResult.parse(response.data)
-        if (observed.state === "complete" && observed.facts.some((fact) => fact.proof.purpose === purpose))
-          return observed
-        if (observed.state !== "working") break
-        await Bun.sleep(25)
-      }
-    }
-    throw result.error
-  }
+  const drive = createHandoffCompletion({
+    binding: Handoff.Binding.strip().parse(requested),
+    source: { runtimeID: source.registration.runtimeID, publicKey: source.home.publicKey },
+    target: { runtimeID: target.registration.runtimeID, publicKey: target.home.publicKey },
+    async invoke(operation, requestID) {
+      const result = await raw(operation, {}, requestID)
+      if (!result.response.ok) throw result.error
+      return Handoff.MachineResult.parse(result.data)
+    },
+  })
   const frozen = (await drive("prepare-source")).facts[0]?.proof
   if (frozen?.purpose !== "source-frozen" || !frozen.workspaceSourceHash || !frozen.fileClosureHash)
     throw new Error("Native adoption did not retain its complete actual source")
@@ -271,7 +249,9 @@ async function adopted(fixture: Fixture, scenario: Scenario) {
   const entries: z.infer<typeof Handoff.DifferencePage>["items"] = []
   let cursor: string | undefined
   do {
-    const page = await drive("inspect-target", { expectedRevision: difference.difference.diffHash, cursor })
+    const response = await raw("inspect-target", { expectedRevision: difference.difference.diffHash, cursor })
+    if (!response.response.ok) throw response.error
+    const page = Handoff.MachineResult.parse(response.data)
     if (!page.differencePage) throw new Error("The original difference has no canonical page")
     entries.push(...page.differencePage.items)
     cursor = page.differencePage.cursor
@@ -340,7 +320,7 @@ async function adopted(fixture: Fixture, scenario: Scenario) {
     await fixture.service.client.orgHandoff.cancel({ handoffID, body: {} }, options)
     expect((await drive("cancel-source")).facts.some((fact) => fact.proof.purpose === "source-cancelled")).toBe(true)
     expect(
-      (await drive("retire-target")).facts.some(
+      (await drive("retire-target", ["target-never-activate", "target-preview-released"])).facts.some(
         (fact) => fact.proof.purpose === "target-never-activate" || fact.proof.purpose === "target-preview-released",
       ),
     ).toBe(true)

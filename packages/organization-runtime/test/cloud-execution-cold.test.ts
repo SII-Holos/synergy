@@ -10,6 +10,7 @@ import {
 } from "@ericsanchezok/synergy-organization-protocol"
 import { cloudExecutionFixture } from "./support/cloud-execution"
 import { OrganizationRuntimeError } from "../src/error"
+import { measurePhase } from "@ericsanchezok/synergy-harness/test/support/rollout"
 
 function unknownOutcome(error: unknown): boolean {
   if (error instanceof OrganizationRuntimeError && error.data.outcome === "unknown") return true
@@ -231,13 +232,26 @@ test.skipIf(process.platform === "win32")(
 test.skipIf(process.platform === "win32")(
   "a cold original Runtime retires an unacknowledged native preparation without starting its command",
   async () => {
-    const f = await cloudExecutionFixture()
+    const started = performance.now()
+    let stage = "fixture"
+    let lastCleanup:
+      | {
+          observedAt: number
+          preparationState: string
+          retainedSandboxes: number
+          preparationUses: number
+          executions: number
+          nativeStarts: number
+        }
+      | undefined
+    const f = await measurePhase("cold-preparation.fixture", cloudExecutionFixture)
     const failures: unknown[] = []
     const gate = f.holdSandboxOnce()
     const controller = new AbortController()
     let pending: Promise<void> | undefined
     try {
-      const member = await f.member("preparation-cold-owner")
+      stage = "member"
+      const member = await measurePhase("cold-preparation.member", () => f.member("preparation-cold-owner"))
       const originalRuntime = member.runtime
       const originalResponse = Promise.withResolvers<void>()
       let blocking = false,
@@ -301,6 +315,7 @@ test.skipIf(process.platform === "win32")(
           toolFailure = error
         },
       )
+      stage = "await-native-preparation"
       const held = await Promise.race([
         gate.entered,
         pending.then(() => {
@@ -329,12 +344,14 @@ test.skipIf(process.platform === "win32")(
       expect(receipt.sandboxes.some((sandbox) => !sandbox.released)).toBe(true)
       expect(f.nativeStarts()).toBe(0)
       blocking = true
+      stage = "abort-original-tool"
       controller.abort(new Error("Original preparation caller cancelled after its native effect"))
-      await pending
+      await measurePhase("cold-preparation.abort-tool", () => pending!)
       expect(toolFailure).toBeDefined()
       let closeFailure: unknown
       try {
-        await member.close()
+        stage = "close-original-runtime"
+        await measurePhase("cold-preparation.close-original", () => member.close())
       } catch (error) {
         closeFailure = error
       }
@@ -342,28 +359,46 @@ test.skipIf(process.platform === "win32")(
       expect(closeFailure).toBeDefined()
       expect(blocked).toBeGreaterThan(0)
       expect((await f.preparation(held.target, held.operationID)).state).toBe("prepared")
+      stage = "original-preparation-response"
       gate.release()
-      await originalResponse.promise
+      await measurePhase("cold-preparation.original-response", () => originalResponse.promise)
       expect(preparationReply).toBeDefined()
       blocking = false
-      const reopened = await member.reopen()
+      stage = "reopen-original-runtime"
+      const reopened = await measurePhase("cold-preparation.reopen", () => member.reopen())
       expect(reopened === originalRuntime).toBe(false)
       const signal = AbortSignal.timeout(5000)
       try {
-        for (;;) {
-          signal.throwIfAborted()
-          const actual = await inventory()
-          const receipt = await f.preparation(held.target, held.operationID)
-          if (
-            receipt.state === "released" &&
-            !actual.uses.some(
-              (use) => use.ownership.kind === "execution-preparation" && use.ownership.operationID === held.operationID,
+        stage = "cold-release-predicate"
+        await measurePhase("cold-preparation.cold-release", async () => {
+          for (;;) {
+            signal.throwIfAborted()
+            const actual = await inventory()
+            const receipt = await f.preparation(held.target, held.operationID)
+            lastCleanup = {
+              observedAt: Date.now(),
+              preparationState: receipt.state,
+              retainedSandboxes: receipt.sandboxes.filter((sandbox) => !sandbox.released).length,
+              preparationUses: actual.uses.filter((use) => use.ownership.kind === "execution-preparation").length,
+              executions: actual.executions.length,
+              nativeStarts: f.nativeStarts(),
+            }
+            if (
+              receipt.state === "released" &&
+              !actual.uses.some(
+                (use) =>
+                  use.ownership.kind === "execution-preparation" && use.ownership.operationID === held.operationID,
+              )
             )
-          )
-            break
-          await Bun.sleep(10)
-        }
+              break
+            await Bun.sleep(10)
+          }
+        })
       } catch (error) {
+        console.error(
+          "COLD_PREPARATION_PREDICATE",
+          JSON.stringify({ stage, elapsedMs: performance.now() - started, lastCleanup }),
+        )
         const actual = await inventory(),
           receipt = await f.preparation(held.target, held.operationID)
         throw new Error(
@@ -381,10 +416,15 @@ test.skipIf(process.platform === "win32")(
           { cause: error },
         )
       }
+      stage = "final-native-assertions"
       expect((await inventory()).executions).toEqual([])
       expect(f.nativeStarts()).toBe(0)
       expect(f.allocations()).toBe(1)
     } catch (error) {
+      console.error(
+        "COLD_PREPARATION_FAILURE",
+        JSON.stringify({ stage, elapsedMs: performance.now() - started, lastCleanup }),
+      )
       failures.push(error)
     } finally {
       controller.abort(new Error("Original preparation fixture is closing"))
@@ -393,7 +433,8 @@ test.skipIf(process.platform === "win32")(
       f.service.interceptHTTP(undefined)
     }
     try {
-      await f[Symbol.asyncDispose]()
+      stage = "fixture-disposal"
+      await measurePhase("cold-preparation.fixture-disposal", () => f[Symbol.asyncDispose]())
     } catch (error) {
       failures.push(error)
     }

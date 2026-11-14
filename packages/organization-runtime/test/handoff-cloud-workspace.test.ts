@@ -36,6 +36,7 @@ import { prepareMemberHome } from "../src/home"
 import { enrollMemberRuntime } from "../src/enrollment"
 import { openMemberRuntime } from "../src/runtime"
 import { fixture } from "./support/organization"
+import { createHandoffCompletion } from "./support/handoff-completion"
 import { WorkspaceCoordinator } from "@ericsanchezok/synergy-local-runtime/workspace/coordinator"
 import { readCredentials } from "../src/credentials"
 import { OrganizationHandoffTarget as NativeTarget } from "../src/handoff-target"
@@ -67,6 +68,7 @@ for (const scenario of [
   "return-adopt-runtime-revoked-cleanup",
   "return-adopt-account-removed-cleanup",
   "return-adopt-runtime-revoked-cli-cleanup",
+  "lost-machine-receipt",
 ] as const)
   test(`consented native files complete one cross-Realm receipt (${scenario})`, async () => {
     const adopting = scenario.startsWith("return-adopt")
@@ -646,17 +648,17 @@ for (const scenario of [
       { handoffID, orgHandoffAccept: accept },
       { headers: target.headers, throwOnError: true },
     )
-    const drive = async (operation: Handoff.Drive["operation"]) => {
+    const rawDrive = async (operation: Handoff.Drive["operation"], requestID: string = crypto.randomUUID()) => {
       const role = Handoff.machineRole(operation)
       const selected: NonNullable<typeof activeDrive> = {
-        requestID: crypto.randomUUID(),
+        requestID,
         operation,
         role,
         started: performance.now(),
       }
       activeDrive = selected
       try {
-        return Handoff.MachineResult.parse(
+        const result = Handoff.MachineResult.parse(
           (
             await f.client.orgHandoff.drive(
               { handoffID, orgHandoffDrive: { operation, requestID: selected.requestID } },
@@ -664,6 +666,14 @@ for (const scenario of [
             )
           ).data,
         )
+        if (
+          result.handoffID !== handoffID ||
+          result.requestID !== selected.requestID ||
+          result.operation !== operation ||
+          result.runtimeID !== (role === "source" ? source : target).registration.runtimeID
+        )
+          throw new Error("Original handoff drive returned another participant or operation")
+        return result
       } catch (error) {
         console.error(
           "HANDOFF_ORIGINAL_DRIVE_FAILURE",
@@ -682,6 +692,53 @@ for (const scenario of [
       } finally {
         if (activeDrive === selected) activeDrive = undefined
       }
+    }
+    const drive = createHandoffCompletion({
+      binding: Handoff.Binding.strip().parse(view),
+      source: { runtimeID: source.registration.runtimeID, publicKey: source.home.publicKey },
+      target: { runtimeID: target.registration.runtimeID, publicKey: target.home.publicKey },
+      invoke: (operation, requestID) => rawDrive(operation, requestID),
+    })
+    let prepareSourceReceipts = 0,
+      inspectSourceReceipts = 0
+    let droppedSourceFact: Handoff.SignedProof | undefined
+    if (scenario === "lost-machine-receipt") {
+      f.interceptFrames((socket, raw) => {
+        if (!source.sockets.has(socket)) return false
+        const frame = Runtime.ClientFrame.parse(JSON.parse(String(raw)))
+        if (frame.type !== "receipt" || frame.reply.kind !== "handoff") return false
+        const result = frame.reply.result
+        if (result.handoffID !== handoffID || result.runtimeID !== source.registration.runtimeID) return false
+        if (result.operation === "inspect-source") inspectSourceReceipts++
+        if (result.operation !== "prepare-source") return false
+        prepareSourceReceipts++
+        if (prepareSourceReceipts !== 1) return false
+        const fact = result.facts.find(({ proof }) => proof.purpose === "source-frozen")
+        if (
+          activeDrive?.operation !== "prepare-source" ||
+          result.requestID !== activeDrive.requestID ||
+          result.state !== "complete" ||
+          result.stage !== "source-frozen" ||
+          !fact ||
+          JSON.stringify(Handoff.Binding.strip().parse(fact.proof)) !==
+            JSON.stringify(Handoff.Binding.strip().parse(view))
+        )
+          throw new Error("Lost machine receipt fixture did not observe the original complete source freeze")
+        droppedSourceFact = fact
+        console.error(
+          "HANDOFF_LOST_ORIGINAL_MACHINE_RECEIPT",
+          JSON.stringify({
+            operation: result.operation,
+            state: result.state,
+            stage: result.stage,
+            prepareSourceReceipts,
+          }),
+        )
+        return true
+      })
+      resources.defer("release original lost machine receipt observer", async () => {
+        f.interceptFrames(undefined)
+      })
     }
     if (scenario === "grant-revoked") {
       await f.client.orgResourceGrants.set(
@@ -771,7 +828,7 @@ for (const scenario of [
       ])
       void publication.catch(() => {})
       let firstError: unknown
-      const first = drive("prepare-source").then(
+      const first = rawDrive("prepare-source").then(
         (value) => ({ value, error: undefined }),
         (error: unknown) => {
           firstError = error
@@ -1254,18 +1311,24 @@ for (const scenario of [
         },
         receiverOptions,
       )
-      const back = async (operation: Handoff.Drive["operation"]) =>
+      const rawBack = async (operation: Handoff.Drive["operation"], requestID: string = crypto.randomUUID()) =>
         Handoff.MachineResult.parse(
           (
             await f.client.orgHandoff.drive(
               {
                 handoffID: returningID,
-                orgHandoffDrive: { operation, requestID: crypto.randomUUID() },
+                orgHandoffDrive: { operation, requestID },
               },
               Handoff.machineRole(operation) === "source" ? sourceOptions : receiverOptions,
             )
           ).data,
         )
+      const back = createHandoffCompletion({
+        binding: Handoff.Binding.strip().parse(returning.data),
+        source: { runtimeID: target.registration.runtimeID, publicKey: target.home.publicKey },
+        target: { runtimeID: receiver.registration.runtimeID, publicKey: receiver.home.publicKey },
+        invoke: (operation, requestID) => rawBack(operation, requestID),
+      })
       const returnedFrozen = (await back("prepare-source")).facts[0]?.proof
       expect(returnedFrozen?.purpose).toBe("source-frozen")
       const captured = await target.runtime.run(async () => {
@@ -1775,15 +1838,21 @@ for (const scenario of [
                 { handoffID, orgHandoffAccept: { mappingPlanRevision: 1, mappingHash: prepared.mappingHash } },
                 options,
               )
-              const drive = async (operation: Handoff.Drive["operation"]) =>
-                Handoff.MachineResult.parse(
-                  (
-                    await f.client.orgHandoff.drive(
-                      { handoffID, orgHandoffDrive: { operation, requestID: crypto.randomUUID() } },
-                      Handoff.machineRole(operation) === "source" ? sourceOptions : options,
-                    )
-                  ).data,
-                )
+              const drive = createHandoffCompletion({
+                binding: Handoff.Binding.strip().parse(prepared),
+                source: { runtimeID: target.registration.runtimeID, publicKey: target.home.publicKey },
+                target: { runtimeID: source.registration.runtimeID, publicKey: source.home.publicKey },
+                async invoke(operation, requestID) {
+                  return Handoff.MachineResult.parse(
+                    (
+                      await f.client.orgHandoff.drive(
+                        { handoffID, orgHandoffDrive: { operation, requestID } },
+                        Handoff.machineRole(operation) === "source" ? sourceOptions : options,
+                      )
+                    ).data,
+                  )
+                },
+              })
               await drive("prepare-source")
               await drive("prepare-target")
               await f.client.orgHandoff.permit(
@@ -1865,7 +1934,7 @@ for (const scenario of [
             })
           using releases = spyOn(WorkspaceMove, "release")
           let settled = false
-          const retiring = back("retire-target").then((value) => {
+          const retiring = rawBack("retire-target").then((value) => {
             settled = true
             return value
           })
@@ -1950,7 +2019,7 @@ for (const scenario of [
             await Promise.allSettled([retiring, ...(pending ? [pending] : []), ...(modeReply ? [modeReply] : [])])
           }
         }
-        await expect(back("prepare-target")).rejects.toMatchObject({ code: "HANDOFF_BLOCKED" })
+        await expect(rawBack("prepare-target")).rejects.toMatchObject({ code: "HANDOFF_BLOCKED" })
         if (scenario === "return-adopt-late-preview") {
           nativeBarrier = held
           const pending = nativeAction("drive", { operation: "preview-target", requestID: "held-native-preview" })
@@ -1969,9 +2038,7 @@ for (const scenario of [
           }
           return
         }
-        const preview = Handoff.MachineResult.parse(
-          await nativeAction("drive", { operation: "preview-target", requestID: "preview-existing-native" }),
-        )
+        const preview = await back("preview-target")
         const fact = preview.facts.find((fact) => fact.proof.purpose === "target-difference")?.proof
         if (fact?.purpose !== "target-difference") throw new Error("Missing actual native target difference")
         expect(fact.difference.sourceSnapshotHash).toBe(
@@ -2044,7 +2111,7 @@ for (const scenario of [
         if (scenario === "return-adopt-late-prepare") {
           held.kind = "prepare"
           nativeBarrier = held
-          const pending = back("prepare-target")
+          const pending = rawBack("prepare-target")
           void pending.catch(() => {})
           try {
             await Promise.race([
@@ -2109,7 +2176,7 @@ for (const scenario of [
           ])
         }
         if (scenario.startsWith("return-adopt-prepared-cancel") || restrictedRecipient) {
-          await expect(back("retire-target")).rejects.toMatchObject({ code: "HANDOFF_BLOCKED" })
+          await expect(rawBack("retire-target")).rejects.toMatchObject({ code: "HANDOFF_BLOCKED" })
           await f.client.orgCloudWorkspaces.write(
             {
               workspaceID: cloud.workspaceID,
@@ -2293,8 +2360,8 @@ for (const scenario of [
             { status: 503 },
           )
         })
-        await expect(back("prepare-target")).rejects.toMatchObject({ outcome: "unknown" })
-        expect((await back("prepare-target")).facts[0]?.proof.purpose).toBe("target-prepared")
+        await expect(rawBack("prepare-target")).rejects.toMatchObject({ outcome: "unknown" })
+        expect((await rawBack("prepare-target")).facts[0]?.proof.purpose).toBe("target-prepared")
       }
       await f.client.orgHandoff.permit(
         { handoffID: returningID, orgHandoffPermitRequest: { purpose: "handoff-surrender" } },
@@ -2393,4 +2460,13 @@ for (const scenario of [
         ).toBeNull()
       }
     }
-  }, 30_000)
+    if (scenario === "lost-machine-receipt") {
+      expect(prepareSourceReceipts).toBe(1)
+      expect(inspectSourceReceipts).toBeGreaterThanOrEqual(1)
+      if (!droppedSourceFact) throw new Error("The original source completion was not intercepted")
+      expect(
+        await Handoff.verifyProof(droppedSourceFact.proof, droppedSourceFact.signature, source.home.publicKey),
+      ).toBe(true)
+      expect(droppedSourceFact.proof).toEqual(frozen)
+    }
+  }, 90_000)

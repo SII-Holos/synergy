@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test"
+import { expect, spyOn, test } from "bun:test"
 import path from "node:path"
 import { Environment } from "@ericsanchezok/synergy-harness/environment"
 import { EnvironmentExecution } from "@ericsanchezok/synergy-harness/environment/execution"
@@ -7,6 +7,8 @@ import { ExecutionProtocol } from "@ericsanchezok/synergy-harness/environment/ex
 import { EnvironmentOrigin } from "@ericsanchezok/synergy-harness/environment/origin"
 import { JsonValue } from "@ericsanchezok/synergy-util/json-value"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { RuntimeResources } from "@ericsanchezok/synergy-harness/resources/runtime"
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { testEnvironmentRuntime } from "@ericsanchezok/synergy-harness/test/support/environment-origin"
 import { testRuntime } from "../support/runtime"
 
@@ -33,6 +35,28 @@ for (const mode of ["natural", "accepted-cancel"] as const)
         }),
       )
       const origin = await physical.run(() => EnvironmentOrigin.selected(physical.origin("source-operation")))
+      const physicalOwner = await physical.run(() => RuntimeContext.current())
+      const publishRunning = Promise.withResolvers<void>()
+      const reserve = RuntimeResources.reserve
+      let admissionHeld = false
+      let admissionReadyObserved = false
+      using admission = spyOn(RuntimeResources, "reserve").mockImplementation(async (request) => {
+        const lease = await reserve(request)
+        if (
+          mode !== "natural" ||
+          admissionHeld ||
+          RuntimeContext.current() !== physicalOwner ||
+          request.owner !== environment.id
+        )
+          return lease
+        admissionHeld = true
+        const release = lease.release.bind(lease)
+        lease.release = async () => {
+          await publishRunning.promise
+          await release()
+        }
+        return lease
+      })
       let opens = 0,
         starts = 0,
         cancellations = 0
@@ -229,10 +253,22 @@ for (const mode of ["natural", "accepted-cancel"] as const)
             signal.throwIfAborted()
             const info = await EnvironmentExecution.reconcile(id, scopeID)
             const output = await EnvironmentExecution.output(id, scopeID)
-            if (output.some((chunk) => Buffer.from(chunk.data, "base64").toString().includes("SOURCE_OPERATION_READY")))
+            if (
+              info.state === "running" &&
+              info.status?.state === "running" &&
+              output.some((chunk) => Buffer.from(chunk.data, "base64").toString().includes("SOURCE_OPERATION_READY"))
+            )
               break
             if (info.status && ExecutionProtocol.terminal(info.status))
               throw new Error("The real command ended before its ready barrier")
+            if (
+              mode === "natural" &&
+              info.status?.state === "accepted" &&
+              output.some((chunk) => Buffer.from(chunk.data, "base64").toString().includes("SOURCE_OPERATION_READY"))
+            ) {
+              admissionReadyObserved = true
+              publishRunning.resolve()
+            }
             const status = info.status
             if (status)
               await physical.run(async () => {
@@ -242,7 +278,7 @@ for (const mode of ["natural", "accepted-cancel"] as const)
               })
           }
           expect(starts).toBe(1)
-          expect((await nativeInfo())?.state).toBe("running")
+          expect(await nativeInfo()).toMatchObject({ state: "running", status: { state: "running" } })
           await lease.release()
           await expect(
             Source.retainOperation(lease, { id, scopeID, digest: submitted.digest, origin: selected }),
@@ -266,7 +302,46 @@ for (const mode of ["natural", "accepted-cancel"] as const)
             lease.executor.prepareInputs({ id: "late-input", files: [{ name: "late.bin", data: "AA==" }] }),
           ).rejects.toThrow("lease has ended")
           if (mode === "natural") {
-            await EnvironmentExecution.stdin(id, scopeID, new TextEncoder().encode("finish\n"))
+            {
+              const controllerStore = Storage.current().store
+              const get = EnvironmentExecution.get
+              let reads = 0
+              let canonical:
+                | {
+                    state: EnvironmentExecution.Info["state"]
+                    status?: ExecutionProtocol.Status
+                  }
+                | undefined
+              using guardRead = spyOn(EnvironmentExecution, "get").mockImplementation(async (...args) => {
+                const info = await get(...args)
+                if (args[0] === id && args[1] === scopeID && Storage.current().store === controllerStore) {
+                  reads++
+                  canonical = { state: info.state, status: info.status && structuredClone(info.status) }
+                }
+                return info
+              })
+              try {
+                await EnvironmentExecution.stdin(id, scopeID, new TextEncoder().encode("finish\n"))
+              } catch (error) {
+                console.error(
+                  "SOURCE_OPERATION_STDIN_GUARD",
+                  JSON.stringify({
+                    reads,
+                    state: canonical?.state,
+                    status: canonical?.status?.state,
+                    effectsStarted: canonical?.status?.effectsStarted,
+                    exitCode: canonical?.status?.exitCode,
+                    signal: canonical?.status?.signal,
+                    treeDrained: canonical?.status?.treeDrained,
+                    streamsDrained: canonical?.status?.streamsDrained,
+                    cursor: canonical?.status?.cursor,
+                  }),
+                )
+                throw error
+              }
+            }
+            expect(admissionHeld).toBe(true)
+            expect(admissionReadyObserved).toBe(true)
             await drain(false)
             const result = await EnvironmentExecution.reconcile(id, scopeID)
             expect(result.status).toMatchObject({
@@ -310,6 +385,7 @@ for (const mode of ["natural", "accepted-cancel"] as const)
       } catch (error) {
         errors.push(error)
       }
+      publishRunning.resolve()
       try {
         await controller.run(() => Source.close())
       } catch (error) {

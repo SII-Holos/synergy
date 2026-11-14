@@ -1,5 +1,4 @@
 import { expect, test } from "bun:test"
-import { z } from "zod"
 import fs from "node:fs/promises"
 import path from "node:path"
 import {
@@ -10,6 +9,7 @@ import { EnvironmentExecution } from "@ericsanchezok/synergy-harness/environment
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { readCommandControlVersion } from "../src/command-intake"
 import { cloudExecutionFixture } from "./support/cloud-execution"
+import { createHandoffCompletion } from "./support/handoff-completion"
 
 type Fixture = Awaited<ReturnType<typeof cloudExecutionFixture>>
 type Machine = Awaited<ReturnType<Fixture["member"]>> | Awaited<ReturnType<Fixture["hosted"]>>
@@ -98,72 +98,22 @@ async function handoff(
       options,
     )
   expect((await fixture.service.client.orgHandoff.get({ handoffID: id }, options)).data.targetAccepted).toBe(true)
-  async function drive(operation: Handoff.Drive["operation"]) {
-    return stage(id + ":" + operation, async () => {
-      try {
-        return Handoff.MachineResult.parse(
-          (
-            await fixture.service.client.orgHandoff.drive(
-              { handoffID: id, orgHandoffDrive: { operation, requestID: crypto.randomUUID() } },
-              options,
-            )
-          ).data,
-        )
-      } catch (error) {
-        if (
-          operation === "prepare-target" &&
-          z.object({ code: z.literal("COMMAND_OUTCOME_UNKNOWN"), outcome: z.literal("unknown") }).safeParse(error)
-            .success
-        ) {
-          const observed = {
-            reads: 0,
-            state: "unobserved",
-            stage: "unobserved",
-            purposes: [] as Handoff.Proof["purpose"][],
-            participantMatches: false,
-          }
-          try {
-            for (;;) {
-              const inspected = Handoff.MachineResult.parse(
-                (
-                  await fixture.service.client.orgHandoff.drive(
-                    {
-                      handoffID: id,
-                      orgHandoffDrive: { operation: "inspect-target", requestID: crypto.randomUUID() },
-                    },
-                    options,
-                  )
-                ).data,
-              )
-              observed.reads++
-              observed.state = inspected.state
-              observed.stage = inspected.stage
-              observed.purposes = inspected.facts.map((fact) => fact.proof.purpose)
-              observed.participantMatches =
-                inspected.handoffID === id &&
-                inspected.runtimeID === target.registration.runtimeID &&
-                inspected.operation === "inspect-target"
-              if (
-                inspected.state === "complete" &&
-                inspected.facts.some((fact) => fact.proof.purpose === "target-prepared")
-              )
-                return inspected
-              if (inspected.state !== "working") break
-              await Bun.sleep(25)
-            }
-          } catch (inspection) {
-            console.error(
-              "ENVIRONMENT_TARGET_INSPECTION",
-              JSON.stringify({ ...observed, error: failureMetadata(inspection) }),
-            )
-            throw new AggregateError([error, inspection], "Original Target dispatch and receipt inspection failed")
-          }
-          console.error("ENVIRONMENT_TARGET_INSPECTION", JSON.stringify(observed))
-        }
-        throw error
-      }
-    })
-  }
+  const completion = createHandoffCompletion({
+    binding: Handoff.Binding.strip().parse(prepared),
+    source: { runtimeID: source.registration.runtimeID, publicKey: source.home.publicKey },
+    target: { runtimeID: target.registration.runtimeID, publicKey: target.home.publicKey },
+    async invoke(operation, requestID) {
+      return Handoff.MachineResult.parse(
+        (
+          await fixture.service.client.orgHandoff.drive(
+            { handoffID: id, orgHandoffDrive: { operation, requestID } },
+            options,
+          )
+        ).data,
+      )
+    },
+  })
+  const drive = (operation: Handoff.Drive["operation"]) => stage(id + ":" + operation, () => completion(operation))
   const frozen = (await drive("prepare-source")).facts[0]?.proof
   expect(frozen?.purpose).toBe("source-frozen")
   if (frozen?.purpose !== "source-frozen") throw new Error("The original Source did not freeze")

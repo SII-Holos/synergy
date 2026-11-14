@@ -12,6 +12,7 @@ import { prepareMemberHome } from "../src/home"
 import { enrollMemberRuntime } from "../src/enrollment"
 import { openMemberRuntime } from "../src/runtime"
 import { fixture } from "./support/organization"
+import { createHandoffCompletion } from "./support/handoff-completion"
 
 async function availablePort() {
   const probe = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() })
@@ -64,6 +65,7 @@ test("an explicit native-to-none Environment handoff commits an originally empty
       await online.promise
       return {
         registration,
+        publicKey: home.publicKey,
         client: createSynergyClient({
           baseUrl: `http://127.0.0.1:${port}`,
           headers: { authorization: `Bearer ${token}` },
@@ -149,14 +151,16 @@ test("an explicit native-to-none Environment handoff commits an originally empty
     },
     options,
   )
-  async function drive(operation: Handoff.Drive["operation"]) {
-    return (
-      await service.client.orgHandoff.drive(
-        { handoffID, orgHandoffDrive: { operation, requestID: crypto.randomUUID() } },
-        options,
+  const drive = createHandoffCompletion({
+    binding: Handoff.Binding.strip().parse(prepared),
+    source: { runtimeID: source.registration.runtimeID, publicKey: source.publicKey },
+    target: { runtimeID: target.registration.runtimeID, publicKey: target.publicKey },
+    async invoke(operation, requestID) {
+      return Handoff.MachineResult.parse(
+        (await service.client.orgHandoff.drive({ handoffID, orgHandoffDrive: { operation, requestID } }, options)).data,
       )
-    ).data
-  }
+    },
+  })
   const frozen = await drive("prepare-source")
   expect(frozen.facts[0]?.proof).toMatchObject({ purpose: "source-frozen", environmentMappingHash })
   const staged = await drive("prepare-target")

@@ -31,6 +31,7 @@ import { WorkspaceCoordinator } from "@ericsanchezok/synergy-local-runtime/works
 import { registerWorkspace } from "@ericsanchezok/synergy-local-runtime/register-workspace"
 import { registerLocalRuntime } from "@ericsanchezok/synergy-local-runtime/register"
 import { fixture } from "./support/organization"
+import { createHandoffCompletion } from "./support/handoff-completion"
 import {
   prepareMemberHome,
   prepareHostedHome,
@@ -771,15 +772,15 @@ test.each([
           options,
         )
       }
-      const drive = async (operation: Handoff.Drive["operation"], id = handoffID) => {
+      const rawDrive = async (
+        operation: Handoff.Drive["operation"],
+        id = handoffID,
+        requestID: string = crypto.randomUUID(),
+      ) => {
         try {
           return Handoff.MachineResult.parse(
-            (
-              await f.client.orgHandoff.drive(
-                { handoffID: id, orgHandoffDrive: { operation, requestID: crypto.randomUUID() } },
-                options,
-              )
-            ).data,
+            (await f.client.orgHandoff.drive({ handoffID: id, orgHandoffDrive: { operation, requestID } }, options))
+              .data,
           )
         } catch (error) {
           if (sourceFailure) throw sourceFailure
@@ -787,6 +788,12 @@ test.each([
           throw error
         }
       }
+      const drive = createHandoffCompletion({
+        binding: Handoff.Binding.strip().parse(initial),
+        source: { runtimeID: sourceRegistration.runtimeID, publicKey: member.publicKey },
+        target: { runtimeID: targetRegistration.runtimeID, publicKey: hosted.publicKey },
+        invoke: (operation, requestID) => rawDrive(operation, handoffID, requestID),
+      })
       let frozen: Handoff.MachineResult
       if (mode === "unknown" || mode === "workspace-unknown") {
         const arrived = Promise.withResolvers<void>()
@@ -844,9 +851,9 @@ test.each([
         expect((await drive("inspect-source")).facts[0]?.proof).toEqual(frozen.facts[0]?.proof)
       }
       if (mode === "workspace-mapping-conflict") {
-        await expect(drive("prepare-target")).rejects.toThrow("conflicts with its prepared native identity")
+        await expect(rawDrive("prepare-target")).rejects.toThrow("conflicts with its prepared native identity")
         mappingConflict = "receipt"
-        await expect(drive("prepare-target")).rejects.toThrow("conflicts with its prepared native receipt")
+        await expect(rawDrive("prepare-target")).rejects.toThrow("conflicts with its prepared native receipt")
         expect((await f.client.orgHandoff.get({ handoffID }, options)).data.phase).toBe("preparing")
         await target.run(() => expect(Session.get(sessionID)).rejects.toThrow())
       }
@@ -918,7 +925,7 @@ test.each([
           throw new Error("Stop after the real retention close")
         })
         try {
-          await expect(drive("surrender-source")).rejects.toMatchObject({
+          await expect(rawDrive("surrender-source")).rejects.toMatchObject({
             code: "SERVICE_UNAVAILABLE",
             outcome: "unknown",
           })
@@ -960,7 +967,7 @@ test.each([
             { status: 503 },
           )
         })
-        await expect(drive("surrender-source")).rejects.toMatchObject({
+        await expect(rawDrive("surrender-source")).rejects.toMatchObject({
           code: "SERVICE_UNAVAILABLE",
           outcome: "unknown",
         })
@@ -1181,6 +1188,12 @@ test.each([
             options,
           )
         ).data
+        const returnDrive = createHandoffCompletion({
+          binding: Handoff.Binding.strip().parse(returning),
+          source: { runtimeID: targetRegistration.runtimeID, publicKey: hosted.publicKey },
+          target: { runtimeID: sourceRegistration.runtimeID, publicKey: member.publicKey },
+          invoke: (operation, requestID) => rawDrive(operation, returningHandoffID, requestID),
+        })
         expect(returning.canAccept).toBe(true)
         await f.client.orgHandoff.accept(
           {
@@ -1192,7 +1205,7 @@ test.each([
           },
           options,
         )
-        const frozenReturn = await drive("prepare-source", returningHandoffID)
+        const frozenReturn = await returnDrive("prepare-source")
         expect(frozenReturn.facts[0]?.proof).toMatchObject({
           purpose: "source-frozen",
           fromEpoch: destinations.bindingEpoch,
@@ -1201,7 +1214,7 @@ test.each([
           fileClosureHash: expect.stringMatching(/^[a-f0-9]{64}$/),
           workspaceMoveReceiptHash: null,
         })
-        const preparedReturn = await drive("prepare-target", returningHandoffID)
+        const preparedReturn = await returnDrive("prepare-target")
         expect(preparedReturn.facts[0]?.proof).toMatchObject({
           purpose: "target-prepared",
           fileClosureHash:
@@ -1217,7 +1230,7 @@ test.each([
           { handoffID: returningHandoffID, orgHandoffPermitRequest: { purpose: "handoff-surrender" } },
           options,
         )
-        expect((await drive("surrender-source", returningHandoffID)).facts[0]?.proof.purpose).toBe("source-surrendered")
+        expect((await returnDrive("surrender-source")).facts[0]?.proof.purpose).toBe("source-surrendered")
         expect(
           (await f.client.orgHandoff.commit({ handoffID: returningHandoffID, body: {} }, options)).data.phase,
         ).toBe("committed")
@@ -1225,8 +1238,8 @@ test.each([
           { handoffID: returningHandoffID, orgHandoffPermitRequest: { purpose: "handoff-activation" } },
           options,
         )
-        expect((await drive("activate-target", returningHandoffID)).facts[0]?.proof.purpose).toBe("target-activated")
-        expect((await drive("inspect-target", returningHandoffID)).facts[0]?.proof.purpose).toBe("target-activated")
+        expect((await returnDrive("activate-target")).facts[0]?.proof.purpose).toBe("target-activated")
+        expect((await returnDrive("inspect-target")).facts[0]?.proof.purpose).toBe("target-activated")
         expect((await f.client.orgHandoff.get({ handoffID: returningHandoffID }, options)).data).toMatchObject({
           phase: "completed",
           currentDriver: sourceRegistration.runtimeID,

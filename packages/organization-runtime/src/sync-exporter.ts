@@ -66,11 +66,11 @@ export async function settleMemberSync(
   if (selected.length !== 1) throw new Error("Sync settlement requires its original live source connection")
   await selected[0]!.settle(Epochs.Binding.parse(binding), Sync.BatchIdentity.parse(batch), signal)
 }
-const exporters = RuntimeContext.state(() => new Set<() => Promise<void>>())
+const exporters = RuntimeContext.state(() => new Set<(sessionID: string) => Promise<void>>())
 export async function drainMemberSync(sessionID: string, preparation?: Epochs.Binding) {
   if (Storage.inTransaction() || !(await Epochs.isFrozen(sessionID)))
     throw new Error("Shared export drainage requires its frozen native source outside a transaction")
-  await Promise.all([...exporters()].map((drain) => drain()))
+  await Promise.all([...exporters()].map((drain) => drain(sessionID)))
   if (preparation) {
     if (preparation.sessionID !== sessionID) throw new Error("Shared drainage changed its original root")
     await prepareNativeSync(preparation, async () => {
@@ -127,6 +127,7 @@ export function startMemberSyncExporter(input: {
   const sessions = new Set<string>()
   const tails = new Map<string, Promise<void>>()
   const nativeWakes = new Map<string, { dirty: boolean }>()
+  const flushingSessions = new Map<string, { observer: AbortController; settled: Promise<void> }>()
   const unsubs: Array<() => void> = []
   let timer: ReturnType<typeof setTimeout> | undefined
   const retryTimer = setInterval(() => {
@@ -136,8 +137,12 @@ export function startMemberSyncExporter(input: {
   let closed = false
   let running: Promise<void> | undefined
   let closing: Promise<void> | undefined
-  const drain = async () => {
-    await Promise.allSettled([startup, ...tails.values(), ...(running ? [running] : [])])
+  const drain = async (sessionID: string) => {
+    await startup
+    const active = flushingSessions.get(sessionID)
+    active?.observer.abort()
+    const tail = tails.get(sessionID)
+    await Promise.allSettled([...(tail ? [tail] : []), ...(active ? [active.settled] : [])])
   }
   const registeredExporters = exporters()
   registeredExporters.add(drain)
@@ -769,7 +774,7 @@ export function startMemberSyncExporter(input: {
   const originalSenders = senders()
   originalSenders.add(sender)
 
-  async function flushSession(sessionID: string) {
+  async function flushSession(sessionID: string, observer: AbortSignal) {
     const original = await sessionBinding(sessionID)
     if (!original) return
     const fault = nativeSyncFaults().find((value) => value.rootSessionID === sessionID)
@@ -803,7 +808,14 @@ export function startMemberSyncExporter(input: {
     await uploadBatchBlobs(sessionID, share, batch)
     const bound = await sessionBinding(sessionID)
     if (!bound || bound.binding.bindingEpoch !== batch.bindingEpoch) return
-    const ack = Sync.Ack.parse(await connection.sync(batch, signal))
+    let reply: Sync.Ack
+    try {
+      reply = await connection.sync(batch, AbortSignal.any([signal, observer]))
+    } catch (error) {
+      if (observer.aborted) return
+      throw error
+    }
+    const ack = Sync.Ack.parse(reply)
     if (
       ack.sessionID !== batch.sessionID ||
       ack.shareGeneration !== batch.shareGeneration ||
@@ -848,37 +860,47 @@ export function startMemberSyncExporter(input: {
       const failures: unknown[] = []
       for (const sessionID of new Set([...sessions, ...nativeSyncFaults().map((value) => value.rootSessionID)])) {
         if (closed || signal.aborted) return
+        const observer = new AbortController()
+        const settled = (async () => {
+          try {
+            const original = await sessionBinding(sessionID)
+            if (original) await pumpNativeSync(original)
+          } catch (error) {
+            const fault = nativeSyncFaults().find((value) => value.rootSessionID === sessionID)
+            if (fault) await storageObservation(sessionID, fault, false).catch(() => {})
+            failures.push(error)
+            return
+          }
+          try {
+            await flushSession(sessionID, observer.signal)
+          } catch (error) {
+            if (closed || signal.aborted) return
+            const original = await nativeBinding(sessionID, identity.orgID)
+            if (original) observeNativeSyncFailure(original, error)
+            const fault = nativeSyncFaults().find((value) => value.rootSessionID === sessionID)
+            if (fault) await storageObservation(sessionID, fault, false).catch(() => {})
+            const current = await read(State, Keys.state(identity.orgID, sessionID))
+            await Storage.write(
+              Keys.state(identity.orgID, sessionID),
+              State.parse({
+                schemaVersion: 1,
+                orgID: identity.orgID,
+                sessionID,
+                nextDraft: current?.nextDraft ?? 1,
+                shareGeneration: current?.shareGeneration,
+                syncState: "failed",
+                projectionVersion: current?.projectionVersion,
+                updatedAt: Date.now(),
+              }),
+            ).catch(() => {})
+          }
+        })()
+        const active = { observer, settled }
+        flushingSessions.set(sessionID, active)
         try {
-          const original = await sessionBinding(sessionID)
-          if (original) await pumpNativeSync(original)
-        } catch (error) {
-          const fault = nativeSyncFaults().find((value) => value.rootSessionID === sessionID)
-          if (fault) await storageObservation(sessionID, fault, false).catch(() => {})
-          failures.push(error)
-          continue
-        }
-        try {
-          await flushSession(sessionID)
-        } catch (error) {
-          if (closed || signal.aborted) return
-          const original = await nativeBinding(sessionID, identity.orgID)
-          if (original) observeNativeSyncFailure(original, error)
-          const fault = nativeSyncFaults().find((value) => value.rootSessionID === sessionID)
-          if (fault) await storageObservation(sessionID, fault, false).catch(() => {})
-          const current = await read(State, Keys.state(identity.orgID, sessionID))
-          await Storage.write(
-            Keys.state(identity.orgID, sessionID),
-            State.parse({
-              schemaVersion: 1,
-              orgID: identity.orgID,
-              sessionID,
-              nextDraft: current?.nextDraft ?? 1,
-              shareGeneration: current?.shareGeneration,
-              syncState: "failed",
-              projectionVersion: current?.projectionVersion,
-              updatedAt: Date.now(),
-            }),
-          ).catch(() => {})
+          await settled
+        } finally {
+          if (flushingSessions.get(sessionID) === active) flushingSessions.delete(sessionID)
         }
       }
       if (failures.length === 1) throw failures[0]
@@ -955,6 +977,7 @@ export function startMemberSyncExporter(input: {
       settled.push(...local)
       tails.clear()
       nativeWakes.clear()
+      flushingSessions.clear()
       sessions.clear()
       registeredExporters.delete(drain)
       originalSenders.delete(sender)

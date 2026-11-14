@@ -1430,6 +1430,11 @@ test("a cancelled native exact receipt read never consumes the original late Ser
   }
   expect(held).toBe(true)
   expect(consumed).toBe(false)
+  expect(await current.syncBatchReceipt({ batch: original.batch })).toMatchObject({
+    state: "committed",
+    batch: original.batch,
+  })
+  expect(current.signal.aborted).toBe(false)
   expect(await original.marker()).toEqual(before)
 }, 15000)
 

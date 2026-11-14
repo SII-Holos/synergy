@@ -722,8 +722,11 @@ test("history beyond one batch publishes its root first and drains every part", 
       scope: f.scope,
       workspace: null,
       fn: async () => {
-        for (let i = 0; i < 270; i++)
-          await Session.updatePart({ ...f.part, id: Identifier.ascending("part"), text: `History part ${i}` })
+        for (let offset = 0; offset < 270; offset += 128)
+          await Storage.transaction(async () => {
+            for (let i = offset; i < Math.min(offset + 128, 270); i++)
+              await Session.updatePart({ ...f.part, id: Identifier.ascending("part"), text: `History part ${i}` })
+          })
       },
     })
     const remote = transport(f.session.id)

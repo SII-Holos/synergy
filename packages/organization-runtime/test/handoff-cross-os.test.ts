@@ -1,5 +1,6 @@
 import assert from "node:assert/strict"
 import { test } from "bun:test"
+import { dns } from "bun"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { createHash } from "node:crypto"
@@ -32,6 +33,35 @@ const role = process.env.SYNERGY_CROSS_OS_ROLE
 
 type HeaderFailure = { name: string; code?: string; message?: string; cause?: HeaderFailure }
 
+const dnsCacheKeys = ["cacheHitsCompleted", "cacheHitsInflight", "cacheMisses", "size", "errors", "totalCount"] as const
+type DNSCacheCounters = Pick<ReturnType<typeof dns.getCacheStats>, (typeof dnsCacheKeys)[number]>
+type DNSCacheObservation = { available: false } | { available: true; counters: DNSCacheCounters }
+
+// Provenance: https://github.com/oven-sh/bun/blob/c6da4a4d3010e5553438c60f6bd76d981976867c/packages/bun-types/bun.d.ts#L2621-L2631
+// Local adaptation: retain only the fixed numeric public counters; observation never requests a lookup.
+function observeDNSCache(): DNSCacheObservation {
+  try {
+    const value = dns.getCacheStats()
+    const entries = dnsCacheKeys.map((key) => [key, value[key]] as const)
+    if (entries.some(([, count]) => !Number.isSafeInteger(count) || count < 0)) return { available: false }
+    return { available: true, counters: Object.fromEntries(entries) as DNSCacheCounters }
+  } catch {
+    return { available: false }
+  }
+}
+function dnsCacheDelta(before: DNSCacheObservation | undefined, after: DNSCacheObservation): DNSCacheObservation {
+  try {
+    if (before?.available && after.available)
+      return {
+        available: true,
+        counters: Object.fromEntries(
+          dnsCacheKeys.map((key) => [key, after.counters[key] - before.counters[key]]),
+        ) as DNSCacheCounters,
+      }
+  } catch {}
+  return { available: false }
+}
+
 const transportFacts = {
   stderrLines: 0,
   firstDiagnosticStderr: [] as string[],
@@ -50,6 +80,11 @@ const transportFacts = {
     otherError: 0,
   },
   health: {
+    dnsCache: {
+      before: undefined as DNSCacheObservation | undefined,
+      final: undefined as DNSCacheObservation | undefined,
+      delta: undefined as DNSCacheObservation | undefined,
+    },
     attempts: 0,
     headerResponses: 0,
     headerFailures: 0,
@@ -62,6 +97,7 @@ const transportFacts = {
       observedAtMs: number
       elapsedBeforeFailureMs: number
       fetchInvoked: boolean
+      dnsCache: DNSCacheObservation
       failure: HeaderFailure
     }>,
     failureKinds: {} as Record<string, number>,
@@ -106,6 +142,7 @@ function transportSnapshot() {
     stderrCategories: { ...transportFacts.stderrCategories },
     health: {
       ...transportFacts.health,
+      dnsCache: { ...transportFacts.health.dnsCache },
       firstHeaderFailures: [...transportFacts.health.firstHeaderFailures],
       failureKinds: { ...transportFacts.health.failureKinds },
     },
@@ -280,6 +317,8 @@ async function tunnel(directory: string, port: number) {
       decoder = new TextDecoder()
     let buffered = ""
     let partialLine = ""
+    let publicOrigin: string | undefined
+    let registered = false
     try {
       while (true) {
         const result = await stream.read()
@@ -288,9 +327,13 @@ async function tunnel(directory: string, port: number) {
         buffered = (buffered + chunk).slice(-32768)
         const lines = (partialLine + chunk).split(/\r?\n/)
         partialLine = lines.pop()!.slice(-32768)
-        for (const line of lines) observeTunnelStderr(line.slice(-32768))
-        const found = buffered.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/)
-        if (found) ready.resolve(found[0])
+        for (const line of lines) {
+          const observed = line.slice(-32768)
+          observeTunnelStderr(observed)
+          if (observed.includes("Registered tunnel connection")) registered = true
+        }
+        publicOrigin ??= buffered.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/)?.[0]
+        if (publicOrigin && registered) ready.resolve(publicOrigin)
       }
       if (partialLine) observeTunnelStderr(partialLine)
       ready.reject(new Error("The task-owned tunnel exited before a public HTTPS endpoint was ready"))
@@ -572,6 +615,7 @@ async function host() {
       },
     })
     cleanups.splice(1, 0, () => server.stop(false))
+    transportFacts.health.dnsCache.before = observeDNSCache()
     await setup("darwin-public-health", () =>
       until(
         async () => {
@@ -608,6 +652,7 @@ async function host() {
                   observedAtMs: performance.now(),
                   elapsedBeforeFailureMs: performance.now() - requestStarted,
                   fetchInvoked,
+                  dnsCache: observeDNSCache(),
                   failure,
                 })
               const kind = [
@@ -632,7 +677,11 @@ async function host() {
         },
         120000,
         "The task TLS tunnel did not reach its actual native origin",
-      ),
+      ).finally(() => {
+        const final = observeDNSCache()
+        transportFacts.health.dnsCache.final = final
+        transportFacts.health.dnsCache.delta = dnsCacheDelta(transportFacts.health.dnsCache.before, final)
+      }),
     )
     const setupToken = await setup("darwin-bootstrap-token", async () => {
       bootstrapSignal.throwIfAborted()
