@@ -29,16 +29,22 @@ const lockKey = (sessionID: string, generation: number, hash: string) =>
   `organization-shared-blob:${sessionID}:${generation}:${hash}`
 type Authority = () => Promise<Record.SessionDirectory>
 
-function activeAuthority(input: { shareGeneration: number }, authorize: Authority): Authority {
+function activeAuthority(
+  input: { shareGeneration: number },
+  authorize: Authority,
+  assertCurrent?: () => void,
+): Authority {
   return async () => {
+    assertCurrent?.()
     const session = await authorize()
+    assertCurrent?.()
     if (session.shareState !== "shared" || session.shareGeneration !== input.shareGeneration)
       fail("SHARE_REVOKED", "The Session share generation is no longer active")
     return session
   }
 }
 
-async function verify(manifest: Record.SharedBlob, active: Authority) {
+async function verify(manifest: Record.SharedBlob, active: Authority, assertCurrent?: () => void) {
   const hash = createHash("sha256")
   let bytes = 0
   let count = 0
@@ -59,33 +65,40 @@ async function verify(manifest: Record.SharedBlob, active: Authority) {
       { maxBytes: chunkBytes },
     )
     if (content.byteLength !== chunk.bytes) fail("INVALID_REQUEST", "Shared blob chunk size changed")
+    assertCurrent?.()
     hash.update(content)
     bytes += content.byteLength
     count++
   }
   if (bytes !== manifest.bytes || count !== manifest.receivedChunks || hash.digest("hex") !== manifest.hash) {
-    await Storage.transaction(async () => {
-      await active()
-      await Storage.removeTree(Keys.sharedBlob(manifest.sessionID, manifest.shareGeneration, manifest.hash))
-    })
+    await Storage.transaction(
+      async () => {
+        await active()
+        await Storage.removeTree(Keys.sharedBlob(manifest.sessionID, manifest.shareGeneration, manifest.hash))
+      },
+      { commitGuard: assertCurrent },
+    )
     fail("INVALID_REQUEST", "Blob bytes do not match the declared content hash")
   }
-  return Storage.transaction(async () => {
-    await active()
-    const key = Keys.sharedBlob(manifest.sessionID, manifest.shareGeneration, manifest.hash)
-    const current = await Record.read(Record.SharedBlob, key)
-    if (
-      !current ||
-      current.bytes !== bytes ||
-      current.receivedBytes !== bytes ||
-      current.receivedChunks !== count ||
-      current.nextOffset !== bytes
-    )
-      fail("REVISION_CONFLICT", "Shared blob changed before integrity publication")
-    const complete = Record.SharedBlob.parse({ ...current, complete: true, updatedAt: Date.now() })
-    await Storage.write(key, complete)
-    return complete
-  })
+  return Storage.transaction(
+    async () => {
+      await active()
+      const key = Keys.sharedBlob(manifest.sessionID, manifest.shareGeneration, manifest.hash)
+      const current = await Record.read(Record.SharedBlob, key)
+      if (
+        !current ||
+        current.bytes !== bytes ||
+        current.receivedBytes !== bytes ||
+        current.receivedChunks !== count ||
+        current.nextOffset !== bytes
+      )
+        fail("REVISION_CONFLICT", "Shared blob changed before integrity publication")
+      const complete = Record.SharedBlob.parse({ ...current, complete: true, updatedAt: Date.now() })
+      await Storage.write(key, complete)
+      return complete
+    },
+    { commitGuard: assertCurrent },
+  )
 }
 
 export namespace OrganizationSharedBlobs {
@@ -215,6 +228,7 @@ export namespace OrganizationSharedBlobs {
       bytes: Uint8Array
     },
     authorize: Authority,
+    assertCurrent?: () => void,
   ) {
     const hash = Protocol.Digest.parse(input.hash)
     const generation = Identity.Revision.parse(input.shareGeneration)
@@ -229,60 +243,64 @@ export namespace OrganizationSharedBlobs {
       (expected === 0 && (total !== 0 || offset !== 0))
     )
       fail("INVALID_REQUEST", "Blob chunk must cover its complete declared aligned range")
-    const active = activeAuthority(input, authorize)
+    const active = activeAuthority(input, authorize, assertCurrent)
     await Storage.snapshot(active)
     const binaryKey = Keys.sharedBlobChunk(input.sessionID, generation, hash, offset)
     using prepared = input.bytes.byteLength ? await Storage.prepareBinary(binaryKey, input.bytes) : undefined
     using held = await Lock.write(lockKey(input.sessionID, generation, hash))
-    const manifest = await Storage.transaction(async () => {
-      const session = await active()
-      const key = Keys.sharedBlob(input.sessionID, generation, hash)
-      const current = await Record.read(Record.SharedBlob, key)
-      if (current && (current.bytes !== total || current.hash !== hash))
-        fail("REVISION_CONFLICT", "Blob metadata cannot change after its first chunk")
-      const receipt = receiptKey(input.sessionID, generation, hash, offset)
-      const [existing] = await Storage.readMany([receipt])
-      let added = 0
-      if (existing !== undefined) {
-        const previous = Chunk.parse(existing)
-        if (previous.bytes !== input.bytes.byteLength) fail("REVISION_CONFLICT", "Published blob chunks are immutable")
-        const previousBytes = await Storage.readBinary(binaryKey, { maxBytes: chunkBytes })
-        if (!Buffer.from(previousBytes).equals(input.bytes))
-          fail("REVISION_CONFLICT", "Published blob chunks are immutable")
-      } else if (prepared) {
-        await Storage.publishPreparedBinary(prepared)
-        await Storage.write(receipt, Chunk.parse({ offset, bytes: input.bytes.byteLength }))
-        added = input.bytes.byteLength
-      }
-      let nextOffset = current?.nextOffset ?? 0
-      while (nextOffset < total) {
-        const [next] = await Storage.readMany([receiptKey(input.sessionID, generation, hash, nextOffset)])
-        if (next === undefined) break
-        const chunk = Chunk.parse(next)
-        if (chunk.offset !== nextOffset || chunk.bytes !== Math.min(chunkBytes, total - nextOffset))
-          fail("INVALID_REQUEST", "Shared blob chunk manifest has an inconsistent range")
-        nextOffset += chunk.bytes
-      }
-      const next = Record.SharedBlob.parse({
-        schemaVersion: 2,
-        sessionID: session.sessionID,
-        shareGeneration: generation,
-        hash,
-        bytes: total,
-        chunkBytes,
-        receivedBytes: (current?.receivedBytes ?? 0) + added,
-        receivedChunks: (current?.receivedChunks ?? 0) + (added ? 1 : 0),
-        nextOffset,
-        complete: current?.complete ?? false,
-        createdAt: current?.createdAt ?? Date.now(),
-        updatedAt: Date.now(),
-      })
-      await Storage.write(key, next)
-      return next
-    })
+    const manifest = await Storage.transaction(
+      async () => {
+        const session = await active()
+        const key = Keys.sharedBlob(input.sessionID, generation, hash)
+        const current = await Record.read(Record.SharedBlob, key)
+        if (current && (current.bytes !== total || current.hash !== hash))
+          fail("REVISION_CONFLICT", "Blob metadata cannot change after its first chunk")
+        const receipt = receiptKey(input.sessionID, generation, hash, offset)
+        const [existing] = await Storage.readMany([receipt])
+        let added = 0
+        if (existing !== undefined) {
+          const previous = Chunk.parse(existing)
+          if (previous.bytes !== input.bytes.byteLength)
+            fail("REVISION_CONFLICT", "Published blob chunks are immutable")
+          const previousBytes = await Storage.readBinary(binaryKey, { maxBytes: chunkBytes })
+          if (!Buffer.from(previousBytes).equals(input.bytes))
+            fail("REVISION_CONFLICT", "Published blob chunks are immutable")
+        } else if (prepared) {
+          await Storage.publishPreparedBinary(prepared)
+          await Storage.write(receipt, Chunk.parse({ offset, bytes: input.bytes.byteLength }))
+          added = input.bytes.byteLength
+        }
+        let nextOffset = current?.nextOffset ?? 0
+        while (nextOffset < total) {
+          const [next] = await Storage.readMany([receiptKey(input.sessionID, generation, hash, nextOffset)])
+          if (next === undefined) break
+          const chunk = Chunk.parse(next)
+          if (chunk.offset !== nextOffset || chunk.bytes !== Math.min(chunkBytes, total - nextOffset))
+            fail("INVALID_REQUEST", "Shared blob chunk manifest has an inconsistent range")
+          nextOffset += chunk.bytes
+        }
+        const next = Record.SharedBlob.parse({
+          schemaVersion: 2,
+          sessionID: session.sessionID,
+          shareGeneration: generation,
+          hash,
+          bytes: total,
+          chunkBytes,
+          receivedBytes: (current?.receivedBytes ?? 0) + added,
+          receivedChunks: (current?.receivedChunks ?? 0) + (added ? 1 : 0),
+          nextOffset,
+          complete: current?.complete ?? false,
+          createdAt: current?.createdAt ?? Date.now(),
+          updatedAt: Date.now(),
+        })
+        await Storage.write(key, next)
+        return next
+      },
+      { commitGuard: assertCurrent },
+    )
     return status(
       manifest.receivedBytes === total && manifest.nextOffset === total && !manifest.complete
-        ? await verify(manifest, active)
+        ? await verify(manifest, active, assertCurrent)
         : manifest,
     )
   }

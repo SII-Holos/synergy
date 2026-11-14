@@ -74,6 +74,7 @@ async function observedFixture() {
   const f = await fixture()
   const peers = new Set<Awaited<ReturnType<typeof peer>>>()
   let serverClosed = Promise.withResolvers<void>()
+  let lastClosedPending: Promise<void> | undefined
   const server = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
@@ -81,6 +82,7 @@ async function observedFixture() {
     websocket: {
       ...f.service.websocket,
       close(socket, code, reason) {
+        lastClosedPending = socket.data.pending
         f.service.websocket.close?.(socket, code, reason)
         serverClosed.resolve()
         serverClosed = Promise.withResolvers<void>()
@@ -231,6 +233,9 @@ async function observedFixture() {
       },
       run: <T>(body: () => Promise<T>) => f.service.maintenance.run(body),
       serverClosed: () => serverClosed.promise,
+      drainClosed: async () => {
+        await lastClosedPending
+      },
       [Symbol.asyncDispose]: close,
     }
   } catch (error) {
@@ -439,7 +444,7 @@ test("a native sync two handshake cannot confirm a missing storage observation o
     run: async (body) => f.run(async () => await body()),
     signingIdentity: f.signingIdentity,
     onSyncState: (lease, sessionID) => Sharing.getFromRuntime(lease.handshake, sessionID),
-    onSyncBatch: (lease, batch) => Sharing.applyBatchFromRuntime(lease.handshake, batch),
+    onSyncBatch: (lease, batch) => Sharing.applyBatchFromRuntime(lease, batch),
   })
   const server = Bun.serve({
     hostname: "127.0.0.1",
@@ -472,3 +477,150 @@ test("a native sync two handshake cannot confirm a missing storage observation o
     })
   }
 }, 15_000)
+
+test("a signed sync batch cannot commit after its original socket closes at the last native write", async () => {
+  await using f = await observedFixture()
+  using remote = await f.open(2)
+  const batch = f.batch([
+    Sync.Event.parse({
+      type: "message",
+      sequence: 2,
+      messageID: "closing-original-batch",
+      role: "assistant",
+      createdAt: 2,
+      summary: "Original accepted batch",
+      integrity: digest("closing-original-batch"),
+    }),
+  ])
+  const entered = Promise.withResolvers<void>()
+  const release = Promise.withResolvers<void>()
+  const original = Storage.write
+  let held = false
+  const write = spyOn(Storage, "write").mockImplementation(async (key, value) => {
+    const result = await original(key, value)
+    if (
+      !held &&
+      JSON.stringify(key) === JSON.stringify(Keys.sharedState(f.sessionID)) &&
+      value &&
+      typeof value === "object" &&
+      "nextSeq" in value &&
+      value.nextSeq === 3
+    ) {
+      held = true
+      entered.resolve()
+      await release.promise
+    }
+    return result
+  })
+  const outcome = remote
+    .exchange({ type: "sync-batch", connectionEpoch: remote.epoch, exchangeID: "close-original-batch", batch })
+    .then(
+      () => false,
+      () => true,
+    )
+  try {
+    await Promise.race([
+      entered.promise,
+      outcome.then(() => {
+        if (!held) throw new Error("Original batch did not reach its actual final native write")
+      }),
+    ])
+    const closed = f.serverClosed()
+    remote[Symbol.dispose]()
+    await closed
+    await remote.closed
+  } finally {
+    release.resolve()
+    await outcome
+    await f.drainClosed()
+    write.mockRestore()
+  }
+  expect(held).toBe(true)
+  expect(await f.share()).toMatchObject({ ...f.checkpoint, syncState: "synced" })
+  expect(await f.run(() => Storage.count({ prefix: Keys.sharedEvents(f.sessionID, 1) }))).toBe(1)
+  expect(await f.run(() => Storage.readMany([Keys.sharedBatch(f.sessionID, 1, 2)]))).toEqual([undefined])
+}, 15000)
+
+test.each(["chunk", "complete"] as const)(
+  "native blob %s publication retains the original socket through its commit",
+  async (stage) => {
+    await using f = await observedFixture()
+    using remote = await f.open(2)
+    const bytes = new TextEncoder().encode("native socket fence")
+    const hash = new Bun.CryptoHasher("sha256").update(bytes).digest("hex")
+    const key = Keys.sharedBlob(f.sessionID, 1, hash)
+    const entered = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    const original = Storage.write
+    let held = false
+    const write = spyOn(Storage, "write").mockImplementation(async (record, value) => {
+      const result = await original(record, value)
+      if (
+        !held &&
+        JSON.stringify(record) === JSON.stringify(key) &&
+        value &&
+        typeof value === "object" &&
+        "complete" in value &&
+        value.complete === (stage === "complete")
+      ) {
+        held = true
+        entered.resolve()
+        await release.promise
+      }
+      return result
+    })
+    const outcome = remote
+      .exchange({
+        type: "blob-chunk",
+        connectionEpoch: remote.epoch,
+        exchangeID: `close-blob-${stage}`,
+        sessionID: f.sessionID,
+        shareGeneration: 1,
+        hash,
+        offset: 0,
+        totalBytes: bytes.byteLength,
+        index: 0,
+        total: 1,
+        data: Buffer.from(bytes).toString("base64url"),
+      })
+      .then(
+        () => false,
+        () => true,
+      )
+    try {
+      await Promise.race([
+        entered.promise,
+        outcome.then(() => {
+          if (!held) throw new Error(`Original blob did not reach its ${stage} native commit`)
+        }),
+      ])
+      const closed = f.serverClosed()
+      remote[Symbol.dispose]()
+      await closed
+      await remote.closed
+    } finally {
+      release.resolve()
+      await outcome
+      await f.drainClosed()
+      write.mockRestore()
+    }
+    expect(held).toBe(true)
+    const [stored] = await f.run(() => Storage.readMany([key]))
+    if (stage === "chunk") {
+      expect(stored).toBeUndefined()
+      expect(await f.run(() => Storage.count({ prefix: [...key, "chunk-manifest"] }))).toBe(0)
+      expect(
+        await f.run(() =>
+          Storage.artifactReferences({ prefix: Keys.sharedBlobChunk(f.sessionID, 1, hash, 0), limit: 1 }),
+        ),
+      ).toEqual([])
+    } else {
+      expect(stored).toMatchObject({ complete: false, receivedBytes: bytes.byteLength, nextOffset: bytes.byteLength })
+      const actual = await f.run(() =>
+        Storage.readBinary(Keys.sharedBlobChunk(f.sessionID, 1, hash, 0), { maxBytes: bytes.byteLength }),
+      )
+      expect(actual).toEqual(bytes)
+    }
+  },
+  20000,
+)

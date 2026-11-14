@@ -51,7 +51,7 @@ export async function sharedProducerFixture(maintained = false) {
   const connections = createRuntimeConnections({
     run: async (body) => f.run(() => (maintained ? Admission.run(body) : body())),
     signingIdentity: signing.identity,
-    onSyncBatch: (lease, batch) => Sharing.applyBatchFromRuntime(lease.handshake, batch),
+    onSyncBatch: (lease, batch) => Sharing.applyBatchFromRuntime(lease, batch),
   })
   const sockets = new Set<WebSocket>()
   const server = Bun.serve({

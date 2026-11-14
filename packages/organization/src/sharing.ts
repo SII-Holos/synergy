@@ -415,8 +415,12 @@ async function validateProjectionEvents(session: Record.SessionDirectory, batch:
   return loaded
 }
 
-async function uploadBlobChunk(input: BlobUploadInput, loadSession: () => Promise<Record.SessionDirectory>) {
-  return OrganizationSharedBlobs.upload(input, loadSession)
+async function uploadBlobChunk(
+  input: BlobUploadInput,
+  loadSession: () => Promise<Record.SessionDirectory>,
+  assertCurrent?: () => void,
+) {
+  return OrganizationSharedBlobs.upload(input, loadSession, assertCurrent)
 }
 
 async function commitBatch(session: Record.SessionDirectory, batch: Sync.Batch) {
@@ -891,9 +895,19 @@ export namespace OrganizationSharing {
     )
   }
 
-  export async function applyBatchFromRuntime(handshake: Protocol.Handshake, input: Sync.Batch) {
+  export async function applyBatchFromRuntime(connection: RuntimeConnectionLease, input: Sync.Batch) {
     const batch = Sync.Batch.parse(input)
-    return Storage.transaction(async () => commitBatch(await runtimeSession(handshake, batch.sessionID), batch))
+    connection.assertCurrent()
+    return Storage.transaction(
+      async () => {
+        const session = await runtimeSession(connection.handshake, batch.sessionID)
+        connection.assertCurrent()
+        const ack = await commitBatch(session, batch)
+        connection.assertCurrent()
+        return ack
+      },
+      { commitGuard: connection.assertCurrent },
+    )
   }
 
   export async function uploadBlob(
@@ -914,8 +928,15 @@ export namespace OrganizationSharing {
     })
   }
 
-  export async function uploadBlobFromRuntime(handshake: Protocol.Handshake, input: BlobUploadInput) {
-    return uploadBlobChunk(input, () => runtimeSession(handshake, input.sessionID))
+  export async function uploadBlobFromRuntime(connection: RuntimeConnectionLease, input: BlobUploadInput) {
+    connection.assertCurrent()
+    const result = await uploadBlobChunk(
+      input,
+      () => runtimeSession(connection.handshake, input.sessionID),
+      connection.assertCurrent,
+    )
+    connection.assertCurrent()
+    return result
   }
 
   export async function getBlobStatus(

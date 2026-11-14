@@ -33,10 +33,10 @@ async function transportFixture() {
   const upload = Sharing.uploadBlobFromRuntime
   let calls = 0
   let beforeUpload: (() => Promise<void>) | undefined
-  const observation = spyOn(Sharing, "uploadBlobFromRuntime").mockImplementation(async (handshake, input) => {
+  const observation = spyOn(Sharing, "uploadBlobFromRuntime").mockImplementation(async (connection, input) => {
     calls++
     await beforeUpload?.()
-    return upload(handshake, input)
+    return upload(connection, input)
   })
   let epoch = 0
   async function peer(authenticated = true, sync = true) {

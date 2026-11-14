@@ -65,6 +65,8 @@ The generated `orgSessions.share`, `orgSessions.unshare` and `orgSessions.shareS
 
 The dedicated Home retains an ownership marker through the central migration runner. It cannot be started as a personal Agent Runtime, and initial organization setup refuses a Home containing personal Runtime data. Preserve the marker with the rest of the Home when copying it.
 
+Runtime batch and Blob publication retain their actual captured connection lease through SQL COMMIT, including chunk, integrity and invalid-content cleanup writes. A closed original socket cannot publish a new checkpoint or complete marker. Previously committed chunks remain retryable; a disconnected client cannot infer rollback. Verify `test/sync-storage-observation.test.ts` and the shared transcript/Blob transport suites.
+
 The optional organization component contributes `synergy org init` and `synergy org serve` to the existing CLI. Enable its `organization` experiment in the dedicated Home's `config/synergy.d/140-features.jsonc` using the [feature selection format](../../docs/architecture/feature-lifecycle.md). Both commands require an explicit absolute `SYNERGY_HOME`; the component itself registers no service migrations in an Agent Runtime.
 
 ```bash

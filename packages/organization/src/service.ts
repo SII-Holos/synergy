@@ -469,9 +469,9 @@ async function openOrganizationNamespace(
         onSyncState: (connection, sessionID) => OrganizationSharing.getFromRuntime(connection.handshake, sessionID),
         onSyncObservation: (connection, sessionID, observation) =>
           OrganizationSharing.observeFromRuntime(connection, sessionID, observation),
-        onSyncBatch: (connection, batch) => OrganizationSharing.applyBatchFromRuntime(connection.handshake, batch),
+        onSyncBatch: (connection, batch) => OrganizationSharing.applyBatchFromRuntime(connection, batch),
         onNotification: (connection, notice) => notifications!.publish(connection, notice),
-        onBlobChunk: (connection, input) => OrganizationSharing.uploadBlobFromRuntime(connection.handshake, input),
+        onBlobChunk: (connection, input) => OrganizationSharing.uploadBlobFromRuntime(connection, input),
       })
       const admissions = createCommandAdmissions({ connections, signing })
       const commands = createCommandForwarder({ admissions, connections })
