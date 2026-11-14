@@ -1,5 +1,10 @@
 import type { TestRunnerOptions } from "../../../script/shared/test-runner"
 
+export const organizationSourceDOMFiles = [
+  "test/organization/handoff-source.render.test.ts",
+  "test/organization/workspace-source.render.test.ts",
+] as const
+
 // Playwright suites launch Chromium. bun test runs files in parallel worker
 // processes and reaps dangling children when a worker exits, which can kill a
 // sibling suite's freshly launched browser. Run every Chromium suite serially
@@ -7,6 +12,7 @@ import type { TestRunnerOptions } from "../../../script/shared/test-runner"
 // These `mock.module`-heavy suites stub the same context modules under the same
 // specifiers; Bun's mocks are process-global, so each needs its own process.
 const playwrightIsolated = [
+  ...organizationSourceDOMFiles,
   "test/context/space-combined.browser.test.ts",
   "test/organization/notifications.browser.test.ts",
   "test/context/notification-platform.dom.test.ts",
@@ -199,6 +205,7 @@ export const testOptions = {
   isolated: playwrightIsolated,
   isolatedTimeoutMs: 120000,
   browserOnly: [
+    ...organizationSourceDOMFiles,
     "test/organization/attachment-directory.test.ts",
     "test/organization/decision-state.test.ts",
     "test/components/prompt-input/loop-status-resource.test.ts",

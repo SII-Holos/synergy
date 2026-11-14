@@ -5,7 +5,7 @@ import { createHash } from "node:crypto"
 import { AuthorityJournal } from "@ericsanchezok/synergy-harness/storage/authority-journal"
 import { RuntimeMaintenance } from "@ericsanchezok/synergy-harness/storage/runtime-maintenance"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
-import { OrganizationCurrentAuthority as Current } from "../../src/backup/current-authority"
+import { OrganizationCurrentAuthority as Current } from "../../src/backup-recovery"
 import { fixture, password } from "../support/organization"
 
 test("a live frozen service proves its final authority suffix and actual native settings only during its callback", async () => {

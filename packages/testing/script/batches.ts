@@ -16,7 +16,11 @@ import { readdir } from "node:fs/promises"
 import path from "node:path"
 
 const repositoryRoot = path.resolve(import.meta.dir, "../../..")
-const ownsRuntimeFiles = new Set(["packages/cli/test/cli/data-storage-command.test.ts"])
+const ownsRuntimeFiles = new Set([
+  "packages/cli/test/cli/data-storage-command.test.ts",
+  "packages/cli/test/cli/diagnostics-source.test.ts",
+  "packages/organization/test/entry-source.test.ts",
+])
 
 function repositoryFile(file: string, packageRoot: string) {
   return file.startsWith("packages/")
