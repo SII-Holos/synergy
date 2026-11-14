@@ -14,10 +14,14 @@ import { openMemberConnection } from "../src/connection"
 import { startMemberBridge } from "../src/bridge"
 import { fixture } from "./support/organization"
 import { OrganizationRuntimeError } from "../src/error"
+import { OrganizationSharing } from "../../organization/src/sharing"
 import { OrganizationSessionDirectory as Directory } from "../../organization/src/session-directory"
 import { OrganizationRecord as Record } from "../../organization/src/storage/records"
 import { OrganizationStoragePath as Paths } from "../../organization/src/storage/path"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { Log } from "@ericsanchezok/synergy-harness/util/log"
+import { RuntimeMaintenance } from "@ericsanchezok/synergy-harness/storage/runtime-maintenance"
+import type { StoreTransaction, TransactionOptions } from "@ericsanchezok/synergy-harness/storage/transactional-store"
 
 async function enrolled() {
   const f = await fixture()
@@ -1427,4 +1431,297 @@ test("a cancelled native exact receipt read never consumes the original late Ser
   expect(held).toBe(true)
   expect(consumed).toBe(false)
   expect(await original.marker()).toEqual(before)
+}, 15000)
+
+for (const barrier of ["owner", "transaction"] as const) {
+  test(`original WSS heartbeats remain live while the Service sync ${barrier} is held`, async () => {
+    await using f = await enrolled()
+    await using current = await openMemberConnection({ ...f.options, sync: true, syncVersion: 2 })
+    const original = await originalReceiptBatch(f, current)
+    const entered = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    const heartbeats = Promise.withResolvers<void>()
+    const epoch = current.connected.connectionEpoch
+    const closes: Array<{ code: number; reason: string; pendingFrames: number; pendingBytes: number }> = []
+    let holding = false
+    let received = 0
+    let settled = false
+    let observeQueuedState = false
+    let queuedSettled = false
+    let lateHeartbeatGoal = Number.POSITIVE_INFINITY
+    const queuedOnWire = Promise.withResolvers<void>()
+    const lateHeartbeats = Promise.withResolvers<void>()
+    let queuedState: Promise<unknown> | undefined
+    let localClose: { kind: string; code?: string } | undefined
+    void current.closed.then((value) => {
+      localClose = { kind: value.kind, code: value.error?.code }
+    })
+    f.observeClose((value) => closes.push(value))
+    f.interceptFrames((_socket, raw) => {
+      const frame = Protocol.ClientFrame.parse(JSON.parse(String(raw)))
+      if (holding && frame.type === "heartbeat" && frame.connectionEpoch === epoch) {
+        if (++received >= 14) heartbeats.resolve()
+        if (received >= lateHeartbeatGoal) lateHeartbeats.resolve()
+      }
+      if (observeQueuedState && frame.type === "sync-state" && frame.sessionID === original.batch.sessionID)
+        queuedOnWire.resolve()
+      return false
+    })
+    const events: Sync.Event[] = Array.from({ length: 256 }, (_, index) => ({
+      type: "message",
+      sequence: index + 2,
+      messageID: `held-sync-message-${index}`,
+      role: "user",
+      createdAt: index + 2,
+      summary: "Original held sync batch",
+      integrity: "a".repeat(64),
+    }))
+    const batch = Sync.Batch.parse({
+      schemaVersion: 1,
+      ...original.batch,
+      firstSeq: 2,
+      lastSeq: 257,
+      events,
+      payloadHash: new Bun.CryptoHasher("sha256")
+        .update(JSON.stringify({ firstSeq: 2, lastSeq: 257, events }))
+        .digest("hex"),
+    })
+    let armed = true
+    const applyBatch = OrganizationSharing.applyBatchFromRuntime
+    const write = Storage.write
+    const intercepted =
+      barrier === "owner"
+        ? spyOn(OrganizationSharing, "applyBatchFromRuntime").mockImplementation(async (lease, input) => {
+            if (armed && input.sessionID === batch.sessionID && input.firstSeq === 2) {
+              armed = false
+              lease.assertCurrent()
+              holding = true
+              entered.resolve()
+              await release.promise
+            }
+            return applyBatch(lease, input)
+          })
+        : spyOn(Storage, "write").mockImplementation(async <T>(key: string[], value: T) => {
+            const result = await write(key, value)
+            if (armed && JSON.stringify(key) === JSON.stringify(Paths.sharedEvent(batch.sessionID, 1, 2))) {
+              armed = false
+              holding = true
+              entered.resolve()
+              await release.promise
+            }
+            return result
+          })
+    const sent = current.sync(batch).then(
+      (ack) => {
+        settled = true
+        return { ack }
+      },
+      (error: unknown) => {
+        settled = true
+        return { error }
+      },
+    )
+    let stage = "owner-entry"
+    try {
+      await within(entered.promise)
+      expect(holding).toBeTrue()
+      stage = "heartbeat-progress"
+      await within(heartbeats.promise)
+      expect(current.signal.aborted).toBeFalse()
+      expect(current.connected.connectionEpoch).toBe(epoch)
+      expect(localClose).toBeUndefined()
+      expect(closes).toEqual([])
+      expect(settled).toBeFalse()
+      if (barrier === "transaction") {
+        observeQueuedState = true
+        queuedState = current.syncState(batch.sessionID).then(
+          (share) => {
+            queuedSettled = true
+            return { share }
+          },
+          (error: unknown) => {
+            queuedSettled = true
+            return { error }
+          },
+        )
+        await within(queuedOnWire.promise)
+        lateHeartbeatGoal = received + 4
+        await within(lateHeartbeats.promise)
+        expect(queuedSettled).toBeFalse()
+      }
+      release.resolve()
+      expect(await within(sent)).toMatchObject({ ack: { nextSeq: 258, bindingEpoch: 1, shareGeneration: 1 } })
+      if (queuedState)
+        expect(await within(queuedState)).toMatchObject({
+          share: { nextSeq: 258, bindingEpoch: 1, shareGeneration: 1 },
+        })
+      const checkpoint = await f.service.maintenance.run(() =>
+        Record.read(Record.SharedState, Paths.sharedState(batch.sessionID)),
+      )
+      expect(checkpoint).toMatchObject({ nextSeq: 258, bindingEpoch: 1, shareGeneration: 1, syncState: "synced" })
+    } catch (error) {
+      console.error("HELD_SYNC_HEARTBEAT_FAILURE", {
+        barrier,
+        stage,
+        holding,
+        received,
+        armed,
+        settled,
+        localClose,
+        closes: closes.slice(0, 4),
+      })
+      throw error
+    } finally {
+      release.resolve()
+      await sent
+      await queuedState
+      intercepted.mockRestore()
+      f.interceptFrames(undefined)
+      f.observeClose(undefined)
+    }
+  }, 15000)
+}
+
+test("Service close drains a post-echo presence write and retains its real failure diagnostic", async () => {
+  await using f = await enrolled()
+  await using current = await openMemberConnection(f.options)
+  const entered = Promise.withResolvers<void>()
+  const release = Promise.withResolvers<void>()
+  const echoed = Promise.withResolvers<void>()
+  const diagnosed = Promise.withResolvers<unknown>()
+  const write = Storage.write
+  const logger = Log.create({ service: "organization.runtime-connection" })
+  const logError = logger.error
+  const marker = "private-presence-failure-marker"
+  const failure = new Error(marker)
+  let held = false
+  let heartbeats = 0
+  let serviceClosed = false
+  let closing: Promise<void> | undefined
+  using logged = spyOn(logger, "error").mockImplementation((...args) => {
+    logError(...args)
+    if (args[0] === "Runtime presence persistence failed") diagnosed.resolve(args[1])
+  })
+  using pending = spyOn(Storage, "write").mockImplementation(async <T>(key: string[], value: T) => {
+    const result = await write(key, value)
+    if (!held && JSON.stringify(key) === JSON.stringify(Paths.runtime(current.connected.runtimeID))) {
+      held = true
+      entered.resolve()
+      await release.promise
+      throw failure
+    }
+    return result
+  })
+  f.interceptFrames((_socket, raw) => {
+    const frame = Protocol.ClientFrame.parse(JSON.parse(String(raw)))
+    if (held && frame.type === "heartbeat" && ++heartbeats >= 2) echoed.resolve()
+    return false
+  })
+  try {
+    await within(entered.promise)
+    await within(echoed.promise)
+    expect(current.signal.aborted).toBeFalse()
+    closing = f.service.close().then(() => {
+      serviceClosed = true
+    })
+    await within(current.closed)
+    expect(serviceClosed).toBeFalse()
+    release.resolve()
+    const diagnostic = await within(diagnosed.promise)
+    expect(diagnostic).toEqual({ errorName: "Error" })
+    expect(JSON.stringify(diagnostic)).not.toContain(marker)
+    await within(closing)
+    expect(serviceClosed).toBeTrue()
+  } finally {
+    release.resolve()
+    await closing
+    f.interceptFrames(undefined)
+  }
+}, 15000)
+
+test("maintenance suspends fresh heartbeats while draining the original presence flight and queued prior", async () => {
+  await using f = await enrolled()
+  await using current = await openMemberConnection({ ...f.options, sync: true, syncVersion: 2 })
+  const original = await originalReceiptBatch(f, current)
+  const entered = Promise.withResolvers<void>()
+  const release = Promise.withResolvers<void>()
+  const echoed = Promise.withResolvers<void>()
+  const queuedOnWire = Promise.withResolvers<void>()
+  const transaction = Storage.transaction
+  let held = false
+  let heartbeats = 0
+  let watchState = false
+  let drained = false
+  let released = false
+  let queuedState: Promise<unknown> | undefined
+  let draining: Promise<Awaited<ReturnType<typeof RuntimeMaintenance.drain>>> | undefined
+  let lease: Awaited<ReturnType<typeof RuntimeMaintenance.begin>> | undefined
+  using pending = spyOn(Storage, "transaction").mockImplementation(
+    async <T>(body: (tx: StoreTransaction) => Promise<T>, options?: TransactionOptions) => {
+      if (!held && options?.commitGuard) {
+        held = true
+        entered.resolve()
+        await release.promise
+      }
+      return transaction(body, options)
+    },
+  )
+  f.interceptFrames((_socket, raw) => {
+    const frame = Protocol.ClientFrame.parse(JSON.parse(String(raw)))
+    if (held && frame.type === "heartbeat" && ++heartbeats >= 2) echoed.resolve()
+    if (watchState && frame.type === "sync-state" && frame.sessionID === original.batch.sessionID)
+      queuedOnWire.resolve()
+    return false
+  })
+  const finishHold = async () => {
+    if (!lease || !draining || released) return
+    const receipt = await draining
+    await f.service.maintenance.run(async () => {
+      await RuntimeMaintenance.freeze(lease!, receipt)
+      await RuntimeMaintenance.release(lease!)
+    })
+    released = true
+  }
+  try {
+    await within(entered.promise)
+    await within(echoed.promise)
+    expect(current.signal.aborted).toBeFalse()
+    watchState = true
+    queuedState = current.syncState(original.batch.sessionID).then(
+      (share) => ({ share }),
+      (error: unknown) => ({ error }),
+    )
+    await within(queuedOnWire.promise)
+    lease = await f.service.maintenance.run(() =>
+      RuntimeMaintenance.begin({
+        purpose: "organization-backup",
+        requestID: "presence-drain",
+        actor: {
+          kind: "local",
+          subjectID: "presence-test",
+          displayName: "Operator",
+          clientKind: "cli",
+          requestID: "presence-drain",
+        },
+      }),
+    )
+    draining = f.service.maintenance
+      .run(() => RuntimeMaintenance.drain(lease!))
+      .then((receipt) => {
+        drained = true
+        return receipt
+      })
+    expect(await within(current.closed)).toMatchObject({ kind: "rejected", error: { code: "SERVICE_UNAVAILABLE" } })
+    expect(drained).toBeFalse()
+    release.resolve()
+    await within(draining)
+    expect(drained).toBeTrue()
+    expect(await within(queuedState)).toMatchObject({ error: expect.any(Error) })
+    await finishHold()
+  } finally {
+    release.resolve()
+    await queuedState
+    await finishHold()
+    f.interceptFrames(undefined)
+  }
 }, 15000)

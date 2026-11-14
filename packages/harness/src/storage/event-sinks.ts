@@ -61,8 +61,10 @@ export namespace StorageEventSinks {
         sequence,
         payload: structuredClone(selected.payload),
       })
-      await tx.write(meta, { sequence })
-      await tx.write(key(delivery), delivery)
+      await tx.writeMany([
+        { key: meta, value: { sequence } },
+        { key: key(delivery), value: delivery },
+      ])
       await sink.captured?.(structuredClone(delivery))
     }
   }

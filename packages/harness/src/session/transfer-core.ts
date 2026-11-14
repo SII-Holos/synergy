@@ -187,7 +187,15 @@ export namespace SessionTransferCore {
     return { raw, info }
   }
 
-  export async function storedInfo(input: { scopeID: string; sessionID: string }) {
+  function readStoredInfo(
+    input: { scopeID: string; sessionID: string },
+    complete: false,
+  ): Promise<ReturnType<typeof decodeInfo>>
+  function readStoredInfo(
+    input: { scopeID: string; sessionID: string },
+    complete: true,
+  ): Promise<ReturnType<typeof decodeInfo> | undefined>
+  async function readStoredInfo(input: { scopeID: string; sessionID: string }, complete: boolean) {
     const { scopeID, sessionID } = z
       .strictObject({ scopeID: z.string().min(1), sessionID: z.string().min(1) })
       .parse(input)
@@ -196,7 +204,14 @@ export namespace SessionTransferCore {
         StoragePath.sessionIndex(Identifier.asSessionID(sessionID)),
         StoragePath.sessionInfo(Identifier.asScopeID(scopeID), Identifier.asSessionID(sessionID)),
       ])
-      if (indexValue === undefined || value === undefined) fail("Stored Session metadata or index is absent")
+      if (complete && indexValue !== undefined) {
+        const selected = z.object({ scopeID: z.string().min(1) }).parse(indexValue)
+        if (selected.scopeID !== scopeID) fail("Stored Session metadata index changed its actual Scope")
+      }
+      if (indexValue === undefined || value === undefined) {
+        if (complete) return
+        fail("Stored Session metadata or index is absent")
+      }
       const { raw, info } = decodeInfo(value)
       const index = z.record(z.string(), z.unknown()).parse(indexValue)
       if (
@@ -209,6 +224,15 @@ export namespace SessionTransferCore {
         fail("Stored Session metadata and index have another canonical owner")
       return { raw, info }
     })
+  }
+
+  export function storedInfo(input: { scopeID: string; sessionID: string }) {
+    return readStoredInfo(input, false)
+  }
+
+  /** Reads a current creation pair without accepting a partial pair as ownership. */
+  export function storedInfoIfComplete(input: { scopeID: string; sessionID: string }) {
+    return readStoredInfo(input, true)
   }
 
   export async function stagedInfo(

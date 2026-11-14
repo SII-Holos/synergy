@@ -144,12 +144,12 @@ export interface WriteOwner {
 }
 
 async function storedSession(sessionID: string, scopeID: string | undefined, incomplete: boolean) {
+  if (incomplete && scopeID !== undefined) {
+    const present = await Core.storedInfoIfComplete({ scopeID, sessionID })
+    return present ? Session.Info.parse({ ...present.raw, workspace: null }) : undefined
+  }
   const indexKey = StoragePath.sessionIndex(Identifier.asSessionID(sessionID))
-  const probedInfoKey =
-    incomplete && scopeID !== undefined
-      ? StoragePath.sessionInfo(Identifier.asScopeID(scopeID), Identifier.asSessionID(sessionID))
-      : undefined
-  const [index, probedInfo] = await Storage.readMany(probedInfoKey ? [indexKey, probedInfoKey] : [indexKey])
+  const [index] = await Storage.readMany([indexKey])
   if (index === undefined) {
     if (scopeID && !incomplete) {
       const [value] = await Storage.readMany([
@@ -163,13 +163,9 @@ async function storedSession(sessionID: string, scopeID: string | undefined, inc
   if (scopeID !== undefined && scopeID !== selected.scopeID)
     throw new Error("Native shared binding index changed its actual Scope")
   if (incomplete) {
-    const value = probedInfoKey
-      ? probedInfo
-      : (
-          await Storage.readMany([
-            StoragePath.sessionInfo(Identifier.asScopeID(selected.scopeID), Identifier.asSessionID(sessionID)),
-          ])
-        )[0]
+    const [value] = await Storage.readMany([
+      StoragePath.sessionInfo(Identifier.asScopeID(selected.scopeID), Identifier.asSessionID(sessionID)),
+    ])
     if (value === undefined) return
   }
   const { raw } = await Core.storedInfo({ scopeID: selected.scopeID, sessionID })

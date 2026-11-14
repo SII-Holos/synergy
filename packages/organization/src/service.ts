@@ -196,9 +196,12 @@ async function openOrganizationNamespace(
     let environmentOwner: ReturnType<typeof registerOrganizationCloudEnvironments> | undefined
     let environmentExecution = false
     const active = new Set<Promise<unknown>>()
-    async function run<T>(body: () => T | Promise<T>): Promise<T> {
+    async function run<T>(
+      body: () => T | Promise<T>,
+      options?: OrganizationServiceMaintenance.AdmissionOptions,
+    ): Promise<T> {
       if (!ready) throw new Error("Organization service is closed")
-      const pending = context.run(() => OrganizationServiceMaintenance.run(body))
+      const pending = context.run(() => OrganizationServiceMaintenance.run(body, options))
       active.add(pending)
       try {
         return await pending

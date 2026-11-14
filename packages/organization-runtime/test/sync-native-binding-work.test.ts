@@ -1,8 +1,10 @@
 import { expect, spyOn, test } from "bun:test"
+import { z } from "zod"
 import { testRuntime } from "@ericsanchezok/synergy-harness/test/support/runtime"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
+import { SessionTransferCore as Core } from "@ericsanchezok/synergy-harness/session/transfer"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
@@ -19,6 +21,16 @@ const original = {
   driverRuntimeID: "native-read-work-runtime",
   bindingEpoch: 1,
 } as const
+
+async function rejected<T>(pending: Promise<T>) {
+  const outcome = await pending.then(
+    () => ({ kind: "resolved" as const }),
+    (error: unknown) => ({ kind: "rejected" as const, error }),
+  )
+  expect(outcome.kind).toBe("rejected")
+  if (outcome.kind === "resolved") throw new Error("The original native operation unexpectedly resolved")
+  return outcome.error
+}
 
 test("one durable native delivery window bounds prewrite Session metadata reads while retaining every projected fact", async () => {
   await using runtime = await testRuntime({ register: () => registerSessionSchema(original) })
@@ -162,10 +174,106 @@ test("one durable native delivery window bounds prewrite Session metadata reads 
         expect(markerScans).toBe(2)
         expect(windows.map((window) => window.markerScans)).toEqual([1, 1])
         expect(probes).toEqual(Array(32).fill(session.id))
-        expect(counts.probe.reads).toBeLessThanOrEqual(64)
-        expect(counts.probe.keys).toBe(128)
-        await expect(mutationBinding(session.id, original.orgID, "another-scope")).rejects.toThrow("Scope")
+        expect(counts.probe.reads).toBeLessThanOrEqual(32)
+        expect(counts.probe.keys).toBe(64)
+        const wrongScope = await rejected(mutationBinding(session.id, original.orgID, "another-scope"))
+        expect(wrongScope).toMatchObject({ message: expect.stringContaining("Scope") })
       },
     })
   })
+})
+
+test("fresh native creation-pair probes preserve absence, owner validation and current Store changes", async () => {
+  await using runtime = await testRuntime({ register: () => registerSessionSchema(original) })
+  await using other = await testRuntime({ register: () => registerSessionSchema(original) })
+  await runtime.run(async () => {
+    const scope = await Scope.registerProject({
+      type: "project",
+      id: original.projectID,
+      local: null,
+      time: { created: 1, updated: 1 },
+    })
+    await ScopeContext.provide({
+      scope,
+      workspace: null,
+      fn: async () => {
+        const session = await Session.create({ organization: original, workspace: null, environmentID: null })
+        const sessionID = Identifier.asSessionID(session.id)
+        const scopeID = Identifier.asScopeID(scope.id)
+        const indexKey = StoragePath.sessionIndex(sessionID)
+        const infoKey = StoragePath.sessionInfo(scopeID, sessionID)
+        const before = await mutationBinding(session.id, original.orgID, scope.id)
+        expect(before?.rootSessionID).toBe(session.id)
+        const discarded = new Error("Discard only the controlled native metadata change")
+        for (const missing of [indexKey, infoKey]) {
+          const error = await rejected(
+            Storage.transaction(async () => {
+              await Storage.remove(missing)
+              expect(await mutationBinding(session.id, original.orgID, scope.id)).toBeUndefined()
+              const absent = await rejected(Core.storedInfo({ scopeID: scope.id, sessionID: session.id }))
+              expect(absent).toMatchObject({ message: expect.stringContaining("absent") })
+              throw discarded
+            }),
+          )
+          expect(error).toBe(discarded)
+          expect(await mutationBinding(session.id, original.orgID, scope.id)).toEqual(before)
+        }
+        const wrongScope = await rejected(
+          Storage.transaction(async () => {
+            await Storage.update<Record<string, unknown>>(indexKey, (index) => {
+              index.scopeID = "another-current-scope"
+            })
+            await mutationBinding(session.id, original.orgID, scope.id)
+          }),
+        )
+        expect(wrongScope).toMatchObject({ message: expect.stringContaining("Scope") })
+        const wrongParent = await rejected(
+          Storage.transaction(async () => {
+            await Storage.update<Record<string, unknown>>(indexKey, (index) => {
+              index.parentID = "another-current-parent"
+            })
+            await mutationBinding(session.id, original.orgID, scope.id)
+          }),
+        )
+        expect(wrongParent).toMatchObject({ message: expect.stringContaining("canonical owner") })
+        const corrupt = await rejected(
+          Storage.transaction(async () => {
+            await Storage.write(infoKey, { id: session.id })
+            await mutationBinding(session.id, original.orgID, scope.id)
+          }),
+        )
+        expect(corrupt).toBeInstanceOf(z.ZodError)
+        const unbound = await rejected(
+          Storage.transaction(async () => {
+            const current = await Storage.read<Record<string, unknown>>(infoKey)
+            const { organization: _binding, ...withoutBinding } = current
+            await Storage.write(infoKey, withoutBinding)
+            expect(await mutationBinding(session.id, original.orgID, scope.id)).toBeUndefined()
+            throw discarded
+          }),
+        )
+        expect(unbound).toBe(discarded)
+        expect(await mutationBinding(session.id, original.orgID, scope.id)).toEqual(before)
+        expect(await other.run(() => mutationBinding(session.id, original.orgID, scope.id))).toBeUndefined()
+        expect(await mutationBinding(session.id, original.orgID, scope.id)).toEqual(before)
+      },
+    })
+  })
+})
+
+test("canonical stored Session readers keep invalid selection failures in their returned Promise", async () => {
+  for (const read of [Core.storedInfo, Core.storedInfoIfComplete]) {
+    for (const selection of [
+      { scopeID: "", sessionID: "invalid-session" },
+      { scopeID: "home", sessionID: "" },
+    ]) {
+      let pending: ReturnType<typeof read> | undefined
+      expect(() => {
+        pending = read(selection)
+      }).not.toThrow()
+      expect(pending).toBeInstanceOf(Promise)
+      if (!pending) throw new Error("The original stored Session reader did not return its Promise")
+      expect(await rejected(pending)).toBeInstanceOf(z.ZodError)
+    }
+  }
 })

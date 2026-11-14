@@ -31,6 +31,10 @@ export async function fixture(options: Pick<Parameters<typeof openOrganizationSe
           readyState: number
           pendingFrames: number
           pendingBytes: number
+          runtimeID?: string
+          epoch: number
+          wallTimeMs: number
+          leaseRemainingMs: number
         }) => void)
       | undefined
     const server = Bun.serve({
@@ -47,6 +51,10 @@ export async function fixture(options: Pick<Parameters<typeof openOrganizationSe
             readyState: socket.readyState,
             pendingFrames: socket.data.frames,
             pendingBytes: socket.data.bytes,
+            runtimeID: socket.data.handshake?.runtimeID,
+            epoch: socket.data.handshake?.connectionEpoch ?? 0,
+            wallTimeMs: Date.now(),
+            leaseRemainingMs: Math.max(0, socket.data.deadline - Date.now()),
           })
           return result
         },

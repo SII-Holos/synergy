@@ -19,6 +19,10 @@
 
 ## Index
 
+- [0205](0205-native-publication-repeated-independent-storage-operations.md)
+
+- [0204](0204-service-sync-writes-blocked-authenticated-heartbeats.md)
+
 - [0203](0203-native-worker-stop-finished-before-its-owned-exit-callback.md)
 
 - [0202](0202-desktop-dependency-walk-included-volatile-probe-homes.md)

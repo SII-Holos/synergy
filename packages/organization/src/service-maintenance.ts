@@ -24,6 +24,9 @@ const state = RuntimeContext.state(() => ({
 }))
 
 export namespace OrganizationServiceMaintenance {
+  export interface AdmissionOptions {
+    readOnlyAdmission?: boolean
+  }
   export interface Tail {
     run<T>(body: () => T | Promise<T>): Promise<T>
     close(): void
@@ -142,12 +145,26 @@ export namespace OrganizationServiceMaintenance {
     state().suspended = true
     await drain()
   }
-  export async function run<T>(body: () => T | Promise<T>): Promise<T> {
+  async function admit(options?: AdmissionOptions) {
+    if (!options?.readOnlyAdmission) return Storage.transaction(() => RuntimeMaintenance.assertAdmission())
+    if (Storage.inTransaction())
+      throw new RuntimeMaintenance.Blocked({ message: "Service control admission requires its own fresh snapshot" })
+    if (state().suspended)
+      throw new RuntimeMaintenance.Blocked({ message: "Organization service maintenance holds new operations" })
+    await Storage.snapshot(() => RuntimeMaintenance.assertAdmission())
+    if (state().suspended)
+      throw new RuntimeMaintenance.Blocked({ message: "Organization service maintenance holds new operations" })
+  }
+  export async function run<T>(body: () => T | Promise<T>, options?: AdmissionOptions): Promise<T> {
     const parent = current.getStore()
     if (parent) {
       assertCallback(parent)
       parent.operation.references++
       try {
+        if (options?.readOnlyAdmission) {
+          await admit(options)
+          assertCallback(parent)
+        }
         return await invoke(parent.operation, body)
       } finally {
         release(parent.operation)
@@ -166,7 +183,7 @@ export namespace OrganizationServiceMaintenance {
     }
     state().operations.add(operation)
     try {
-      await Storage.transaction(() => RuntimeMaintenance.assertAdmission())
+      await admit(options)
       assertOperation(operation)
       return await invoke(operation, body)
     } finally {

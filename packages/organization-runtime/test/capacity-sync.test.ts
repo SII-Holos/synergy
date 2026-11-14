@@ -84,6 +84,45 @@ test("ten authenticated clients replay a shared 10000-message history while thre
         heartbeatEpoch: current?.epoch ?? 0,
       }
     }
+    const closeCounts = new Map<string, number>()
+    const closeSamples: Array<Record<string, string | number>> = []
+    service.observeClose((value) => {
+      const category =
+        value.code === 4008
+          ? "service-lease-expired"
+          : value.code === 1013
+            ? "service-window-or-backpressure"
+            : value.code === 4001
+              ? "replaced"
+              : value.code === 4003
+                ? "rejected-or-revoked"
+                : value.code === 1006
+                  ? "abnormal-peer-or-transport"
+                  : value.code === 1001
+                    ? "service-close"
+                    : "other"
+      closeCounts.set(category, (closeCounts.get(category) ?? 0) + 1)
+      if (closeSamples.length >= 32) return
+      const current = activity.get(value.runtimeID ?? "")
+      const fact = {
+        category,
+        code: value.code,
+        elapsedMs: performance.now() - observedAt,
+        wallTimeMs: value.wallTimeMs,
+        epoch: value.epoch,
+        runtime: [...activity.keys()].indexOf(value.runtimeID ?? ""),
+        pendingFrames: value.pendingFrames,
+        pendingBytes: value.pendingBytes,
+        leaseRemainingMs: value.leaseRemainingMs,
+        heartbeatAgeMs: current?.at ? performance.now() - current.at : -1,
+      }
+      closeSamples.push(fact)
+      console.error("CAPACITY_CONNECTION_CLOSE", JSON.stringify(fact))
+    })
+    resources.defer("capacity connection facts", () => {
+      service.observeClose(undefined)
+      console.error("CAPACITY_CONNECTION_CLOSE_TOTALS", JSON.stringify(Object.fromEntries(closeCounts)))
+    })
     let gatedSession: string | undefined
     let observedSession: string | undefined
     let tailStarted = false

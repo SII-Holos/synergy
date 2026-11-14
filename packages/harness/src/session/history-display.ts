@@ -469,20 +469,28 @@ export namespace SessionHistoryDisplay {
       await Storage.remove(StoragePath.sessionDisplayTimeline(scopeID, info.sessionID, previous.order))
       await Storage.remove(StoragePath.sessionDisplayRoot(scopeID, info.sessionID, previous.order))
     }
-    await Storage.write(StoragePath.sessionDisplayMessage(scopeID, info.sessionID, info.id), header)
-    await Storage.write(StoragePath.sessionDisplayTimeline(scopeID, info.sessionID, header.order), header)
+    const headers = [
+      { key: StoragePath.sessionDisplayMessage(scopeID, info.sessionID, info.id), value: header },
+      { key: StoragePath.sessionDisplayTimeline(scopeID, info.sessionID, header.order), value: header },
+    ]
     if (info.role === "user" && info.isRoot !== false)
-      await Storage.write(StoragePath.sessionDisplayRoot(scopeID, info.sessionID, header.order), header)
-    else await Storage.remove(StoragePath.sessionDisplayRoot(scopeID, info.sessionID, header.order))
+      headers.push({ key: StoragePath.sessionDisplayRoot(scopeID, info.sessionID, header.order), value: header })
+    await Storage.transaction((tx) => tx.writeMany(headers))
+    if (info.role !== "user" || info.isRoot === false)
+      await Storage.remove(StoragePath.sessionDisplayRoot(scopeID, info.sessionID, header.order))
     if (backfill) return
     const current = await state(scopeID, info.sessionID)
+    const updates: Array<{ key: string[]; value: unknown }> = []
     if (!previous && current.ready)
-      await Storage.write(partStateKey(scopeID, info.sessionID, info.id), { version: 1, ready: true, generation: 0 })
-    await Storage.write(key(scopeID, info.sessionID), {
-      ...current,
-      count: current.count + Number(!previous),
-      generation: current.generation + 1,
+      updates.push({
+        key: partStateKey(scopeID, info.sessionID, info.id),
+        value: { version: 1, ready: true, generation: 0 },
+      })
+    updates.push({
+      key: key(scopeID, info.sessionID),
+      value: { ...current, count: current.count + Number(!previous), generation: current.generation + 1 },
     })
+    await Storage.transaction((tx) => tx.writeMany(updates))
   }
 
   export async function messageRemoved(scopeID: string, sessionID: string, messageID: string) {
@@ -543,16 +551,26 @@ export namespace SessionHistoryDisplay {
     )
     const [revision] = await Storage.revisions([partKey])
     const fact = SessionPartContent.executionFact(part)
-    await Storage.write(StoragePath.sessionDisplayPart(scopeID, part.sessionID, part.messageID, part.id), {
-      ...summary,
-      execution: fact && revision !== undefined ? { version: 1, revision: String(revision), fact } : undefined,
-    } satisfies StoredPartSummary)
     const [previous] = await Storage.readMany<PartsState>([partStateKey(scopeID, part.sessionID, part.messageID)])
-    await Storage.write(partStateKey(scopeID, part.sessionID, part.messageID), {
-      ...previous,
-      ready: previous?.ready ?? false,
-      generation: (previous?.generation ?? 0) + 1,
-    })
+    await Storage.transaction((tx) =>
+      tx.writeMany([
+        {
+          key: StoragePath.sessionDisplayPart(scopeID, part.sessionID, part.messageID, part.id),
+          value: {
+            ...summary,
+            execution: fact && revision !== undefined ? { version: 1, revision: String(revision), fact } : undefined,
+          } satisfies StoredPartSummary,
+        },
+        {
+          key: partStateKey(scopeID, part.sessionID, part.messageID),
+          value: {
+            ...previous,
+            ready: previous?.ready ?? false,
+            generation: (previous?.generation ?? 0) + 1,
+          },
+        },
+      ]),
+    )
   }
 
   export async function invalidatePart(scopeID: string, sessionID: string, messageID: string, partID: string) {

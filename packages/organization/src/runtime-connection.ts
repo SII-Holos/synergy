@@ -1,6 +1,7 @@
 import { RuntimeConnectionSettings } from "./config-schema"
 import type { ServerWebSocket, WebSocketHandler } from "bun"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import {
   OrganizationProtocol as Protocol,
   OrganizationRuntimeProtocol as Runtime,
@@ -16,6 +17,7 @@ import type { Credentials } from "./auth/session"
 import { fail, OrganizationError } from "./error"
 import type { OrganizationServiceMaintenance } from "./service-maintenance"
 import { createCommandTransport, type RuntimeConnectionLease } from "./command-transport"
+import { assertRuntimeConnection } from "./runtime-authority"
 export type { RuntimeConnectionLease } from "./command-transport"
 
 export interface RuntimeSocket {
@@ -34,6 +36,7 @@ const receiveFrameLimit = 16
 const receiveByteLimit = syncFrameLimit * 4
 
 type BlobTransfer = { frame: Runtime.BlobChunk; next: number; bytes: number; parts: Buffer[]; completed: boolean }
+type ReceiveWindow = { active: number; settled: boolean; done: ReturnType<typeof Promise.withResolvers<void>> }
 
 function stale(epoch: number): never {
   throw new OrganizationError({
@@ -46,7 +49,7 @@ function stale(epoch: number): never {
 }
 
 export function createRuntimeConnections(input: {
-  run: <T>(body: () => T | Promise<T>) => Promise<T>
+  run: <T>(body: () => T | Promise<T>, options?: OrganizationServiceMaintenance.AdmissionOptions) => Promise<T>
   captureTail?(): OrganizationServiceMaintenance.Tail
   signingIdentity: Command.SigningIdentity
   settings?: RuntimeConnectionSettings
@@ -77,7 +80,33 @@ export function createRuntimeConnections(input: {
   const active = new Map<string, Socket>()
   const transports = new WeakMap<Socket, ReturnType<typeof createCommandTransport>>()
   const blobTransfers = new WeakMap<Socket, { groups: Map<string, BlobTransfer>; bytes: number }>()
+  const receiveWindows = new WeakMap<Socket, ReceiveWindow>()
+  const heartbeatOrder = new WeakMap<Socket, Promise<void>>()
+  const presenceWrites = new WeakMap<Socket, { lastSeen: number }>()
   let closed = false
+
+  function receiveWindow(socket: Socket, priority: boolean) {
+    const prior = socket.data.pending
+    let window = receiveWindows.get(socket)
+    if (!priority || !window || window.settled) {
+      window = { active: 1, settled: false, done: Promise.withResolvers<void>() }
+      const captured = window
+      receiveWindows.set(socket, window)
+      socket.data.pending = window.done.promise
+      void prior.then(
+        () => releaseWindow(captured),
+        () => releaseWindow(captured),
+      )
+    }
+    window.active++
+    const captured = window
+    return { prior, release: () => releaseWindow(captured) }
+  }
+  function releaseWindow(window: ReceiveWindow) {
+    if (--window.active) return
+    window.settled = true
+    window.done.resolve()
+  }
 
   function remove(socket: Socket) {
     socket.data.closed = true
@@ -296,7 +325,7 @@ export function createRuntimeConnections(input: {
         : {}),
     })
   }
-  async function receive(socket: Socket, message: string) {
+  async function receive(socket: Socket, message: string, heartbeatReady?: () => void) {
     live(socket)
     let raw: unknown
     try {
@@ -389,43 +418,95 @@ export function createRuntimeConnections(input: {
       return
     }
     if (frame.data.type !== "heartbeat") fail("INVALID_REQUEST", "Runtime connection is already authenticated")
-    const heartbeat = frame.data
-    const handshake = current(socket)
-    if (heartbeat.connectionEpoch !== handshake.connectionEpoch) stale(handshake.connectionEpoch)
-    await Storage.transaction(
-      async () => {
-        current(socket)
-        const runtime = await Record.read(Record.RuntimeRegistration, Keys.runtime(handshake.runtimeID))
-        const member =
-          handshake.runtimeKind === "member"
-            ? await Record.read(Record.Account, Keys.account(handshake.accountID))
-            : undefined
-        const deployment = Protocol.Deployment.parse(await Storage.read(Keys.deployment()))
-        if (
-          !runtime ||
-          runtime.state !== "active" ||
-          (handshake.runtimeKind === "member" && (!member || member.state !== "active")) ||
-          deployment.orgID !== handshake.orgID ||
-          deployment.deploymentIncarnation !== handshake.deploymentIncarnation
-        )
-          fail("PERMISSION_DENIED", "Runtime registration is not active")
-        if (runtime.connectionEpoch !== handshake.connectionEpoch) stale(runtime.connectionEpoch)
-        const connection = await Record.read(Record.RuntimeConnection, Keys.runtimeConnection(runtime.runtimeID))
-        if (!connection || connection.handshake.connectionEpoch !== handshake.connectionEpoch)
-          stale(runtime.connectionEpoch)
-        const now = Date.now()
-        await Storage.write(Keys.runtime(runtime.runtimeID), { ...runtime, lastSeen: now })
-        await Storage.write(Keys.runtimeConnection(runtime.runtimeID), { ...connection, lastSeen: now })
-      },
-      {
-        commitGuard: () => {
-          current(socket)
-        },
-      },
+    await receiveHeartbeat(socket, frame.data, heartbeatReady)
+  }
+  async function presenceState(socket: Socket, handshake: Protocol.Handshake) {
+    const assertCurrent = () => {
+      const actual = current(socket)
+      if (actual !== handshake) stale(actual.connectionEpoch)
+    }
+    assertCurrent()
+    const runtime = await Record.read(Record.RuntimeRegistration, Keys.runtime(handshake.runtimeID))
+    assertCurrent()
+    const member =
+      handshake.runtimeKind === "member"
+        ? await Record.read(Record.Account, Keys.account(handshake.accountID))
+        : undefined
+    assertCurrent()
+    const deployment = Protocol.Deployment.parse(await Storage.read(Keys.deployment()))
+    assertCurrent()
+    if (
+      !runtime ||
+      runtime.state !== "active" ||
+      (handshake.runtimeKind === "member" &&
+        (!member ||
+          member.state !== "active" ||
+          member.accountID !== handshake.accountID ||
+          member.orgID !== handshake.orgID)) ||
+      deployment.orgID !== handshake.orgID ||
+      deployment.deploymentIncarnation !== handshake.deploymentIncarnation
     )
-    current(socket)
-    lease(socket, settings.offlineMs)
-    send(socket, heartbeat)
+      fail("PERMISSION_DENIED", "Runtime registration is not active")
+    if (runtime.connectionEpoch !== handshake.connectionEpoch) stale(runtime.connectionEpoch)
+    assertRuntimeConnection(runtime, handshake)
+    const connection = await Record.read(Record.RuntimeConnection, Keys.runtimeConnection(runtime.runtimeID))
+    assertCurrent()
+    if (!connection || connection.handshake.connectionEpoch !== handshake.connectionEpoch)
+      stale(runtime.connectionEpoch)
+    assertRuntimeConnection(runtime, connection.handshake)
+    return { runtime, connection }
+  }
+  async function receiveHeartbeat(
+    socket: Socket,
+    heartbeat: Extract<Runtime.ClientFrame, { type: "heartbeat" }>,
+    ready?: () => void,
+  ) {
+    const handshake = current(socket)
+    const assertCurrent = () => {
+      if (current(socket) !== handshake) stale(current(socket).connectionEpoch)
+    }
+    const write = { lastSeen: 0 }
+    try {
+      if (heartbeat.connectionEpoch !== handshake.connectionEpoch) stale(handshake.connectionEpoch)
+      await Storage.snapshot(() => presenceState(socket, handshake))
+      assertCurrent()
+      write.lastSeen = Date.now()
+      lease(socket, settings.offlineMs)
+      send(socket, heartbeat)
+      const pending = presenceWrites.get(socket)
+      if (pending) {
+        pending.lastSeen = write.lastSeen
+        return
+      }
+      presenceWrites.set(socket, write)
+    } finally {
+      ready?.()
+    }
+    try {
+      // This finite write samples presence; the heartbeat itself acknowledges liveness.
+      await Storage.transaction(
+        async () => {
+          const { runtime, connection } = await presenceState(socket, handshake)
+          const lastSeen = write.lastSeen
+          await Storage.write(Keys.runtime(runtime.runtimeID), { ...runtime, lastSeen })
+          await Storage.write(Keys.runtimeConnection(runtime.runtimeID), { ...connection, lastSeen })
+          assertCurrent()
+        },
+        { commitGuard: assertCurrent },
+      )
+    } catch (error) {
+      if (!(
+        error instanceof OrganizationError &&
+        ["RUNTIME_OFFLINE", "STALE_CONNECTION", "PERMISSION_DENIED"].includes(error.data.code)
+      ))
+        Log.create({ service: "organization.runtime-connection" }).error("Runtime presence persistence failed", {
+          errorName: error instanceof Error && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(error.name) ? error.name : "unknown",
+          ...(error instanceof OrganizationError ? { code: error.data.code } : {}),
+        })
+      throw error
+    } finally {
+      if (presenceWrites.get(socket) === write) presenceWrites.delete(socket)
+    }
   }
   function partialBlobGroups(socket: Socket) {
     let count = 0
@@ -556,29 +637,39 @@ export function createRuntimeConnections(input: {
         if (complete) releaseBlob(socket, complete)
         return close(socket, 1013, "Runtime receive window is full")
       }
-      const prior = socket.data.pending
+      const priority = frame.success && frame.data.type === "heartbeat" && Boolean(socket.data.handshake)
+      const window = receiveWindow(socket, priority)
+      const previousHeartbeat = priority ? heartbeatOrder.get(socket) : undefined
+      const heartbeatReady = priority ? Promise.withResolvers<void>() : undefined
+      if (heartbeatReady) heartbeatOrder.set(socket, heartbeatReady.promise)
       const blob = complete
       const body = async () => {
-        await prior
+        if (priority) await previousHeartbeat
+        else await window.prior
         if (!socket.data.closed) {
           if (blob) await receiveBlob(socket, blob)
-          else await receive(socket, message)
+          else await receive(socket, message, heartbeatReady?.resolve)
         }
       }
-      let retained: Promise<void> | undefined
+      const finish = () => {
+        heartbeatReady?.resolve()
+        socket.data.frames--
+        socket.data.bytes -= size
+        if (blob) releaseBlob(socket, blob)
+        window.release()
+      }
+      let task: Promise<void>
       try {
-        if (frame.success && frame.data.type === "receipt")
-          retained = transports.get(socket)?.resume(frame.data.exchangeID, frame.data.reply, body)
+        const retained =
+          frame.success && frame.data.type === "receipt"
+            ? transports.get(socket)?.resume(frame.data.exchangeID, frame.data.reply, body)
+            : undefined
+        task = retained ?? input.run(body, priority ? { readOnlyAdmission: true } : undefined)
       } catch (error) {
+        finish()
         return reject(socket, error)
       }
-      socket.data.pending = (retained ?? input.run(body))
-        .catch((error: unknown) => reject(socket, error))
-        .finally(() => {
-          socket.data.frames--
-          socket.data.bytes -= size
-          if (blob) releaseBlob(socket, blob)
-        })
+      void task.catch((error: unknown) => reject(socket, error)).finally(finish)
     },
   }
   async function availability(runtime: Record.RuntimeRegistration) {
