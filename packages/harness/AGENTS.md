@@ -27,6 +27,8 @@ Own lifecycle/features/`./host/identity`; `context` owns attribution, `agent/pri
 
 Register PG contracts in `test/support/storage-backends.ts`; see [backend selection](../../.synergy/skill/testing-guide/SKILL.md).
 
+`StorageEventSinks` owns transactional capture and durable delivery. Optional `deliverBatch` receives at most 128 adjacent same-partition records; acknowledge the whole window only after durable acceptance. Preserve single-delivery semantics and verify `test/storage/event-sinks.test.ts`.
+
 Vault/execution-time secrets stay here; detection belongs to `packages/secret-detection`. Derived batches use `SecretMask.captureAndApplyMany`/`revision()`. Register `secrets/detector-source` replacements before startup. Capture changes run `bun test test/secrets/` and `bun run benchmark:secrets` with a disposable benchmark Home.
 
 Check `storage/compat` before copies. Existing-only attachment validates without initialization; test `storage/existing-attach`. Central migrations own upgrades; Runtime Handle drains imports.

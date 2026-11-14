@@ -16,6 +16,8 @@ An optional captured callback receives the allocated delivery identity and seque
 
 Each bounded pump acknowledges its accepted prefix in one transaction after external delivery, preserving revision checks for every removed record. A later delivery failure still commits the accepted prefix; a revision conflict rolls back the whole acknowledgment. This trades a larger possible replay prefix for fewer durable commits without holding a transaction during network calls.
 
+A sink may implement `deliverBatch` to durably accept up to 128 adjacent records from the same sink and partition in their original query order. Each record is schema- and key-validated before delivery. Only a successful whole-window acknowledgment enters the accepted prefix; a failure retains that entire window, including when the receiver committed before losing its reply. Revision checks and stable event identities remain the acknowledgment and deduplication boundaries. Sinks using `deliver` keep their original single-record behavior. Hosts must not assume that the generic query groups different partitions together.
+
 ## Alternatives considered
 
 Replaying arbitrary Bus subscribers can duplicate external effects. Publishing from a subscriber loses events after a crash. A host-side queue written after the fact leaves a commit gap. An exactly-once network promise cannot resolve a lost response.

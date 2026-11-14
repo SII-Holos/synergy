@@ -27,6 +27,8 @@ export namespace StorageEventSinks {
     captured?(delivery: Readonly<Delivery>): void | Promise<void>
     /** Acknowledges durable acceptance. Receivers deduplicate by eventID and sinkID. */
     deliver(delivery: Readonly<Delivery>): Promise<void>
+    /** Acknowledges every delivery in one ordered, partition-local window together. */
+    deliverBatch?(deliveries: readonly Readonly<Delivery>[]): Promise<void>
   }
   const state = RuntimeContext.state(() => ({
     sinks: new Map<string, Sink>(),
@@ -82,14 +84,35 @@ export namespace StorageEventSinks {
         const records = await Storage.query<Delivery>({ kind: "event_delivery", limit })
         const accepted: typeof records = []
         try {
-          for (const record of records) {
+          function parse(record: (typeof records)[number]) {
             const delivery = DeliverySchema.parse(record.value)
             if (JSON.stringify(key(delivery)) !== JSON.stringify(record.key))
               throw new StorageIntegrityError("External event delivery identity does not match its record")
+            return delivery
+          }
+          for (let index = 0; index < records.length;) {
+            const record = records[index]!
+            const delivery = parse(record)
             const sink = current.sinks.get(delivery.sinkID)
             if (!sink) throw new StorageIntegrityError(`Storage event sink ${delivery.sinkID} is not registered`)
-            await sink.deliver(structuredClone(delivery))
-            accepted.push(record)
+            if (!sink.deliverBatch) {
+              await sink.deliver(structuredClone(delivery))
+              accepted.push(record)
+              index++
+              continue
+            }
+            const window = [record]
+            const deliveries = [delivery]
+            while (index + window.length < records.length && window.length < 128) {
+              const next = records[index + window.length]!
+              const value = parse(next)
+              if (value.sinkID !== delivery.sinkID || value.partition !== delivery.partition) break
+              window.push(next)
+              deliveries.push(value)
+            }
+            await sink.deliverBatch(structuredClone(deliveries))
+            accepted.push(...window)
+            index += window.length
           }
         } finally {
           // Commit the accepted prefix even if a later delivery fails. External
