@@ -212,15 +212,93 @@ test("HTTP control returns native facts, reconciles a lost ACK and refuses chang
   expect(
     (await client.orgCommands.control({ sessionID: f.sessionID, orgCommandControlRequest: changed })).response.status,
   ).toBe(409)
-  const resumed = await client.orgCommands.control(
-    { sessionID: f.sessionID, orgCommandControlRequest: { ...changed, requestID: "new-continue" } },
-    { throwOnError: true },
-  )
-  expect(resumed.response.status).toBe(202)
-  expect(resumed.data.effect).toMatchObject({ operation: "continue", controlVersion: 3 })
+  const resumed = await (async () => {
+    const request = { ...changed, requestID: "new-continue" }
+    type Observed = { kind: "result"; value: Command.ControlResult } | { kind: "error"; error: unknown }
+    const native = Promise.withResolvers<Observed>()
+    const release = Promise.withResolvers<void>()
+    const originalControl = receiver.intake.control
+    using hold = spyOn(receiver.intake, "control").mockImplementation(async (delivery, received) => {
+      if (delivery.authorization.permit.requestID !== request.requestID) return originalControl(delivery, received)
+      try {
+        const result = await originalControl(delivery, received)
+        native.resolve({ kind: "result", value: result })
+        await release.promise
+        return result
+      } catch (error) {
+        native.resolve({ kind: "error", error })
+        throw error
+      }
+    })
+    const service = Promise.withResolvers<Observed>()
+    const originalObserve = f.commands.observe
+    using observe = spyOn(f.commands, "observe").mockImplementation(async (connection, value) => {
+      if (value.attempt.permit.requestID !== request.requestID) return originalObserve(connection, value)
+      try {
+        const retained = await originalObserve(connection, value)
+        service.resolve({ kind: "result", value: Command.ControlResult.parse(retained.result) })
+        return retained
+      } catch (error) {
+        service.resolve({ kind: "error", error })
+        throw error
+      }
+    })
+    let response: Awaited<ReturnType<typeof client.orgCommands.control>>
+    try {
+      response = await client.orgCommands.control({ sessionID: f.sessionID, orgCommandControlRequest: request })
+    } finally {
+      release.resolve()
+    }
+    expect(response.response.status).toBe(504)
+    expect(response).toMatchObject({
+      error: {
+        code: "COMMAND_OUTCOME_UNKNOWN",
+        requestID: request.requestID,
+        outcome: "unknown",
+        retryable: false,
+      },
+    })
+    const result = await native.promise
+    if (result.kind === "error") throw result.error
+    expect(result.value.attempt.status).toBe("accepted")
+    const accepted = Command.ControlAccepted.parse(result.value.accepted)
+    expect(accepted.permit).toEqual(result.value.attempt.permit)
+    expect(accepted.permit).toMatchObject({
+      orgID: request.orgID,
+      sessionID: request.sessionID,
+      projectID: request.projectID,
+      runtimeID: request.runtimeID,
+      requestID: request.requestID,
+      bindingEpoch: binding.bindingEpoch,
+      connectionEpoch: 1,
+      operation: "continue",
+      actor: { subjectID: binding.creatorID, requestID: request.requestID },
+    })
+    expect(accepted.permit.payloadHash).toBe(await Command.digestControl(request))
+    expect(accepted.effect).toMatchObject({ operation: "continue", controlVersion: 3 })
+    const retained = await service.promise
+    if (retained.kind === "error") throw retained.error
+    expect(retained.value).toEqual(result.value)
+    const read = await client.orgCommands.get(
+      { sessionID: f.sessionID, requestID: request.requestID },
+      { throwOnError: true },
+    )
+    expect(read.data.state).toBe("accepted")
+    expect(Command.ControlAccepted.parse(read.data.accepted)).toEqual(accepted)
+    const deliveries = receiver.controls.filter(
+      (delivery) => delivery.authorization.permit.requestID === request.requestID,
+    )
+    expect(deliveries).toHaveLength(1)
+    expect(deliveries[0].authorization.permit).toEqual(accepted.permit)
+    expect(
+      await Command.verify(accepted.permit, deliveries[0].authorization.signature, f.signing.identity.publicKey),
+    ).toBe(true)
+    return accepted
+  })()
+  expect(resumed.effect).toMatchObject({ operation: "continue", controlVersion: 3 })
   await runtime.run(async () => {
     expect((await Session.get(f.sessionID)).paused).toBeUndefined()
-    expect((await Session.get(f.sessionID)).resume?.actor).toEqual(resumed.data.permit.actor)
+    expect((await Session.get(f.sessionID)).resume?.actor).toEqual(resumed.permit.actor)
   })
   expect(receiver.controls).toHaveLength(4)
   receiver.loseSkipReply()

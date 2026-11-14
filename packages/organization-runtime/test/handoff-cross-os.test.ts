@@ -16,6 +16,7 @@ import {
 } from "@ericsanchezok/synergy-organization-protocol"
 import { Action, Task, Outcome, InitialBytes, LinuxBytes, createPeer, json } from "./support/cross-os-peer"
 import { createHandoffCompletion } from "./support/handoff-completion"
+import { observeDNSAfterFailedHealth } from "./support/cross-os-dns"
 import {
   Bootstrap,
   PublicPeer,
@@ -88,6 +89,8 @@ const transportFacts = {
       delta: undefined as DNSCacheObservation | undefined,
     },
     attempts: 0,
+    originalENOTFOUND: 0,
+    afterFailureDNS: undefined as Awaited<ReturnType<typeof observeDNSAfterFailedHealth>>,
     headerResponses: 0,
     headerFailures: 0,
     headerTimeouts: 0,
@@ -685,6 +688,8 @@ async function host() {
               transportFacts.health.headerFailures++
               transportFacts.health.lastHeaderFailure = safeFailure(error)
               const failure = safeHeaderFailure(error)
+              if (fetchInvoked && [failure.code, failure.cause?.code, failure.cause?.cause?.code].includes("ENOTFOUND"))
+                transportFacts.health.originalENOTFOUND++
               if (transportFacts.health.firstHeaderFailures.length < 4)
                 transportFacts.health.firstHeaderFailures.push({
                   observedAtMs: performance.now(),
@@ -720,7 +725,13 @@ async function host() {
         transportFacts.health.dnsCache.final = final
         transportFacts.health.dnsCache.delta = dnsCacheDelta(transportFacts.health.dnsCache.before, final)
       }),
-    )
+    ).catch(async (error: unknown) => {
+      transportFacts.health.afterFailureDNS = await observeDNSAfterFailedHealth(
+        connection.origin,
+        transportFacts.health.originalENOTFOUND,
+      )
+      throw error
+    })
     const setupToken = await setup("darwin-bootstrap-token", async () => {
       bootstrapSignal.throwIfAborted()
       const token = await service.bootstrapToken()

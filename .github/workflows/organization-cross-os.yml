@@ -217,10 +217,17 @@ jobs:
           printf '%s' "$!" > "$SYNERGY_CROSS_OS_STATE/owner-pid"
           if [ "$SYNERGY_CROSS_OS_ROLE" = darwin ]; then
             deadline=$((SECONDS + 120))
-            until [ -f "$SYNERGY_CROSS_OS_STATE/bootstrap.json" ]; do
+            while :; do
               if [ -f "$SYNERGY_CROSS_OS_STATE/exit-code" ] || [ "$SECONDS" -ge "$deadline" ]; then
+                cleanup_deadline=$((SECONDS + 10))
+                until [ -f "$SYNERGY_CROSS_OS_STATE/exit-code" ] || [ "$SECONDS" -ge "$cleanup_deadline" ]; do
+                  sleep 0.2
+                done
                 echo 'Darwin Service/tunnel bootstrap failed before any cross-OS acceptance'
                 exit 1
+              fi
+              if [ -f "$SYNERGY_CROSS_OS_STATE/bootstrap.json" ]; then
+                break
               fi
               sleep 0.2
             done
