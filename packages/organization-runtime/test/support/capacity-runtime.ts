@@ -239,6 +239,13 @@ export const CapacityReply = z.discriminatedUnion("type", [
     peakHeap: z.number(),
     nativeTransactions: z.number().int().nonnegative().optional(),
     markerScans: z.number().int().nonnegative().optional(),
+    cpuUserMs: z.number().nonnegative().optional(),
+    cpuSystemMs: z.number().nonnegative().optional(),
+    bunOptionsPresent: z.boolean().optional(),
+    nodeOptionsPresent: z.boolean().optional(),
+    jscTuningPresent: z.boolean().optional(),
+    coverageRequested: z.boolean().optional(),
+    profilerRequested: z.boolean().optional(),
   }),
   z.object({ type: z.literal("result"), id: z.string(), result: z.unknown() }),
   z.object({ type: z.literal("failed"), id: z.string().optional(), message: z.string() }),
@@ -248,6 +255,20 @@ async function main() {
   const input = z
     .object({ home: z.string(), identity: RuntimeIdentity, ca: z.string() })
     .parse(JSON.parse(process.env.SYNERGY_CAPACITY_RUNTIME!))
+  const requestedOptions = [
+    process.execArgv.join(" "),
+    process.env.BUN_OPTIONS ?? "",
+    process.env.NODE_OPTIONS ?? "",
+  ].join(" ")
+  const executionOptions = {
+    bunOptionsPresent: process.env.BUN_OPTIONS !== undefined,
+    nodeOptionsPresent: process.env.NODE_OPTIONS !== undefined,
+    jscTuningPresent: Object.keys(process.env).some((key) => key.startsWith("BUN_JSC_") || key.startsWith("JSC_")),
+    coverageRequested:
+      /(?:^|\s)--(?:experimental-test-)?coverage(?:\s|=|$)/.test(requestedOptions) ||
+      Boolean(process.env.NODE_V8_COVERAGE),
+    profilerRequested: /(?:^|\s)--(?:cpu-prof(?:-md)?|heap-prof|prof)(?:\s|=|$)/.test(requestedOptions),
+  }
   using metrics = measureCapacity()
   const probe = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() })
   const port = probe.port!
@@ -297,6 +318,7 @@ async function main() {
                   let checksum = 0n
                   let lastMessageID = ""
                   const started = performance.now()
+                  const cpuStarted = process.cpuUsage()
                   using nativeOrder = countNativeMessageOrder({ scopeID: session.scope.id, sessionID: session.id })
                   for (let offset = 0; offset < entry.count; offset += 100) {
                     const end = Math.min(entry.count, offset + 100)
@@ -326,6 +348,7 @@ async function main() {
                     await Session.flushPartWrites(session.id)
                     if (entry.count >= 1000 && end % 1000 === 0) {
                       const memory = metrics.snapshot()
+                      const cpu = process.cpuUsage(cpuStarted)
                       process.send?.({
                         type: "progress",
                         id: request.id,
@@ -334,6 +357,9 @@ async function main() {
                         elapsedMs: performance.now() - started,
                         peakRSS: memory.peakRSS,
                         peakHeap: memory.peakHeap,
+                        cpuUserMs: cpu.user / 1000,
+                        cpuSystemMs: cpu.system / 1000,
+                        ...executionOptions,
                         ...nativeOrder.snapshot(),
                       })
                     }

@@ -194,7 +194,7 @@ test("ten authenticated clients replay a shared 10000-message history while thre
           if (message.type === "ready") return ready.resolve(message.pid)
           if (message.type === "progress") {
             console.log(
-              `CAPACITY_NATIVE_PROGRESS ${JSON.stringify({ pid: processHandle.pid, completed: message.completed, total: message.total, elapsedMs: message.elapsedMs, peakRSS: message.peakRSS, peakHeap: message.peakHeap, nativeTransactions: message.nativeTransactions, markerScans: message.markerScans })}`,
+              `CAPACITY_NATIVE_PROGRESS ${JSON.stringify({ pid: processHandle.pid, completed: message.completed, total: message.total, elapsedMs: message.elapsedMs, peakRSS: message.peakRSS, peakHeap: message.peakHeap, nativeTransactions: message.nativeTransactions, markerScans: message.markerScans, cpuUserMs: message.cpuUserMs, cpuSystemMs: message.cpuSystemMs, bunOptionsPresent: message.bunOptionsPresent, nodeOptionsPresent: message.nodeOptionsPresent, jscTuningPresent: message.jscTuningPresent, coverageRequested: message.coverageRequested, profilerRequested: message.profilerRequested })}`,
             )
             return
           }
