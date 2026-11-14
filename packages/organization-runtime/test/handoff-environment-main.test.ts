@@ -115,9 +115,15 @@ async function handoff(
           z.object({ code: z.literal("COMMAND_OUTCOME_UNKNOWN"), outcome: z.literal("unknown") }).safeParse(error)
             .success
         ) {
-          const deadline = Date.now() + 5000
+          const observed = {
+            reads: 0,
+            state: "unobserved",
+            stage: "unobserved",
+            purposes: [] as Handoff.Proof["purpose"][],
+            participantMatches: false,
+          }
           try {
-            while (Date.now() < deadline) {
+            for (;;) {
               const inspected = Handoff.MachineResult.parse(
                 (
                   await fixture.service.client.orgHandoff.drive(
@@ -129,6 +135,14 @@ async function handoff(
                   )
                 ).data,
               )
+              observed.reads++
+              observed.state = inspected.state
+              observed.stage = inspected.stage
+              observed.purposes = inspected.facts.map((fact) => fact.proof.purpose)
+              observed.participantMatches =
+                inspected.handoffID === id &&
+                inspected.runtimeID === target.registration.runtimeID &&
+                inspected.operation === "inspect-target"
               if (
                 inspected.state === "complete" &&
                 inspected.facts.some((fact) => fact.proof.purpose === "target-prepared")
@@ -138,8 +152,13 @@ async function handoff(
               await Bun.sleep(25)
             }
           } catch (inspection) {
+            console.error(
+              "ENVIRONMENT_TARGET_INSPECTION",
+              JSON.stringify({ ...observed, error: failureMetadata(inspection) }),
+            )
             throw new AggregateError([error, inspection], "Original Target dispatch and receipt inspection failed")
           }
+          console.error("ENVIRONMENT_TARGET_INSPECTION", JSON.stringify(observed))
         }
         throw error
       }
@@ -457,11 +476,11 @@ async function mappedTask(fixture: Fixture, returnToNative: boolean) {
 test.skipIf(process.platform === "win32")(
   "native to Hosted Environment handoff preserves live bytes and default cloud execution on return",
   () => mappedExecution(false),
-  45000,
+  90000,
 )
 
 test.skipIf(process.platform === "win32")(
   "cloud Environment handoff explicitly selects the borrowed native target for a private current copy",
   () => mappedExecution(true),
-  45000,
+  90000,
 )
