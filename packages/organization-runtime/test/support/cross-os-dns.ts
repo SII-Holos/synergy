@@ -1,4 +1,6 @@
 import { Resolver } from "node:dns/promises"
+import { isIP } from "node:net"
+import { setTimeout as delay } from "node:timers/promises"
 
 type FailedHealthResolver = {
   resolve4(hostname: string, options: { ttl: true }): Promise<unknown>
@@ -132,4 +134,88 @@ export async function observeDNSAfterFailedHealth(
     A: answers.A ?? { code: "UNSETTLED", count: 0, elapsedMs },
     AAAA: answers.AAAA ?? { code: "UNSETTLED", count: 0, elapsedMs },
   }
+}
+
+// Provenance: https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/
+// Bun 1.4.3 bun-types/bun.d.ts DNS backend contract; node:dns Resolver uses independent default servers.
+// Local adaptation: qualify the temporary name before ordinary HTTP, retaining the original bootstrap signal and route.
+export async function waitForPublicDNS(
+  origin: string,
+  signal: AbortSignal,
+  createResolver: (options: { timeout: number; tries: number }) => FailedHealthResolver = (options) =>
+    new Resolver(options),
+) {
+  signal.throwIfAborted()
+  const url = new URL(origin)
+  if (url.protocol !== "https:" || url.origin !== origin || !/^[a-z0-9-]+\.trycloudflare\.com$/.test(url.hostname))
+    throw new Error("Public DNS readiness requires the original temporary tunnel origin")
+  const started = performance.now()
+  const resolver = createResolver({ timeout: 250, tries: 1 })
+  const aborted = Promise.withResolvers<never>()
+  const onAbort = () => aborted.reject(signal.reason)
+  signal.addEventListener("abort", onAbort, { once: true })
+  let pending: Promise<[PromiseSettledResult<number>, PromiseSettledResult<number>]> | undefined
+  let failure: { error: unknown } | undefined
+  let ready: { attempts: number; A: number; AAAA: number; elapsedMs: number } | undefined
+  async function query(family: 4 | 6) {
+    try {
+      const value = await (family === 4
+        ? resolver.resolve4(url.hostname, { ttl: true })
+        : resolver.resolve6(url.hostname, { ttl: true }))
+      const length = field(value, "length")
+      if (
+        !Array.isArray(value) ||
+        typeof length !== "number" ||
+        !Number.isInteger(length) ||
+        length < 0 ||
+        length > 65535
+      )
+        throw new Error("Public DNS readiness returned invalid records")
+      let count = 0
+      for (let index = 0; index < length; index++) {
+        const address = field(field(value, String(index)), "address")
+        if (typeof address === "string" && isIP(address) === family) count++
+      }
+      return count
+    } catch (error) {
+      if (!dnsCodes.has(errorCode(error))) throw error
+      return 0
+    }
+  }
+  try {
+    signal.throwIfAborted()
+    for (let attempts = 1; ; attempts++) {
+      pending = Promise.allSettled([query(4), query(6)])
+      const [v4, v6] = await Promise.race([pending, aborted.promise])
+      signal.throwIfAborted()
+      if (v4.status === "rejected" && v6.status === "rejected")
+        throw new AggregateError([v4.reason, v6.reason], "Both public DNS readiness queries failed")
+      if (v4.status === "rejected") throw v4.reason
+      if (v6.status === "rejected") throw v6.reason
+      const A = v4.value
+      const AAAA = v6.value
+      if (A > 0 || AAAA > 0) {
+        ready = { attempts, A, AAAA, elapsedMs: performance.now() - started }
+        break
+      }
+      await delay(250, undefined, { signal })
+    }
+  } catch (error) {
+    failure = { error: signal.aborted ? signal.reason : error }
+  } finally {
+    signal.removeEventListener("abort", onAbort)
+    try {
+      resolver.cancel()
+    } catch (error) {
+      failure = {
+        error: failure
+          ? new AggregateError([failure.error, error], "Public DNS readiness and its owned cancellation failed")
+          : error,
+      }
+    }
+    await pending
+  }
+  if (failure) throw failure.error
+  if (!ready) throw new Error("Public DNS readiness ended without a positive response")
+  return ready
 }

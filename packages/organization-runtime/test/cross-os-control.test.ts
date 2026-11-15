@@ -1,4 +1,6 @@
 import { expect, test } from "bun:test"
+import { createSocket } from "node:dgram"
+import { Resolver, getServers } from "node:dns/promises"
 import { OrganizationProtocol } from "@ericsanchezok/synergy-organization-protocol"
 import {
   safeCrossOSTransportText,
@@ -9,7 +11,7 @@ import {
   type HeaderFailureKindSample,
 } from "./support/cross-os-failures"
 import { readControlJSON, safeCrossOSFailure } from "./support/cross-os-transport"
-import { observeDNSAfterFailedHealth } from "./support/cross-os-dns"
+import { observeDNSAfterFailedHealth, waitForPublicDNS } from "./support/cross-os-dns"
 import { createCrossOSTunnelObservation, readCrossOSTunnelStderr } from "./support/cross-os-tunnel"
 
 test("cross-OS JSON transport counts streamed bytes before decoding and cancels an oversized unsigned body", async () => {
@@ -563,3 +565,332 @@ test("original tunnel EOF preserves failed readiness and bounds private hostname
     await reader
   }
 }, 30_000)
+
+// Provenance: https://www.rfc-editor.org/rfc/rfc1035#section-4.1
+// https://www.rfc-editor.org/rfc/rfc3596#section-2.2
+// Local test authority for one uncompressed IN A/AAAA question; it is never a default or system resolver.
+async function publicDNSFixture(initial: "nx" | "hold" | "A" | "AAAA" = "nx") {
+  const socket = createSocket("udp4")
+  const bothQuestions = Promise.withResolvers<void>()
+  const negativeResponse = Promise.withResolvers<void>()
+  const failed = Promise.withResolvers<never>()
+  void failed.promise.catch(() => {})
+  let mode = initial
+  let pending = 0
+  let cancelCalls = 0
+  let questions = 0
+  let negativeResponses = 0
+  let cancelledQueries = 0
+  let closed = false
+  const questionKinds = new Set<string>()
+  const answerCounts = { A: 0, AAAA: 0 }
+  const resolvers: Resolver[] = []
+  const cancelled = new Set<Resolver>()
+  const queries: Promise<unknown>[] = []
+  socket.on("error", (error) => failed.reject(error))
+  socket.on("message", (packet, peer) => {
+    try {
+      if (packet.length < 17 || packet.readUInt16BE(4) !== 1) throw new Error("Unexpected DNS control question")
+      let end = 12
+      while (packet[end] !== 0) {
+        const length = packet[end]
+        if (length === undefined || length > 63 || end + length + 1 >= packet.length)
+          throw new Error("Invalid DNS control name")
+        end += length + 1
+      }
+      if (end + 5 > packet.length || packet.readUInt16BE(end + 3) !== 1) throw new Error("Invalid DNS control class")
+      const type = packet.readUInt16BE(end + 1)
+      if (type !== 1 && type !== 28) throw new Error("Unexpected DNS control record type")
+      const family = type === 1 ? "A" : "AAAA"
+      questions++
+      questionKinds.add(family)
+      if (questionKinds.size === 2) bothQuestions.resolve()
+      if (mode === "hold") return
+      const positive = mode === family
+      const header = Buffer.alloc(12)
+      packet.copy(header, 0, 0, 2)
+      header.writeUInt16BE(positive ? 0x8180 : 0x8183, 2)
+      header.writeUInt16BE(1, 4)
+      header.writeUInt16BE(positive ? 1 : 0, 6)
+      const answer = Buffer.alloc(positive ? (type === 1 ? 16 : 28) : 0)
+      if (positive) {
+        answer.writeUInt16BE(0xc00c, 0)
+        answer.writeUInt16BE(type, 2)
+        answer.writeUInt16BE(1, 4)
+        answer.writeUInt32BE(0, 6)
+        answer.writeUInt16BE(type === 1 ? 4 : 16, 10)
+        if (type === 1) answer.set([192, 0, 2, 123], 12)
+        else answer.set([0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1], 12)
+        answerCounts[family]++
+      }
+      socket.send(Buffer.concat([header, packet.subarray(12, end + 5), answer]), peer.port, peer.address, (error) => {
+        if (error) failed.reject(error)
+      })
+    } catch (error) {
+      failed.reject(error)
+    }
+  })
+  await Promise.race([new Promise<void>((resolve) => socket.bind(0, "127.0.0.1", resolve)), failed.promise])
+  const port = socket.address().port
+  function track<T>(promise: Promise<T>) {
+    pending++
+    const result = promise
+      .catch((error: unknown) => {
+        const descriptor =
+          typeof error === "object" && error !== null ? Object.getOwnPropertyDescriptor(error, "code") : undefined
+        const code: unknown = descriptor && "value" in descriptor ? descriptor.value : undefined
+        if (code === "ENOTFOUND") {
+          negativeResponses++
+          negativeResponse.resolve()
+        }
+        if (code === "ECANCELLED") cancelledQueries++
+        throw error
+      })
+      .finally(() => pending--)
+    queries.push(result)
+    void result.catch(() => {})
+    return result
+  }
+  return {
+    negativeResponse: negativeResponse.promise,
+    bothQuestions: bothQuestions.promise,
+    failed: failed.promise,
+    answerCounts,
+    get pending() {
+      return pending
+    },
+    get questions() {
+      return questions
+    },
+    get negativeResponses() {
+      return negativeResponses
+    },
+    get cancelledQueries() {
+      return cancelledQueries
+    },
+    get cancelCalls() {
+      return cancelCalls
+    },
+    get closed() {
+      return closed
+    },
+    get created() {
+      return resolvers.length
+    },
+    positive(family: "A" | "AAAA") {
+      mode = family
+    },
+    factory(options: { timeout: number; tries: number }) {
+      const resolver = new Resolver(options)
+      resolver.setServers(["127.0.0.1:" + port])
+      resolvers.push(resolver)
+      return {
+        resolve4: (hostname: string, options: { ttl: true }) => track(resolver.resolve4(hostname, options)),
+        resolve6: (hostname: string, options: { ttl: true }) => track(resolver.resolve6(hostname, options)),
+        cancel() {
+          cancelCalls++
+          cancelled.add(resolver)
+          resolver.cancel()
+        },
+      }
+    },
+    async close() {
+      for (const resolver of resolvers) if (!cancelled.has(resolver)) resolver.cancel()
+      await Promise.allSettled(queries)
+      await new Promise<void>((resolve) => socket.close(() => resolve()))
+      closed = true
+    },
+  }
+}
+
+for (const family of ["A", "AAAA"] as const)
+  test(`cross-OS DNS readiness waits for real ${family} records before the original HTTP request`, async () => {
+    const authority = await publicDNSFixture()
+    const controller = new AbortController()
+    const received = Promise.withResolvers<void>()
+    let requests = 0
+    let readiness: Awaited<ReturnType<typeof waitForPublicDNS>> | undefined
+    const defaults = JSON.stringify(getServers())
+    const server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch() {
+        requests++
+        received.resolve()
+        return Response.json({ kind: "original-http" })
+      },
+    })
+    const origin = `http://127.0.0.1:${server.port}/original-health`
+    const operation = (async () => {
+      readiness = await waitForPublicDNS(
+        "https://controlled-readiness.trycloudflare.com",
+        controller.signal,
+        authority.factory,
+      )
+      return (await fetch(origin, { signal: controller.signal })).json()
+    })()
+    void operation.catch(() => {})
+    try {
+      const first = await Promise.race([
+        authority.negativeResponse.then(() => "dns"),
+        received.promise.then(() => "http"),
+        operation.then(() => "http"),
+        authority.failed,
+      ])
+      expect(first).toBe("dns")
+      expect(requests).toBe(0)
+      expect(authority.negativeResponses).toBeGreaterThan(0)
+      authority.positive(family)
+      expect(await Promise.race([operation, authority.failed])).toEqual({ kind: "original-http" })
+      expect(readiness).toMatchObject({ [family]: 1, [family === "A" ? "AAAA" : "A"]: 0 })
+      expect(authority.answerCounts[family]).toBeGreaterThan(0)
+      expect(authority.pending).toBe(0)
+      expect(authority.cancelCalls).toBe(1)
+      expect(JSON.stringify(getServers()) === defaults).toBe(true)
+    } finally {
+      controller.abort(new Error("DNS control disposal"))
+      await operation.catch(() => {})
+      await server.stop(true)
+      await authority.close()
+      console.info(
+        "CROSS_OS_DNS_READINESS_NATIVE",
+        JSON.stringify({
+          scenario: family,
+          readiness,
+          nativeQuestions: authority.questions,
+          nativeNegativeResponses: authority.negativeResponses,
+          nativeCancelledQueries: authority.cancelledQueries,
+          pendingQueries: authority.pending,
+          resolverCancelCalls: authority.cancelCalls,
+          httpRequests: requests,
+          udpClosed: authority.closed,
+        }),
+      )
+    }
+    expect(authority.closed).toBe(true)
+  })
+
+test("cross-OS DNS readiness drains a cancelled real resolver and never starts HTTP for an exhausted window", async () => {
+  const authority = await publicDNSFixture("hold")
+  const controller = new AbortController()
+  const reason = new DOMException("Original bootstrap window ended", "TimeoutError")
+  let requests = 0
+  const server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch() {
+      requests++
+      return Response.json({ kind: "must-not-run" })
+    },
+  })
+  const origin = `http://127.0.0.1:${server.port}/original-health`
+  const operation = (async () => {
+    await waitForPublicDNS("https://controlled-readiness.trycloudflare.com", controller.signal, authority.factory)
+    return fetch(origin, { signal: controller.signal })
+  })()
+  void operation.catch(() => {})
+  try {
+    await Promise.race([
+      authority.bothQuestions,
+      operation.then(() => {
+        throw new Error("HTTP ran without a positive DNS response")
+      }),
+      authority.failed,
+    ])
+    expect(requests).toBe(0)
+    controller.abort(reason)
+    const error = await operation.then(
+      () => undefined,
+      (error: unknown) => error,
+    )
+    expect(error).toBe(reason)
+    expect(requests).toBe(0)
+    expect(authority.pending).toBe(0)
+    expect(authority.cancelCalls).toBe(1)
+    expect(authority.cancelledQueries).toBe(2)
+    const created = authority.created
+    const expired = await waitForPublicDNS(
+      "https://controlled-readiness.trycloudflare.com",
+      controller.signal,
+      authority.factory,
+    ).then(
+      () => undefined,
+      (error: unknown) => error,
+    )
+    expect(expired).toBe(reason)
+    expect(authority.created).toBe(created)
+  } finally {
+    controller.abort(reason)
+    await operation.catch(() => {})
+    await server.stop(true)
+    await authority.close()
+    console.info(
+      "CROSS_OS_DNS_READINESS_NATIVE",
+      JSON.stringify({
+        scenario: "cancelled-and-exhausted",
+        nativeQuestions: authority.questions,
+        nativeNegativeResponses: authority.negativeResponses,
+        nativeCancelledQueries: authority.cancelledQueries,
+        pendingQueries: authority.pending,
+        resolverCancelCalls: authority.cancelCalls,
+        httpRequests: requests,
+        udpClosed: authority.closed,
+      }),
+    )
+  }
+  expect(authority.closed).toBe(true)
+})
+
+test("cross-OS DNS readiness preserves a real HTTP failure after positive DNS", async () => {
+  const authority = await publicDNSFixture("A")
+  const controller = new AbortController()
+  const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => Response.json({ kind: "unused" }) })
+  const origin = `http://127.0.0.1:${server.port}/original-health`
+  await server.stop(true)
+  let readiness: Awaited<ReturnType<typeof waitForPublicDNS>> | undefined
+  let originalError: unknown
+  const operation = (async () => {
+    readiness = await waitForPublicDNS(
+      "https://controlled-readiness.trycloudflare.com",
+      controller.signal,
+      authority.factory,
+    )
+    try {
+      return await fetch(origin, { signal: controller.signal })
+    } catch (error) {
+      originalError = error
+      throw error
+    }
+  })()
+  void operation.catch(() => {})
+  try {
+    const error = await Promise.race([operation, authority.failed]).then(
+      () => undefined,
+      (error: unknown) => error,
+    )
+    expect(readiness).toMatchObject({ A: 1, AAAA: 0 })
+    expect(error).toBeInstanceOf(Error)
+    expect(error).toBe(originalError)
+    expect(authority.pending).toBe(0)
+    expect(authority.cancelCalls).toBe(1)
+  } finally {
+    controller.abort(new Error("DNS control disposal"))
+    await operation.catch(() => {})
+    await authority.close()
+    console.info(
+      "CROSS_OS_DNS_READINESS_NATIVE",
+      JSON.stringify({
+        scenario: "original-http-failure",
+        readiness,
+        nativeQuestions: authority.questions,
+        nativeNegativeResponses: authority.negativeResponses,
+        nativeCancelledQueries: authority.cancelledQueries,
+        pendingQueries: authority.pending,
+        resolverCancelCalls: authority.cancelCalls,
+        originalHTTPFailed: originalError !== undefined,
+        udpClosed: authority.closed,
+      }),
+    )
+  }
+  expect(authority.closed).toBe(true)
+})
