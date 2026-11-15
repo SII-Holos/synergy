@@ -1,5 +1,6 @@
 import { expect } from "bun:test"
 import { Session } from "@ericsanchezok/synergy-harness/session"
+import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/ledger"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { OrganizationCommandHistory } from "../../../organization/src/command-history"
@@ -193,6 +194,9 @@ async function startHostedTask(selected: HostedTaskRuntime, hold: boolean) {
       target,
       model,
       calls,
+      upstreamObservation() {
+        return { headers: upstreamHeaders, bodies: calls.length }
+      },
       upstream,
       interrupt() {
         for (const stream of streams) stream.error(new Error("The original upstream response was interrupted"))
@@ -216,12 +220,17 @@ async function until<T>(read: () => Promise<T | undefined>) {
   }
 }
 
-async function releasedTask(selected: HostedTaskRuntime, requestID: string) {
+async function releasedTask(
+  selected: HostedTaskRuntime,
+  requestID: string,
+  observe?: (value: ReturnType<typeof Records.Release.parse> | undefined) => void,
+) {
   const releaseKey = Keys.release(selected.service.identity.orgID, selected.service.identity.accountID, requestID)
   return until(() =>
     selected.runtime.run(async () => {
       const [raw] = await Storage.readMany([releaseKey])
       const value = raw === undefined ? undefined : Records.Release.parse(raw)
+      observe?.(value)
       return value?.state === "released" ? value : undefined
     }),
   )
@@ -232,6 +241,7 @@ export async function appendCompletedHostedTask(
   task: Awaited<ReturnType<typeof completedHostedTask>>,
 ) {
   const requestID = "restored-second-input"
+  const baseline = task.upstreamObservation()
   const accepted = (
     await selected.service.client.orgCommands.input(
       {
@@ -250,7 +260,59 @@ export async function appendCompletedHostedTask(
       { headers: selected.service.headers, throwOnError: true },
     )
   ).data
-  const release = await releasedTask(selected, requestID)
+  const waitingAt = Date.now()
+  let reads = 0
+  let last: Record<string, unknown> | undefined
+  const release = await releasedTask(selected, requestID, (value) => {
+    reads++
+    const observedAt = Date.now()
+    last = {
+      observedAt,
+      releaseState: value?.state ?? "missing",
+      receiptOutcome: value?.receipt?.outcome ?? "absent",
+      originalRelease:
+        value !== undefined &&
+        value.sessionID === accepted.permit.sessionID &&
+        value.rootID === accepted.effect.messageID &&
+        value.runtimeID === accepted.permit.runtimeID &&
+        value.bindingEpoch === accepted.permit.bindingEpoch &&
+        value.grantID === accepted.permit.provisionalGrantID,
+    }
+    try {
+      const manager = SessionManager.getRuntime(task.sessionID)
+      const activity = manager?.status.type === "busy" ? manager.status.activity : undefined
+      Object.assign(last, {
+        managerPresent: manager !== undefined,
+        ownerPresent: manager?.owner !== undefined,
+        ownerRootMatches: manager?.owner?.rootID === accepted.effect.messageID,
+        ownerAborted: manager?.owner?.lease.signal.aborted ?? "absent",
+        loopPhase: manager?.owner?.phase ?? "absent",
+        executionPhase: manager?.executionPhase ?? "absent",
+        activityPhase: activity?.phase ?? "absent",
+        activityRootMatches: activity?.rootID === accepted.effect.messageID,
+        activityAgeMs: activity ? Math.max(0, observedAt - activity.startedAt) : "absent",
+      })
+    } catch {
+      last.managerObservation = "unavailable"
+    }
+  }).catch((error) => {
+    const upstream = task.upstreamObservation()
+    console.error(
+      "HOSTED_TASK_RELEASE_FAILURE",
+      JSON.stringify({
+        stage: "second-original-release",
+        inputAccepted: true,
+        observedAt: Date.now(),
+        waitedMs: Date.now() - waitingAt,
+        reads,
+        last,
+        upstreamHeadersSinceInput: upstream.headers - baseline.headers,
+        upstreamBodiesSinceInput: upstream.bodies - baseline.bodies,
+        ...selected.connectionObservation?.(),
+      }),
+    )
+    throw error
+  })
   expect(release.receipt?.outcome).toBe("completed")
   await until(() =>
     selected.runtime.run(async () => ((await OrganizationExecutionLeases.pendingForCapture()) ? undefined : true)),
