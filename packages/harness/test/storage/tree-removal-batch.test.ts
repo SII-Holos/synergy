@@ -463,13 +463,22 @@ test.skipIf(!storageTestBackends().includes("postgres"))(
             expect(plans.every((plan) => plan.forwarded)).toBe(true)
           })
           expect(await store.readMany(records)).toEqual(records.map(() => undefined))
-          const revisions = await store.snapshot((tx) => tx.revisions(records))
-          expect(revisions).toEqual(
-            beforeRevisions.map((revision) => {
-              if (revision === undefined) throw new Error("Original selected record has no committed revision")
-              return revision + 1n
-            }),
+          const tombstones = await store.snapshot((tx) =>
+            tx.raw.query(
+              "SELECT key_text, body, revision FROM storage_records WHERE namespace = ? AND key_text IN (" +
+                records.map(() => "?").join(", ") +
+                ")",
+              [store.options.namespace, ...records.map((key) => JSON.stringify(key))],
+            ),
           )
+          expect(tombstones).toHaveLength(records.length)
+          for (const [index, key] of records.entries()) {
+            const row = tombstones.find((value) => value.key_text === JSON.stringify(key))
+            expect(row?.body).toBeNull()
+            const previous = beforeRevisions[index]
+            if (previous === undefined) throw new Error("Original selected record has no committed revision")
+            expect(BigInt(String(row!.revision))).toBe(previous + 1n)
+          }
           for (const key of selected) {
             const outcome = await failure(store.snapshot((tx) => tx.artifact(key)))
             expect(outcome.kind).toBe("rejected")
