@@ -27,7 +27,8 @@ The historical readers reused task-admission restrictions as a data inventory. T
 - [x] Machine check: `packages/organization-runtime/test/backup/recovered-command-signing.test.ts` performs administrative capture of a genuinely restored Home and two independent Service recoveries with actual key rotations, exact retained command records and immutable retries.
 - [x] Machine check: `packages/organization/test/execution-release.test.ts` uses real two-generation release and reacquisition, verifies complete historical acceptance and rejects a missing earlier receipt in an independent RAM copy.
 - [x] Machine check: `packages/organization/test/execution-handoff.test.ts` validates original terminal Service Handoff and grant lineage, missing binding/index and correctly signed command-barrier corruption through fixed history copies. Its signed Native facts are Service fixtures, not an actual Native backup acceptance.
-- [ ] Machine check: complete logical-attempt controls, actual Native Handoff backup, explicit post-restore continuation of the original unfinished Root and known paused/queued capture remain separate acceptance work.
+- [x] Machine check: `packages/organization-runtime/test/backup/member-command-history.test.ts` uses an actual enrolled Runtime, original query and signed Native skip before a public logical retry; missing skip/index and pending histories are refused. Its pre-reception transport fault returns no artificial acknowledgement.
+- [ ] Machine check: actual Native Handoff backup, explicit post-restore continuation of the original unfinished Root and known paused/queued capture remain separate acceptance work.
 - [ ] Machine check: coherent final canonical quality, installed acceptance, copied real Home and new exact-head CI remain pending.
 
 ## Lessons

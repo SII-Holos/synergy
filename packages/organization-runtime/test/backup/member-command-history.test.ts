@@ -1,8 +1,16 @@
-import { expect, test } from "bun:test"
+import { expect, spyOn, test } from "bun:test"
+import { createHash } from "node:crypto"
 import path from "node:path"
 import { z } from "zod"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
-import { OrganizationRuntimeProtocol as Runtime } from "@ericsanchezok/synergy-organization-protocol"
+import {
+  OrganizationRuntimeProtocol as Runtime,
+  OrganizationCommandProtocol as Command,
+} from "@ericsanchezok/synergy-organization-protocol"
+import * as IntakeModule from "../../src/command-intake"
+import { OrganizationRuntimeError } from "../../src/error"
+import { OrganizationIntakePath as NativeKeys } from "../../src/storage/path"
+import { OrganizationCommandRecords as NativeRecords } from "../../src/command-records"
 import { prepareMemberHome } from "../../src/home"
 import { enrollMemberRuntime } from "../../src/enrollment"
 import { readMemberRegistration } from "../../src/registration"
@@ -29,7 +37,7 @@ function reader(rows: Rows): Record.HistoricalReader {
   }
 }
 
-test("real Member create and pause history verifies signatures, both indexes and its acknowledged watermark without Hosted authority", async () => {
+test("real Member history retains a skipped original attempt and its accepted logical retry without Hosted authority", async () => {
   await using f = await fixture()
   const options = { headers: f.headers, throwOnError: true as const }
   const project = (
@@ -57,18 +65,49 @@ test("real Member create and pause history verifies signatures, both indexes and
     if (Runtime.ClientFrame.parse(JSON.parse(String(raw))).type === "heartbeat") online.resolve()
     return false
   })
-  await using runtime = await openMemberRuntime({
-    home: home.home,
-    identity: home.identity,
-    ca: f.ca,
-    listen: { port, token: "c".repeat(64) },
-  })
-  const timeout = setTimeout(() => online.reject(new Error("The original Member bridge did not connect")), 3000)
-  try {
-    await online.promise
-  } finally {
-    clearTimeout(timeout)
-  }
+  const retryRequestID = "original-member-context-retry"
+  let refused = 0
+  let observedRuntime = false
+  const createIntake = IntakeModule.createCommandIntake
+  await using runtime = await (async () => {
+    using observe = spyOn(IntakeModule, "createCommandIntake").mockImplementation((input) => {
+      const intake = createIntake(input)
+      if (input.runtimeID !== registration.runtimeID) return intake
+      observedRuntime = true
+      return {
+        ...intake,
+        async input(delivery: Command.InputDelivery) {
+          if (delivery.authorization.permit.requestID === retryRequestID && !refused) {
+            refused++
+            throw new OrganizationRuntimeError({
+              code: "SERVICE_UNAVAILABLE",
+              message: "Fixture refusal before original native reception",
+              outcome: "not_dispatched",
+              retryable: true,
+            })
+          }
+          return intake.input(delivery)
+        },
+      }
+    })
+    const opened = await openMemberRuntime({
+      home: home.home,
+      identity: home.identity,
+      ca: f.ca,
+      listen: { port, token: "c".repeat(64) },
+    })
+    const timeout = setTimeout(() => online.reject(new Error("The original Member bridge did not connect")), 3000)
+    try {
+      await online.promise
+      return opened
+    } catch (error) {
+      await opened.close()
+      throw error
+    } finally {
+      clearTimeout(timeout)
+    }
+  })()
+  expect(observedRuntime).toBe(true)
   const created = (
     await f.client.orgSessions.create(
       {
@@ -102,6 +141,59 @@ test("real Member create and pause history verifies signatures, both indexes and
     )
   ).data
   expect(paused.effect.operation).toBe("pause")
+  const retryInput = {
+    sessionID: created.effect.sessionID,
+    orgCommandInputRequest: Command.InputRequest.parse({
+      schemaVersion: 1,
+      orgID: f.identity.orgID,
+      projectID: project.projectID,
+      runtimeID: registration.runtimeID,
+      sessionID: created.effect.sessionID,
+      requestID: retryRequestID,
+      input: {
+        operation: "input",
+        mode: "context",
+        parts: [{ type: "text", text: "Retain this one logical context input" }],
+      },
+    }),
+  }
+  const firstCall = await f.client.orgCommands.input(retryInput, options).then(
+    (value) => ({ state: "resolved" as const, value }),
+    (error: unknown) => ({ state: "rejected" as const, error }),
+  )
+  expect(firstCall.state).toBe("rejected")
+  expect(refused).toBe(1)
+  const firstRequest = await f.service.maintenance.run(() =>
+    Record.read(Record.CommandRequest, Keys.commandRequest(created.permit.actor.subjectID, retryRequestID)),
+  )
+  if (!firstRequest) throw new Error("The original A-point request did not persist")
+  const firstPermit = firstRequest.first
+  expect(
+    await f.service.maintenance.run(() =>
+      Record.read(Record.CommandAttempt, Keys.commandAttempt(firstPermit.attemptID)),
+    ),
+  ).toMatchObject({ state: "not_dispatched" })
+  expect(
+    await runtime.run(() =>
+      Storage.readMany([NativeKeys.attempt(f.identity.orgID, created.effect.sessionID, firstPermit.attemptID)]),
+    ),
+  ).toEqual([undefined])
+  const retryAccepted = (await f.client.orgCommands.input(retryInput, options)).data
+  expect(retryAccepted.permit.requestID).toBe(firstPermit.requestID)
+  expect(retryAccepted.permit.commandSeq).toBe(firstPermit.commandSeq + 1)
+  expect(retryAccepted.permit.payloadHash).toBe(firstPermit.payloadHash)
+  expect(retryAccepted.permit.attemptID).not.toBe(firstPermit.attemptID)
+  expect(refused).toBe(1)
+  await runtime.run(async () => {
+    const skipped = Command.Attempt.parse(
+      await Storage.read(NativeKeys.attempt(f.identity.orgID, created.effect.sessionID, firstPermit.attemptID)),
+    )
+    expect(skipped.status).toBe("skipped")
+    const accepted = NativeRecords.Request.parse(
+      await Storage.read(NativeKeys.request(f.identity.orgID, firstPermit.actor.subjectID, retryRequestID)),
+    )
+    expect(accepted.accepted).toEqual(retryAccepted)
+  })
   const snapshot = await f.service.maintenance.run(() =>
     Storage.snapshot(async (tx) => {
       const rows: Rows = new Map()
@@ -112,8 +204,55 @@ test("real Member create and pause history verifies signatures, both indexes and
   )
   const stateKey = Keys.commandState(created.effect.sessionID)
   const state = reader(snapshot).read(Record.CommandState, stateKey)
-  expect(state.commandSeq).toBe(paused.permit.commandSeq)
+  expect(state.commandSeq).toBe(retryAccepted.permit.commandSeq)
+  expect(state.pendingAttemptID).toBeUndefined()
+  const closedFirst = reader(snapshot).read(Record.CommandAttempt, Keys.commandAttempt(firstPermit.attemptID))
+  expect(closedFirst).toMatchObject({ state: "rejected", result: { attempt: { status: "skipped" } } })
+  if (!closedFirst.result?.skip) throw new Error("The actual Native skip did not close its original Service attempt")
+  const skipKey = Keys.commandSkip(
+    firstPermit.attemptID,
+    createHash("sha256").update(JSON.stringify(closedFirst.result.skip.permit)).digest("hex"),
+  )
+  const skip = reader(snapshot).read(Command.SignedSkip, skipKey)
+  const signing = reader(snapshot).read(Record.SigningIdentity, Keys.signingIdentity())
+  expect(await Command.verifySkip(skip.permit, skip.signature, signing.publicKey)).toBe(true)
+  expect(skip.permit.command).toEqual(firstPermit)
+  expect(
+    reader(snapshot).read(Record.CommandRequest, Keys.commandRequest(firstPermit.actor.subjectID, retryRequestID)),
+  ).toMatchObject({ first: firstPermit, lastAttemptID: retryAccepted.permit.attemptID, accepted: retryAccepted })
   expect(await History.validate(reader(snapshot), stateKey, state)).toBe(true)
+  const missingSkip = new Map(snapshot)
+  expect(missingSkip.delete(JSON.stringify(skipKey))).toBe(true)
+  const noSkip = await History.validate(reader(missingSkip), stateKey, state).then(
+    (value) => ({ state: "resolved" as const, value }),
+    (error: unknown) => ({ state: "rejected" as const, error }),
+  )
+  expect(noSkip.state).toBe("rejected")
+  for (const key of [
+    Keys.requestAttempt(firstPermit.actor.subjectID, retryRequestID, firstPermit.commandSeq),
+    Keys.sessionCommand(created.effect.sessionID, retryAccepted.permit.commandSeq),
+  ]) {
+    const missing = new Map(snapshot)
+    expect(missing.delete(JSON.stringify(key))).toBe(true)
+    const outcome = await History.validate(reader(missing), stateKey, state).then(
+      (value) => ({ state: "resolved" as const, value }),
+      (error: unknown) => ({ state: "rejected" as const, error }),
+    )
+    expect(outcome.state).toBe("rejected")
+  }
+  const unknownPending = { ...state, pendingAttemptID: firstPermit.attemptID }
+  const unresolvedAttempt = new Map(snapshot)
+  unresolvedAttempt.set(JSON.stringify(stateKey), unknownPending)
+  unresolvedAttempt.set(JSON.stringify(Keys.commandAttempt(firstPermit.attemptID)), {
+    ...closedFirst,
+    state: "unknown",
+    result: undefined,
+  })
+  const unknown = await History.validate(reader(unresolvedAttempt), stateKey, unknownPending).then(
+    (value) => ({ state: "resolved" as const, value }),
+    (error: unknown) => ({ state: "rejected" as const, error }),
+  )
+  expect(unknown.state).toBe("rejected")
   const createKey = Keys.commandAttempt(created.permit.attemptID)
   const create = reader(snapshot).read(Record.CommandAttempt, createKey)
   const pause = reader(snapshot).read(Record.CommandAttempt, Keys.commandAttempt(paused.permit.attemptID))
