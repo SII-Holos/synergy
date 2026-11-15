@@ -20,13 +20,32 @@ export namespace RuntimeMaintenanceSchema {
     namespace: NativeNamespaceIdentity.Descriptor,
     signingHash: Hash,
   })
+  const namespaceField = z.string().min(1).max(4096)
+  const ServiceNamespace = z.strictObject({
+    kind: z.literal("service"),
+    orgID: namespaceField,
+    deploymentIncarnation: namespaceField,
+  })
+  const HostedNamespace = ServiceNamespace.extend({
+    kind: z.literal("hosted"),
+    runtimeID: namespaceField,
+    publicKey: namespaceField,
+  })
+  function restoredNamespace(source: HomeOwnershipFile.RestorationInfo, namespace: NativeNamespaceIdentity.Descriptor) {
+    if (source.owner === "organization") {
+      const service = ServiceNamespace.safeParse(namespace.identity)
+      return service.success && source.incarnation === service.data.deploymentIncarnation
+    }
+    if (source.owner === "organization-runtime") return HostedNamespace.safeParse(namespace.identity).success
+    return false
+  }
   const sameOwner = (value: z.infer<typeof selection>) =>
     value.namespace.owner === value.source.owner &&
     (value.version === 1
       ? value.source.schemaVersion === 2 && value.target.schemaVersion === 2
       : value.source.schemaVersion === 3 &&
         value.target.schemaVersion === 3 &&
-        value.source.incarnation === value.namespace.identity.deploymentIncarnation) &&
+        restoredNamespace(value.source, value.namespace)) &&
     JSON.stringify({ ...value.source, readerContract: value.target.readerContract }) === JSON.stringify(value.target)
   export const HomeUpgradeSelection = selection.refine(sameOwner, "Home upgrade must retain its original native owner")
   export const HomeUpgradeNative = selection
