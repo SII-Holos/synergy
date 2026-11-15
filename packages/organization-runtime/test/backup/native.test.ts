@@ -20,6 +20,8 @@ import { RuntimeMaintenance } from "@ericsanchezok/synergy-harness/storage/runti
 import { RuntimeComponents } from "@ericsanchezok/synergy-harness/lifecycle"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { ResourceHost } from "@ericsanchezok/synergy-harness/resources/host"
+import { AgentTurn } from "@ericsanchezok/synergy-harness/session/agent-turn"
+import { ModelExecution } from "@ericsanchezok/synergy-harness/execution/model-execution"
 import { SnapshotMaintenance } from "@ericsanchezok/synergy-harness/session/snapshot-maintenance"
 import { StorageCheckpoint } from "@ericsanchezok/synergy-harness/storage/checkpoint"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
@@ -110,7 +112,7 @@ async function openHostedFixture(input: Parameters<typeof openHostedRuntime>[0])
   return runtime
 }
 
-async function source(production = false, withTask = false) {
+async function source(production = false, withTask = false, options: { warmWorker?: boolean } = {}) {
   const service = await fixture(production && withTask ? { connections: { heartbeatMs: 25 } } : {})
   const workspaceCoordinator = new WorkspaceCoordinator({ directory: path.join(service.root, "native-coordination") })
   try {
@@ -220,6 +222,24 @@ async function source(production = false, withTask = false) {
       await runtime.close()
       closed = true
     }
+    if (production && withTask && options.warmWorker) {
+      try {
+        await runtime.run(async () => {
+          expect(ModelExecution.mode()).toBe("worker")
+          await AgentTurn.prewarm()
+          const workers = AgentTurn.stats()
+          expect(workers.minIdle).toBeGreaterThan(0)
+          expect(workers.ready).toBeGreaterThanOrEqual(workers.minIdle)
+        })
+      } catch (error) {
+        try {
+          await close()
+        } catch (cleanup) {
+          throw new AggregateError([error, cleanup], "Hosted worker setup and original Runtime cleanup failed")
+        }
+        throw error
+      }
+    }
     return {
       home,
       registration,
@@ -285,7 +305,11 @@ async function source(production = false, withTask = false) {
       },
     }
   } catch (error) {
-    await service[Symbol.asyncDispose]()
+    try {
+      await service[Symbol.asyncDispose]()
+    } catch (cleanup) {
+      throw new AggregateError([error, cleanup], "Hosted source setup and original Service cleanup failed")
+    }
     throw error
   }
 }
@@ -650,7 +674,7 @@ async function recoverHostedWriter(withTask = false, late?: "session" | "input",
   }
   phase("entered")
   using sourceScopeEnd = { [Symbol.dispose]: () => phase("source-scope-end") }
-  await using selected = await source(true, withTask)
+  await using selected = await source(true, withTask, { warmWorker: withTask })
   using sourceDisposal = { [Symbol.dispose]: () => phase("source-disposal-enter") }
   phase("source-ready")
   using taskScopeEnd = { [Symbol.dispose]: () => phase("task-scope-end") }

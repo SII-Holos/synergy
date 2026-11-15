@@ -27,6 +27,8 @@ For independently loaded UI groups, wait for the observed group itself before as
 
 Prepare durable fixtures before starting a short runtime deadline; for Cortex timeout tests, enqueue follow-ups between `Cortex.prepare` and `Cortex.start` rather than racing their writes against the timer.
 
+When ready native capacity is a declared fixture input, await its original preparation and verify actual readiness before admission. A resolved or skipped preparation alone is insufficient. Keep native workers and their configured limits real, prepare only the declared initial input, and retain separate cold-start coverage. Do not move a cold-start contract into setup or prepare later work to conceal a lifecycle failure.
+
 For persisted cooldowns and retry deadlines, advance a controlled clock at the failure-response boundary and verify both the recorded timestamp and the exact policy duration. Cover second boundaries explicitly; an upper bound derived before asynchronous work must not replace the time at which the policy applies. Restore the clock even when an assertion fails.
 
 Live elapsed-time labels can advance across asynchronous browser or native IPC reads. Validate their format and compare before/after durations for monotonicity; reserve exact elapsed values for a controlled clock. Do not freeze a live clock's expected text or hide the boundary with retries.
