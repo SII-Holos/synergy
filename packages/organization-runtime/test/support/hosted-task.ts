@@ -1,5 +1,7 @@
 import { expect } from "bun:test"
+import { OrganizationCommandProtocol as Command } from "@ericsanchezok/synergy-organization-protocol"
 import { Session } from "@ericsanchezok/synergy-harness/session"
+import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/ledger"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
@@ -479,4 +481,104 @@ export async function verifyCompletedTaskHistory(
     rows.delete(foreignUsage)
   }
   expect((await OrganizationExecutionGrants.closedHistory(reader, grantID)).rootID).toBe(task.accepted.effect.messageID)
+}
+
+export async function continueQueuedHostedTask(
+  selected: HostedTaskRuntime,
+  task: Awaited<ReturnType<typeof completedHostedTask>>,
+  requestID: string,
+) {
+  const options = { headers: selected.service.headers, throwOnError: true as const }
+  const baseline = task.calls.length
+  const paused = (
+    await selected.service.client.orgCommands.control(
+      {
+        sessionID: task.sessionID,
+        orgCommandControlRequest: {
+          ...task.target,
+          sessionID: task.sessionID,
+          requestID: requestID + "-pause",
+          control: { operation: "pause" },
+        },
+      },
+      options,
+    )
+  ).data
+  if (paused.effect.operation !== "pause") throw new Error("Expected the actual queued-task pause receipt")
+  const accepted = (
+    await selected.service.client.orgCommands.input(
+      {
+        sessionID: task.sessionID,
+        orgCommandInputRequest: {
+          ...task.target,
+          sessionID: task.sessionID,
+          requestID,
+          input: {
+            operation: "input",
+            mode: "task",
+            parts: [{ type: "text", text: "Complete the explicitly continued queued task once" }],
+          },
+        },
+      },
+      options,
+    )
+  ).data
+  const saved = await selected.runtime.run(() => Session.get(task.sessionID))
+  expect(saved.paused?.since).toBe(paused.effect.pausedSince)
+  const queued = await selected.runtime.run(() => SessionInbox.peekReady(task.sessionID))
+  expect(
+    queued.some(
+      (item) =>
+        item.id === accepted.effect.itemID && item.messageID === accepted.effect.messageID && item.mode === "task",
+    ),
+  ).toBe(true)
+  expect(task.calls).toHaveLength(baseline)
+  expect(await selected.runtime.run(async () => SessionManager.isRunning(task.sessionID))).toBe(false)
+  const request = {
+    ...task.target,
+    sessionID: task.sessionID,
+    requestID: requestID + "-continue",
+    control: {
+      operation: "continue" as const,
+      pausedSince: paused.effect.pausedSince,
+      controlVersion: paused.effect.controlVersion,
+    },
+  }
+  const continued = (
+    await selected.service.client.orgCommands.control(
+      { sessionID: task.sessionID, orgCommandControlRequest: request },
+      options,
+    )
+  ).data
+  if (continued.effect.operation !== "continue") throw new Error("Expected the actual queued-task Continue receipt")
+  expect(continued.permit.payloadHash).toBe(await Command.digestControl(request))
+  expect(continued.effect).toMatchObject({
+    itemID: accepted.effect.itemID,
+    messageID: accepted.effect.messageID,
+    rootID: accepted.effect.messageID,
+    pausedSince: paused.effect.pausedSince,
+    controlVersion: paused.effect.controlVersion + 1,
+  })
+  const release = await releasedTask(selected, requestID)
+  expect(release).toMatchObject({
+    state: "released",
+    rootID: accepted.effect.messageID,
+    grantID: accepted.permit.provisionalGrantID,
+    bindingEpoch: accepted.permit.bindingEpoch,
+    receipt: { outcome: "completed" },
+  })
+  await until(() =>
+    selected.runtime.run(async () => ((await OrganizationExecutionLeases.pendingForCapture()) ? undefined : true)),
+  )
+  const owner = { kind: "session" as const, scopeID: task.info.scope.id, sessionID: task.sessionID }
+  expect(await selected.runtime.run(() => RolloutLedger.getRun(owner, accepted.effect.messageID))).toMatchObject({
+    status: "completed",
+    recording: "complete",
+  })
+  expect(await selected.runtime.run(() => RolloutLedger.tools(owner, accepted.effect.messageID))).toEqual([])
+  const recorded = await selected.runtime.run(() => RolloutLedger.calls(owner, accepted.effect.messageID))
+  expect(recorded.length).toBeGreaterThan(0)
+  expect(recorded.every((call) => call.status === "completed")).toBe(true)
+  expect(task.calls.length - baseline).toBe(recorded.length)
+  return { paused, accepted, continued, release }
 }

@@ -6,6 +6,21 @@ import { isDeepStrictEqual as equal } from "node:util"
 import { OrganizationRuntimeHistory } from "./runtime-history"
 
 export namespace OrganizationCommandHistory {
+  async function acceptedEffect(accepted: Command.Accepted) {
+    const { permit, effect } = accepted
+    if (effect.kind === "session" || effect.kind === "inbox" || effect.kind === "decision") return true
+    const control: Command.Control =
+      effect.operation === "pause"
+        ? { operation: "pause" }
+        : effect.operation === "continue"
+          ? {
+              operation: "continue",
+              pausedSince: effect.pausedSince,
+              controlVersion: effect.controlVersion - 1,
+            }
+          : { operation: "cancel", runID: effect.runID, controlVersion: effect.controlVersion - 1 }
+    return permit.payloadHash === (await Command.digestControl(Command.controlRequest(permit, control)))
+  }
   export async function accepted(reader: Record.HistoricalReader, permit: Command.Permit) {
     const attempt = reader.read(Record.CommandAttempt, Keys.commandAttempt(permit.attemptID))
     const request = reader.read(Record.CommandRequest, Keys.commandRequest(permit.actor.subjectID, permit.requestID))
@@ -46,12 +61,7 @@ export namespace OrganizationCommandHistory {
       signing.deploymentIncarnation !== permit.deploymentIncarnation ||
       signing.keyID !== permit.keyID ||
       !(await Command.verify(permit, attempt.authorization.signature, signing.publicKey)) ||
-      (accepted.effect.kind !== "session" &&
-        (accepted.effect.kind !== "inbox" || accepted.effect.mode !== "task") &&
-        (permit.operation !== "pause" ||
-          accepted.effect.kind !== "control" ||
-          accepted.effect.operation !== "pause" ||
-          permit.payloadHash !== (await Command.digestControl(Command.controlRequest(permit, { operation: "pause" })))))
+      !(await acceptedEffect(accepted))
     )
       fail("PROTOCOL_MISMATCH", "Closed command history lacks its original accepted authority")
     return accepted
@@ -96,10 +106,7 @@ export namespace OrganizationCommandHistory {
       signing.deploymentIncarnation !== permit.deploymentIncarnation ||
       signing.keyID !== permit.keyID ||
       !(await Command.verify(permit, attempt.authorization.signature, signing.publicKey)) ||
-      !(
-        (permit.operation === "create" && accepted.effect.kind === "session") ||
-        (permit.operation === "pause" && accepted.effect.kind === "control" && accepted.effect.operation === "pause")
-      )
+      !(await acceptedEffect(accepted))
     )
       fail("PROTOCOL_MISMATCH", "Retained Member command metadata lacks its original acknowledged authority")
     return accepted

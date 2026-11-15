@@ -32,7 +32,6 @@ export namespace OrganizationGatewayHistory {
     const resource = reader.read(Record.Resource, Keys.resource(grant.orgID, permit.resourceID))
     if (
       grant.retention.state !== "released" ||
-      value.retentionGeneration !== grant.retention.generation ||
       value.receipt.state !== "response_complete" ||
       permit.grantID !== grant.grantID ||
       permit.orgID !== grant.orgID ||
@@ -51,6 +50,7 @@ export namespace OrganizationGatewayHistory {
       !(await Gateway.verifyPermit(permit, value.authorization.signature, signing.publicKey))
     )
       fail("PROTOCOL_MISMATCH", "Gateway history requires its original complete released call")
+    await OrganizationExecutionGrants.historyRelease(reader, grant, value.retentionGeneration)
   }
   export async function grant(reader: Record.HistoricalReader, grant: Execution.BoundGrant) {
     let calls = 0

@@ -123,19 +123,46 @@ export namespace OrganizationExecutionGrants {
   ) {
     environmentReference(grant, grant.rootID, reference, true)
   }
+  export async function historyRelease(
+    reader: Record.HistoricalReader,
+    grant: Execution.BoundGrant,
+    generation: number,
+  ) {
+    if (
+      grant.retention.state !== "released" ||
+      !Number.isSafeInteger(generation) ||
+      generation <= 0 ||
+      generation > grant.retention.generation ||
+      !same(grant, reader.read(Record.ExecutionGrant, Keys.executionGrant(grant.grantID)))
+    )
+      fail("PROTOCOL_MISMATCH", "Execution history requires its original released generation")
+    const release = reader.read(Record.ExecutionRelease, Keys.executionRelease(grant.grantID, generation))
+    if (
+      release.orgID !== grant.orgID ||
+      release.deploymentIncarnation !== grant.deploymentIncarnation ||
+      release.runtimeID !== grant.runtimeID ||
+      release.sessionID !== grant.sessionID ||
+      release.bindingEpoch !== grant.bindingEpoch ||
+      release.grantID !== grant.grantID ||
+      release.rootID !== grant.rootID ||
+      release.generation !== generation ||
+      (generation === grant.retention.generation &&
+        (release.outcome !== grant.retention.outcome || release.releasedAt !== grant.retention.releasedAt))
+    )
+      fail("PROTOCOL_MISMATCH", "Execution history has another original root or release")
+    return release
+  }
   export async function closedHistory(reader: Record.HistoricalReader, grantID: string) {
     const grant = reader.read(Record.ExecutionGrant, Keys.executionGrant(grantID))
     if (
       grant.grantID !== grantID ||
       grant.state !== "bound" ||
       grant.retention.state !== "released" ||
-      grant.retention.outcome !== "completed" ||
       grant.provenance
     )
       fail("PROTOCOL_MISMATCH", "Execution history requires its original completed release")
     const permit = reader.read(Record.CommandAttempt, Keys.commandAttempt(grant.attemptID)).authorization.permit
     const accepted = Command.InputAccepted.parse(await OrganizationCommandHistory.accepted(reader, permit))
-    const release = reader.read(Record.ExecutionRelease, Keys.executionRelease(grantID, grant.retention.generation))
     if (
       accepted.effect.mode !== "task" ||
       permit.provisionalGrantID !== grantID ||
@@ -150,19 +177,10 @@ export namespace OrganizationExecutionGrants {
       !same(grant.actor, permit.actor) ||
       grant.rootID !== accepted.effect.messageID ||
       reader.read(Record.RootGrant, Keys.rootGrant(grant.sessionID, grant.bindingEpoch, grant.rootID)).grantID !==
-        grantID ||
-      release.orgID !== grant.orgID ||
-      release.deploymentIncarnation !== grant.deploymentIncarnation ||
-      release.runtimeID !== grant.runtimeID ||
-      release.sessionID !== grant.sessionID ||
-      release.bindingEpoch !== grant.bindingEpoch ||
-      release.grantID !== grantID ||
-      release.rootID !== grant.rootID ||
-      release.generation !== grant.retention.generation ||
-      release.outcome !== grant.retention.outcome ||
-      release.releasedAt !== grant.retention.releasedAt
+        grantID
     )
       fail("PROTOCOL_MISMATCH", "Execution history has another original root or release")
+    await historyRelease(reader, grant, grant.retention.generation)
     return grant
   }
   export async function validateClosedHistory(reader: Record.HistoricalReader, key: string[], value: unknown) {
@@ -175,11 +193,13 @@ export namespace OrganizationExecutionGrants {
           ? Record.ExecutionRelease.parse(value).grantID
           : Record.RootGrant.parse(value).grantID
     const grant = await closedHistory(reader, grantID)
+    const generation = kind === "execution-releases" ? Record.ExecutionRelease.parse(value).generation : undefined
+    if (generation !== undefined) await historyRelease(reader, grant, generation)
     const expected =
       kind === "execution-grants"
         ? Keys.executionGrant(grantID)
         : kind === "execution-releases"
-          ? Keys.executionRelease(grantID, grant.retention.generation)
+          ? Keys.executionRelease(grantID, generation!)
           : Keys.rootGrant(grant.sessionID, grant.bindingEpoch, grant.rootID)
     if (!same(key, expected)) fail("PROTOCOL_MISMATCH", "Execution history has another canonical key")
     return true

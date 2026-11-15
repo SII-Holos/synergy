@@ -41,6 +41,7 @@ import {
   completedHostedTask,
   pausedHostedTask,
   appendCompletedHostedTask,
+  continueQueuedHostedTask,
   verifyCompletedTaskHistory,
 } from "../support/hosted-task"
 import { openHostedRuntime } from "../../src/runtime"
@@ -676,6 +677,7 @@ async function recoverHostedWriter(
   late?: "session" | "input",
   artifact?: "published" | "late",
   cloud?: CloudResources,
+  history?: "queued-continue",
 ) {
   const started = performance.now()
   const phase = (stage: string) => {
@@ -704,8 +706,12 @@ async function recoverHostedWriter(
   using taskDisposal = { [Symbol.dispose]: () => phase("task-disposal-enter") }
   phase("task-ready")
   const artifactHistory = artifact && task ? await publishArtifactHistory(selected.service, task) : undefined
-  const originalCalls = task?.calls.length ?? 0
   if (task && !late) await verifyCompletedTaskHistory(selected, task)
+  if (history && (!task || late || artifact || cloud))
+    throw new Error("Queued Continue history requires its original plain completed task fixture")
+  const queuedHistory =
+    history && task ? await continueQueuedHostedTask(selected, task, "before-recovery-queued-input") : undefined
+  const originalCalls = task?.calls.length ?? 0
   if (cloud && !task) throw new Error("Selected cloud recovery requires its original completed Hosted task")
   const cloudSelection = cloud && task ? await cloud.select(selected.service, task) : undefined
   if (cloud && task) {
@@ -1237,6 +1243,28 @@ async function recoverHostedWriter(
     expect(await ordinary.run(() => SessionManager.isRunning(task.sessionID))).toBe(false)
     expect(task.calls.length).toBe(originalCalls)
   }
+  if (queuedHistory && task) {
+    const owner = { kind: "session" as const, scopeID: task.info.scope.id, sessionID: task.sessionID }
+    expect(
+      await ordinary.run(() => RolloutLedger.getRun(owner, queuedHistory.accepted.effect.messageID)),
+    ).toMatchObject({
+      id: queuedHistory.accepted.effect.messageID,
+      status: "completed",
+      recording: "complete",
+    })
+    const retained = await ordinary.run(() =>
+      MessageV2.get({ sessionID: task.sessionID, messageID: queuedHistory.accepted.effect.messageID }),
+    )
+    if (retained.info.role !== "user") throw new Error("Restored queued task lost its original input")
+    expect(retained.info.actor).toMatchObject({
+      kind: "account",
+      subjectID: queuedHistory.accepted.permit.actor.subjectID,
+      requestID: queuedHistory.accepted.permit.requestID,
+    })
+    expect(await ordinary.run(() => RolloutLedger.tools(owner, queuedHistory.accepted.effect.messageID))).toEqual([])
+    expect(task.calls).toHaveLength(originalCalls)
+    expect(await ordinary.run(() => SessionManager.isRunning(task.sessionID))).toBe(false)
+  }
   phase("all-assertions-complete")
 }
 
@@ -1346,3 +1374,9 @@ test("an unknown paused Hosted gateway refuses native capture without retiring o
   expect(gateway).toEqual(task.gateway)
   await selected.close()
 }, 15_000)
+
+test(
+  "a closed queued Continue history survives original Hosted recovery without replay",
+  () => recoverHostedWriter(true, undefined, undefined, undefined, "queued-continue"),
+  60_000,
+)
