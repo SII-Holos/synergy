@@ -135,15 +135,22 @@ export namespace SessionTransferEpochs {
     visited: Set<string>,
     ignoreAdmissionHolds: boolean,
   ): Promise<boolean> {
-    const reserved = await optional(State, reservationKey(sessionID))
+    const values = await Storage.readMany<unknown>([
+      reservationKey(sessionID),
+      currentKey(sessionID),
+      ...(!ignoreAdmissionHolds ? [sourceIntentKey(sessionID)] : []),
+      ["session_index", sessionID],
+    ])
+    const reserved = values[0] === undefined ? undefined : State.parse(values[0])
     if (reserved && reserved.phase !== "activated") return true
-    const current = await pointer(sessionID)
+    const current = values[1] === undefined ? undefined : Pointer.parse(values[1])
     if (current?.uncertain) return true
     if (!ignoreAdmissionHolds) {
-      const intent = await optional(SourceIntent, sourceIntentKey(sessionID))
+      const intent = values[2] === undefined ? undefined : SourceIntent.parse(values[2])
       if (intent && (await existing(intent.binding)).phase === "draining") return true
     }
-    const index = await optional(SessionIndex, ["session_index", sessionID])
+    const indexValue = values[ignoreAdmissionHolds ? 2 : 3]
+    const index = indexValue === undefined ? undefined : SessionIndex.parse(indexValue)
     if (index) {
       const info = await optional(SessionParent, ["sessions", index.scopeID, sessionID, "info"])
       if (info?.id === sessionID && info.parentID && (await frozen(info.parentID, visited, ignoreAdmissionHolds)))

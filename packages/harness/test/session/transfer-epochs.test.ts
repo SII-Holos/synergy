@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test"
+import { z } from "zod"
 import { testRuntime } from "../support/runtime"
 import { tmpdir } from "../support/fixture"
 import { Session } from "../../src/session"
@@ -6,6 +7,8 @@ import { SessionLifecycle } from "../../src/session/lifecycle"
 import { Scope } from "../../src/scope"
 import { ScopeContext } from "../../src/scope/context"
 import { Storage } from "../../src/storage/storage"
+import { StorageIntegrityError } from "../../src/storage/errors"
+import type { SqlQueryOptions, SqlRow, SqlValue } from "../../src/storage/sql-contract"
 import { SessionTransferEpochs as Epochs } from "../../src/session/transfer-epochs"
 
 test("source surrender permanently freezes the old epoch across restart and cannot be cancelled", async () => {
@@ -184,5 +187,189 @@ test("upgrading legacy or incomplete epoch ledgers retains a non-executable fenc
         "c".repeat(64),
       ),
     ).rejects.toThrow("unrelated")
+  })
+})
+
+test("epoch admission reads its independent markers in one fresh native statement", async () => {
+  await using runtime = await testRuntime()
+  await runtime.run(async () => {
+    await Storage.transaction(async (tx) => {
+      const raw = tx.raw
+      const query = raw.query
+      let statements = 0
+      let observing = false
+      raw.query = <Row extends SqlRow>(statement: string, values?: SqlValue[], options?: SqlQueryOptions) => {
+        if (observing && statement.startsWith("SELECT ") && statement.includes("FROM storage_records")) statements++
+        return query<Row>(statement, values, options)
+      }
+      try {
+        const sessionID = "ses_epoch_marker_work"
+        observing = true
+        expect(await Epochs.isFrozen(sessionID)).toBe(false)
+        observing = false
+        const inspectStatements = statements
+        statements = 0
+        observing = true
+        await Epochs.assertOwnerMutation(sessionID)
+        observing = false
+        const mutationStatements = statements
+        expect(inspectStatements).toBe(1)
+        expect(mutationStatements).toBe(1)
+      } finally {
+        raw.query = query
+      }
+    })
+  })
+})
+
+test("epoch mutation admission sees each same-transaction fence and its rollback", async () => {
+  await using runtime = await testRuntime()
+  await runtime.run(() =>
+    ScopeContext.provide({
+      scope: Scope.home(),
+      workspace: null,
+      fn: async () => {
+        const session = await Session.create({ workspace: null })
+        await SessionLifecycle.pause({ sessionID: session.id, reason: "interrupted" })
+        const binding = {
+          sessionID: session.id,
+          scopeID: "home",
+          handoffID: "fresh-admission",
+          sourceID: "A",
+          targetID: "B",
+          fromEpoch: 1,
+          toEpoch: 2,
+        }
+        await Epochs.beginSource(binding)
+        expect(await Epochs.isFrozen(session.id)).toBe(true)
+        const current = ["session_transfer_epoch_current", session.id]
+        const record = ["sessions", "home", session.id, "epoch-admission-test"]
+        const rollback = new Error("rollback epoch fence")
+        const outcome = await Storage.transaction(async () => {
+          await Storage.write(record, { admitted: "draining" })
+          await Storage.write(current, { version: 1, scopeID: "home", epoch: 1, uncertain: true })
+          const rejected = await Storage.write(record, { admitted: "forbidden" }).then(
+            () => undefined,
+            (error: unknown) => error,
+          )
+          expect(rejected).toBeInstanceOf(Epochs.Rejected)
+          expect(await Storage.read(record)).toEqual({ admitted: "draining" })
+          await Storage.remove(current)
+          await Storage.write(record, { admitted: "fence removed" })
+          await Storage.write(current, { version: 1, scopeID: "home", epoch: 1, uncertain: true })
+          throw rollback
+        }).then(
+          () => undefined,
+          (error: unknown) => error,
+        )
+        expect(outcome).toBe(rollback)
+        expect(await Storage.readMany([current, record])).toEqual([undefined, undefined])
+        await Storage.write(record, { admitted: "after rollback" })
+        expect(await Storage.read(record)).toEqual({ admitted: "after rollback" })
+        expect(await Epochs.isFrozen(session.id)).toBe(true)
+      },
+    }),
+  )
+})
+
+test("epoch marker snapshots retain schema short circuits and fail closed on corrupt encoding", async () => {
+  await using runtime = await testRuntime()
+  await runtime.run(async () => {
+    const sessionID = "ses_epoch_marker_errors"
+    const binding = {
+      sessionID,
+      scopeID: "home",
+      handoffID: "marker-errors",
+      sourceID: "A",
+      targetID: "B",
+      fromEpoch: 1,
+      toEpoch: 2,
+    }
+    const reservation = ["session_transfer_epoch_reservation", sessionID]
+    const current = ["session_transfer_epoch_current", sessionID]
+    const intent = ["session_transfer_epoch_source_intent", sessionID]
+    const index = ["session_index", sessionID]
+    const state = ["session_transfer_epochs", sessionID, "1", binding.handoffID]
+    const body = ["sessions", "home", sessionID, "epoch-admission-test"]
+    const reserved = { version: 1, binding, role: "target", phase: "prepared" }
+    const pointer = { version: 1, scopeID: "home", epoch: 1 }
+    const rollback = new Error("rollback damaged epoch markers")
+    const outcome = await Storage.transaction(async (tx) => {
+      await Storage.write(reservation, reserved)
+      await Storage.write(current, pointer)
+      await tx.raw.query("UPDATE storage_records SET body = ? WHERE namespace = ? AND key_text = ?", [
+        "{",
+        tx.namespace,
+        JSON.stringify(current),
+      ])
+      const encoded = await Epochs.isFrozen(sessionID).then(
+        () => undefined,
+        (error: unknown) => error,
+      )
+      expect(encoded).toBeInstanceOf(StorageIntegrityError)
+      const mutation = await Storage.write(body, { admitted: "forbidden" }).then(
+        () => undefined,
+        (error: unknown) => error,
+      )
+      expect(mutation).toBeInstanceOf(StorageIntegrityError)
+      expect(await Storage.readMany([body])).toEqual([undefined])
+      await Storage.write(current, { ...pointer, epoch: "invalid" })
+      await Storage.write(intent, { version: 2 })
+      expect(await Epochs.isFrozen(sessionID)).toBe(true)
+      await Storage.write(reservation, { ...reserved, phase: "activated" })
+      await Storage.write(current, { ...pointer, uncertain: true })
+      expect(await Epochs.isFrozen(sessionID)).toBe(true)
+      await Storage.write(reservation, { ...reserved, phase: "invalid" })
+      const first = await Epochs.isFrozen(sessionID).then(
+        () => undefined,
+        (error: unknown) => error,
+      )
+      expect(first).toBeInstanceOf(z.ZodError)
+      if (!(first instanceof z.ZodError)) throw first
+      expect(first.issues[0]?.path).toEqual(["phase"])
+      await Storage.remove(reservation)
+      await Storage.write(current, pointer)
+      await Storage.write(index, { scopeID: 1 })
+      const schema = await Epochs.isFrozen(sessionID).then(
+        () => undefined,
+        (error: unknown) => error,
+      )
+      expect(schema).toBeInstanceOf(z.ZodError)
+      if (!(schema instanceof z.ZodError)) throw schema
+      expect(schema.issues[0]?.path).toEqual(["version"])
+      await Storage.write(intent, { version: 1, binding })
+      await Storage.write(state, { version: 1, binding, role: "source", phase: "draining" })
+      expect(await Epochs.isFrozen(sessionID)).toBe(true)
+      await Storage.write(state, { version: 1, binding, role: "source", phase: "invalid" })
+      const dependent = await Epochs.isFrozen(sessionID).then(
+        () => undefined,
+        (error: unknown) => error,
+      )
+      expect(dependent).toBeInstanceOf(z.ZodError)
+      if (!(dependent instanceof z.ZodError)) throw dependent
+      expect(dependent.issues[0]?.path).toEqual(["phase"])
+      await Storage.remove(intent)
+      const indexed = await Epochs.isFrozen(sessionID).then(
+        () => undefined,
+        (error: unknown) => error,
+      )
+      expect(indexed).toBeInstanceOf(z.ZodError)
+      if (!(indexed instanceof z.ZodError)) throw indexed
+      expect(indexed.issues[0]?.path).toEqual(["scopeID"])
+      throw rollback
+    }).then(
+      () => undefined,
+      (error: unknown) => error,
+    )
+    expect(outcome).toBe(rollback)
+    expect(await Storage.readMany([reservation, current, intent, index, state, body])).toEqual([
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+    ])
+    expect(await Epochs.isFrozen(sessionID)).toBe(false)
   })
 })

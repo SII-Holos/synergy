@@ -402,12 +402,80 @@ test("the destination controller prepares actual private owner partitions and re
       await expect(Session.get(captured.root.id)).rejects.toThrow()
       await expect(Session.get(captured.child.id)).rejects.toThrow()
       expect((await Epochs.inspect(captured.binding)).phase).toBe("prepared")
+      const inspection = Handoff.MachinePlan.parse({
+        ...activation,
+        operation: "inspect-target",
+        requestID: "inspect-target-activation",
+        actor: { ...activation.actor, requestID: "inspect-target-activation" },
+        authorization: undefined,
+      })
+      const inspect = async () =>
+        controller.inspect({
+          authorization: { plan: inspection, signature: await Handoff.signMachinePlan(inspection, keys.privateKey) },
+          connection,
+          mapping,
+          signal,
+        })
+      expect(await inspect()).toMatchObject({
+        state: "complete",
+        stage: "target-prepared",
+        facts: [fact],
+        revision: await Handoff.proofHash(fact),
+      })
       rejectActivation = false
-      const activated = await controller.activate({
-        authorization: { plan: activation, signature: await Handoff.signMachinePlan(activation, keys.privateKey) },
-        connection,
-        mapping,
-        signal,
+      const enteredActivation = Promise.withResolvers<void>()
+      const finishActivation = Promise.withResolvers<void>()
+      let heldActivation = false
+      const activating = controller
+        .activate({
+          authorization: { plan: activation, signature: await Handoff.signMachinePlan(activation, keys.privateKey) },
+          connection,
+          async mapping() {
+            if (!heldActivation) {
+              heldActivation = true
+              enteredActivation.resolve()
+              await finishActivation.promise
+            }
+            return mapping()
+          },
+          signal,
+        })
+        .then(
+          (value) => ({ kind: "completed" as const, value }),
+          (error: unknown) => ({ kind: "failed" as const, error }),
+        )
+      try {
+        const original = await Promise.race([
+          enteredActivation.promise.then(() => ({ kind: "entered" as const })),
+          activating.then((result) => ({ kind: "finished" as const, result })),
+        ])
+        if (original.kind === "finished") {
+          if (original.result.kind === "failed") throw original.result.error
+          throw new Error("Original activation completed without its actual destination mapping")
+        }
+        const working = await inspect()
+        expect(working).toMatchObject({ state: "working", stage: "preparing", facts: [fact] })
+        expect(working.facts.some((proof) => proof.purpose === "target-activated")).toBe(false)
+        expect((await Epochs.inspect(captured.binding)).phase).toBe("prepared")
+        const unpublished = await Session.get(captured.root.id).then(
+          () => ({ kind: "visible" as const }),
+          (error: unknown) => ({ kind: "rejected" as const, error }),
+        )
+        expect(() => {
+          if (unpublished.kind === "rejected") throw unpublished.error
+        }).toThrow()
+      } finally {
+        finishActivation.resolve()
+        await activating
+      }
+      const result = await activating
+      if (result.kind === "failed") throw result.error
+      const activated = result.value
+      expect(await inspect()).toMatchObject({
+        state: "complete",
+        stage: "target-activated",
+        facts: [activated],
+        revision: await Handoff.proofHash(activated),
       })
       expect(activated).toMatchObject({
         ...tuple,

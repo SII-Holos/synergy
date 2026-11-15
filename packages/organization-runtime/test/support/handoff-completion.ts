@@ -71,15 +71,36 @@ export function createHandoffCompletion(input: {
           const fact = terminal.facts.find(
             ({ proof }) => proof.purpose === terminal.stage && purposes.includes(proof.purpose),
           )
-          if (
-            !fact ||
-            JSON.stringify(Handoff.Binding.strip().parse(fact.proof)) !== JSON.stringify(binding) ||
-            terminal.revision !== (await Handoff.proofHash(fact.proof)) ||
-            !(await Handoff.verifyProof(fact.proof, fact.signature, (role === "source" ? source : target).publicKey))
-          )
+          const bindingMatches = fact
+            ? JSON.stringify(Handoff.Binding.strip().parse(fact.proof)) === JSON.stringify(binding)
+            : undefined
+          const revisionMatches =
+            fact && bindingMatches ? terminal.revision === (await Handoff.proofHash(fact.proof)) : undefined
+          const signatureMatches =
+            fact && revisionMatches
+              ? await Handoff.verifyProof(fact.proof, fact.signature, (role === "source" ? source : target).publicKey)
+              : undefined
+          if (!fact || !bindingMatches || !revisionMatches || !signatureMatches) {
+            console.error(
+              "HANDOFF_COMPLETION_TERMINAL_MISMATCH",
+              JSON.stringify({
+                requestedOperation: operation,
+                observedOperation: terminal.operation,
+                state: terminal.state,
+                stage: terminal.stage,
+                expectedPurposes: purposes,
+                observedPurposes: terminal.facts.map(({ proof }) => proof.purpose),
+                hadUnknownDispatch: dispatchError !== undefined,
+                purposeMatches: !!fact,
+                bindingMatches: bindingMatches ?? "not-checked",
+                revisionMatches: revisionMatches ?? "not-checked",
+                signatureMatches: signatureMatches ?? "not-checked",
+              }),
+            )
             throw new Error("Original handoff completion has no matching signed terminal fact", {
               cause: dispatchError,
             })
+          }
           return result
         }
         if (result.state !== "working")

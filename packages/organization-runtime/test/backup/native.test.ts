@@ -427,8 +427,29 @@ test("the real enrolled cohort encrypts its Hosted native segment and preserves 
 })
 
 async function recoverHostedWriter(withTask = false, late?: "session" | "input", artifact?: "published" | "late") {
+  const started = performance.now()
+  const phase = (stage: string) => {
+    if (!withTask || late !== undefined || artifact === "late") return
+    console.error(
+      "HOSTED_NATIVE_RECOVERY_PHASE",
+      JSON.stringify({
+        withTask,
+        late: late ?? "none",
+        artifact: artifact ?? "none",
+        stage,
+        elapsedMs: performance.now() - started,
+      }),
+    )
+  }
+  phase("entered")
+  using sourceScopeEnd = { [Symbol.dispose]: () => phase("source-scope-end") }
   await using selected = await source(true)
+  using sourceDisposal = { [Symbol.dispose]: () => phase("source-disposal-enter") }
+  phase("source-ready")
+  using taskScopeEnd = { [Symbol.dispose]: () => phase("task-scope-end") }
   await using task = withTask ? await completedHostedTask(selected) : undefined
+  using taskDisposal = { [Symbol.dispose]: () => phase("task-disposal-enter") }
+  phase("task-ready")
   const artifactHistory = artifact && task ? await publishArtifactHistory(selected.service, task) : undefined
   const originalCalls = task?.calls.length ?? 0
   if (task && !late) await verifyCompletedTaskHistory(selected, task)
@@ -832,13 +853,27 @@ async function recoverHostedWriter(withTask = false, late?: "session" | "input",
   await closing
   await acceptedCompletion.work
   expect(closed).toBe(true)
+  phase("hosted-completion-verified")
   await target.close()
+  phase("target-closed")
   await selected.service.service.close()
+  phase("source-service-closed")
   await selected.service.stopListener()
+  phase("source-listener-stopped")
   const normalService = await openOrganizationService({
     home: path.join(await fs.realpath(selected.service.root), "retirement-service-target"),
   })
-  await using serviceCleanup = { [Symbol.asyncDispose]: () => normalService.close() }
+  phase("restored-service-opened")
+  await using serviceCleanup = {
+    async [Symbol.asyncDispose]() {
+      phase("restored-service-disposal-enter")
+      try {
+        await normalService.close()
+      } finally {
+        phase("restored-service-disposal-settled")
+      }
+    },
+  }
   const connected = Promise.withResolvers<void>()
   const restoredServer = Bun.serve({
     hostname: "127.0.0.1",
@@ -853,11 +888,25 @@ async function recoverHostedWriter(withTask = false, late?: "session" | "input",
     },
     fetch: normalService.fetch,
   })
-  await using listenerCleanup = { [Symbol.asyncDispose]: () => restoredServer.stop(true) }
-  if (artifactHistory) await verifyArtifactHistory(selected.service, normalService, artifactHistory)
+  await using listenerCleanup = {
+    async [Symbol.asyncDispose]() {
+      phase("restored-listener-disposal-enter")
+      try {
+        await restoredServer.stop(true)
+      } finally {
+        phase("restored-listener-disposal-settled")
+      }
+    },
+  }
+  if (artifactHistory) {
+    phase("artifact-history-enter")
+    await verifyArtifactHistory(selected.service, normalService, artifactHistory)
+    phase("artifact-history-verified")
+  }
   const probe = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() })
   const port = probe.port!
   await probe.stop(true)
+  using ordinaryScopeEnd = { [Symbol.dispose]: () => phase("ordinary-scope-end") }
   await using ordinary = await openHostedRuntime({
     home: path.join(selected.service.root, "hosted-target"),
     identity: selected.home.identity,
@@ -865,6 +914,8 @@ async function recoverHostedWriter(withTask = false, late?: "session" | "input",
     workspaceCoordinator: selected.workspaceCoordinator,
     listen: { port, token: "e".repeat(64) },
   })
+  using ordinaryDisposal = { [Symbol.dispose]: () => phase("ordinary-disposal-enter") }
+  phase("ordinary-opened")
   const timer = setTimeout(() => connected.reject(new Error("Restored Hosted writer did not reconnect")), 3000)
   try {
     await connected.promise
@@ -899,6 +950,7 @@ async function recoverHostedWriter(withTask = false, late?: "session" | "input",
     expect(input.info.actor).toEqual(originalInput.info.actor)
     expect(task.calls.length).toBe(originalCalls)
   }
+  phase("all-assertions-complete")
 }
 
 test(

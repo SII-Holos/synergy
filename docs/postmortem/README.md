@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0212](0212-retained-prepared-receipt-concealed-target-activation.md)
+
 - [0211](0211-cleanup-page-mixed-pending-and-settled-snapshots.md)
 
 - [0210](0210-retained-preview-concealed-active-target-preparation.md)

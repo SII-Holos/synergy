@@ -80,7 +80,7 @@ async function sourceRecovery(mode: Mode, sourceKind: "member" | "hosted" = "mem
         cause: error,
       })
     })
-  await using f = await fixture()
+  await using f = await fixture({ connections: { heartbeatMs: 25 } })
   f.observeClose((value) => {
     closes.push({
       participant: value.runtimeID ? (participants.get(value.runtimeID) ?? "other") : "unidentified",

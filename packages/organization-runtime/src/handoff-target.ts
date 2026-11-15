@@ -133,7 +133,7 @@ export namespace OrganizationHandoffTarget {
     const runtime = RuntimeContext.current()
     const jobs = new Map<
       string,
-      { plan: Handoff.MachinePlan; abort: AbortController; promise: Promise<Handoff.Proof> }
+      { plan: Handoff.MachinePlan; abort?: AbortController; promise: Promise<Handoff.Proof> }
     >()
     const closing = new Set<string>()
     const current = Storage.current()
@@ -455,8 +455,10 @@ export namespace OrganizationHandoffTarget {
       if (previous) {
         if (!same(plan, previous.plan) || previous.plan.manifestHash !== manifestHash)
           fail("Native retirement has another accepted preparation")
-        previous.abort.abort(new Error("Original native target preparation cancelled"))
-        await previous.promise.catch(() => {})
+        if (previous.abort) {
+          previous.abort.abort(new Error("Original native target preparation cancelled"))
+          await previous.promise.catch(() => {})
+        }
       }
       await Staging.verify(plan.handoffID, signal)
       assert()
@@ -573,7 +575,12 @@ export namespace OrganizationHandoffTarget {
           )
             fail("Destination inspection has no matching permanent native outcome")
         }
-        const terminal = job && fact?.purpose === "target-difference" ? undefined : fact
+        const terminal =
+          job &&
+          (fact?.purpose === "target-difference" ||
+            (job.plan.operation === "activate-target" && fact?.purpose === "target-prepared"))
+            ? undefined
+            : fact
         assertOwner(input.signal)
         const difference =
           observedDifference?.fact.purpose === "target-difference" ? observedDifference.fact.difference : undefined
@@ -800,60 +807,81 @@ export namespace OrganizationHandoffTarget {
         if (plan.environmentPlan && preparedFact.environmentMappingHash !== plan.environmentPlan.hash)
           fail("Destination activation changed its prepared Environment mapping")
         return Adoption.run(signedPermit, input.connection, async () => {
-          const previous = await receipt(plan, "activated")
-          if (previous) {
-            const epoch = await Epochs.inspect(binding(plan))
+          const existing = jobs.get(plan.handoffID)
+          if (existing) {
             if (
-              epoch.role !== "target" ||
-              epoch.phase !== "activated" ||
-              epoch.manifestHash !== plan.manifestHash ||
-              previous.fact.purpose !== "target-activated" ||
-              previous.fact.permitID !== permit.permitID
+              !same(plan, existing.plan) ||
+              existing.plan.operation !== "activate-target" ||
+              existing.plan.manifestHash !== manifestHash ||
+              existing.plan.connectionEpoch !== plan.connectionEpoch ||
+              existing.plan.commandSeq !== plan.commandSeq ||
+              JSON.stringify(existing.plan.authorization) !== JSON.stringify(plan.authorization)
             )
-              fail("Destination activation receipt no longer matches its permanent epoch")
+              fail("Destination activation is already using another immutable handoff")
+            return existing.promise
+          }
+          const promise = (async () => {
+            const previous = await receipt(plan, "activated")
+            if (previous) {
+              const epoch = await Epochs.inspect(binding(plan))
+              if (
+                epoch.role !== "target" ||
+                epoch.phase !== "activated" ||
+                epoch.manifestHash !== plan.manifestHash ||
+                previous.fact.purpose !== "target-activated" ||
+                previous.fact.permitID !== permit.permitID
+              )
+                fail("Destination activation receipt no longer matches its permanent epoch")
+              if (plan.workspacePlan && Handoff.isNativeTargetMapping(plan.workspacePlan.mapping))
+                await WorkspaceTarget.release(plan, input.resources, input.signal, "activated")
+              return previous.fact
+            }
+            await Staging.verify(plan.handoffID, input.signal)
+            const prepared = await contexts(input, plan, manifestHash, true)
+            if (
+              plan.syncTransferVersion === Handoff.syncTransferVersion &&
+              (!prepared.syncCheckpoint ||
+                (await Handoff.syncCheckpointHash(prepared.syncCheckpoint)) !== preparedFact.syncCheckpointHash)
+            )
+              fail("Destination activation changed its exact prepared sync closure")
+            if (prepared.convertedHash !== preparedFact.convertedHash)
+              fail("Destination mapping changed before paused publication")
+            const fact = Handoff.Proof.parse({
+              ...factBinding(plan),
+              purpose: "target-activated",
+              manifestHash: plan.manifestHash,
+              permitID: permit.permitID,
+              preparedHash: permit.preparedHash,
+              paused: true,
+            })
+            const publish = () =>
+              Epochs.activateMany({
+                bindings: prepared.bindings,
+                manifestHash,
+                signal: input.signal,
+                async publish() {
+                  assertOwner(input.signal)
+                  await Staging.publish({ handoffID: plan.handoffID, contexts: prepared.contexts })
+                  await Storage.write(key(plan, "activated"), Receipt.parse({ version: 3, plan, fact }))
+                  assertOwner(input.signal)
+                },
+              })
+            if (preparedFact.fileClosureHash !== null)
+              await WorkspaceTarget.run(plan, input.resources, input.signal, () =>
+                Files.withTargetPublication({ handoffID: plan.handoffID, signal: input.signal }, publish),
+              )
+            else await publish()
+            assertOwner(input.signal)
             if (plan.workspacePlan && Handoff.isNativeTargetMapping(plan.workspacePlan.mapping))
               await WorkspaceTarget.release(plan, input.resources, input.signal, "activated")
-            return previous.fact
+            return fact
+          })()
+          jobs.set(plan.handoffID, { plan, promise })
+          try {
+            return await promise
+          } finally {
+            if (jobs.get(plan.handoffID)?.promise === promise) jobs.delete(plan.handoffID)
           }
-          await Staging.verify(plan.handoffID, input.signal)
-          const prepared = await contexts(input, plan, manifestHash, true)
-          if (
-            plan.syncTransferVersion === Handoff.syncTransferVersion &&
-            (!prepared.syncCheckpoint ||
-              (await Handoff.syncCheckpointHash(prepared.syncCheckpoint)) !== preparedFact.syncCheckpointHash)
-          )
-            fail("Destination activation changed its exact prepared sync closure")
-          if (prepared.convertedHash !== preparedFact.convertedHash)
-            fail("Destination mapping changed before paused publication")
-          const fact = Handoff.Proof.parse({
-            ...factBinding(plan),
-            purpose: "target-activated",
-            manifestHash: plan.manifestHash,
-            permitID: permit.permitID,
-            preparedHash: permit.preparedHash,
-            paused: true,
-          })
-          const publish = () =>
-            Epochs.activateMany({
-              bindings: prepared.bindings,
-              manifestHash,
-              signal: input.signal,
-              async publish() {
-                assertOwner(input.signal)
-                await Staging.publish({ handoffID: plan.handoffID, contexts: prepared.contexts })
-                await Storage.write(key(plan, "activated"), Receipt.parse({ version: 3, plan, fact }))
-                assertOwner(input.signal)
-              },
-            })
-          if (preparedFact.fileClosureHash !== null)
-            await WorkspaceTarget.run(plan, input.resources, input.signal, () =>
-              Files.withTargetPublication({ handoffID: plan.handoffID, signal: input.signal }, publish),
-            )
-          else await publish()
-          assertOwner(input.signal)
-          if (plan.workspacePlan && Handoff.isNativeTargetMapping(plan.workspacePlan.mapping))
-            await WorkspaceTarget.release(plan, input.resources, input.signal, "activated")
-          return fact
         })
       },
       async retire(value: Input): Promise<Handoff.Proof> {
