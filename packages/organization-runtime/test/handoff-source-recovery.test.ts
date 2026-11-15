@@ -5,6 +5,7 @@ import { createSynergyClient } from "@ericsanchezok/synergy-sdk"
 import { readExistingIdentityFile } from "@ericsanchezok/synergy-util/filesystem-identity"
 import {
   OrganizationHandoffProtocol as Handoff,
+  OrganizationProtocol,
   OrganizationRuntimeProtocol as Runtime,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { WorkspaceCoordinator } from "@ericsanchezok/synergy-local-runtime/workspace/coordinator"
@@ -27,6 +28,7 @@ import { OrganizationHandoffCleanup as Cleanup } from "../src/handoff-recovery"
 import { registerSessionSchema } from "../src/session-schema"
 import { registerOrganizationTransferOwner } from "../src/session-transfer"
 import { openHandoffCleanup } from "../src/handoff-cleanup-runtime"
+import { createHandoffCompletion } from "./support/handoff-completion"
 
 async function port() {
   const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() })
@@ -48,11 +50,50 @@ type Mode =
   | "cancel-before-freeze-wrong-scope"
 async function sourceRecovery(mode: Mode, sourceKind: "member" | "hosted" = "member") {
   const surrender = mode.startsWith("surrender")
+  const startedAt = Date.now()
+  const participants = new Map<string, string>()
+  const closes: Array<{
+    participant: string
+    elapsedMs: number
+    code: number
+    epoch: number
+    pendingFrames: number
+    pendingBytes: number
+    leaseRemainingMs: number
+  }> = []
+  const failure = OrganizationProtocol.Error.pick({ code: true, outcome: true, retryable: true })
   const step = async <T>(label: string, work: Promise<T>) =>
     work.catch((error: unknown) => {
-      throw new Error("Actual Source receipt fixture failed at " + label, { cause: error })
+      const fields: PropertyDescriptorMap =
+        error !== null && typeof error === "object" ? Object.getOwnPropertyDescriptors(error) : {}
+      const parsed = failure.safeParse({
+        code: fields.code?.value,
+        outcome: fields.outcome?.value,
+        retryable: fields.retryable?.value,
+      })
+      const outcome = parsed.success ? parsed.data : { code: "unavailable", outcome: "unavailable" }
+      console.error(
+        "SOURCE_RECOVERY_STAGE_FAILURE",
+        JSON.stringify({ stage: label, observedAt: Date.now(), elapsedMs: Date.now() - startedAt, ...outcome, closes }),
+      )
+      throw new Error(`Actual Source receipt fixture failed at ${label} [${outcome.code}/${outcome.outcome}]`, {
+        cause: error,
+      })
     })
   await using f = await fixture()
+  f.observeClose((value) => {
+    closes.push({
+      participant: value.runtimeID ? (participants.get(value.runtimeID) ?? "other") : "unidentified",
+      elapsedMs: value.wallTimeMs - startedAt,
+      code: value.code,
+      epoch: value.epoch,
+      pendingFrames: value.pendingFrames,
+      pendingBytes: value.pendingBytes,
+      leaseRemainingMs: value.leaseRemainingMs,
+    })
+    if (closes.length > 8) closes.shift()
+  })
+  using closeObservation = { [Symbol.dispose]: () => f.observeClose(undefined) }
   const options = { headers: f.headers, throwOnError: true as const }
   const project = (
     await step(
@@ -94,6 +135,7 @@ async function sourceRecovery(mode: Mode, sourceKind: "member" | "hosted" = "mem
       "hostID" in home.identity
         ? await enrollHostedRuntime({ home: home.home, identity: home.identity, ticket, ca: f.ca })
         : await enrollMemberRuntime({ home: home.home, identity: home.identity, ticket, ca: f.ca })
+    participants.set(registration.runtimeID, name)
     const connected = Promise.withResolvers<void>()
     const sockets = new Set<unknown>()
     f.interceptFrames((socket, raw) => {
@@ -228,9 +270,87 @@ async function sourceRecovery(mode: Mode, sourceKind: "member" | "hosted" = "mem
         { ...options, signal },
       ),
     )
-  if (!mode.startsWith("cancel-before-freeze")) await drive("prepare-source")
+  const setupBinding = Handoff.Binding.strip().parse(prepared)
+  const losePreparation = mode === "surrender" && sourceKind === "member"
+  let prepareSourceRequestID: string | undefined
+  let prepareSourceMutations = 0
+  let prepareSourceReceipts = 0
+  let inspectSourceReceipts = 0
+  let prepareSourceUnknown = false
+  let droppedPreparation: Handoff.SignedProof | undefined
+  let droppedPreparationRevision: string | undefined
+  const invokeSetup = async (operation: Handoff.Drive["operation"], requestID: string) => {
+    if (operation === "prepare-source") {
+      prepareSourceRequestID = requestID
+      prepareSourceMutations++
+    }
+    try {
+      return (await f.client.orgHandoff.drive({ handoffID, orgHandoffDrive: { operation, requestID } }, options)).data
+    } catch (error) {
+      if (operation === "prepare-source") {
+        const outcome = OrganizationProtocol.Error.pick({ code: true, outcome: true }).strip().safeParse(error)
+        prepareSourceUnknown =
+          outcome.success && outcome.data.code === "COMMAND_OUTCOME_UNKNOWN" && outcome.data.outcome === "unknown"
+      }
+      throw error
+    }
+  }
+  const setup = createHandoffCompletion({
+    binding: setupBinding,
+    source: { runtimeID: source.registration.runtimeID, publicKey: source.registration.publicKey },
+    target: { runtimeID: target.registration.runtimeID, publicKey: target.registration.publicKey },
+    invoke: invokeSetup,
+  })
+  const verifyDroppedPreparation = async () => {
+    expect(prepareSourceMutations).toBe(1)
+    expect(prepareSourceReceipts).toBe(1)
+    expect(droppedPreparation).toBeDefined()
+    if (!droppedPreparation) throw new Error("Original setup did not lose its actual source-frozen receipt")
+    expect(droppedPreparation.proof.purpose).toBe("source-frozen")
+    expect(Handoff.Binding.strip().parse(droppedPreparation.proof)).toEqual(setupBinding)
+    expect(droppedPreparationRevision).toBe(await Handoff.proofHash(droppedPreparation.proof))
+    expect(
+      await Handoff.verifyProof(droppedPreparation.proof, droppedPreparation.signature, source.registration.publicKey),
+    ).toBe(true)
+    expect(prepareSourceUnknown).toBe(true)
+  }
+  if (losePreparation)
+    f.interceptFrames((_socket, raw) => {
+      const frame = Runtime.ClientFrame.parse(JSON.parse(String(raw)))
+      if (frame.type !== "receipt" || frame.reply.kind !== "handoff") return false
+      const result = frame.reply.result
+      if (result.handoffID !== handoffID || result.runtimeID !== source.registration.runtimeID) return false
+      if (result.operation === "inspect-source") inspectSourceReceipts++
+      if (result.operation !== "prepare-source") return false
+      prepareSourceReceipts++
+      if (droppedPreparation) return false
+      const fact = result.facts.find(({ proof }) => proof.purpose === "source-frozen")
+      if (
+        result.requestID !== prepareSourceRequestID ||
+        result.state !== "complete" ||
+        result.stage !== "source-frozen" ||
+        !fact ||
+        JSON.stringify(Handoff.Binding.strip().parse(fact.proof)) !== JSON.stringify(setupBinding)
+      )
+        throw new Error("Original setup lost-receipt control did not reach its exact native source freeze")
+      droppedPreparation = fact
+      droppedPreparationRevision = result.revision
+      return true
+    })
+  try {
+    if (!mode.startsWith("cancel-before-freeze")) await step("prepare-source", setup("prepare-source"))
+  } catch (error) {
+    if (losePreparation) await verifyDroppedPreparation()
+    throw error
+  } finally {
+    if (losePreparation) f.interceptFrames(undefined)
+  }
+  if (losePreparation) {
+    await verifyDroppedPreparation()
+    expect(inspectSourceReceipts).toBeGreaterThan(0)
+  }
   if (surrender) {
-    await drive("prepare-target")
+    await step("prepare-target", setup("prepare-target"))
     await f.client.orgHandoff.permit({ handoffID, orgHandoffPermitRequest: { purpose: "handoff-surrender" } }, options)
   } else await f.client.orgHandoff.cancel({ handoffID, body: {} }, options)
   const operation = surrender ? "surrender-source" : "cancel-source"
