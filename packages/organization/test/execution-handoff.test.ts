@@ -1,4 +1,8 @@
 import { expect, spyOn, test } from "bun:test"
+import { z } from "zod"
+import { OrganizationExecutionGrants } from "../src/execution-grants"
+import { OrganizationHandoffHistory } from "../src/handoff-history"
+import { OrganizationHandoffRecord } from "../src/handoff-record"
 import {
   OrganizationRuntimeProtocol as Runtime,
   OrganizationSyncProtocol as Sync,
@@ -65,6 +69,14 @@ for (const mode of ["cancel", "transfer"] as const)
             deploymentIncarnation: "deployment",
             createdAt: 1,
           })
+          for (const runtimeID of [f.grant.runtimeID, next.runtimeID]) {
+            const runtime = await Record.read(Record.RuntimeRegistration, Keys.runtime(runtimeID))
+            if (!runtime || runtime.runtimeKind !== "member")
+              throw new Error("Expected the original Member participants")
+            const index = Record.RuntimeIndex.parse({ runtimeID })
+            await Storage.write(Keys.runtimeDevice(runtime.accountID, runtime.deviceID), index)
+            await Storage.write(Keys.accountRuntime(runtime.accountID, runtime.runtimeID), index)
+          }
           return next
         })
         const socket = new WebSocket(f.baseUrl.replace(/^http/, "ws"))
@@ -565,6 +577,127 @@ for (const mode of ["cancel", "transfer"] as const)
             expect(
               (await Record.read(Record.SessionDirectory, Keys.session(f.sessionID)))!.retainedExecutionGrants,
             ).toBe(1)
+            const fullyClosed = !(mode === "transfer" && !active)
+            if (fullyClosed) {
+              const close = Execution.ReleaseProof.parse({
+                ...nextDescription,
+                purpose: "execution-resources-release",
+                grantID: second.grant.grantID,
+                rootID: f.grant.rootID,
+                generation: 0,
+                outcome: "completed",
+                materialized: true,
+                issuedAt: Date.now(),
+                expiresAt: Date.now() + 15_000,
+              })
+              const released = await execution.release({
+                proof: close,
+                signature: await Execution.signRelease(close, currentKey),
+              })
+              expect(released).toMatchObject({ grantID: second.grant.grantID, generation: 0, rootID: f.grant.rootID })
+            }
+            const history = await Storage.snapshot(async (tx) => {
+              const rows = new Map<string, unknown>()
+              for await (const entry of tx.exportEntries())
+                if (entry.type === "record") rows.set(JSON.stringify(entry.key), entry.value)
+              return rows
+            })
+            function historical(rows: ReadonlyMap<string, unknown>): Record.HistoricalReader {
+              return {
+                read<T>(schema: z.ZodType<T>, key: string[]) {
+                  const value = rows.get(JSON.stringify(key))
+                  if (value === undefined) throw new Error("Missing original Handoff history record")
+                  return schema.parse(structuredClone(value))
+                },
+                *entries(prefix) {
+                  for (const [encoded, value] of [...rows].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
+                    const key = z.array(z.string()).parse(JSON.parse(encoded))
+                    if (key.length > prefix.length && prefix.every((part, index) => key[index] === part))
+                      yield { key, value: structuredClone(value) }
+                  }
+                },
+              }
+            }
+            const complete = historical(history)
+            const currentDirectory = complete.read(Record.SessionDirectory, Keys.session(f.sessionID))
+            expect(currentDirectory.handoffID).toBeUndefined()
+            expect(currentDirectory.retainedExecutionGrants).toBe(fullyClosed ? 0 : 1)
+            expect((await OrganizationHandoffHistory.terminal(complete, currentDirectory, view.handoffID)).phase).toBe(
+              mode === "transfer" ? "completed" : "cancelled",
+            )
+            expect((await OrganizationHandoffHistory.terminal(complete, currentDirectory, next.handoffID)).phase).toBe(
+              "cancelled",
+            )
+            expect(await OrganizationExecutionGrants.closedHistory(complete, f.grant.grantID)).toMatchObject({
+              retention: { state: "handoff_closed" },
+            })
+            expect(await OrganizationExecutionGrants.closedHistory(complete, bound.grantID)).toMatchObject({
+              retention: { state: "control_closed", successorGrantID: second.grant.grantID },
+            })
+            if (fullyClosed) {
+              const address = Keys.executionGrant(second.grant.grantID)
+              const closed = await OrganizationExecutionGrants.closedRecordHistory(
+                complete,
+                address,
+                complete.read(Record.ExecutionGrant, address),
+              )
+              expect(closed).toMatchObject({
+                grant: { state: "closed", grantID: second.grant.grantID },
+                rootID: f.grant.rootID,
+              })
+            }
+            async function refused(work: Promise<unknown>) {
+              const result = await work.then(
+                (value) => ({ state: "resolved" as const, value }),
+                (error: unknown) => ({ state: "rejected" as const, error }),
+              )
+              expect(result.state).toBe("rejected")
+              return result
+            }
+            const missingBinding = new Map(history)
+            expect(
+              missingBinding.delete(JSON.stringify(Keys.rootGrant(f.sessionID, bound.bindingEpoch, bound.rootID))),
+            ).toBe(true)
+            await refused(OrganizationExecutionGrants.closedHistory(historical(missingBinding), bound.grantID))
+            const missingIndex = new Map(history)
+            expect(
+              missingIndex.delete(
+                JSON.stringify([
+                  "organization",
+                  "session-handoff-epochs",
+                  f.sessionID,
+                  String(view.toEpoch).padStart(16, "0"),
+                ]),
+              ),
+            ).toBe(true)
+            await refused(
+              OrganizationHandoffHistory.terminal(historical(missingIndex), currentDirectory, view.handoffID),
+            )
+            const cutoff = new Map(history)
+            const handoffKey = ["organization", "handoffs", view.handoffID]
+            const altered = complete.read(OrganizationHandoffRecord.RawStored, handoffKey)
+            if (!altered.frozen || altered.frozen.proof.purpose !== "source-frozen")
+              throw new Error("Expected the original frozen source barrier")
+            const atControl = continued.accepted!.permit.commandSeq
+            const shifted = Handoff.Proof.parse({
+              ...altered.frozen.proof,
+              commandSeq: atControl,
+              receivedSeq: atControl,
+            })
+            altered.commandSeq = atControl
+            altered.frozen = { proof: shifted, signature: await Handoff.signProof(shifted, f.machineKeys.privateKey) }
+            expect(await Handoff.verifyProof(shifted, altered.frozen.signature, f.machineKeys.publicKey)).toBe(true)
+            cutoff.set(JSON.stringify(handoffKey), OrganizationHandoffRecord.RawStored.parse(altered))
+            const shiftedHistory = historical(cutoff)
+            expect(
+              (await OrganizationHandoffHistory.terminal(shiftedHistory, currentDirectory, view.handoffID)).phase,
+            ).toBe(mode === "transfer" ? "completed" : "cancelled")
+            const excluded = await refused(OrganizationExecutionGrants.closedHistory(shiftedHistory, bound.grantID))
+            if (excluded.state === "rejected")
+              expect(excluded.error).toMatchObject({ data: { code: "PROTOCOL_MISMATCH" } })
+            expect(await OrganizationExecutionGrants.closedHistory(complete, bound.grantID)).toEqual(
+              complete.read(Execution.BoundGrant, Keys.executionGrant(bound.grantID)),
+            )
             if (mode === "transfer" && !active) {
               const directory = (await Record.read(Record.SessionDirectory, Keys.session(f.sessionID)))!
               const third = await handoffs.prepare(f.credentials.bob, f.sessionID, {

@@ -1,4 +1,6 @@
 import { expect, spyOn, test } from "bun:test"
+import { z } from "zod"
+import { OrganizationExecutionGrants } from "../src/execution-grants"
 import {
   OrganizationExecutionProtocol as Execution,
   OrganizationGatewayProtocol as Gateway,
@@ -242,4 +244,68 @@ test("an explicit legacy grant selector cannot release a different canonical gra
   expect((await f.run(() => Record.read(Record.ExecutionGrant, Keys.executionGrant(f.grant.grantID))))?.state).toBe(
     "bound",
   )
+})
+
+test("closed execution history retains every original release generation after real reacquisition", async () => {
+  await using f = await executionFixture({ endpoint: "https://provider.example/v1" })
+  await f.run(async () => {
+    const runtime = await Record.read(Record.RuntimeRegistration, Keys.runtime(f.grant.runtimeID))
+    if (!runtime || runtime.runtimeKind !== "member")
+      throw new Error("Expected the original Member fixture registration")
+    const index = Record.RuntimeIndex.parse({ runtimeID: runtime.runtimeID })
+    await Storage.write(Keys.runtimeDevice(runtime.accountID, runtime.deviceID), index)
+    await Storage.write(Keys.accountRuntime(runtime.accountID, runtime.runtimeID), index)
+  })
+  const first = await f.run(async () => f.execution.release(await release(f)))
+  expect(first.generation).toBe(1)
+  const reacquired = await f.run(() => f.execution.bind(f.binding))
+  expect(reacquired.retention).toEqual({ state: "held", generation: 2 })
+  const second = await f.run(async () => f.execution.release(await release(f, { generation: 2 })))
+  expect(second.generation).toBe(2)
+  const rows = await f.run(() =>
+    Storage.snapshot(async (tx) => {
+      const rows = new Map<string, unknown>()
+      for await (const entry of tx.exportEntries())
+        if (entry.type === "record") rows.set(JSON.stringify(entry.key), entry.value)
+      return rows
+    }),
+  )
+  function source(rows: ReadonlyMap<string, unknown>): Record.HistoricalReader {
+    return {
+      read<T>(schema: z.ZodType<T>, key: string[]) {
+        const value = rows.get(JSON.stringify(key))
+        if (value === undefined) throw new Error("Missing original retained historical record")
+        return schema.parse(structuredClone(value))
+      },
+      *entries(prefix) {
+        for (const [encoded, value] of [...rows].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
+          const key = z.array(z.string()).parse(JSON.parse(encoded))
+          if (key.length > prefix.length && prefix.every((part, index) => key[index] === part))
+            yield { key, value: structuredClone(value) }
+        }
+      },
+    }
+  }
+  const complete = source(rows)
+  const grantID = f.grant.grantID
+  const canonical = complete.read(Execution.BoundGrant, Keys.executionGrant(grantID))
+  expect(canonical).toMatchObject({ state: "bound", retention: { state: "released", generation: 2 } })
+  expect(complete.read(Record.ExecutionRelease, Keys.executionRelease(grantID, 1))).toEqual(first)
+  expect(complete.read(Record.ExecutionRelease, Keys.executionRelease(grantID, 2))).toEqual(second)
+  expect(complete.read(Record.SessionDirectory, Keys.session(f.sessionID)).retainedExecutionGrants).toBe(0)
+  expect([...complete.entries(Keys.gatewayCall(grantID, "").slice(0, -1))]).toHaveLength(0)
+  expect(await OrganizationExecutionGrants.closedHistory(complete, grantID)).toEqual(canonical)
+
+  const missingEarlier = new Map(rows)
+  expect(missingEarlier.delete(JSON.stringify(Keys.executionRelease(grantID, 1)))).toBe(true)
+  const incomplete = source(missingEarlier)
+  expect(incomplete.read(Record.ExecutionGrant, Keys.executionGrant(grantID))).toEqual(canonical)
+  expect(incomplete.read(Record.ExecutionRelease, Keys.executionRelease(grantID, 2))).toEqual(second)
+  const outcome = await OrganizationExecutionGrants.closedHistory(incomplete, grantID).then(
+    (value) => ({ state: "resolved" as const, value }),
+    (error: unknown) => ({ state: "rejected" as const, error }),
+  )
+  expect(outcome.state).toBe("rejected")
+  if (outcome.state === "rejected") expect(outcome.error).toMatchObject({ data: { code: "PROTOCOL_MISMATCH" } })
+  expect(await f.run(() => Record.read(Record.ExecutionRelease, Keys.executionRelease(grantID, 1)))).toEqual(first)
 })

@@ -9,7 +9,6 @@ import type { StoreTransaction } from "@ericsanchezok/synergy-harness/storage/tr
 import { OrganizationRecoveryAuthority as Authority } from "./authority"
 import { AuthorityJournal } from "@ericsanchezok/synergy-harness/storage/authority-journal"
 import {
-  OrganizationCommandProtocol as Command,
   OrganizationProtocol,
   OrganizationRuntimeProtocol as Runtime,
 } from "@ericsanchezok/synergy-organization-protocol"
@@ -20,36 +19,10 @@ import { OrganizationSourceRetirement } from "./source-retirement"
 import { OrganizationServiceNative as Native } from "./service-native"
 import { OrganizationCurrentPolicyReceipt, currentPolicyKey } from "./policy-records"
 import { OrganizationRecoveryWriters as Writers } from "./writers"
+import { OrganizationRecoveryPublicationRecords as PublicationRecords } from "./publication-records"
 
 const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex")
-const key = (id: string) => ["organization-recovery", "publication", id]
-const Receipt = z
-  .strictObject({
-    version: z.union([z.literal(1), z.literal(2)]),
-    target: OrganizationInstallationReference,
-    source: OrganizationSourceRetirement.Reference,
-    checkpoint: AuthorityJournal.Checkpoint,
-    identity: Command.SigningIdentity,
-    settings: Native.Manifest.shape.startup.shape.settings,
-    publicOrigin: z.string().url(),
-    publishedAt: z.number().int().nonnegative().safe(),
-    writers: z
-      .strictObject({ hosted: z.number().int().nonnegative().safe(), namespaceHash: OrganizationProtocol.Digest })
-      .optional(),
-  })
-  .refine(
-    (value) => (value.version === 1) === (value.writers === undefined),
-    "Hosted writer publication requires its versioned receipt",
-  )
-const hostedKey = (id: string, runtimeID: string) => [...key(id), "hosted", runtimeID]
-const Hosted = z.strictObject({
-  version: z.literal(1),
-  target: OrganizationInstallationReference,
-  namespaceHash: OrganizationProtocol.Digest,
-  sourceReferenceHash: OrganizationProtocol.Digest,
-  original: Runtime.HostedRegistrationRecord,
-  published: Runtime.HostedRegistrationRecord,
-})
+const { key, hostedKey, Receipt, Hosted } = PublicationRecords
 function fail(message: string): never {
   throw new Error("Organization recovery publication " + message)
 }
@@ -72,14 +45,18 @@ async function writeHosted(tx: StoreTransaction, evidence: Writers.Inspection, r
       deploymentIncarnation: receipt.target.incarnation,
       revision: original.revision + 1,
     })
-    const mapping = Hosted.parse({
-      version: 1,
-      target: receipt.target,
-      namespaceHash: summary.namespaceHash,
-      sourceReferenceHash: source.sourceReferenceHash,
-      original,
-      published,
-    })
+    const mapping = PublicationRecords.validateHosted(
+      {
+        version: 1,
+        target: receipt.target,
+        namespaceHash: summary.namespaceHash,
+        sourceReferenceHash: source.sourceReferenceHash,
+        original,
+        published,
+      },
+      receipt,
+      original.runtimeID,
+    )
     const address = hostedKey(receipt.target.installationID, original.runtimeID)
     const [previous] = await tx.readMany([address])
     if (previous !== undefined && hash(Hosted.parse(previous)) !== hash(mapping))
@@ -113,17 +90,7 @@ export namespace OrganizationRecoveryPublication {
     })
   }
   export async function read(installationID: string) {
-    const receipt = Receipt.parse(await Storage.read(key(installationID)))
-    if (
-      receipt.target.installationID !== installationID ||
-      hash(receipt.target) !== hash(receipt.source.target) ||
-      hash(receipt.checkpoint) !== hash(receipt.source.current.checkpoint) ||
-      receipt.identity.deploymentIncarnation !== receipt.target.incarnation
-    )
-      fail("receipt differs from its original source and target")
-    if (receipt.writers && receipt.writers.namespaceHash !== receipt.source.current.namespaceHash)
-      fail("writer roster belongs to another H1 namespace")
-    return receipt
+    return PublicationRecords.validate(await Storage.read(key(installationID)), installationID)
   }
   export async function write(
     tx: StoreTransaction,
@@ -167,11 +134,12 @@ export namespace OrganizationRecoveryPublication {
     )
       fail("requires its original complete H1 writer inspection")
     const receipt = Receipt.parse({
-      version: reconciled ? 2 : 1,
+      version: 3,
       target: info.reference,
       source: reference,
       checkpoint: reference.current.checkpoint,
       identity: info.identity,
+      sourceIdentity: info.sourceIdentity,
       settings: settings.manifest.startup.settings,
       publicOrigin,
       publishedAt: Date.now(),
@@ -194,8 +162,14 @@ export namespace OrganizationRecoveryPublication {
         assert()
         if (retained !== undefined) {
           const previous = Receipt.parse(retained)
-          if (hash(previous) !== hash({ ...receipt, publishedAt: previous.publishedAt }))
-            fail("cannot replace its original publication")
+          const { version: _version, sourceIdentity: _sourceIdentity, ...common } = receipt
+          const expected = Receipt.parse({
+            ...common,
+            version: previous.version,
+            ...(previous.version === 3 ? { sourceIdentity: info.sourceIdentity } : {}),
+            publishedAt: previous.publishedAt,
+          })
+          if (hash(previous) !== hash(expected)) fail("cannot replace its original publication")
           const deployment = OrganizationProtocol.Deployment.parse(await Storage.read(Keys.deployment()))
           const signer = Record.SigningIdentity.parse(await Storage.read(Keys.signingIdentity()))
           if (

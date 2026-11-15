@@ -3,9 +3,25 @@ import { OrganizationRecord as Record } from "./storage/records"
 import { OrganizationStoragePath as Keys } from "./storage/path"
 import { fail } from "./error"
 import { isDeepStrictEqual as equal } from "node:util"
+import { createHash } from "node:crypto"
+import { z } from "zod"
 import { OrganizationRuntimeHistory } from "./runtime-history"
+import { OrganizationSigningHistory } from "./signing-history"
+import { OrganizationHandoffHistory } from "./handoff-history"
 
 export namespace OrganizationCommandHistory {
+  function invalid(): never {
+    return fail("PROTOCOL_MISMATCH", "Closed command history lacks its original accepted authority")
+  }
+  function logical(first: Command.Permit, next: Command.Permit) {
+    return (
+      first.actor.subjectID === next.actor.subjectID &&
+      first.requestID === next.requestID &&
+      (["orgID", "sessionID", "projectID", "runtimeID", "operation", "payloadHash"] as const).every(
+        (key) => first[key] === next[key],
+      )
+    )
+  }
   async function acceptedEffect(accepted: Command.Accepted) {
     const { permit, effect } = accepted
     if (effect.kind === "session" || effect.kind === "inbox" || effect.kind === "decision") return true
@@ -13,118 +29,143 @@ export namespace OrganizationCommandHistory {
       effect.operation === "pause"
         ? { operation: "pause" }
         : effect.operation === "continue"
-          ? {
-              operation: "continue",
-              pausedSince: effect.pausedSince,
-              controlVersion: effect.controlVersion - 1,
-            }
+          ? { operation: "continue", pausedSince: effect.pausedSince, controlVersion: effect.controlVersion - 1 }
           : { operation: "cancel", runID: effect.runID, controlVersion: effect.controlVersion - 1 }
     return permit.payloadHash === (await Command.digestControl(Command.controlRequest(permit, control)))
   }
-  export async function accepted(reader: Record.HistoricalReader, permit: Command.Permit) {
+  async function originalPermit(reader: Record.HistoricalReader, permit: Command.Permit) {
     const attempt = reader.read(Record.CommandAttempt, Keys.commandAttempt(permit.attemptID))
-    const request = reader.read(Record.CommandRequest, Keys.commandRequest(permit.actor.subjectID, permit.requestID))
-    const state = reader.read(Record.CommandState, Keys.commandState(permit.sessionID))
     const session = reader.read(Record.SessionDirectory, Keys.session(permit.sessionID))
-    const runtime = reader.read(Record.RuntimeRegistration, Keys.runtime(permit.runtimeID))
-    const signing = reader.read(Record.SigningIdentity, Keys.signingIdentity())
-    const accepted = request.accepted
+    const runtime = OrganizationRuntimeHistory.forPermit(reader, permit)
+    const signing = OrganizationSigningHistory.identity(reader, permit)
     if (
-      !accepted ||
-      attempt.state !== "accepted" ||
-      attempt.skip ||
-      attempt.result?.attempt.status !== "accepted" ||
-      attempt.result.attempt.acceptedAttemptID !== permit.attemptID ||
       !equal(attempt.authorization.permit, permit) ||
-      !equal(attempt.result.accepted, accepted) ||
-      !equal(accepted.permit, permit) ||
-      !equal(request.first, permit) ||
-      request.lastAttemptID !== permit.attemptID ||
-      state.pendingAttemptID ||
-      state.commandSeq < permit.commandSeq ||
-      reader.read(Record.CommandAttemptIndex, Keys.sessionCommand(permit.sessionID, permit.commandSeq)).attemptID !==
-        permit.attemptID ||
-      reader.read(
-        Record.CommandAttemptIndex,
-        Keys.requestAttempt(permit.actor.subjectID, permit.requestID, permit.commandSeq),
-      ).attemptID !== permit.attemptID ||
       session.sessionID !== permit.sessionID ||
       session.projectID !== permit.projectID ||
       session.orgID !== permit.orgID ||
-      session.driverRuntimeID !== permit.runtimeID ||
-      session.bindingEpoch !== permit.bindingEpoch ||
       runtime.runtimeID !== permit.runtimeID ||
-      runtime.runtimeKind !== "hosted" ||
-      runtime.orgID !== permit.orgID ||
-      runtime.deploymentIncarnation !== permit.deploymentIncarnation ||
-      signing.orgID !== permit.orgID ||
-      signing.deploymentIncarnation !== permit.deploymentIncarnation ||
-      signing.keyID !== permit.keyID ||
-      !(await Command.verify(permit, attempt.authorization.signature, signing.publicKey)) ||
-      !(await acceptedEffect(accepted))
-    )
-      fail("PROTOCOL_MISMATCH", "Closed command history lacks its original accepted authority")
-    return accepted
-  }
-  async function acceptedMemberMetadata(reader: Record.HistoricalReader, permit: Command.Permit) {
-    const attempt = reader.read(Record.CommandAttempt, Keys.commandAttempt(permit.attemptID))
-    const request = reader.read(Record.CommandRequest, Keys.commandRequest(permit.actor.subjectID, permit.requestID))
-    const state = reader.read(Record.CommandState, Keys.commandState(permit.sessionID))
-    const session = reader.read(Record.SessionDirectory, Keys.session(permit.sessionID))
-    const runtime = OrganizationRuntimeHistory.member(reader, permit.runtimeID)
-    const signing = reader.read(Record.SigningIdentity, Keys.signingIdentity())
-    const accepted = request.accepted
-    if (
-      !accepted ||
-      attempt.state !== "accepted" ||
-      attempt.skip ||
-      attempt.result?.attempt.status !== "accepted" ||
-      attempt.result.attempt.acceptedAttemptID !== permit.attemptID ||
-      !equal(attempt.authorization.permit, permit) ||
-      !equal(attempt.result.accepted, accepted) ||
-      !equal(accepted.permit, permit) ||
-      !equal(request.first, permit) ||
-      request.lastAttemptID !== permit.attemptID ||
-      state.pendingAttemptID ||
-      state.commandSeq < permit.commandSeq ||
-      reader.read(Record.CommandAttemptIndex, Keys.sessionCommand(permit.sessionID, permit.commandSeq)).attemptID !==
-        permit.attemptID ||
-      reader.read(
-        Record.CommandAttemptIndex,
-        Keys.requestAttempt(permit.actor.subjectID, permit.requestID, permit.commandSeq),
-      ).attemptID !== permit.attemptID ||
-      session.sessionID !== permit.sessionID ||
-      session.projectID !== permit.projectID ||
-      session.orgID !== permit.orgID ||
-      session.bindingEpoch < permit.bindingEpoch ||
-      session.handoffID ||
-      session.retainedExecutionGrants !== 0 ||
       runtime.orgID !== permit.orgID ||
       runtime.deploymentIncarnation !== permit.deploymentIncarnation ||
       runtime.connectionEpoch < permit.connectionEpoch ||
-      signing.orgID !== permit.orgID ||
-      signing.deploymentIncarnation !== permit.deploymentIncarnation ||
-      signing.keyID !== permit.keyID ||
-      !(await Command.verify(permit, attempt.authorization.signature, signing.publicKey)) ||
+      reader.read(Record.CommandAttemptIndex, Keys.sessionCommand(permit.sessionID, permit.commandSeq)).attemptID !==
+        permit.attemptID ||
+      reader.read(
+        Record.CommandAttemptIndex,
+        Keys.requestAttempt(permit.actor.subjectID, permit.requestID, permit.commandSeq),
+      ).attemptID !== permit.attemptID ||
+      !(await Command.verify(permit, attempt.authorization.signature, signing.publicKey))
+    )
+      invalid()
+    await OrganizationHandoffHistory.binding(reader, session, permit)
+    return attempt
+  }
+  async function records(reader: Record.HistoricalReader, permit: Command.Permit) {
+    const attempt = await originalPermit(reader, permit)
+    const request = reader.read(Record.CommandRequest, Keys.commandRequest(permit.actor.subjectID, permit.requestID))
+    const state = reader.read(Record.CommandState, Keys.commandState(permit.sessionID))
+    if (!logical(request.first, permit) || state.pendingAttemptID || state.commandSeq < permit.commandSeq) invalid()
+    const first = await originalPermit(reader, request.first)
+    const latest = reader.read(Record.CommandAttempt, Keys.commandAttempt(request.lastAttemptID))
+    if (
+      !logical(request.first, latest.authorization.permit) ||
+      latest.authorization.permit.attemptID !== request.lastAttemptID
+    )
+      invalid()
+    await originalPermit(reader, latest.authorization.permit)
+    let firstSequence = Number.POSITIVE_INFINITY,
+      lastSequence = 0
+    for (const row of reader.entries(Keys.requestAttempt(permit.actor.subjectID, permit.requestID, 0).slice(0, -1))) {
+      const index = Record.CommandAttemptIndex.parse(row.value)
+      const indexed = reader.read(Record.CommandAttempt, Keys.commandAttempt(index.attemptID)).authorization.permit
+      if (
+        indexed.attemptID !== index.attemptID ||
+        !logical(request.first, indexed) ||
+        !equal(row.key, Keys.requestAttempt(permit.actor.subjectID, permit.requestID, indexed.commandSeq))
+      )
+        invalid()
+      firstSequence = Math.min(firstSequence, indexed.commandSeq)
+      lastSequence = Math.max(lastSequence, indexed.commandSeq)
+    }
+    if (
+      request.first.commandSeq !== firstSequence ||
+      latest.authorization.permit.commandSeq !== lastSequence ||
+      permit.commandSeq < firstSequence ||
+      permit.commandSeq > lastSequence
+    )
+      invalid()
+    return { attempt, request, first, latest }
+  }
+  async function skip(
+    reader: Record.HistoricalReader,
+    permit: Command.Permit,
+    receipt: z.infer<typeof Command.SkipReceipt>,
+  ) {
+    const digest = createHash("sha256").update(JSON.stringify(receipt.permit)).digest("hex")
+    const signed = reader.read(Command.SignedSkip, Keys.commandSkip(permit.attemptID, digest))
+    const identity = OrganizationSigningHistory.identity(reader, permit)
+    if (
+      !equal(signed.permit, receipt.permit) ||
+      !equal(receipt.permit.command, permit) ||
+      receipt.permit.connectionEpoch < permit.connectionEpoch ||
+      receipt.receivedAt < receipt.permit.authorizedAt ||
+      receipt.receivedAt >= receipt.permit.deadline ||
+      !(await Command.verifySkip(signed.permit, signed.signature, identity.publicKey))
+    )
+      invalid()
+  }
+  async function outcome(reader: Record.HistoricalReader, attempt: Record.CommandAttempt, accepted?: Command.Accepted) {
+    const permit = attempt.authorization.permit
+    const result = attempt.result
+    if (!result || !equal(result.attempt.permit, permit)) invalid()
+    if (result.accepted && (!accepted || !equal(result.accepted, accepted))) invalid()
+    if (attempt.state === "accepted") {
+      if (
+        result.attempt.status !== "accepted" ||
+        !accepted ||
+        !result.accepted ||
+        result.attempt.acceptedAttemptID !== accepted.permit.attemptID ||
+        !logical(permit, accepted.permit)
+      )
+        invalid()
+      return
+    }
+    if (attempt.state !== "rejected" || result.attempt.status === "accepted" || !result.skip) invalid()
+    await skip(reader, permit, result.skip)
+  }
+  export async function accepted(reader: Record.HistoricalReader, permit: Command.Permit) {
+    const current = await records(reader, permit)
+    const accepted = current.request.accepted
+    if (
+      !accepted ||
+      !equal(accepted.permit, permit) ||
+      current.attempt.skip ||
+      current.attempt.state !== "accepted" ||
+      current.attempt.result?.attempt.status !== "accepted" ||
+      current.attempt.result.attempt.acceptedAttemptID !== permit.attemptID ||
+      !equal(current.attempt.result.accepted, accepted) ||
       !(await acceptedEffect(accepted))
     )
-      fail("PROTOCOL_MISMATCH", "Retained Member command metadata lacks its original acknowledged authority")
+      invalid()
+    await outcome(reader, current.first, accepted)
+    await outcome(reader, current.latest, accepted)
     return accepted
   }
-  async function validateHistory(
-    reader: Record.HistoricalReader,
-    key: string[],
-    value: unknown,
-    readAcceptance: (reader: Record.HistoricalReader, permit: Command.Permit) => Promise<Command.Accepted>,
-  ) {
+  export async function closedAttempt(reader: Record.HistoricalReader, permit: Command.Permit) {
+    const current = await records(reader, permit)
+    await outcome(reader, current.attempt, current.request.accepted)
+    await outcome(reader, current.first, current.request.accepted)
+    await outcome(reader, current.latest, current.request.accepted)
+    if (current.request.accepted) await accepted(reader, current.request.accepted.permit)
+    return current.attempt
+  }
+  async function validateHistory(reader: Record.HistoricalReader, key: string[], value: unknown) {
     const kind = key[1]
     if (kind === "command-states") {
-      const state = Record.CommandState.parse(value)
-      const sessionID = key[2]
-      if (!sessionID || !equal(key, Keys.commandState(sessionID)) || state.pendingAttemptID)
-        fail("PROTOCOL_MISMATCH", "Closed command history has a pending command")
+      const state = Record.CommandState.parse(value),
+        sessionID = key[2]
+      if (!sessionID || !equal(key, Keys.commandState(sessionID)) || state.pendingAttemptID) invalid()
       const session = reader.read(Record.SessionDirectory, Keys.session(sessionID))
-      if (session.sessionID !== sessionID) fail("PROTOCOL_MISMATCH", "Closed command history has another Session")
+      if (session.sessionID !== sessionID) invalid()
       let sequence = 0
       for (const row of reader.entries(Keys.sessionCommand(sessionID, 0).slice(0, -1))) {
         const index = Record.CommandAttemptIndex.parse(row.value)
@@ -134,21 +175,20 @@ export namespace OrganizationCommandHistory {
           permit.commandSeq !== ++sequence ||
           !equal(row.key, Keys.sessionCommand(sessionID, sequence))
         )
-          fail("PROTOCOL_MISMATCH", "Closed command history has an incomplete watermark")
-        await readAcceptance(reader, permit)
+          invalid()
+        await closedAttempt(reader, permit)
       }
-      if (sequence !== state.commandSeq) fail("PROTOCOL_MISMATCH", "Closed command history has an incomplete watermark")
+      if (sequence !== state.commandSeq) invalid()
       return true
     }
     let permit: Command.Permit
     if (kind === "command-attempts") {
       permit = Record.CommandAttempt.parse(value).authorization.permit
-      if (!equal(key, Keys.commandAttempt(permit.attemptID)))
-        fail("PROTOCOL_MISMATCH", "Closed command history has another attempt key")
+      if (!equal(key, Keys.commandAttempt(permit.attemptID))) invalid()
     } else if (kind === "command-requests") {
-      permit = Record.CommandRequest.parse(value).first
-      if (!equal(key, Keys.commandRequest(permit.actor.subjectID, permit.requestID)))
-        fail("PROTOCOL_MISMATCH", "Closed command history has another request key")
+      const request = Record.CommandRequest.parse(value)
+      permit = request.first
+      if (!equal(key, Keys.commandRequest(permit.actor.subjectID, permit.requestID))) invalid()
     } else if (kind === "session-commands" || kind === "request-attempts") {
       permit = reader.read(
         Record.CommandAttempt,
@@ -158,34 +198,23 @@ export namespace OrganizationCommandHistory {
         kind === "session-commands"
           ? Keys.sessionCommand(permit.sessionID, permit.commandSeq)
           : Keys.requestAttempt(permit.actor.subjectID, permit.requestID, permit.commandSeq)
-      if (!equal(key, expected)) fail("PROTOCOL_MISMATCH", "Closed command history has another index key")
+      if (!equal(key, expected)) invalid()
+    } else if (kind === "command-skips") {
+      const signed = Command.SignedSkip.parse(value)
+      permit = signed.permit.command
+      const digest = createHash("sha256").update(JSON.stringify(signed.permit)).digest("hex")
+      if (!equal(key, Keys.commandSkip(permit.attemptID, digest))) invalid()
+      const signing = OrganizationSigningHistory.identity(reader, permit)
+      if (!(await Command.verifySkip(signed.permit, signed.signature, signing.publicKey))) invalid()
+      const attempt = await closedAttempt(reader, permit)
+      if (!attempt.result?.skip) invalid()
+      await skip(reader, permit, attempt.result.skip)
+      return true
     } else return false
-    await readAcceptance(reader, permit)
+    await closedAttempt(reader, permit)
     return true
   }
   export function validate(reader: Record.HistoricalReader, key: string[], value: unknown) {
-    return validateHistory(reader, key, value, accepted)
-  }
-  export async function retainedMember(reader: Record.HistoricalReader, key: string[], value: unknown) {
-    if (key[0] !== "organization") return false
-    let runtimeID: string
-    if (key[1] === "command-states") {
-      const sessionID = key[2]
-      if (!sessionID) fail("PROTOCOL_MISMATCH", "Retained Member command state has another address")
-      runtimeID = reader.read(Record.SessionDirectory, Keys.session(sessionID)).driverRuntimeID
-    } else {
-      let permit: Command.Permit
-      if (key[1] === "command-attempts") permit = Record.CommandAttempt.parse(value).authorization.permit
-      else if (key[1] === "command-requests") permit = Record.CommandRequest.parse(value).first
-      else if (key[1] === "session-commands" || key[1] === "request-attempts")
-        permit = reader.read(
-          Record.CommandAttempt,
-          Keys.commandAttempt(Record.CommandAttemptIndex.parse(value).attemptID),
-        ).authorization.permit
-      else return false
-      runtimeID = permit.runtimeID
-    }
-    if (reader.read(Record.RuntimeRegistration, Keys.runtime(runtimeID)).runtimeKind !== "member") return false
-    return validateHistory(reader, key, value, acceptedMemberMetadata)
+    return validateHistory(reader, key, value)
   }
 }

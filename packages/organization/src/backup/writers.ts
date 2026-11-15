@@ -20,6 +20,8 @@ import { OrganizationStoragePath as Keys } from "../storage/path"
 import { OrganizationInstallationReference } from "./installation-reference"
 import { OrganizationAuthorityHistory } from "../authority-history"
 import { OrganizationCommandHistory } from "../command-history"
+import { OrganizationHandoffHistory } from "../handoff-history"
+import { OrganizationHandoffRecord } from "../handoff-record"
 import { OrganizationExecutionGrants } from "../execution-grants"
 import { OrganizationGatewayHistory } from "../gateway-calls"
 import { OrganizationKnowledge } from "../knowledge"
@@ -30,9 +32,11 @@ import { OrganizationRuntimeHistory } from "../runtime-history"
 import { OrganizationSessionResources } from "../session-resources"
 import { OrganizationInviteHistory } from "../auth/invite-history"
 import { OrganizationCloudResourceHistory } from "../cloud-history"
+import { OrganizationRecoveryPublicationRecords as PublicationRecords } from "./publication-records"
 import {
   OrganizationProtocol,
   OrganizationExecutionProtocol as Execution,
+  OrganizationCommandProtocol as Command,
   OrganizationResourceProtocol as Resource,
 } from "@ericsanchezok/synergy-organization-protocol"
 
@@ -151,6 +155,11 @@ async function classify(selected: Inventory, key: string[], value: unknown): Pro
   if (OrganizationRuntimeHistory.validate(historicalReader(selected), key, value)) return "exact"
   if (OrganizationInviteHistory.validate(historicalReader(selected), key, value)) return "exact"
   const [root, kind] = key
+  if (root === "organization-recovery" && kind === "publication") {
+    if (selected.target && key[2] === selected.target.installationID) return "metadata"
+    PublicationRecords.historical(historicalReader(selected), key, value)
+    return "exact"
+  }
   if (root !== "organization") {
     if (OrganizationKnowledge.emptyHistory(historicalReader(selected), key, value)) {
       const sessionID = key[2]
@@ -297,10 +306,7 @@ async function classify(selected: Inventory, key: string[], value: unknown): Pro
     return "exact"
   }
   const history = historicalReader(selected)
-  if (
-    (await OrganizationCommandHistory.retainedMember(history, key, value)) ||
-    (await OrganizationCommandHistory.validate(history, key, value))
-  ) {
+  if (await OrganizationCommandHistory.validate(history, key, value)) {
     const sessionID =
       kind === "command-states"
         ? key[2]
@@ -308,22 +314,27 @@ async function classify(selected: Inventory, key: string[], value: unknown): Pro
           ? Record.CommandRequest.parse(value).first.sessionID
           : kind === "command-attempts"
             ? Record.CommandAttempt.parse(value).authorization.permit.sessionID
-            : history.read(
-                Record.CommandAttempt,
-                Keys.commandAttempt(Record.CommandAttemptIndex.parse(value).attemptID),
-              ).authorization.permit.sessionID
+            : kind === "command-skips"
+              ? Command.SignedSkip.parse(value).permit.command.sessionID
+              : history.read(
+                  Record.CommandAttempt,
+                  Keys.commandAttempt(Record.CommandAttemptIndex.parse(value).attemptID),
+                ).authorization.permit.sessionID
     if (!sessionID) blocked("command Session owner")
     sourceSession(selected, sessionID)
     return "exact"
   }
-  if (await OrganizationExecutionGrants.validateClosedHistory(history, key, value)) {
-    const grantID =
-      kind === "execution-grants"
-        ? Record.ExecutionGrant.parse(value).grantID
-        : kind === "execution-releases"
-          ? Record.ExecutionRelease.parse(value).grantID
-          : Record.RootGrant.parse(value).grantID
-    const grant = await OrganizationExecutionGrants.closedHistory(history, grantID)
+  if (await OrganizationHandoffHistory.validate(history, key, value)) {
+    const handoffID = key[1] === "handoffs" ? key[2] : key[1] === "handoff-targets" ? key[4] : undefined
+    if (handoffID) {
+      const row = history.read(OrganizationHandoffRecord.RawStored, ["organization", "handoffs", handoffID])
+      sourceSession(selected, row.sessionID)
+    } else if (key[2]) sourceSession(selected, key[2])
+    return "exact"
+  }
+  const closed = await OrganizationExecutionGrants.closedRecordHistory(history, key, value)
+  if (closed) {
+    const grant = closed.grant
     sourceSession(selected, grant.sessionID)
     selection(selected, grant.orgID, grant.projectID, grant.selection)
     await OrganizationGatewayHistory.grant(history, grant)

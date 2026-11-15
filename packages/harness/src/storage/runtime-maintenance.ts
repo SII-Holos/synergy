@@ -432,7 +432,7 @@ export namespace RuntimeMaintenance {
         primaryConfigHash: string
         artifactDirectory: string
       },
-      markers: z.infer<typeof HomeOwnershipFile.FencedInfo>[],
+      markers: (z.infer<typeof HomeOwnershipFile.FencedInfo> | HomeOwnershipFile.RestorationInfo)[],
     ) => {
       assert()
       if (

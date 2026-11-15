@@ -267,7 +267,7 @@ async function openOrganizationNamespace(
       HomeRestoration.register()
       OrganizationRecoveryPublication.register()
       RuntimeMaintenance.registerProtection()
-      if (mode === "source-preparation") await OrganizationSourcePreparation.selectOwner()
+      if (mode === "source-preparation") restored = await OrganizationSourcePreparation.selectOwner()
       else if (mode === "upgrade")
         await OrganizationServiceHome.selectForUpgrade({ environments: environmentsRequested })
       else if (mode === "recovery") await OrganizationServiceHome.selectForRecovery()

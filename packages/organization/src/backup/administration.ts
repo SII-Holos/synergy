@@ -191,7 +191,7 @@ export namespace OrganizationBackupAdministration {
     signal?.throwIfAborted()
     if (!path.isAbsolute(home) || !path.isAbsolute(directory)) throw new Error("Backup requires absolute native paths")
     const owner = await HomeOwnershipFile.open({ root: path.join(home, ".synergy"), env: process.env }).read()
-    if (!owner || owner.owner !== "organization" || owner.schemaVersion !== 2)
+    if (!owner || owner.owner !== "organization" || (owner.schemaVersion !== 2 && owner.schemaVersion !== 3))
       throw new Error("Backup requires an existing ordinary organization Home")
     OrganizationServiceHome.archivedOwner(owner)
     const existing = await fs.lstat(directory).then(

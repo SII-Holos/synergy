@@ -9,6 +9,12 @@ export namespace OrganizationStoragePath {
     grantID,
     String(generation),
   ]
+  export const executionHandoffClosure = (grantID: string, generation: number) => [
+    "organization",
+    "execution-handoff-closures",
+    grantID,
+    String(generation),
+  ]
   export const rootGrant = (sessionID: string, bindingEpoch: number, rootID: string) => [
     "organization",
     "root-grants",

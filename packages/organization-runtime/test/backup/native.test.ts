@@ -60,6 +60,9 @@ import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/ledger"
 import { publishArtifactHistory, verifyArtifactHistory } from "../support/artifact-history"
 import { hostedCloudResourceFixture } from "../support/backup-cloud-resources"
+import { terminalHostedCancel, settledHostedQuestion } from "../support/hosted-control-history"
+import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { Question } from "@ericsanchezok/synergy-local-runtime/question"
 
 type CloudResources = Awaited<ReturnType<typeof hostedCloudResourceFixture>>
 
@@ -677,7 +680,7 @@ async function recoverHostedWriter(
   late?: "session" | "input",
   artifact?: "published" | "late",
   cloud?: CloudResources,
-  history?: "queued-continue",
+  history?: "queued-continue" | "terminal-cancel" | "settled-question",
 ) {
   const started = performance.now()
   const phase = (stage: string) => {
@@ -708,9 +711,14 @@ async function recoverHostedWriter(
   const artifactHistory = artifact && task ? await publishArtifactHistory(selected.service, task) : undefined
   if (task && !late) await verifyCompletedTaskHistory(selected, task)
   if (history && (!task || late || artifact || cloud))
-    throw new Error("Queued Continue history requires its original plain completed task fixture")
+    throw new Error("Closed control history requires its original plain completed task fixture")
   const queuedHistory =
-    history && task ? await continueQueuedHostedTask(selected, task, "before-recovery-queued-input") : undefined
+    history === "queued-continue" && task
+      ? await continueQueuedHostedTask(selected, task, "before-recovery-queued-input")
+      : undefined
+  const terminalCancel = history === "terminal-cancel" && task ? await terminalHostedCancel(selected, task) : undefined
+  const settledQuestion =
+    history === "settled-question" && task ? await settledHostedQuestion(selected, task) : undefined
   const originalCalls = task?.calls.length ?? 0
   if (cloud && !task) throw new Error("Selected cloud recovery requires its original completed Hosted task")
   const cloudSelection = cloud && task ? await cloud.select(selected.service, task) : undefined
@@ -1265,6 +1273,33 @@ async function recoverHostedWriter(
     expect(task.calls).toHaveLength(originalCalls)
     expect(await ordinary.run(() => SessionManager.isRunning(task.sessionID))).toBe(false)
   }
+  if (terminalCancel && task) {
+    const owner = { kind: "session" as const, scopeID: task.info.scope.id, sessionID: task.sessionID }
+    const run = await ordinary.run(() => RolloutLedger.getRun(owner, terminalCancel.runID))
+    expect(run).toMatchObject({ id: terminalCancel.runID, status: "completed", recording: "complete" })
+    expect(run.cancelRequestedAt).toBeUndefined()
+    expect(await ordinary.run(() => RolloutLedger.tools(owner, terminalCancel.runID))).toEqual([])
+    expect(task.calls).toHaveLength(terminalCancel.baseline)
+    expect(await ordinary.run(() => SessionManager.isRunning(task.sessionID))).toBe(false)
+  }
+  if (settledQuestion && task) {
+    const receipt = await ordinary.run(() =>
+      ScopeContext.provide({
+        scope: task.info.scope,
+        workspace: null,
+        fn: () => Question.reconcile({ sessionID: task.sessionID, requestID: settledQuestion.requestID }),
+      }),
+    )
+    expect(receipt).toEqual(settledQuestion.receipt)
+    const owner = { kind: "session" as const, scopeID: task.info.scope.id, sessionID: task.sessionID }
+    expect(await ordinary.run(() => RolloutLedger.tools(owner, task.nativeRelease.rootID))).toEqual([])
+    const pending = await ordinary.run(() =>
+      ScopeContext.provide({ scope: task.info.scope, workspace: null, fn: () => Question.list() }),
+    )
+    expect(pending.some((item) => item.id === settledQuestion.requestID)).toBe(false)
+    expect(task.calls).toHaveLength(settledQuestion.baseline)
+    expect(await ordinary.run(() => SessionManager.isRunning(task.sessionID))).toBe(false)
+  }
   phase("all-assertions-complete")
 }
 
@@ -1378,5 +1413,17 @@ test("an unknown paused Hosted gateway refuses native capture without retiring o
 test(
   "a closed queued Continue history survives original Hosted recovery without replay",
   () => recoverHostedWriter(true, undefined, undefined, undefined, "queued-continue"),
+  60_000,
+)
+
+test(
+  "a terminal Cancel of a completed Hosted task survives original recovery without replay",
+  () => recoverHostedWriter(true, undefined, undefined, undefined, "terminal-cancel"),
+  60_000,
+)
+
+test(
+  "a genuinely settled private Question survives original Hosted recovery without copying its answer to Service",
+  () => recoverHostedWriter(true, undefined, undefined, undefined, "settled-question"),
   60_000,
 )

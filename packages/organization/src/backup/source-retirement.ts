@@ -37,7 +37,9 @@ export namespace OrganizationSourceRetirement {
   export function marker(reference: Reference) {
     const selected = Reference.parse(structuredClone(reference))
     return HomeOwnershipFile.RetirementInfo.parse({
-      ...selected.owner,
+      owner: selected.owner.owner,
+      identity: selected.owner.identity,
+      readerContract: selected.owner.readerContract,
       schemaVersion: 4,
       maintenanceID: selected.current.maintenance.maintenanceID,
       referenceHash: hash(selected),

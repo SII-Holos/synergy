@@ -20,6 +20,7 @@ import { sharedTaskMigration } from "./shared-tasks"
 import { OrganizationServiceHome } from "./service-home"
 import { OrganizationLoginSessions } from "./auth/login-sessions"
 import { cloudEnvironmentCatalogMigration } from "./cloud-environment-catalog-migration"
+import { recoveryPublicationHistoryMigration } from "./backup/publication-history-migration"
 
 const migrations: Migration[] = [
   executionMigration,
@@ -34,6 +35,7 @@ const migrations: Migration[] = [
   OrganizationHandoffExecution.environmentMigration,
   OrganizationHandoffExecution.syncTransferMigration,
   cloudEnvironmentCatalogMigration,
+  recoveryPublicationHistoryMigration,
   OrganizationHandoffExecution.cleanupMigration,
   sharedProjectionMigration,
   sharedWindowMigration,

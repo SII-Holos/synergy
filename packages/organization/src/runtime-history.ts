@@ -1,7 +1,13 @@
-import { OrganizationProtocol } from "@ericsanchezok/synergy-organization-protocol"
+import {
+  OrganizationRuntimeProtocol as Runtime,
+  OrganizationCommandProtocol as Command,
+  OrganizationProtocol,
+} from "@ericsanchezok/synergy-organization-protocol"
 import { OrganizationRecord as Record } from "./storage/records"
 import { OrganizationStoragePath as Keys } from "./storage/path"
 import { fail } from "./error"
+import { OrganizationSigningHistory } from "./signing-history"
+import { OrganizationRecoveryPublicationRecords as Publications } from "./backup/publication-records"
 
 export namespace OrganizationRuntimeHistory {
   const equal = (left: unknown, right: unknown) => JSON.stringify(left) === JSON.stringify(right)
@@ -24,6 +30,39 @@ export namespace OrganizationRuntimeHistory {
     )
       invalid()
     return runtime
+  }
+  export function forPermit(source: Record.HistoricalReader, permit: Command.Permit) {
+    let runtime = source.read(Record.RuntimeRegistration, Keys.runtime(permit.runtimeID))
+    if (runtime.runtimeID !== permit.runtimeID || runtime.orgID !== permit.orgID) invalid()
+    if (runtime.runtimeKind === "member") {
+      runtime = member(source, permit.runtimeID)
+      if (runtime.deploymentIncarnation !== permit.deploymentIncarnation) invalid()
+      return runtime
+    }
+    if (runtime.deploymentIncarnation === permit.deploymentIncarnation) return runtime
+    for (const publication of Publications.lineage(source, OrganizationSigningHistory.current(source))) {
+      if (runtime.runtimeKind !== "hosted") invalid()
+      if (publication.identity.deploymentIncarnation !== runtime.deploymentIncarnation) continue
+      const mapping = Publications.validateHosted(
+        source.read(Publications.Hosted, Publications.hostedKey(publication.target.installationID, runtime.runtimeID)),
+        publication,
+        runtime.runtimeID,
+      )
+      if (
+        mapping.original.orgID !== runtime.orgID ||
+        mapping.original.publicKey !== runtime.publicKey ||
+        mapping.original.createdBy !== runtime.createdBy ||
+        mapping.original.createdAt !== runtime.createdAt ||
+        runtime.revision < mapping.published.revision ||
+        runtime.connectionEpoch < mapping.published.connectionEpoch ||
+        (mapping.original.state !== "active" && runtime.state !== mapping.original.state) ||
+        (runtime.state === "pending" && mapping.original.state === "active")
+      )
+        invalid()
+      runtime = Record.RuntimeRegistration.parse({ ...mapping.original, schemaVersion: 1 })
+      if (runtime.deploymentIncarnation === permit.deploymentIncarnation) return runtime
+    }
+    return invalid()
   }
   export function validate(source: Record.HistoricalReader, key: string[], value: unknown) {
     if (key[0] !== "organization") return false

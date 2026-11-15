@@ -113,8 +113,7 @@ test("real Member create and pause history verifies signatures, both indexes and
   const stateKey = Keys.commandState(created.effect.sessionID)
   const state = reader(snapshot).read(Record.CommandState, stateKey)
   expect(state.commandSeq).toBe(paused.permit.commandSeq)
-  expect(await History.retainedMember(reader(snapshot), stateKey, state)).toBe(true)
-  await expect(History.validate(reader(snapshot), stateKey, state)).rejects.toThrow("Closed command history")
+  expect(await History.validate(reader(snapshot), stateKey, state)).toBe(true)
   const createKey = Keys.commandAttempt(created.permit.attemptID)
   const create = reader(snapshot).read(Record.CommandAttempt, createKey)
   const pause = reader(snapshot).read(Record.CommandAttempt, Keys.commandAttempt(paused.permit.attemptID))
@@ -123,23 +122,23 @@ test("real Member create and pause history verifies signatures, both indexes and
     ...create,
     authorization: { ...create.authorization, signature: pause.authorization.signature },
   })
-  await expect(History.retainedMember(reader(damaged), stateKey, state)).rejects.toThrow("acknowledged authority")
+  await expect(History.validate(reader(damaged), stateKey, state)).rejects.toThrow("Closed command history")
   for (const key of [
     Keys.sessionCommand(created.effect.sessionID, created.permit.commandSeq),
     Keys.requestAttempt(created.permit.actor.subjectID, created.permit.requestID, created.permit.commandSeq),
   ]) {
     const missing = new Map(snapshot)
     missing.delete(JSON.stringify(key))
-    await expect(History.retainedMember(reader(missing), stateKey, state)).rejects.toThrow()
+    await expect(History.validate(reader(missing), stateKey, state)).rejects.toThrow()
   }
   const pending = { ...state, pendingAttemptID: paused.permit.attemptID }
   const unresolved = new Map(snapshot)
   unresolved.set(JSON.stringify(stateKey), pending)
-  await expect(History.retainedMember(reader(unresolved), stateKey, pending)).rejects.toThrow("pending command")
+  await expect(History.validate(reader(unresolved), stateKey, pending)).rejects.toThrow("Closed command history")
   const behind = { ...state, commandSeq: created.permit.commandSeq }
   const incomplete = new Map(snapshot)
   incomplete.set(JSON.stringify(stateKey), behind)
-  await expect(History.retainedMember(reader(incomplete), stateKey, behind)).rejects.toThrow()
-  expect(await History.retainedMember(reader(snapshot), stateKey, state)).toBe(true)
+  await expect(History.validate(reader(incomplete), stateKey, behind)).rejects.toThrow()
+  expect(await History.validate(reader(snapshot), stateKey, state)).toBe(true)
   f.interceptFrames(undefined)
 })

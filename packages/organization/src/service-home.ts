@@ -1,5 +1,6 @@
 import fs from "node:fs/promises"
 import path from "node:path"
+import { z } from "zod"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { HomeOwnership } from "@ericsanchezok/synergy-harness/lifecycle/home-ownership"
 import { HomeRestoration } from "@ericsanchezok/synergy-harness/lifecycle/home-restoration"
@@ -186,13 +187,25 @@ const initializationMigration: Migration = {
 }
 
 export namespace OrganizationServiceHome {
+  export const ArchiveOwner = z.discriminatedUnion("schemaVersion", [
+    HomeOwnershipFile.FencedInfo,
+    HomeOwnershipFile.RestorationInfo,
+  ])
   export const readerContract = selected.readerContract
   export const environmentReaderContract = environmentReader
   export const recoveryReaderContract = recoveryReader
   export const environmentRecoveryReaderContract = environmentRecoveryReader
   export function archivedOwner(value: unknown) {
-    const current = HomeOwnershipFile.FencedInfo.parse(value)
+    const current = ArchiveOwner.parse(value)
     assertReaderOwner(current)
+    return current
+  }
+  export async function archiveOwner() {
+    const current = archivedOwner(await HomeOwnership.assert({ required: true }))
+    if (current.schemaVersion === 3) {
+      await HomeRestoration.inspectCompleted()
+      await HomeRestoration.assertOrdinaryStartup()
+    }
     return current
   }
   export function installOwner(permit: HomeRestoration.InstallPermit, archivedSourceOwner: unknown) {
@@ -201,7 +214,10 @@ export namespace OrganizationServiceHome {
     const source = archivedOwner(archivedSourceOwner)
     return HomeRestoration.installOwner(permit, {
       identity: selected.identity,
-      readerContract: source.readerContract === environmentReader ? environmentRecoveryReader : recoveryReader,
+      readerContract:
+        source.readerContract === environmentReader || source.readerContract === environmentRecoveryReader
+          ? environmentRecoveryReader
+          : recoveryReader,
     })
   }
   export const initialization = initializationMigration

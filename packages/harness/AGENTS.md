@@ -23,7 +23,7 @@ Own lifecycle/features/`./host/identity`; `context` owns attribution, `agent/pri
 - `EnvironmentResources.retainExecution` grants only original preparation cleanup to its actual committed process. Observer disposal closes new preparation; release policy/admission after native completion/saving. Reject copies; verify Local `test/environment/{preparation,process}.test.ts`.
 - Metadata uses short claims; retirement admits its owner. Session selection pins/drains before commit; file commands share binding leases. Release claims after capacity-resumption failure.
 
-`Storage.Handle`: [authority/transactions/content](../../docs/architecture/agent-storage.md). `readWithPrefixWitness`: published point/prefix. `removeTrees`: guarded batches. Prepare binaries outside SQL; owners publish. `withRestorationArtifacts`: bytes (`test/storage/restoration-artifacts.test.ts`). Drain before close; reopen post-release. Preserve purpose/cohort holds/native Home witnesses. Checkpoints/`assertWriteTransaction` fence callbacks. Host admits archives; history never authorizes. Objects: v1/v2. Test storage/secrets/authority-{journal,adoption}/runtime-maintenance-{adoption,home-upgrade,source-preparation}/{maintenance-retirement-records,checkpoint-retention}; Organization: `test/backup/pending-retirement.test.ts`. SQLite: workspace-sqlite; PG: `SYNERGY_TEST_POSTGRES_URL`.
+`Storage.Handle`: [authority/transactions/content](../../docs/architecture/agent-storage.md). `readWithPrefixWitness`: published point/prefix. `removeTrees`: guarded batches. Prepare binaries outside SQL; owners publish. `withRestorationArtifacts`: bytes (`test/storage/restoration-artifacts.test.ts`). Drain before close; reopen post-release. Preserve purpose/cohort holds and versioned Home witnesses. Checkpoints/`assertWriteTransaction` fence callbacks. Host admits archives; history never authorizes. Objects: v1/v2. Test storage/secrets/authority-{journal,adoption}/runtime-maintenance-{adoption,home-upgrade,source-preparation}/{maintenance-retirement-records,checkpoint-retention}; Organization: `test/backup/pending-retirement.test.ts`. SQLite: workspace-sqlite; PG: `SYNERGY_TEST_POSTGRES_URL`.
 
 PG contracts: `test/support/storage-backends.ts`; [selection](../../.synergy/skill/testing-guide/SKILL.md).
 
@@ -45,4 +45,4 @@ Portability requires atomic cohorts/epochs, ordered publication/dependencies, pe
 
 `SessionHistory`: indexed headers/fields/attachments; page children/Cortex (`test/session/{part-field-header,attachment-content,attachment-index,cortex-index}.test.ts`).
 
-Install Assets before activation; test `test/asset/portable.test.ts`. Use decision receipts and Scope-qualified pending windows; verify permission suites.
+Install Assets before activation; test `test/asset/portable.test.ts`. Use decision receipts/Scope-qualified pending windows; verify permission suites.

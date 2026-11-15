@@ -5,6 +5,7 @@ import { createHash } from "node:crypto"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { HomeOwnership } from "@ericsanchezok/synergy-harness/lifecycle/home-ownership"
 import { HomeOwnershipFile } from "@ericsanchezok/synergy-harness/lifecycle/home-ownership-file"
+import { HomeRestoration } from "@ericsanchezok/synergy-harness/lifecycle/home-restoration"
 import { NativeNamespaceIdentity } from "@ericsanchezok/synergy-harness/lifecycle/namespace-identity"
 import { RuntimeMaintenance } from "@ericsanchezok/synergy-harness/storage/runtime-maintenance"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
@@ -105,9 +106,10 @@ export namespace OrganizationSourcePreparation {
     const runtime = RuntimeContext.current()
     const current = await HomeOwnershipFile.open({ root: runtime.host.root, env: runtime.host.env }).read()
     const owner = OrganizationServiceHome.archivedOwner(current)
-    if (owner.schemaVersion !== 2) fail("requires its existing ordinary Service Home")
     HomeOwnership.select(owner)
-    await HomeOwnership.assert({ required: true })
+    if (owner.schemaVersion === 3) await HomeRestoration.assertPendingOwner(owner)
+    else await HomeOwnership.assert({ required: true })
+    return owner.schemaVersion === 3
   }
   export function register(value: Original) {
     RuntimeContext.assertCompositionOpen("Organization Source preparation")
@@ -122,14 +124,14 @@ export namespace OrganizationSourcePreparation {
       assert()
       signal?.throwIfAborted()
       await held.verify()
-      const source = OrganizationServiceHome.archivedOwner(await HomeOwnership.assert({ required: true }))
+      const source = await OrganizationServiceHome.archiveOwner()
       const proof = await NativeNamespaceIdentity.capture()
       const deployment = OrganizationProtocol.Deployment.parse(await Storage.read(Keys.deployment()))
       const signing = await loadSigningAuthority(deployment)
       const configuration = await readOrganizationConfigurationSnapshot(RuntimeContext.current().host.home, { signal })
       try {
         const selection = RuntimeMaintenance.SourcePreparationSelection.parse({
-          version: 1,
+          version: source.schemaVersion === 3 ? 2 : 1,
           source,
           namespace: NativeNamespaceIdentity.inspect(proof),
           signingHash: hash(signing.identity),

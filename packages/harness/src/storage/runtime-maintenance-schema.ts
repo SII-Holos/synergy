@@ -35,14 +35,18 @@ export namespace RuntimeMaintenanceSchema {
     .refine(sameOwner, "Home upgrade must retain its original native owner")
   export const SourcePreparationSelection = z
     .strictObject({
-      version: z.literal(1),
-      source: HomeOwnershipFile.FencedInfo,
+      version: z.union([z.literal(1), z.literal(2)]),
+      source: z.discriminatedUnion("schemaVersion", [HomeOwnershipFile.FencedInfo, HomeOwnershipFile.RestorationInfo]),
       namespace: NativeNamespaceIdentity.Descriptor,
       signingHash: Hash,
       selectionHash: Hash,
     })
     .refine(
-      (value) => value.source.owner === value.namespace.owner,
+      (value) =>
+        value.source.owner === value.namespace.owner &&
+        (value.version !== 1 || value.source.schemaVersion === 2) &&
+        (value.source.schemaVersion !== 3 ||
+          value.source.incarnation === value.namespace.identity.deploymentIncarnation),
       "Source preparation requires its original namespace owner",
     )
   export const SourcePreparationNative = SourcePreparationSelection.safeExtend({

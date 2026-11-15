@@ -4,7 +4,6 @@ import path from "node:path"
 import { createHash } from "node:crypto"
 import { z } from "zod"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
-import { HomeOwnership } from "@ericsanchezok/synergy-harness/lifecycle/home-ownership"
 import { HomeRestoration } from "@ericsanchezok/synergy-harness/lifecycle/home-restoration"
 import { HomeOwnershipFile } from "@ericsanchezok/synergy-harness/lifecycle/home-ownership-file"
 import { NativeNamespaceIdentity } from "@ericsanchezok/synergy-harness/lifecycle/namespace-identity"
@@ -47,31 +46,38 @@ export namespace OrganizationServiceNative {
     database: Database.Descriptor.optional(),
   })
   const Identity = z.strictObject({ orgID: OrganizationIdentity.ID, deploymentIncarnation: OrganizationIdentity.ID })
-  export const Manifest = z.strictObject({
-    format: z.literal("synergy-organization-service-native"),
-    version: z.literal(1),
-    source: StorageCheckpoint.Manifest,
-    identity: Identity,
-    owner: HomeOwnershipFile.FencedInfo,
-    configuration: z
-      .strictObject({
-        present: z.boolean(),
-        settings: OrganizationSettings,
-        raw: z
-          .strictObject({
-            bytes: z
-              .number()
-              .int()
-              .nonnegative()
-              .max(4 * 1024 * 1024),
-            sha256: z.string().regex(/^[a-f0-9]{64}$/),
-          })
-          .optional(),
-      })
-      .refine((value) => value.present === !!value.raw),
-    startup: Startup,
-    resources: StorageCheckpoint.Manifest.optional(),
-  })
+  export const Manifest = z
+    .strictObject({
+      format: z.literal("synergy-organization-service-native"),
+      version: z.union([z.literal(1), z.literal(2)]),
+      source: StorageCheckpoint.Manifest,
+      identity: Identity,
+      owner: OrganizationServiceHome.ArchiveOwner,
+      configuration: z
+        .strictObject({
+          present: z.boolean(),
+          settings: OrganizationSettings,
+          raw: z
+            .strictObject({
+              bytes: z
+                .number()
+                .int()
+                .nonnegative()
+                .max(4 * 1024 * 1024),
+              sha256: z.string().regex(/^[a-f0-9]{64}$/),
+            })
+            .optional(),
+        })
+        .refine((value) => value.present === !!value.raw),
+      startup: Startup,
+      resources: StorageCheckpoint.Manifest.optional(),
+    })
+    .refine(
+      (value) =>
+        (value.version !== 1 || value.owner.schemaVersion === 2) &&
+        (value.owner.schemaVersion !== 3 || value.owner.incarnation === value.identity.deploymentIncarnation),
+      "Service native manifests require their original versioned Home and deployment",
+    )
   export type Manifest = z.infer<typeof Manifest>
   const state = RuntimeContext.state(() => ({ startup: undefined as z.infer<typeof Startup> | undefined }))
   const key = ["service-native", "manifest"]
@@ -159,9 +165,7 @@ export namespace OrganizationServiceNative {
     const identity = NativeNamespaceIdentity.inspect(proof)
     if (identity.owner !== "organization" || identity.identity.kind !== "service")
       fail("requires its actual service namespace")
-    const owner = HomeOwnershipFile.FencedInfo.parse(await HomeOwnership.assert({ required: true }))
-    if (owner.owner !== "organization") fail("requires the owning service Home reader")
-    OrganizationServiceHome.archivedOwner(owner)
+    const owner = await OrganizationServiceHome.archiveOwner()
     const root = runtime.host.root
     if (root !== path.join(runtime.host.home, ".synergy")) fail("requires its canonical native Home")
     const configuration = await readOrganizationConfigurationSnapshot(runtime.host.home, { signal })
@@ -184,7 +188,7 @@ export namespace OrganizationServiceNative {
       }
       const manifest = Manifest.parse({
         format: "synergy-organization-service-native",
-        version: 1,
+        version: 2,
         source: source.namespace,
         identity: Identity.parse({
           orgID: identity.identity.orgID,

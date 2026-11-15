@@ -9,6 +9,7 @@ import {
 import { OrganizationRecord as Record } from "./storage/records"
 import { OrganizationStoragePath as Keys } from "./storage/path"
 import { fail } from "./error"
+import { isDeepStrictEqual as same } from "node:util"
 
 export namespace OrganizationExecutionIndex {
   const root = ["organization", "retained-execution-grants"]
@@ -30,10 +31,10 @@ export namespace OrganizationExecutionIndex {
   function controlKey(sessionID: string, epoch: number, admissionID: string) {
     return [...controls, Identity.ID.parse(sessionID), String(epoch), Identity.ID.parse(admissionID)]
   }
-  async function updateControl(grant: Execution.Grant) {
-    if (!grant.provenance) return
+  function matchesControl(grant: Execution.Grant) {
+    if (!grant.provenance) return false
     const control = grant.provenance.control
-    if (
+    return !(
       control.permit.orgID !== grant.orgID ||
       control.permit.deploymentIncarnation !== grant.deploymentIncarnation ||
       control.permit.sessionID !== grant.sessionID ||
@@ -44,6 +45,33 @@ export namespace OrganizationExecutionIndex {
       control.effect.rootID !== grant.provenance.rootID ||
       (grant.state === "bound" && grant.rootID !== grant.provenance.rootID)
     )
+  }
+  export function assertControlHistory(reader: Record.HistoricalReader, grant: Execution.Grant) {
+    if (
+      !grant.provenance ||
+      !matchesControl(grant) ||
+      !same(grant, reader.read(Record.ExecutionGrant, Keys.executionGrant(grant.grantID)))
+    )
+      fail("PROTOCOL_MISMATCH", "Historical control has another original grant")
+    const key = controlKey(grant.sessionID, grant.bindingEpoch, grant.provenance.control.permit.admissionID)
+    if (reader.read(Entry, key).grantID !== grant.grantID)
+      fail("PROTOCOL_MISMATCH", "Historical control locator has another original grant")
+  }
+  export function historicalControl(reader: Record.HistoricalReader, key: string[], value: unknown) {
+    if (key[0] !== "organization" || key[1] !== "execution-control-grants") return
+    const entry = Entry.parse(value)
+    const grant = reader.read(Record.ExecutionGrant, Keys.executionGrant(entry.grantID))
+    assertControlHistory(reader, grant)
+    if (
+      !grant.provenance ||
+      !same(key, controlKey(grant.sessionID, grant.bindingEpoch, grant.provenance.control.permit.admissionID))
+    )
+      fail("PROTOCOL_MISMATCH", "Historical control locator has another canonical address")
+    return grant.grantID
+  }
+  async function updateControl(grant: Execution.Grant) {
+    if (!grant.provenance) return
+    if (!matchesControl(grant))
       fail("SERVICE_UNAVAILABLE", "Independent control does not match its canonical grant ownership")
     const key = controlKey(grant.sessionID, grant.bindingEpoch, grant.provenance.control.permit.admissionID)
     const [value] = await Storage.readMany([key])

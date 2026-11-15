@@ -99,7 +99,10 @@ async function required() {
   const result: z.infer<typeof Hosted>[] = []
   for await (const entry of Storage.records({ prefix: Keys.runtimes(), limit: 128 })) {
     const registration = Record.RuntimeRegistration.parse(entry.value)
-    if (registration.orgID !== current.orgID || registration.deploymentIncarnation !== current.deploymentIncarnation)
+    if (
+      registration.orgID !== current.orgID ||
+      (registration.runtimeKind === "hosted" && registration.deploymentIncarnation !== current.deploymentIncarnation)
+    )
       throw new CohortError("Runtime registration belongs to another deployment")
     if (registration.runtimeKind === "hosted") result.push(hostedDescriptor(registration))
   }

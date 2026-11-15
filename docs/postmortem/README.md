@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0222](0222-closed-control-history-and-restored-homes-blocked-backup.md)
+
 - [0221](0221-cloud-catalog-routes-forwarded-resource-selectors-into-strict-pages.md)
 
 - [0220](0220-selected-cloud-session-history-lacked-recovery-owners.md)

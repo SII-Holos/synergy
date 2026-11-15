@@ -14,6 +14,7 @@ import { runtimeAuthority } from "./runtime-authority"
 import { OrganizationHandoffExecution } from "./handoff"
 import { OrganizationExecutionGrants } from "./execution-grants"
 import { isDeepStrictEqual as same } from "node:util"
+import { OrganizationSigningHistory } from "./signing-history"
 
 function sameCall(left: Gateway.Target, right: Gateway.Target) {
   return (Object.keys(Gateway.Target.shape) as (keyof Gateway.Target)[]).every(
@@ -28,10 +29,10 @@ export namespace OrganizationGatewayHistory {
     grant: Execution.BoundGrant,
   ) {
     const permit = value.authorization.permit
-    const signing = reader.read(Record.SigningIdentity, Keys.signingIdentity())
+    const signing = OrganizationSigningHistory.identity(reader, permit)
     const resource = reader.read(Record.Resource, Keys.resource(grant.orgID, permit.resourceID))
     if (
-      grant.retention.state !== "released" ||
+      grant.retention.state === "held" ||
       value.receipt.state !== "response_complete" ||
       permit.grantID !== grant.grantID ||
       permit.orgID !== grant.orgID ||
@@ -52,10 +53,11 @@ export namespace OrganizationGatewayHistory {
       fail("PROTOCOL_MISMATCH", "Gateway history requires its original complete released call")
     await OrganizationExecutionGrants.historyRelease(reader, grant, value.retentionGeneration)
   }
-  export async function grant(reader: Record.HistoricalReader, grant: Execution.BoundGrant) {
+  export async function grant(reader: Record.HistoricalReader, grant: Execution.Grant) {
     let calls = 0
     for (const row of reader.entries(Keys.gatewayCall(grant.grantID, "").slice(0, -1))) {
       const value = Record.GatewayCall.parse(row.value)
+      if (grant.state !== "bound") fail("PROTOCOL_MISMATCH", "Unbound history cannot own Gateway calls")
       if (!same(row.key, Keys.gatewayCall(grant.grantID, value.authorization.permit.callID)))
         fail("PROTOCOL_MISMATCH", "Gateway history has another canonical call key")
       await call(reader, value, grant)

@@ -77,7 +77,6 @@ export async function verifyHostedPauseHistory(
   const state = canonical.read(Record.CommandState, stateKey)
   expect(state.commandSeq).toBe(repeated.permit.commandSeq)
   expect(await History.validate(canonical, stateKey, state)).toBe(true)
-  expect(await History.retainedMember(canonical, stateKey, state)).toBe(false)
   const attemptKey = Keys.commandAttempt(repeated.permit.attemptID)
   const requestKey = Keys.commandRequest(repeated.permit.actor.subjectID, repeated.permit.requestID)
   const attempt = canonical.read(Record.CommandAttempt, attemptKey)
