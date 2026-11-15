@@ -1,0 +1,33 @@
+# Decision Record: Isolate the capacity measurement process
+
+Status: implemented
+
+## Problem
+
+The organization synchronization capacity case measures the parent and three native processes while ten authenticated clients replay 10000 messages from 100 Sessions. Its process-reported RSS includes `process.resourceUsage().maxRSS`, a lifetime high-water mark. A shared test process also imports and executes sibling suites before the case starts, so its lifetime metrics and process context do not identify the capacity case alone. Its case-scoped OS sampler has a different observation window.
+
+Controlled diagnostic first-100 executions retain production source, fixture source and native SQL counts while selecting the capacity name in either its single file or the original 31-file context. Their elapsed/CPU times differ even without executing preceding test bodies. These samples motivate separate measurement processes; full-profile setup, host variation and process context do not identify a unique timing cause. Original shared-batch failures remain evidence and are not reclassified as product passes.
+
+## Decision
+
+Register only `packages/organization-runtime/test/capacity-sync.test.ts` in the existing `ISOLATED_BATCH_FILES` set. The ordinary test/coverage executor gives it a fresh Bun parent and isolated test Home, then uses the existing per-batch JUnit, LCOV and timing paths. `ownsRuntimeFiles`, package preload, Runtime composition, test body and capacity child launcher remain unchanged.
+
+Keep the file's stable hash partition. Remove it from its original shared batch without reshuffling sibling hashes and execute it exactly once as its own batch. Full inventory discovery and fresh report collection still require every selected file. The other original 30 sibling files retain their shared-batch assignment. The complete Runtime inventory remains unchanged. These are internal hash partitions; outer CI suites may repack complete batches by estimated cost, so their placement requires a fresh plan.
+
+## Validation
+
+The root runner contract invokes the real `executionBatches()` planner over the discovered Runtime inventory and the capacity file's original shard. It requires a one-file capacity batch, identical sibling batches, the original partition and exact disjoint file coverage. It also verifies that `batchInvocation()` keeps the package working directory instead of selecting the Runtime-owning preload exception. The testing package's existing pinned isolation inventory includes the capacity file.
+
+The original capacity case retains 10000 messages, 100-message native transactions, 100 Sessions, three real enrolled Runtime processes, ten clients, the 240s native producer budget and 600s whole-case budget. Every transcript, checksum, page, privacy, replay, attachment, release, zero-backlog, tail and cleanup assertion remains in the original fixture. The new grouping needs a fresh actual full-case result and complete coverage collection; diagnostic prefixes do not establish acceptance.
+
+## Alternatives considered
+
+**Subtract a shared-process baseline.** A process-lifetime high-water mark cannot identify which case allocated retained VM state or reached an earlier peak. Subtraction does not establish the capacity workload's own memory bound.
+
+**Expand the performance guards.** Longer deadlines do not define the measurement parent and would weaken the original workload acceptance. The original 240/600-second bounds remain.
+
+**Retry or skip the shared case.** Neither preserves a unique fresh measurement with complete coverage. The existing executor instead runs every selected file exactly once, with the capacity body unchanged.
+
+## Consequences
+
+The capacity parent has a measurement lifetime that begins with its own file. Process-reported lifetime peak RSS and the case-scoped OS sampler remain separately identified; neither measures all descendant memory unless explicitly collected. One additional sequential batch uses the existing report merger and exact collector. CI runner count, concurrency, retries, deadlines and product permissions are unchanged. Fresh isolation does not prove that sibling Runtime work never leaks, cure an unknown product performance defect or erase original failing shared-batch evidence.

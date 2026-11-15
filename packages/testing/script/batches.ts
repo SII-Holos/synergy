@@ -178,6 +178,8 @@ export const ISOLATED_BATCH_FILES: ReadonlySet<string> = new Set([
   "packages/harness/test/storage/storage-silent-not-found.test.ts",
   // Host-suspension fixtures replace the process-wide monotonic clock and deadline timers.
   "packages/harness/test/storage/storage-worker-suspend.test.ts",
+  // Capacity records process-lifetime peak RSS and owns its complete native workload.
+  "packages/organization-runtime/test/capacity-sync.test.ts",
   // Resident organization fixtures own several bridges and storage workers; the file serializes its cases.
   "packages/organization-runtime/test/runtime.test.ts",
   "packages/presets/test/tool/auto-expand.test.ts",

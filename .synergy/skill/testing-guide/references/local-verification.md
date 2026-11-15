@@ -90,6 +90,8 @@ Iterate with the narrow failing test, then run `verify local` once the change is
 
 `bun run test:ci` runs the complete core inventory in fresh sequential batches. `test:coverage` uses the same executor with instrumentation; CI executes that inventory once and requires JUnit, lcov and timing evidence for every selected batch. See [CI verification](../../../../docs/operations/ci.md) for `ci:plan`, `ci:run`, `ci:verify`, affected selection and diagnostic selectors. Derive package partition counts from the [CI catalog](../../../../script/ci/catalog.ts), preserving complete isolation batches and special isolated files; each process owns its Home, fixture root and database. Bind ports dynamically in fixtures; distinct runners provide host isolation.
 
+For capacity measurements that report process-lifetime high-water marks, use the existing `ISOLATED_BATCH_FILES` process split. A case-scoped OS sampler and `process.resourceUsage().maxRSS` measure different lifetimes; identify both and keep prior sibling activity out of the measurement parent. Do not classify the file as a Runtime-owning preload exception unless it independently requires that composition. Preserve the complete selected inventory, stable hash partition, fresh JUnit/LCOV and all workload/deadline assertions. Keep original failing shared-batch evidence: an isolated measurement establishes its own result, not the absence of a Runtime leak or the cause of a timing difference.
+
 Coverage has a floor. `bun run coverage:check` enforces per-package line/function thresholds from Bun lcov reports with an auditable exemption list in `script/coverage-exempt.json`. The rules:
 
 - Cover product logic with real behavioral tests before exempting anything.

@@ -119,6 +119,7 @@ describe("coverage batch splitting", () => {
       "packages/lsp/test/lsp/owner-runtime.test.ts",
       "packages/mcp/test/mcp/owner-lifecycle.test.ts",
       "packages/media/test/tools/openai-image-gen.test.ts",
+      "packages/organization-runtime/test/capacity-sync.test.ts",
       "packages/organization-runtime/test/runtime.test.ts",
       "packages/organization/test/entry-source.test.ts",
       "packages/plugin-host/test/plugin/tool-invocation.test.ts",
