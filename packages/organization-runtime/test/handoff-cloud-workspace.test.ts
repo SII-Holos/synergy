@@ -41,6 +41,7 @@ import { createHandoffCompletion } from "./support/handoff-completion"
 import { WorkspaceCoordinator } from "@ericsanchezok/synergy-local-runtime/workspace/coordinator"
 import { readCredentials } from "../src/credentials"
 import { OrganizationHandoffTarget as NativeTarget } from "../src/handoff-target"
+import { OrganizationHandoffWorkspaceTarget as WorkspaceTarget } from "../src/handoff-workspace-target"
 import { readHandoffTargetRecord } from "../src/handoff-target-record"
 import { OrganizationRuntimeError } from "../src/error"
 
@@ -268,6 +269,15 @@ for (const scenario of [
       }
       return claim
     })
+    let pendingNativePreview:
+      | {
+          handoffID: string
+          runtimeID: string
+          started: boolean
+          finished: boolean
+          settled: PromiseWithResolvers<{ status: "complete" } | { status: "failed"; error: unknown }>
+        }
+      | undefined
     const actualTargets = new Map<string, ReturnType<typeof NativeTarget.create>>()
     type RecoveryInput = Parameters<ReturnType<typeof NativeTarget.create>["recover"]>[0]
     const cleanupInputs = new Map<string, RecoveryInput>()
@@ -288,6 +298,36 @@ for (const scenario of [
           return target
         })
       : undefined
+    using previewControllers =
+      scenario === "return-adopt-late-preview"
+        ? spyOn(NativeTarget, "create").mockImplementation((input) => {
+            const target = createTarget(input)
+            const preview = target.preview.bind(target)
+            target.preview = async (value) => {
+              const observed = pendingNativePreview
+              if (
+                !observed ||
+                input.runtimeID !== observed.runtimeID ||
+                value.authorization.plan.handoffID !== observed.handoffID
+              )
+                return preview(value)
+              observed.started = true
+              const work = preview(value)
+              void work.then(
+                () => {
+                  observed.finished = true
+                  observed.settled.resolve({ status: "complete" })
+                },
+                (error: unknown) => {
+                  observed.finished = true
+                  observed.settled.resolve({ status: "failed", error })
+                },
+              )
+              return work
+            }
+            return target
+          })
+        : undefined
     async function member(
       deviceID: string,
       token: string,
@@ -2037,6 +2077,29 @@ for (const scenario of [
         }
         await expect(rawBack("prepare-target")).rejects.toMatchObject({ code: "HANDOFF_BLOCKED" })
         if (scenario === "return-adopt-late-preview") {
+          const observed = {
+            handoffID: returningID,
+            runtimeID: receiver.registration.runtimeID,
+            started: false,
+            finished: false,
+            settled: Promise.withResolvers<{ status: "complete" } | { status: "failed"; error: unknown }>(),
+          }
+          pendingNativePreview = observed
+          const proceedNative = Promise.withResolvers<void>()
+          let gated = false
+          let gatedBeforeForeground = false
+          const preview = WorkspaceTarget.preview
+          using gate = spyOn(WorkspaceTarget, "preview").mockImplementation(async (plan, resources, signal) => {
+            if (
+              plan.handoffID !== returningID ||
+              plan.runtimeID !== receiver.registration.runtimeID ||
+              plan.operation !== "preview-target"
+            )
+              return preview(plan, resources, signal)
+            gated = true
+            await proceedNative.promise
+            return preview(plan, resources, signal)
+          })
           nativeBarrier = held
           const pending = nativeAction(
             "drive",
@@ -2044,18 +2107,69 @@ for (const scenario of [
             200,
             "pending-original",
           )
-          void pending.catch(() => {})
+          const foreground = pending.then(
+            () => {
+              throw new Error("Native preview replied before its held original callback was released")
+            },
+            (error: unknown) => {
+              if (
+                !(error instanceof OrganizationRuntimeError) ||
+                error.data.code !== "COMMAND_OUTCOME_UNKNOWN" ||
+                error.data.outcome !== "unknown"
+              )
+                throw error
+              gatedBeforeForeground = gated
+              console.info(
+                "HANDOFF_LATE_PREVIEW_FOREGROUND_ENDED",
+                JSON.stringify({
+                  scenario,
+                  operation: "preview-target",
+                  foregroundCode: "COMMAND_OUTCOME_UNKNOWN",
+                  foregroundOutcome: "unknown",
+                  gatedBeforeForeground,
+                  nativeCallbackStarted: observed.started,
+                  nativeCallbackFinished: observed.finished,
+                }),
+              )
+              if (!observed.started) throw error
+              proceedNative.resolve()
+              return error
+            },
+          )
+          void foreground.catch(() => {})
+          const callbackFailed = observed.settled.promise.then((outcome): never => {
+            if (outcome.status === "failed") throw outcome.error
+            throw new Error("Native preview completed before its actual claim barrier")
+          })
+          void callbackFailed.catch(() => {})
           try {
-            await Promise.race([
-              entered.promise,
-              pending.then(() => {
-                throw new Error("Native preview completed before its actual claim barrier")
+            await Promise.race([entered.promise, callbackFailed, foreground.then(() => callbackFailed)])
+            await foreground
+            if (observed.finished) await callbackFailed
+            expect(observed.started).toBe(true)
+            expect(gated).toBe(true)
+            expect(observed.finished).toBe(false)
+            console.info(
+              "HANDOFF_LATE_PREVIEW_ORIGINAL_CALLBACK",
+              JSON.stringify({
+                scenario,
+                operation: "preview-target",
+                foregroundCode: "COMMAND_OUTCOME_UNKNOWN",
+                foregroundOutcome: "unknown",
+                gatedBeforeForeground,
+                nativeCallbackStarted: observed.started,
+                nativeClaimEntered: true,
+                nativeCallbackFinished: observed.finished,
               }),
-            ])
+            )
             await cancelled(false, pending)
           } finally {
+            proceedNative.resolve()
             resume.resolve()
+            await foreground.catch(() => {})
             await pending.catch(() => {})
+            if (observed.started) await observed.settled.promise
+            pendingNativePreview = undefined
           }
           return
         }

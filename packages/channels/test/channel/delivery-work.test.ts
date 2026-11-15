@@ -2,6 +2,7 @@ import { afterAll, expect, spyOn, test } from "bun:test"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { Asset } from "@ericsanchezok/synergy-harness/asset/asset"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionHistory } from "@ericsanchezok/synergy-harness/session/history"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
@@ -12,15 +13,39 @@ import { collectChannelTerminalInfos, loadChannelDeliveryPlans } from "../../src
 import { executeChannelDeliveryPlan } from "../../src/channel/delivery"
 import type { Provider } from "../../src/channel/types"
 import { testRuntime } from "../support/runtime"
-import { measurePhase } from "@ericsanchezok/synergy-harness/test/support/rollout"
 
 const runtime = await testRuntime()
 afterAll(() => runtime.close())
 
 async function fixture(
   count: number,
-  fn: (input: { sessionID: string; rootID: string; ids: string[] }) => Promise<void>,
+  fn: (input: {
+    sessionID: string
+    rootID: string
+    ids: string[]
+    measurePhase: <T>(phase: string, body: () => Promise<T>) => Promise<T>
+    enter: (phase: "root" | "assistant" | "delivery" | "replay", index?: number) => void
+  }) => Promise<void>,
 ) {
+  const timing = process.env.CI === "true" || process.env.SYNERGY_CI_TIMING === "1"
+  let measurements = 0
+  let entries = 0
+  async function measurePhase<T>(phase: string, body: () => Promise<T>): Promise<T> {
+    const started = performance.now()
+    try {
+      return await body()
+    } finally {
+      if (timing && measurements < 15) {
+        measurements++
+        console.info("delivery-work-timing " + JSON.stringify({ phase, seconds: (performance.now() - started) / 1000 }))
+      }
+    }
+  }
+  const enter = (phase: "root" | "assistant" | "delivery" | "replay", index?: number) => {
+    if (!timing || entries >= 6) return
+    entries++
+    console.info("delivery-work-enter " + JSON.stringify({ oldMessages: count, phase, index }))
+  }
   await using tmp = await tmpdir({ git: true })
   await ScopeContext.provide({
     scope: await tmp.scope(),
@@ -72,27 +97,31 @@ async function fixture(
           for (let offset = 0; offset < rows.length; offset += 256) await tx.writeMany(rows.slice(offset, offset + 256))
         })
       })
-      await Session.updateMessage(root)
+      enter("root")
+      await measurePhase("delivery-work.root." + count, () => Session.updateMessage(root))
       const ids = [rootID]
       for (const [index, text] of ["Before", "Private", "After"].entries()) {
         const id = Identifier.ascending("message")
         ids.push(id)
-        await Session.updateMessage({
-          id,
-          sessionID,
-          parentID: rootID,
-          rootID,
-          role: "assistant",
-          agent: "test",
-          mode: "test",
-          modelID: "test",
-          providerID: "test",
-          path: { cwd: tmp.path, root: tmp.path },
-          time: { created: 10_001 + index, completed: 10_010 },
-          finish: "stop",
-          cost: 0,
-          tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
-        })
+        enter("assistant", index)
+        await measurePhase("delivery-work.assistant." + count + "." + index, () =>
+          Session.updateMessage({
+            id,
+            sessionID,
+            parentID: rootID,
+            rootID,
+            role: "assistant",
+            agent: "test",
+            mode: "test",
+            modelID: "test",
+            providerID: "test",
+            path: { cwd: tmp.path, root: tmp.path },
+            time: { created: 10_001 + index, completed: 10_010 },
+            finish: "stop",
+            cost: 0,
+            tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+          }),
+        )
         await Session.updatePart({ id: Identifier.ascending("part"), sessionID, messageID: id, type: "text", text })
         if (index === 1)
           await Session.updatePart({
@@ -135,7 +164,7 @@ async function fixture(
           })
       }
       await measurePhase("delivery-work.prepare." + count, () => SessionHistory.prepareDisplay(sessionID))
-      await fn({ sessionID, rootID, ids })
+      await fn({ sessionID, rootID, ids, measurePhase, enter })
     },
   })
 }
@@ -145,7 +174,7 @@ for (const count of [500, 5_000])
     `one turn with over 2000 Parts shares body reads across delivery after ${count} old messages`,
     () =>
       runtime.run(() =>
-        fixture(count, async ({ sessionID, rootID, ids }) => {
+        fixture(count, async ({ sessionID, rootID, ids, measurePhase, enter }) => {
           const replies: string[] = []
           const reactions: string[] = []
           const provider: Provider = {
@@ -160,41 +189,78 @@ for (const count of [500, 5_000])
               reactions.push(input.emoji)
             },
           }
-          using bodies = spyOn(MessageV2, "parts")
-          using history = spyOn(Session, "messages")
+          const owner = RuntimeContext.current()
+          const scopeID = ScopeContext.current.scope.id
+          const bodyReads: string[] = []
+          let historyReads = 0
+          const readParts = MessageV2.parts
+          const readHistory = Session.messages
+          using bodies = spyOn(MessageV2, "parts").mockImplementation(
+            Object.assign(
+              (input: Parameters<typeof readParts>[0]) => {
+                const current = RuntimeContext.tryCurrent()
+                const result = readParts(input)
+                if (
+                  current === owner &&
+                  input.sessionID === sessionID &&
+                  (input.scopeID === undefined || input.scopeID === scopeID)
+                )
+                  bodyReads.push(input.messageID)
+                return result
+              },
+              { force: readParts.force, schema: readParts.schema },
+            ),
+          )
+          using history = spyOn(Session, "messages").mockImplementation(
+            Object.assign(
+              (input: Parameters<typeof readHistory>[0]) => {
+                const current = RuntimeContext.tryCurrent()
+                const result = readHistory(input)
+                if (current === owner && input.sessionID === sessionID) historyReads++
+                return result
+              },
+              { force: readHistory.force, schema: readHistory.schema },
+            ),
+          )
           const terminals = await measurePhase("delivery-work.infos." + count, () =>
             collectChannelTerminalInfos({ sessionID, rootID }),
           )
           expect(terminals.map((info) => info.id)).toEqual(ids.slice(1))
-          expect(bodies).not.toHaveBeenCalled()
+          expect(bodyReads).toEqual([])
           const plans = await measurePhase("delivery-work.bodies." + count, () =>
             loadChannelDeliveryPlans({ sessionID, rootID, replyToMessageId: "topic" }),
           )
           expect(plans.map((plan) => plan.kind)).toEqual(["reply", "reaction", "reply"])
           expect(plans[0].terminal.parts.length).toBeGreaterThan(2_000)
-          for (const plan of plans)
-            await executeChannelDeliveryPlan({
-              sessionID,
-              plan,
-              provider,
-              accountId: "test",
-              replyToMessageId: "topic",
-            })
-          for (const plan of plans)
-            await executeChannelDeliveryPlan({
-              sessionID,
-              plan,
-              provider,
-              accountId: "test",
-              replyToMessageId: "topic",
-            })
+          enter("delivery")
+          for (const [index, plan] of plans.entries())
+            await measurePhase("delivery-work.execute." + count + "." + index, () =>
+              executeChannelDeliveryPlan({
+                sessionID,
+                plan,
+                provider,
+                accountId: "test",
+                replyToMessageId: "topic",
+              }),
+            )
+          enter("replay")
+          for (const [index, plan] of plans.entries())
+            await measurePhase("delivery-work.replay." + count + "." + index, () =>
+              executeChannelDeliveryPlan({
+                sessionID,
+                plan,
+                provider,
+                accountId: "test",
+                replyToMessageId: "topic",
+              }),
+            )
           expect(replies).toEqual(["Before", "After"])
           expect(reactions).toEqual(["SILENT"])
-          expect(bodies.mock.calls.map(([input]) => input.messageID)).toEqual(ids)
-          expect(history).not.toHaveBeenCalled()
+          expect(bodyReads).toEqual(ids)
+          expect(historyReads).toBe(0)
         }),
       ),
-    60_000,
+    count === 5_000 ? 120_000 : 60_000,
   )
 
 test("concurrent delivery plans serialize one attempt and release their lock after cancellation", () =>

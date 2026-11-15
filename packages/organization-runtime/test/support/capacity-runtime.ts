@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from "node:crypto"
+import type { SamplingProfile } from "bun:jsc"
 import { z } from "zod"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
@@ -381,6 +382,7 @@ async function main() {
       Boolean(process.env.NODE_V8_COVERAGE),
     profilerRequested: /(?:^|\s)--(?:cpu-prof(?:-md)?|heap-prof|prof)(?:\s|=|$)/.test(requestedOptions),
   }
+  let windowProfiled = false
   using metrics = measureCapacity()
   const probe = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() })
   const port = probe.port!
@@ -464,30 +466,127 @@ async function main() {
                   using nativeOrder = countNativeMessageOrder({ scopeID: session.scope.id, sessionID: session.id })
                   for (let offset = 0; offset < entry.count; offset += 100) {
                     const end = Math.min(entry.count, offset + 100)
-                    await Storage.transaction(async (tx) => {
-                      nativeOrder.transaction(tx)
-                      for (let index = offset; index < end; index++) {
-                        const messageID = Identifier.ascending("message")
-                        lastMessageID = messageID
-                        checksum ^= messageChecksum(messageID)
-                        await Session.updateMessage({
-                          id: messageID,
-                          sessionID: session.id,
-                          role: "user",
-                          agent: "general",
-                          model: { providerID: "capacity-fixture", modelID: "canonical-producer" },
-                          time: { created: Date.now() },
-                        })
-                        await Session.updatePart({
-                          id: Identifier.ascending("part"),
-                          sessionID: session.id,
-                          messageID,
-                          type: "text",
-                          text: `Capacity message ${index}: retained canonical history`,
-                        })
+                    const writeOriginalWindow = async () => {
+                      await Storage.transaction(async (tx) => {
+                        nativeOrder.transaction(tx)
+                        for (let index = offset; index < end; index++) {
+                          const messageID = Identifier.ascending("message")
+                          lastMessageID = messageID
+                          checksum ^= messageChecksum(messageID)
+                          await Session.updateMessage({
+                            id: messageID,
+                            sessionID: session.id,
+                            role: "user",
+                            agent: "general",
+                            model: { providerID: "capacity-fixture", modelID: "canonical-producer" },
+                            time: { created: Date.now() },
+                          })
+                          await Session.updatePart({
+                            id: Identifier.ascending("part"),
+                            sessionID: session.id,
+                            messageID,
+                            type: "text",
+                            text: `Capacity message ${index}: retained canonical history`,
+                          })
+                        }
+                      })
+                      await Session.flushPartWrites(session.id)
+                    }
+                    if (
+                      process.env.SYNERGY_CAPACITY_NATIVE_WINDOW_PROFILE === "transaction-1000" &&
+                      !windowProfiled &&
+                      entry.count === 10000 &&
+                      offset === 1000
+                    ) {
+                      windowProfiled = true
+                      const before = nativeOrder.snapshot()
+                      const sampleStarted = performance.now()
+                      const sampleCPU = process.cpuUsage()
+                      const failures: { original?: { error: unknown }; observation?: { error: unknown } } = {}
+                      let sampled: SamplingProfile | undefined
+                      let callbackCalls = 0
+                      let callbackSettled = false
+                      try {
+                        // Provenance: https://github.com/oven-sh/bun/blob/c6da4a4d3010e5553438c60f6bd76d981976867c/packages/bun-types/jsc.d.ts
+                        // Local adaptation: sample the original asynchronous transaction and flush without CLI profiler flags.
+                        const { profile } = await import("bun:jsc")
+                        sampled = await profile(async () => {
+                          if (++callbackCalls !== 1)
+                            throw new Error("The diagnostic sampler repeated its original window")
+                          try {
+                            await writeOriginalWindow()
+                          } catch (error) {
+                            failures.original = { error }
+                          } finally {
+                            callbackSettled = true
+                          }
+                        }, 1000)
+                        if (!sampled || callbackCalls !== 1 || !callbackSettled)
+                          throw new Error("The diagnostic sampler did not settle its original window")
+                      } catch (error) {
+                        failures.observation = { error }
                       }
-                    })
-                    await Session.flushPartWrites(session.id)
+                      const after = nativeOrder.snapshot()
+                      const sampleElapsedMs = performance.now() - sampleStarted
+                      const cpu = process.cpuUsage(sampleCPU)
+                      const window = { firstIndex: offset, endExclusive: end, requested: entry.count }
+                      let rawBytes = 0
+                      let rawSHA256: string | undefined
+                      let rawWritten = false
+                      const destination = process.env.SYNERGY_CAPACITY_NATIVE_WINDOW_PROFILE_PATH
+                      try {
+                        if (!destination) throw new Error("The diagnostic native window profile destination is absent")
+                        if (sampled) {
+                          const raw = JSON.stringify({
+                            version: 1,
+                            method: "bun:jsc.profile",
+                            diagnostic: true,
+                            bun: Bun.version,
+                            sampleIntervalMicroseconds: 1000,
+                            window,
+                            functions: sampled.functions,
+                            bytecodes: sampled.bytecodes,
+                            stackTraces: sampled.stackTraces,
+                          })
+                          rawBytes = Buffer.byteLength(raw)
+                          rawSHA256 = createHash("sha256").update(raw).digest("hex")
+                          await Bun.write(destination, raw)
+                          rawWritten = true
+                        }
+                      } catch (error) {
+                        failures.observation ??= { error }
+                      }
+                      try {
+                        if (!destination) throw new Error("The diagnostic native window metadata destination is absent")
+                        await Bun.write(
+                          `${destination}.metadata.json`,
+                          JSON.stringify({
+                            version: 1,
+                            diagnostic: true,
+                            method: "bun:jsc.profile",
+                            bun: Bun.version,
+                            window,
+                            before,
+                            after,
+                            elapsedMs: sampleElapsedMs,
+                            cpuUserMs: cpu.user / 1000,
+                            cpuSystemMs: cpu.system / 1000,
+                            sampled: sampled !== undefined,
+                            callbackCalls,
+                            callbackSettled,
+                            originalFailed: failures.original !== undefined,
+                            observationFailed: failures.observation !== undefined,
+                            rawWritten,
+                            rawBytes,
+                            ...(rawSHA256 ? { rawSHA256 } : {}),
+                          }),
+                        )
+                      } catch (error) {
+                        failures.observation ??= { error }
+                      }
+                      if (failures.original) throw failures.original.error
+                      if (failures.observation) throw failures.observation.error
+                    } else await writeOriginalWindow()
                     if (entry.count >= 1000 && end % 1000 === 0) {
                       const memory = metrics.snapshot()
                       const cpu = process.cpuUsage(cpuStarted)

@@ -17,6 +17,11 @@ import { Action, Task, Outcome, InitialBytes, LinuxBytes, createPeer, json } fro
 import { createHandoffCompletion } from "./support/handoff-completion"
 import { observeDNSAfterFailedHealth } from "./support/cross-os-dns"
 import {
+  createCrossOSTunnelObservation,
+  readCrossOSTunnelStderr,
+  type CrossOSCleanupOwner,
+} from "./support/cross-os-tunnel"
+import {
   safeCrossOSTransportText as safeTransportText,
   safeCrossOSHeaderFailure,
   recordCrossOSHeaderFailure,
@@ -40,6 +45,7 @@ import {
 } from "./support/cross-os-transport"
 
 const role = process.env.SYNERGY_CROSS_OS_ROLE
+const tunnelObservation = createCrossOSTunnelObservation()
 
 const dnsCacheKeys = ["cacheHitsCompleted", "cacheHitsInflight", "cacheMisses", "size", "errors", "totalCount"] as const
 type DNSCacheCounters = Pick<ReturnType<typeof dns.getCacheStats>, (typeof dnsCacheKeys)[number]>
@@ -139,6 +145,7 @@ function observeTunnelStderr(line: string) {
 function transportSnapshot() {
   return {
     stderrLines: transportFacts.stderrLines,
+    lifecycle: tunnelObservation.snapshot(),
     firstDiagnosticStderr: [...transportFacts.firstDiagnosticStderr],
     registrationEvents: transportFacts.registrationEvents,
     firstRegistrationMs: transportFacts.firstRegistrationMs,
@@ -314,39 +321,22 @@ async function tunnel(directory: string, port: number) {
       },
     ),
   )
+  tunnelObservation.launched()
   void child.exited.then((code) => {
     transportFacts.exitCode = code
+    tunnelObservation.exited(code)
   })
   const ready = Promise.withResolvers<string>()
-  const reader = (async () => {
-    const stream = child.stderr.getReader(),
-      decoder = new TextDecoder()
-    let buffered = ""
-    let partialLine = ""
-    let publicOrigin: string | undefined
-    let registered = false
-    try {
-      while (true) {
-        const result = await stream.read()
-        if (result.done) break
-        const chunk = decoder.decode(result.value, { stream: true })
-        buffered = (buffered + chunk).slice(-32768)
-        const lines = (partialLine + chunk).split(/\r?\n/)
-        partialLine = lines.pop()!.slice(-32768)
-        for (const line of lines) {
-          const observed = line.slice(-32768)
-          observeTunnelStderr(observed)
-          if (observed.includes("Registered tunnel connection")) registered = true
-        }
-        publicOrigin ??= buffered.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/)?.[0]
-        if (publicOrigin && registered) ready.resolve(publicOrigin)
-      }
-      if (partialLine) observeTunnelStderr(partialLine)
-      ready.reject(new Error("The task-owned tunnel exited before a public HTTPS endpoint was ready"))
-    } finally {
-      stream.releaseLock()
-    }
-  })()
+  const reader = readCrossOSTunnelStderr(child.stderr, {
+    line(value) {
+      observeTunnelStderr(value)
+      tunnelObservation.line(value)
+    },
+    ready,
+    selected: tunnelObservation.selected,
+    eof: tunnelObservation.eof,
+    settled: tunnelObservation.settled,
+  })
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
     timer = setTimeout(
@@ -452,7 +442,9 @@ async function host() {
   const tunnelStarted = performance.now()
   const connection = await setup("darwin-tunnel-bootstrap", () => tunnel(root, port))
   const capturedHostname = new URL(connection.origin).hostname
-  const cleanups: Array<() => Promise<unknown>> = [() => connection.close()]
+  const cleanups: Array<{ owner: CrossOSCleanupOwner; close(): Promise<unknown> }> = [
+    { owner: "tunnel", close: () => connection.close() },
+  ]
   const costs: Record<string, number> = {
     artifactWaitMs,
     tunnelBootstrapMs: performance.now() - tunnelStarted,
@@ -476,7 +468,7 @@ async function host() {
         connections: { heartbeatMs: 100, offlineMs: 5000 },
       }),
     )
-    cleanups.push(() => service.close())
+    cleanups.push({ owner: "service", close: () => service.close() })
     const nonces = new Set<string>(),
       connected = new Map<string, number>(),
       sockets = new Map<unknown, string>()
@@ -622,7 +614,8 @@ async function host() {
         return service.fetch(request, server)
       },
     })
-    cleanups.splice(1, 0, () => server.stop(false))
+    tunnelObservation.listener(server.port, port)
+    cleanups.splice(1, 0, { owner: "origin-listener", close: () => server.stop(false) })
     transportFacts.health.dnsCache.before = observeDNSCache()
     await setup("darwin-public-health", () =>
       until(
@@ -765,7 +758,7 @@ async function host() {
         ).data
       },
     })
-    cleanups.push(() => darwin.close())
+    cleanups.push({ owner: "darwin-peer", close: () => darwin.close() })
     const linuxID = await until(
       async () => linuxRuntimeID,
       120000,
@@ -1171,10 +1164,13 @@ async function host() {
     started = performance.now()
     await linux({ kind: "close" })
     const errors: unknown[] = []
-    for (const close of cleanups.toReversed()) {
+    for (const owned of cleanups.toReversed()) {
+      tunnelObservation.cleanup(owned.owner, "started")
       try {
-        await close()
+        await owned.close()
+        tunnelObservation.cleanup(owned.owner, "completed")
       } catch (error) {
+        tunnelObservation.cleanup(owned.owner, "failed")
         errors.push(error)
       }
     }
@@ -1187,6 +1183,7 @@ async function host() {
         version: 1,
         run: run(),
         passed: true,
+        transport: transportSnapshot(),
         actualPlatforms: [original.platform, received.platform, returned.platform],
         nativeDescriptors: [original.native.descriptor, received.native.descriptor, returned.native.descriptor],
         epochs: [outbound.epoch, returning.epoch],
@@ -1199,10 +1196,13 @@ async function host() {
     const failedTransport = transportSnapshot()
     const failedRequests = { recent: [...requests], failures: [...requestFailures] }
     const errors: unknown[] = [error]
-    for (const close of cleanups.toReversed()) {
+    for (const owned of cleanups.toReversed()) {
+      tunnelObservation.cleanup(owned.owner, "started")
       try {
-        await close()
+        await owned.close()
+        tunnelObservation.cleanup(owned.owner, "completed")
       } catch (cleanup) {
+        tunnelObservation.cleanup(owned.owner, "failed")
         errors.push(cleanup)
       }
     }
@@ -1218,6 +1218,7 @@ async function host() {
         errors: errors.map(safeFailure),
         requests: failedRequests,
         transport: failedTransport,
+        cleanupTransport: tunnelObservation.snapshot(),
       }),
     )
     throw new Error("Actual cross-OS acceptance failed at " + phase + "; original failure retained in the runner", {

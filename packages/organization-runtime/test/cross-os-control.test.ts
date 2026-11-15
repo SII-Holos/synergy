@@ -10,6 +10,7 @@ import {
 } from "./support/cross-os-failures"
 import { readControlJSON, safeCrossOSFailure } from "./support/cross-os-transport"
 import { observeDNSAfterFailedHealth } from "./support/cross-os-dns"
+import { createCrossOSTunnelObservation, readCrossOSTunnelStderr } from "./support/cross-os-tunnel"
 
 test("cross-OS JSON transport counts streamed bytes before decoding and cancels an oversized unsigned body", async () => {
   const expected = { label: "跨系统原始字节" }
@@ -431,3 +432,134 @@ test("cross-OS first-kind samples survive exhausted first-four slots while origi
   expect(reads).toBeLessThanOrEqual(20)
   expect(JSON.stringify(facts)).not.toContain(hostname)
 })
+
+test("original tunnel stderr records selection, EOF and actual child exit without changing readiness", async () => {
+  const first = "https://synthetic-first.trycloudflare.com"
+  const second = "https://synthetic-banner.trycloudflare.com"
+  const observation = createCrossOSTunnelObservation()
+  const firstLine = Promise.withResolvers<void>()
+  const ready = Promise.withResolvers<string>()
+  const readyOutcome = ready.promise.then(
+    (origin) => ({ kind: "ready" as const, origin }),
+    (error: unknown) => ({ kind: "failed" as const, error }),
+  )
+  const child = Bun.spawn(
+    [
+      process.execPath,
+      "--eval",
+      `const input = Bun.stdin.stream().getReader();
+       await Bun.write(Bun.stderr, ${JSON.stringify(first + "\n| https://synthetic-")});
+       await input.read();
+       await Bun.write(Bun.stderr, "banner.trycloudflare.com |\\nRegistered tunnel connection\\n");
+       await input.read();
+       input.releaseLock();`,
+    ],
+    { stdin: "pipe", stdout: "ignore", stderr: "pipe" },
+  )
+  observation.launched()
+  const exited = child.exited.then((code) => observation.exited(code))
+  const reader = readCrossOSTunnelStderr(child.stderr, {
+    line(value) {
+      observation.line(value)
+      if (value === first) firstLine.resolve()
+    },
+    ready,
+    selected: observation.selected,
+    eof: observation.eof,
+    settled: observation.settled,
+  })
+  try {
+    await Promise.race([
+      firstLine.promise,
+      readyOutcome.then((outcome) => {
+        if (outcome.kind === "failed") throw outcome.error
+        throw new Error("The original child resolved readiness before its first line was observed")
+      }),
+    ])
+    const partial = observation.snapshot()
+    expect(partial.events.some((event) => event.kind === "selected")).toBe(true)
+    expect(partial).not.toHaveProperty("selectedMatchesObservedBanner")
+    expect(partial.events.some((event) => event.kind === "banner")).toBe(false)
+    child.stdin.write("continue\n")
+    await child.stdin.flush()
+    const outcome = await readyOutcome
+    if (outcome.kind === "failed") throw outcome.error
+    expect(outcome.origin).toBe(first)
+    const beforeCleanup = observation.snapshot()
+    const retained = JSON.stringify(beforeCleanup)
+    expect(beforeCleanup.selectedMatchesObservedBanner).toBe(false)
+    expect(beforeCleanup.retainedDistinctHostnames).toBe(2)
+    expect(beforeCleanup.events.some((event) => event.kind === "child-exit")).toBe(false)
+    expect(beforeCleanup.events.some((event) => event.kind === "stderr-eof")).toBe(false)
+    observation.cleanup("tunnel", "started")
+    child.stdin.write("close\n")
+    child.stdin.end()
+    await exited
+    await reader
+    observation.cleanup("tunnel", "completed")
+    const afterCleanup = observation.snapshot()
+    expect(await child.exited).toBe(0)
+    expect(afterCleanup.events.find((event) => event.kind === "child-exit")?.exitCode).toBe(0)
+    expect(afterCleanup.events.some((event) => event.kind === "stderr-eof")).toBe(true)
+    expect(afterCleanup.events.some((event) => event.kind === "reader-settled")).toBe(true)
+    expect(afterCleanup.cleanupEvents.map(({ owner, phase }) => ({ owner, phase }))).toEqual([
+      { owner: "tunnel", phase: "started" },
+      { owner: "tunnel", phase: "completed" },
+    ])
+    expect(afterCleanup.events.every((event) => event.observedAtMs <= afterCleanup.observedAtMs)).toBe(true)
+    expect(JSON.stringify(beforeCleanup)).toBe(retained)
+    expect(JSON.stringify(afterCleanup)).not.toContain(first)
+    expect(JSON.stringify(afterCleanup)).not.toContain(second)
+  } finally {
+    if (child.exitCode === null) child.kill()
+    await exited
+    await reader
+  }
+}, 30_000)
+
+test("original tunnel EOF preserves failed readiness and bounds private hostname observations", async () => {
+  const observation = createCrossOSTunnelObservation()
+  const ready = Promise.withResolvers<string>()
+  const readyOutcome = ready.promise.then(
+    (origin) => ({ kind: "ready" as const, origin }),
+    (error: unknown) => ({ kind: "failed" as const, error }),
+  )
+  const emitted = Array.from({ length: 12 }, (_, index) => `https://synthetic-${index}.trycloudflare.com`).join("\n")
+  const child = Bun.spawn(
+    [process.execPath, "--eval", `await Bun.write(Bun.stderr, ${JSON.stringify(emitted)}); process.exit(7);`],
+    { stdout: "ignore", stderr: "pipe" },
+  )
+  observation.launched()
+  const exited = child.exited.then((code) => observation.exited(code))
+  const reader = readCrossOSTunnelStderr(child.stderr, {
+    line: observation.line,
+    ready,
+    selected: observation.selected,
+    eof: observation.eof,
+    settled: observation.settled,
+  })
+  try {
+    const outcome = await readyOutcome
+    expect(outcome.kind).toBe("failed")
+    if (outcome.kind === "ready") throw new Error("A URL without a registration must not become ready")
+    expect(outcome.error).toBeInstanceOf(Error)
+    expect((outcome.error as Error).message).toBe(
+      "The task-owned tunnel exited before a public HTTPS endpoint was ready",
+    )
+    await exited
+    await reader
+    const result = observation.snapshot()
+    expect(await child.exited).toBe(7)
+    expect(result.retainedDistinctHostnames).toBe(4)
+    expect(result.hostnameOverflow).toBe(true)
+    expect(result).not.toHaveProperty("selectedMatchesObservedBanner")
+    expect(result.events.some((event) => event.kind === "stderr-eof")).toBe(true)
+    expect(result.events.some((event) => event.kind === "reader-settled")).toBe(true)
+    expect(result.events.find((event) => event.kind === "child-exit")?.exitCode).toBe(7)
+    expect(JSON.stringify(result)).not.toContain("trycloudflare")
+  } finally {
+    if (child.exitCode === null) child.kill()
+    await exited
+    await reader
+  }
+}, 30_000)
