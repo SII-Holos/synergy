@@ -90,6 +90,7 @@ async function authority(selectedBinding: Sessions.Binding = binding) {
     ) {
       const input: Command.Input = { operation: "input", mode, parts: [{ type: "text", text }] }
       const requestID = options.requestID ?? "request-intake"
+      const authorizedAt = Date.now()
       const permit: Command.Permit = {
         schemaVersion: 1,
         purpose: "session-command",
@@ -117,8 +118,8 @@ async function authority(selectedBinding: Sessions.Binding = binding) {
           requestID,
         },
         operation: "input",
-        authorizedAt: Date.now(),
-        deadline: Date.now() + 60_000,
+        authorizedAt,
+        deadline: authorizedAt + 60_000,
         payloadHash: "0".repeat(64),
         ...options,
       }
@@ -126,13 +127,14 @@ async function authority(selectedBinding: Sessions.Binding = binding) {
       return { authorization: { permit, signature: await Command.sign(permit, keys.privateKey) }, input }
     },
     async skip(permit: Command.Permit, connectionEpoch = 1, changes: Partial<Command.SkipPermit> = {}) {
+      const authorizedAt = Date.now()
       const proof: Command.SkipPermit = {
         schemaVersion: 1,
         purpose: "session-command-skip",
         command: permit,
         connectionEpoch,
-        authorizedAt: Date.now(),
-        deadline: Date.now() + 60_000,
+        authorizedAt,
+        deadline: authorizedAt + 60_000,
         ...changes,
       }
       return { permit: proof, signature: await Command.signSkip(proof, keys.privateKey) }
@@ -1305,7 +1307,15 @@ test("explicit skip receipts close ordered gaps and fence late frames without pr
       attemptID: "second-attempt",
       admissionID: "second-admission",
     })
-    const skippedSecond = await service.skip(second.authorization.permit, 2)
+    const skipAuthorizedAt = Date.now()
+    let skipClockTick = 0
+    let pendingSkippedSecond: ReturnType<typeof service.skip>
+    {
+      using clock = spyOn(Date, "now").mockImplementation(() => skipAuthorizedAt + skipClockTick++)
+      pendingSkippedSecond = service.skip(second.authorization.permit, 2)
+    }
+    const skippedSecond = await pendingSkippedSecond
+    expect(skippedSecond.permit.deadline - skippedSecond.permit.authorizedAt).toBe(60_000)
     await expect(receiver.skip(skippedSecond)).rejects.toBeInstanceOf(OrganizationRuntimeError)
     expect((await receiver.input(second)).attempt).toMatchObject({ status: "rejected", reason: "SEQUENCE_GAP" })
     const skippedFirst = await service.skip(first.authorization.permit, 2)

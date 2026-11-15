@@ -31,6 +31,8 @@ When ready native capacity is a declared fixture input, await its original prepa
 
 For persisted cooldowns and retry deadlines, advance a controlled clock at the failure-response boundary and verify both the recorded timestamp and the exact policy duration. Cover second boundaries explicitly; an upper bound derived before asynchronous work must not replace the time at which the policy applies. Restore the clock even when an assertion fails.
 
+Derive a fixture's related authorization and deadline fields from one captured instant. Separate wall-clock reads can exceed a strict maximum lifetime by a millisecond. Advance the clock during construction to expose that boundary, then restore it before awaiting the real signature and receiver; keep the original policy limit.
+
 Live elapsed-time labels can advance across asynchronous browser or native IPC reads. Validate their format and compare before/after durations for monotonicity; reserve exact elapsed values for a controlled clock. Do not freeze a live clock's expected text or hide the boundary with retries.
 
 Computed durations from fractional monotonic timestamps can differ by floating-point rounding even with a controlled clock. Compare them with an explicit precision substantially tighter than the measured unit; retain exact checks for unchanged counters, revisions and directly sampled timestamps.
