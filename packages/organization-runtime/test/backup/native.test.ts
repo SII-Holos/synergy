@@ -54,9 +54,13 @@ import { FileAtomicWrite } from "@ericsanchezok/synergy-local-runtime/file/atomi
 import { WorkspaceCoordinator } from "@ericsanchezok/synergy-local-runtime/workspace/coordinator"
 import { OrganizationExecutionLeases } from "../../src/execution-leases"
 import { Session } from "@ericsanchezok/synergy-harness/session"
+import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/ledger"
 import { publishArtifactHistory, verifyArtifactHistory } from "../support/artifact-history"
+import { hostedCloudResourceFixture } from "../support/backup-cloud-resources"
+
+type CloudResources = Awaited<ReturnType<typeof hostedCloudResourceFixture>>
 
 const keys = {
   async current() {
@@ -112,8 +116,18 @@ async function openHostedFixture(input: Parameters<typeof openHostedRuntime>[0])
   return runtime
 }
 
-async function source(production = false, withTask = false, options: { warmWorker?: boolean } = {}) {
-  const service = await fixture(production && withTask ? { connections: { heartbeatMs: 25 } } : {})
+async function source(
+  production = false,
+  withTask = false,
+  options: { warmWorker?: boolean; cloud?: CloudResources["sourceCloud"] } = {},
+) {
+  const service = await fixture(
+    production && withTask
+      ? { connections: { heartbeatMs: 25 }, ...(options.cloud ? { cloud: options.cloud } : {}) }
+      : options.cloud
+        ? { cloud: options.cloud }
+        : {},
+  )
   const workspaceCoordinator = new WorkspaceCoordinator({ directory: path.join(service.root, "native-coordination") })
   try {
     const home = await prepareHostedHome({
@@ -657,7 +671,12 @@ test("cohort capture retains Hosted holds until the original Service release reo
   }
 }, 30_000)
 
-async function recoverHostedWriter(withTask = false, late?: "session" | "input", artifact?: "published" | "late") {
+async function recoverHostedWriter(
+  withTask = false,
+  late?: "session" | "input",
+  artifact?: "published" | "late",
+  cloud?: CloudResources,
+) {
   const started = performance.now()
   const phase = (stage: string) => {
     if (!withTask || late === "session" || artifact === "late") return
@@ -674,7 +693,10 @@ async function recoverHostedWriter(withTask = false, late?: "session" | "input",
   }
   phase("entered")
   using sourceScopeEnd = { [Symbol.dispose]: () => phase("source-scope-end") }
-  await using selected = await source(true, withTask, { warmWorker: withTask })
+  await using selected = await source(true, withTask, {
+    warmWorker: withTask,
+    ...(cloud ? { cloud: cloud.sourceCloud } : {}),
+  })
   using sourceDisposal = { [Symbol.dispose]: () => phase("source-disposal-enter") }
   phase("source-ready")
   using taskScopeEnd = { [Symbol.dispose]: () => phase("task-scope-end") }
@@ -684,6 +706,12 @@ async function recoverHostedWriter(withTask = false, late?: "session" | "input",
   const artifactHistory = artifact && task ? await publishArtifactHistory(selected.service, task) : undefined
   const originalCalls = task?.calls.length ?? 0
   if (task && !late) await verifyCompletedTaskHistory(selected, task)
+  if (cloud && !task) throw new Error("Selected cloud recovery requires its original completed Hosted task")
+  const cloudSelection = cloud && task ? await cloud.select(selected.service, task) : undefined
+  if (cloud && task) {
+    expect(task.calls).toHaveLength(originalCalls)
+    expect(await selected.runtime.run(() => SessionManager.isRunning(task.sessionID))).toBe(false)
+  }
   const originalInput = task
     ? await selected.runtime.run(() =>
         MessageV2.get({ sessionID: task.sessionID, messageID: task.accepted.effect.messageID }),
@@ -718,13 +746,30 @@ async function recoverHostedWriter(withTask = false, late?: "session" | "input",
   )
   await using target = await openOrganizationRecovery({
     home: path.join(await fs.realpath(selected.service.root), "retirement-service-target"),
+    ...(cloud ? { cloud: cloud.targetCloud } : {}),
   })
   if (!inventory.native) throw new Error("Missing actual original service native material")
   const serviceBase = path.join(opened, "namespaces", "0000000000000000")
+  const serviceResources = inventory.resources && {
+    directory: path.join(serviceBase, "resources"),
+    expected: inventory.resources,
+    namespaceDirectory: path.join(serviceBase, "records"),
+  }
+  if (cloud) {
+    expect(report).toMatchObject({ namespaceCheckpointsComplete: true, namespaces: 2 })
+    expect(serviceResources).toBeDefined()
+    const hostedInventory = Cohort.NamespaceInventory.parse(
+      await Bun.file(path.join(opened, "namespaces", "0000000000000001", "namespace.json")).json(),
+    )
+    expect(hostedInventory.identity).toMatchObject({ kind: "hosted", runtimeID: selected.registration.runtimeID })
+    expect(hostedInventory.hostedNative).toBeDefined()
+    expect(hostedInventory.segment.namespace).toBeDefined()
+  }
   const request = OrganizationServiceNative.installationRequest({
     restoreID: "hosted-retirement-original-target",
     source: inventory.namespace,
     expected: inventory.native,
+    ...(inventory.resources ? { resources: inventory.resources } : {}),
     snapshot: inventory.segment.namespace,
     cohort: {
       archiveID: report.archiveID,
@@ -743,6 +788,7 @@ async function recoverHostedWriter(withTask = false, late?: "session" | "input",
           directory: path.join(serviceBase, "native"),
           expected: inventory.native!,
           source: inventory.namespace,
+          ...(serviceResources ? { resources: serviceResources } : {}),
           keys,
         },
         (native) =>
@@ -803,6 +849,7 @@ async function recoverHostedWriter(withTask = false, late?: "session" | "input",
             directory: path.join(serviceBase, "native"),
             expected: inventory.native!,
             source: inventory.namespace,
+            ...(serviceResources ? { resources: serviceResources } : {}),
             keys,
           },
           async (native) => {
@@ -1090,10 +1137,12 @@ async function recoverHostedWriter(withTask = false, late?: "session" | "input",
   phase("target-closed")
   await selected.service.service.close()
   phase("source-service-closed")
+  if (cloud) await cloud.removeOriginalObjects()
   await selected.service.stopListener()
   phase("source-listener-stopped")
   const normalService = await openOrganizationService({
     home: path.join(await fs.realpath(selected.service.root), "retirement-service-target"),
+    ...(cloud ? { cloud: cloud.targetCloud } : {}),
   })
   phase("restored-service-opened")
   await using serviceCleanup = {
@@ -1182,6 +1231,12 @@ async function recoverHostedWriter(withTask = false, late?: "session" | "input",
     expect(input.info.actor).toEqual(originalInput.info.actor)
     expect(task.calls.length).toBe(originalCalls)
   }
+  if (cloud) {
+    if (!cloudSelection || !task) throw new Error("Missing original selected cloud recovery history")
+    await cloud.verify(selected.service, normalService, cloudSelection)
+    expect(await ordinary.run(() => SessionManager.isRunning(task.sessionID))).toBe(false)
+    expect(task.calls.length).toBe(originalCalls)
+  }
   phase("all-assertions-complete")
 }
 
@@ -1196,6 +1251,11 @@ test(
   () => recoverHostedWriter(true),
   60_000,
 )
+
+test("a Hosted Session restores its selected cloud resources and native history together without replay or compute", async () => {
+  await using cloud = await hostedCloudResourceFixture()
+  await recoverHostedWriter(true, undefined, undefined, cloud)
+}, 60_000)
 
 test(
   "published Artifact versions and bytes survive actual Hosted task recovery",

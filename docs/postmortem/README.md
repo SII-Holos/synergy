@@ -19,6 +19,10 @@
 
 ## Index
 
+- [0221](0221-cloud-catalog-routes-forwarded-resource-selectors-into-strict-pages.md)
+
+- [0220](0220-selected-cloud-session-history-lacked-recovery-owners.md)
+
 - [0219](0219-cold-derived-pages-repeated-tree-cleanup.md)
 
 - [0218](0218-dns-positive-waited-for-pending-sibling.md)

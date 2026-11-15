@@ -11,6 +11,7 @@ import { OrganizationRecord as Record } from "./storage/records"
 import { OrganizationStoragePath as Keys } from "./storage/path"
 import { OrganizationAuthorityHistory as History } from "./authority-history"
 import { OrganizationCloud as Cloud } from "./cloud"
+import { OrganizationCloudResourceHistory } from "./cloud-history"
 
 export namespace OrganizationSessionResources {
   function validateContract(session: Record.SessionDirectory, contract: Record.SessionResources) {
@@ -29,8 +30,9 @@ export namespace OrganizationSessionResources {
       source.read(Record.SessionResources, Keys.sessionResources(session.sessionID)),
     )
     const selection = contract.selection
-    if (!selection || selection.infrastructure.workspace || selection.infrastructure.environment)
+    if (!selection)
       fail("RESOURCE_UNAVAILABLE", "Historical Session infrastructure requires its original physical owner")
+    OrganizationCloudResourceHistory.infrastructure(source, session.orgID, session.projectID, selection.infrastructure)
     for (const role of Execution.resourceRoles(selection)) {
       const resource = source.read(Record.Resource, Keys.resource(session.orgID, role.resourceID))
       if (

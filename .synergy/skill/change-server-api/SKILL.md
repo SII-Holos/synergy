@@ -34,6 +34,8 @@ For authoritative machine observations, trace every writer into the ledger, incl
 
 1. Validate path, query, form, and body input with precise Zod schemas.
    Numeric URL query fields arrive as strings even when generated SDK parameters are numbers. Coerce only their owning query schema, preserve integer/range/safe-value checks, and test generated HTTP continuation plus malformed, fractional, negative and unsafe values. Keep canonical body/response number codecs strict.
+
+   When a route query extends a strict domain input with resource or owner selectors, destructure the validated query and pass each owner only its declared fields. Keep both schemas strict. Exercise a valid generated HTTP call as well as malformed query and current-authorization refusal; direct domain pagination does not test this projection.
 2. Add `describeRoute` metadata, stable `operationId`, response schemas, and structured error responses. Add `.meta({ ref: "TypeName" })` for reusable API-visible schemas.
 
    For routes mounted in Server, a custom HTTP 503 schema must union its domain errors with the public Server `RuntimeShuttingDownError`; the assembler only adds shutdown metadata when 503 is absent. Verify the mounted operation retains both variants, including when an optional owner supplies its route.

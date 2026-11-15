@@ -14,6 +14,8 @@ Extend the existing resource configuration and account/project grant matrix with
 
 Creation binds logical resources without allocating compute. Bounded file reads use current resource grants. File writes prepare immutable objects outside retryable transactions, then recheck current authorization, compare the canonical Workspace revision, and publish its head with the stable operation receipt in one transaction. A repeated operation returns its original receipt after reauthorization. An occupied identity with different input fails. Active mounts retain the existing Workspace owner's exclusion and cannot be overwritten through dormant file APIs.
 
+Workspace and Environment catalog routes keep the validated `resourceID` selector separate from the strict domain page. They pass only `limit` and `cursor` to the existing page reader after HTTP validation. The resource identifier still reaches current project/resource authorization separately. The public path, query schema, operation IDs, response schemas and generated SDK signatures remain unchanged.
+
 ## Alternatives considered
 
 **Build a separate cloud filesystem.** This would duplicate path, content and lifecycle rules.
@@ -22,6 +24,10 @@ Creation binds logical resources without allocating compute. Bounded file reads 
 
 **Carry infrastructure credentials in execution descriptors.** This would widen the trusted boundary to Agent workers.
 
+**Pass the whole validated query to the page reader or relax its schema.** A route-valid resource selector is not a page field. Forwarding it makes every legitimate catalog query fail strict domain validation; stripping arbitrary unknown domain fields would weaken a separate caller boundary.
+
 ## Consequences
 
 Cloud catalog and file APIs reuse canonical owners and the existing grant matrix. Current authorization gates receipt reads as well as file access. Uploaded immutable objects can remain unreferenced after a failed CAS; they do not publish a file change. Remote execution and Session handoff are separate protocols and do not become authorized by creating a cloud locator.
+
+The [catalog query incident](../../../postmortem/0221-cloud-catalog-routes-forwarded-resource-selectors-into-strict-pages.md) records the HTTP regression and its verification.

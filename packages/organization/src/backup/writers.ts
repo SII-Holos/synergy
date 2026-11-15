@@ -135,8 +135,8 @@ function sourceResource(selected: Inventory, orgID: string, id: string) {
     blocked("external resource owner")
   return resource
 }
-function selection(selected: Inventory, orgID: string, value: Execution.Selection) {
-  if (value.infrastructure.workspace || value.infrastructure.environment) blocked("Session infrastructure")
+function selection(selected: Inventory, orgID: string, projectID: string, value: Execution.Selection) {
+  OrganizationCloudResourceHistory.infrastructure(historicalReader(selected), orgID, projectID, value.infrastructure)
   for (const role of Execution.resourceRoles(value))
     if (Resource.kind(sourceResource(selected, orgID, role.resourceID).configuration) !== role.kind)
       blocked("resource selection owner")
@@ -245,7 +245,7 @@ async function classify(selected: Inventory, key: string[], value: unknown): Pro
       blocked("Session resource owner")
     if (hash(resources) !== hash(OrganizationSessionResources.historical(historicalReader(selected), session)))
       blocked("Session resource contract changed outside its original owner")
-    selection(selected, resources.orgID, resources.selection)
+    selection(selected, resources.orgID, session.projectID, resources.selection)
     return "exact"
   }
   if (kind === "resources") {
@@ -325,7 +325,7 @@ async function classify(selected: Inventory, key: string[], value: unknown): Pro
           : Record.RootGrant.parse(value).grantID
     const grant = await OrganizationExecutionGrants.closedHistory(history, grantID)
     sourceSession(selected, grant.sessionID)
-    selection(selected, grant.orgID, grant.selection)
+    selection(selected, grant.orgID, grant.projectID, grant.selection)
     await OrganizationGatewayHistory.grant(history, grant)
     return "exact"
   }

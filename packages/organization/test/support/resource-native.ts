@@ -2,7 +2,7 @@ import { expect } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { OrganizationCloudProtocol as Cloud } from "@ericsanchezok/synergy-organization-protocol"
-import type { OrganizationCloudOptions } from "../../src/cloud"
+import { resourcePorts } from "./resource-native-ports"
 import { fixture } from "./organization"
 
 export async function resourceFixture() {
@@ -10,46 +10,9 @@ export async function resourceFixture() {
   const original = path.join(root, "source-objects"),
     received = path.join(root, "target-objects")
   await Promise.all([fs.mkdir(original), fs.mkdir(received)])
-  let allocations = 0
-  let losePut: Error | undefined
-  const cloud = (directory: string): OrganizationCloudOptions => ({
-    blobStores: {
-      files: {
-        async put(hash, bytes) {
-          await fs.writeFile(path.join(directory, hash), bytes)
-          if (directory === received && losePut) {
-            const error = losePut
-            losePut = undefined
-            throw error
-          }
-        },
-        async get(hash, maximum) {
-          const bytes = await fs.readFile(path.join(directory, hash))
-          if (bytes.byteLength > maximum) throw new Error("Object exceeds its frame")
-          return bytes
-        },
-      },
-    },
-    workspaceProfiles: { files: { blobStore: "files" } },
-    environmentProviders: [
-      {
-        id: "idle-provider",
-        async allocate() {
-          allocations++
-          throw new Error("Backup must not allocate compute")
-        },
-        async inspect() {
-          return { state: "unknown" }
-        },
-        async deallocate() {
-          throw new Error("No allocation exists")
-        },
-      },
-    ],
-    environmentProfiles: { compute: { provider: "idle-provider", spec: {} } },
-  })
+  const ports = resourcePorts(original, received)
   let selected: Awaited<ReturnType<typeof fixture>> | undefined
-  const sourceCloud = cloud(original)
+  const sourceCloud = ports.sourceCloud
   try {
     selected = await fixture(undefined, { cloud: sourceCloud })
     const owner = await selected.initialize()
@@ -126,13 +89,13 @@ export async function resourceFixture() {
       workspace: current,
       environment,
       versions,
-      targetCloud: cloud(received),
+      targetCloud: ports.targetCloud,
       sourceCloud,
       get allocations() {
-        return allocations
+        return ports.allocations
       },
       loseNextPut(error: Error) {
-        losePut = error
+        ports.loseNextPut(error)
       },
       async [Symbol.asyncDispose]() {
         await source[Symbol.asyncDispose]()

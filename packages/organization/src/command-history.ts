@@ -46,7 +46,12 @@ export namespace OrganizationCommandHistory {
       signing.deploymentIncarnation !== permit.deploymentIncarnation ||
       signing.keyID !== permit.keyID ||
       !(await Command.verify(permit, attempt.authorization.signature, signing.publicKey)) ||
-      (accepted.effect.kind !== "session" && (accepted.effect.kind !== "inbox" || accepted.effect.mode !== "task"))
+      (accepted.effect.kind !== "session" &&
+        (accepted.effect.kind !== "inbox" || accepted.effect.mode !== "task") &&
+        (permit.operation !== "pause" ||
+          accepted.effect.kind !== "control" ||
+          accepted.effect.operation !== "pause" ||
+          permit.payloadHash !== (await Command.digestControl(Command.controlRequest(permit, { operation: "pause" })))))
     )
       fail("PROTOCOL_MISMATCH", "Closed command history lacks its original accepted authority")
     return accepted

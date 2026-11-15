@@ -38,15 +38,12 @@ export function cloudRoutes(publicOrigin?: string) {
       ),
       validator("param", z.strictObject({ projectID: Identity.ID }), validation),
       validator("query", Identity.Page.extend({ resourceID: Identity.ID }), validation),
-      async (c) =>
-        c.json(
-          await OrganizationCloud.listWorkspaces(
-            credentials(c),
-            c.req.valid("param").projectID,
-            c.req.valid("query").resourceID,
-            c.req.valid("query"),
-          ),
-        ),
+      async (c) => {
+        const { resourceID, ...page } = c.req.valid("query")
+        return c.json(
+          await OrganizationCloud.listWorkspaces(credentials(c), c.req.valid("param").projectID, resourceID, page),
+        )
+      },
     )
     .post(
       "/cloud/workspaces/:workspaceID/read",
@@ -94,15 +91,12 @@ export function cloudRoutes(publicOrigin?: string) {
       ),
       validator("param", z.strictObject({ projectID: Identity.ID }), validation),
       validator("query", Identity.Page.extend({ resourceID: Identity.ID }), validation),
-      async (c) =>
-        c.json(
-          await OrganizationCloud.listEnvironments(
-            credentials(c),
-            c.req.valid("param").projectID,
-            c.req.valid("query").resourceID,
-            c.req.valid("query"),
-          ),
-        ),
+      async (c) => {
+        const { resourceID, ...page } = c.req.valid("query")
+        return c.json(
+          await OrganizationCloud.listEnvironments(credentials(c), c.req.valid("param").projectID, resourceID, page),
+        )
+      },
     )
     .get(
       "/cloud/environments/:environmentID",

@@ -11,6 +11,7 @@ import {
   OrganizationCloudProtocol as Cloud,
   OrganizationProtocol,
   OrganizationIdentity as Identity,
+  OrganizationExecutionProtocol as Execution,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { OrganizationRecord as Record } from "./storage/records"
 import { OrganizationStoragePath as Keys } from "./storage/path"
@@ -112,6 +113,29 @@ export namespace OrganizationCloudResourceHistory {
     )
       fail("requires its genuinely idle Environment without retained Uses")
     return value
+  }
+  export function infrastructure(reader: Reader, orgID: string, projectID: string, value: Execution.Infrastructure) {
+    const selected = [
+      ...(value.workspace
+        ? [{ kind: "workspaces" as const, resourceID: value.workspace.resourceID, id: value.workspace.workspaceID }]
+        : []),
+      ...(value.environment
+        ? [
+            {
+              kind: "environments" as const,
+              resourceID: value.environment.resourceID,
+              id: value.environment.environmentID,
+            },
+          ]
+        : []),
+    ]
+    for (const ref of selected) {
+      const original = locator(reader, ref.kind, ref.id)
+      if (original.orgID !== orgID || original.projectID !== projectID || original.resourceID !== ref.resourceID)
+        fail("Session infrastructure has another original resource or project")
+      if (ref.kind === "workspaces") workspace(reader, ref.id)
+      else environment(reader, ref.id)
+    }
   }
   export function accept(reader: Reader, accept: (key: string[]) => void) {
     EnvironmentExecutionOriginIndex.history(reader, accept)
