@@ -5,7 +5,6 @@ import fs from "node:fs/promises"
 import path from "node:path"
 import { createHash } from "node:crypto"
 import { z } from "zod"
-import { ObservabilityRedaction } from "@ericsanchezok/synergy-harness/observability/redaction"
 import { createOrganizationClient } from "@ericsanchezok/synergy-sdk/organization"
 import { openOrganizationService } from "@ericsanchezok/synergy-organization/service"
 import {
@@ -17,6 +16,14 @@ import {
 import { Action, Task, Outcome, InitialBytes, LinuxBytes, createPeer, json } from "./support/cross-os-peer"
 import { createHandoffCompletion } from "./support/handoff-completion"
 import { observeDNSAfterFailedHealth } from "./support/cross-os-dns"
+import {
+  safeCrossOSTransportText as safeTransportText,
+  safeCrossOSHeaderFailure,
+  recordCrossOSHeaderFailure,
+  isOriginalHeaderTimeout,
+  type HeaderFailureSample,
+  type HeaderFailureKindSample,
+} from "./support/cross-os-failures"
 import {
   Bootstrap,
   PublicPeer,
@@ -33,8 +40,6 @@ import {
 } from "./support/cross-os-transport"
 
 const role = process.env.SYNERGY_CROSS_OS_ROLE
-
-type HeaderFailure = { name: string; code?: string; message?: string; cause?: HeaderFailure }
 
 const dnsCacheKeys = ["cacheHitsCompleted", "cacheHitsInflight", "cacheMisses", "size", "errors", "totalCount"] as const
 type DNSCacheCounters = Pick<ReturnType<typeof dns.getCacheStats>, (typeof dnsCacheKeys)[number]>
@@ -98,13 +103,8 @@ const transportFacts = {
     nonOKResponses: 0,
     originHandled: 0,
     lastHeaderFailure: undefined as ReturnType<typeof safeFailure> | undefined,
-    firstHeaderFailures: [] as Array<{
-      observedAtMs: number
-      elapsedBeforeFailureMs: number
-      fetchInvoked: boolean
-      dnsCache: DNSCacheObservation
-      failure: HeaderFailure
-    }>,
+    firstHeaderFailures: [] as HeaderFailureSample<DNSCacheObservation>[],
+    firstFailureKinds: [] as HeaderFailureKindSample<DNSCacheObservation>[],
     failureKinds: {} as Record<string, number>,
   },
 }
@@ -149,6 +149,7 @@ function transportSnapshot() {
       ...transportFacts.health,
       dnsCache: { ...transportFacts.health.dnsCache },
       firstHeaderFailures: [...transportFacts.health.firstHeaderFailures],
+      firstFailureKinds: [...transportFacts.health.firstFailureKinds],
       failureKinds: { ...transportFacts.health.failureKinds },
     },
     environmentPresence: Object.fromEntries(
@@ -373,41 +374,6 @@ async function tunnel(directory: string, port: number) {
   }
 }
 
-function safeTransportText(value: string) {
-  return ObservabilityRedaction.text(value.slice(0, 2048), 512)
-    .replace(/https?:\/\/[^\s"'<>]+/gi, "[url]")
-    .replace(/\/(?:Users\/runner|home\/runner|private\/var\/folders|var\/folders|tmp)\/[^\s"'<>]+/g, "[runner-path]")
-    .replace(/\b(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?\b/g, "[ip]")
-    .slice(0, 512)
-}
-function safeHeaderFailure(value: unknown, depth = 0): HeaderFailure {
-  function field(name: string, inherited = false): unknown {
-    let current = value
-    try {
-      for (let index = 0; index < (inherited ? 4 : 1); index++) {
-        if (typeof current !== "object" || current === null) return
-        const descriptor = Object.getOwnPropertyDescriptor(current, name)
-        if (descriptor) return "value" in descriptor ? descriptor.value : undefined
-        current = Object.getPrototypeOf(current)
-      }
-    } catch {}
-  }
-  const name = field("name", true),
-    code = field("code"),
-    message = typeof value === "string" ? value : field("message"),
-    cause = field("cause")
-  return {
-    name:
-      typeof name === "string" && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(name) && safeTransportText(name) === name
-        ? name
-        : "UnknownError",
-    ...(typeof code === "string" && /^[A-Z][A-Z0-9_]{0,63}$/.test(code) && safeTransportText(code) === code
-      ? { code }
-      : {}),
-    ...(typeof message === "string" ? { message: safeTransportText(message) } : {}),
-    ...(cause === undefined || depth >= 2 ? {} : { cause: safeHeaderFailure(cause, depth + 1) }),
-  }
-}
 let setupStage: string | undefined
 let setupHTTPStatus: number | undefined
 async function setupReport(
@@ -485,6 +451,7 @@ async function host() {
   await probe.stop(true)
   const tunnelStarted = performance.now()
   const connection = await setup("darwin-tunnel-bootstrap", () => tunnel(root, port))
+  const capturedHostname = new URL(connection.origin).hostname
   const cleanups: Array<() => Promise<unknown>> = [() => connection.close()]
   const costs: Record<string, number> = {
     artifactWaitMs,
@@ -663,13 +630,15 @@ async function host() {
           const requestStarted = performance.now()
           let headersReceived = false
           let fetchInvoked = false
+          let requestTimeout: AbortSignal | undefined
           try {
             bootstrapSignal.throwIfAborted()
             await setupHTTP("darwin-public-health-headers", requestStarted)
             transportFacts.health.attempts++
             fetchInvoked = true
+            requestTimeout = AbortSignal.timeout(5000)
             const response = await fetch(connection.origin + "/__cross-os-health", {
-              signal: AbortSignal.any([bootstrapSignal, AbortSignal.timeout(5000)]),
+              signal: AbortSignal.any([bootstrapSignal, requestTimeout]),
             })
             headersReceived = true
             transportFacts.health.headerResponses++
@@ -687,30 +656,18 @@ async function host() {
             if (!headersReceived) {
               transportFacts.health.headerFailures++
               transportFacts.health.lastHeaderFailure = safeFailure(error)
-              const failure = safeHeaderFailure(error)
+              const failure = safeCrossOSHeaderFailure(error, capturedHostname)
               if (fetchInvoked && [failure.code, failure.cause?.code, failure.cause?.cause?.code].includes("ENOTFOUND"))
                 transportFacts.health.originalENOTFOUND++
-              if (transportFacts.health.firstHeaderFailures.length < 4)
-                transportFacts.health.firstHeaderFailures.push({
-                  observedAtMs: performance.now(),
-                  elapsedBeforeFailureMs: performance.now() - requestStarted,
-                  fetchInvoked,
-                  dnsCache: observeDNSCache(),
-                  failure,
-                })
-              const kind = [
-                failure.name,
-                failure.code ?? "no-code",
-                failure.cause?.name ?? "no-cause",
-                failure.cause?.code ?? "no-code",
-              ].join(":")
-              const category =
-                Object.hasOwn(transportFacts.health.failureKinds, kind) ||
-                Object.keys(transportFacts.health.failureKinds).length < 16
-                  ? kind
-                  : "other"
-              transportFacts.health.failureKinds[category] = (transportFacts.health.failureKinds[category] ?? 0) + 1
-              if (error instanceof Error && error.name === "TimeoutError") transportFacts.health.headerTimeouts++
+              recordCrossOSHeaderFailure(transportFacts.health, failure, () => ({
+                attempt: fetchInvoked ? transportFacts.health.attempts : null,
+                observedAtMs: performance.now(),
+                elapsedBeforeFailureMs: performance.now() - requestStarted,
+                fetchInvoked,
+                dnsCache: observeDNSCache(),
+              }))
+              if (isOriginalHeaderTimeout(error, failure, [bootstrapSignal, requestTimeout]))
+                transportFacts.health.headerTimeouts++
               if (bootstrapSignal.aborted) transportFacts.health.budgetAborts++
             }
             if (bootstrapSignal.aborted) throw error

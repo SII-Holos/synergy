@@ -1,4 +1,13 @@
 import { expect, test } from "bun:test"
+import { OrganizationProtocol } from "@ericsanchezok/synergy-organization-protocol"
+import {
+  safeCrossOSTransportText,
+  safeCrossOSHeaderFailure,
+  recordCrossOSHeaderFailure,
+  isOriginalHeaderTimeout,
+  type HeaderFailureSample,
+  type HeaderFailureKindSample,
+} from "./support/cross-os-failures"
 import { readControlJSON, safeCrossOSFailure } from "./support/cross-os-transport"
 import { observeDNSAfterFailedHealth } from "./support/cross-os-dns"
 
@@ -266,4 +275,159 @@ test("cross-OS failed-health DNS reports cancellation failure without claiming s
   await Promise.allSettled(queries)
   expect(JSON.stringify(observed)).toBe(snapshot)
   expect(snapshot).not.toContain("private-")
+})
+
+test("cross-OS original header samples redact hostnames and retain only finite syscall, errno and hostname witnesses", () => {
+  const hostname = "synthetic-original.trycloudflare.com"
+  const other = "other.private.example"
+  const failure = Object.assign(new TypeError("native header failure"), {
+    code: "ECONNREFUSED",
+    syscall: "connect",
+    errno: -61,
+    hostname,
+    message: `connect ${hostname} [2001:db8::42]:443 192.0.2.31 https://${hostname}/private /home/runner/private-root/file authorization: Bearer private-credential`,
+    cause: Object.assign(new Error("original resolver"), {
+      code: "ENOTFOUND",
+      syscall: "getaddrinfo",
+      errno: "EAI_NONAME",
+      hostname: other,
+      message: `getaddrinfo ENOTFOUND ${other}`,
+    }),
+  })
+  const observed = safeCrossOSHeaderFailure(failure, hostname)
+  for (const value of [hostname, other, "2001:db8", "192.0.2.31", "https://", "private-root", "private-credential"])
+    expect(JSON.stringify(observed)).not.toContain(value)
+  expect(observed).toMatchObject({
+    name: "TypeError",
+    code: "ECONNREFUSED",
+    syscall: "connect",
+    errnoCategory: "negative-integer",
+    hostnameMatches: true,
+    cause: { code: "ENOTFOUND", syscall: "getaddrinfo", errnoCategory: "EAI_NONAME", hostnameMatches: false },
+  })
+  const nearBoundary = safeCrossOSTransportText("x".repeat(490) + " " + hostname + " tail")
+  expect(nearBoundary).not.toContain("synthetic-original")
+  expect(nearBoundary.length).toBeLessThanOrEqual(512)
+  expect(safeCrossOSTransportText("bare " + hostname)).not.toContain(hostname)
+  const collapsedBoundary = safeCrossOSTransportText("/home/runner/" + "x".repeat(2025) + " " + hostname + " tail")
+  expect(collapsedBoundary).not.toContain("synthetic")
+  expect(collapsedBoundary).not.toContain("runner/")
+  expect(collapsedBoundary.length).toBeLessThanOrEqual(512)
+  const expandedBoundary = safeCrossOSTransportText(
+    "Bearer a ".repeat(4) + "/home/runner/" + "x".repeat(1953) + " " + hostname + " end",
+  )
+  expect(expandedBoundary).not.toContain("synthetic")
+  expect(expandedBoundary).not.toContain("Bearer a")
+  expect(expandedBoundary).not.toContain("runner/")
+  expect(expandedBoundary.length).toBeLessThanOrEqual(512)
+  const secret = "sk-abc_def.private.example"
+  const secretHost = "def.private.example"
+  const mixed = Object.assign(
+    new Error(`standalone ${secret} Bearer ${secret} password=${secret} ${secretHost} /home/runner/${secret}`),
+    { hostname: secretHost },
+  )
+  const mixedObserved = safeCrossOSHeaderFailure(mixed, hostname)
+  for (const value of [secret, "sk-abc_", secretHost, "runner/"])
+    expect(JSON.stringify(mixedObserved)).not.toContain(value)
+  expect(mixedObserved.hostnameMatches).toBe(false)
+  const unknown = safeCrossOSHeaderFailure(
+    { name: "PRIVATE_NAME", code: "PRIVATE_CODE", syscall: "PRIVATE_SYSCALL", errno: "PRIVATE_ERRNO" },
+    hostname,
+  )
+  expect(unknown).toEqual({ name: "UnknownError", syscall: "other", errnoCategory: "other-string" })
+})
+
+test("cross-OS original exception fields are observed without invoking accessors and causes remain bounded", async () => {
+  let getters = 0
+  const failure = new TypeError("native getter control")
+  Object.defineProperty(failure, "stack", { value: "TypeError: native getter control" })
+  for (const name of ["name", "code", "message", "syscall", "errno", "hostname", "cause", "address", "headers", "body"])
+    Object.defineProperty(failure, name, {
+      configurable: true,
+      get() {
+        getters++
+        throw new Error("private accessor must not run")
+      },
+    })
+  expect(safeCrossOSHeaderFailure(failure, "synthetic-original.trycloudflare.com")).toEqual({ name: "UnknownError" })
+  expect(getters).toBe(0)
+  const safe = safeCrossOSHeaderFailure(failure, "synthetic-original.trycloudflare.com")
+  expect(isOriginalHeaderTimeout(failure, safe, [AbortSignal.abort(new Error("different owned reason"))])).toBe(false)
+  expect(isOriginalHeaderTimeout(failure, safe, [AbortSignal.abort(failure)])).toBe(true)
+  const inactive = new AbortController()
+  expect(isOriginalHeaderTimeout(undefined, { name: "UnknownError" }, [inactive.signal, undefined])).toBe(false)
+  const timeout = AbortSignal.timeout(1)
+  await new Promise<void>((resolve) => {
+    if (timeout.aborted) resolve()
+    else timeout.addEventListener("abort", () => resolve(), { once: true })
+  })
+  const reason: unknown = timeout.reason
+  expect(
+    isOriginalHeaderTimeout(reason, safeCrossOSHeaderFailure(reason, "synthetic.trycloudflare.com"), [timeout]),
+  ).toBe(true)
+  expect(isOriginalHeaderTimeout(new Error("different failure"), { name: "Error" }, [timeout])).toBe(false)
+  expect(getters).toBe(0)
+  const deepest = Object.assign(new Error("deepest"), { cause: new Error("unretained private cause") })
+  const nested = Object.assign(new Error("middle"), { cause: deepest })
+  const observed = safeCrossOSHeaderFailure(
+    Object.assign(new Error("outer"), { cause: nested }),
+    "synthetic.trycloudflare.com",
+  )
+  expect(observed.cause?.cause?.name).toBe("Error")
+  expect(observed.cause?.cause?.cause).toBeUndefined()
+  expect(JSON.stringify(observed)).not.toContain("unretained private cause")
+})
+
+test("cross-OS first-kind samples survive exhausted first-four slots while original counters and finite limits remain", () => {
+  const hostname = "synthetic-original.trycloudflare.com"
+  type Cache = { available: false }
+  const facts = {
+    firstHeaderFailures: [] as HeaderFailureSample<Cache>[],
+    firstFailureKinds: [] as HeaderFailureKindSample<Cache>[],
+    failureKinds: {} as Record<string, number>,
+  }
+  let reads = 0
+  function record(code: string, attempt: number, syscall = "getaddrinfo") {
+    const failure = Object.assign(new TypeError("original failure for " + hostname), { code, syscall, hostname })
+    recordCrossOSHeaderFailure(facts, safeCrossOSHeaderFailure(failure, hostname), () => {
+      if (attempt <= 4) {
+        expect(facts.failureKinds["TypeError:ENOTFOUND:no-cause:no-code"] ?? 0).toBe(attempt - 1)
+        expect(facts.firstHeaderFailures).toHaveLength(attempt - 1)
+      }
+      reads++
+      return {
+        attempt,
+        observedAtMs: 100 + attempt * 10,
+        elapsedBeforeFailureMs: 2,
+        fetchInvoked: true,
+        dnsCache: { available: false },
+      }
+    })
+  }
+  for (let attempt = 1; attempt <= 4; attempt++) record("ENOTFOUND", attempt)
+  record("ECONNREFUSED", 5, "connect")
+  record("ECONNREFUSED", 6, "connect")
+  expect(facts.firstHeaderFailures.map((sample) => sample.attempt)).toEqual([1, 2, 3, 4])
+  expect(facts.firstFailureKinds.map((sample) => sample.attempt)).toEqual([1, 5])
+  expect(facts.firstFailureKinds[1]).toMatchObject({
+    observedAtMs: 150,
+    failure: { code: "ECONNREFUSED", syscall: "connect", hostnameMatches: true },
+  })
+  expect(Object.values(facts.failureKinds)).toEqual([4, 2])
+  expect(reads).toBe(5)
+  for (const [index, code] of OrganizationProtocol.ErrorCode.options.entries()) record(code, index + 7)
+  record("ENOTFOUND", 100)
+  const counters = Object.keys(facts.failureKinds)
+  expect(counters.slice(0, 2)).toEqual([
+    "TypeError:ENOTFOUND:no-cause:no-code",
+    "TypeError:ECONNREFUSED:no-cause:no-code",
+  ])
+  expect(facts.failureKinds[counters[0]]).toBe(5)
+  expect(facts.firstFailureKinds).toHaveLength(16)
+  expect(counters).toHaveLength(17)
+  expect(facts.failureKinds.other).toBeGreaterThan(0)
+  expect(facts.firstHeaderFailures).toHaveLength(4)
+  expect(facts.firstFailureKinds[0].attempt).toBe(1)
+  expect(reads).toBeLessThanOrEqual(20)
+  expect(JSON.stringify(facts)).not.toContain(hostname)
 })
