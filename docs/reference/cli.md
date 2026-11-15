@@ -34,7 +34,7 @@ Generated from the core and product CLI catalogs and explicit command contributi
 | `migration` | manage schema and data migrations |
 | `models` | list all available models |
 | `org` | initialize, administer or serve a dedicated organization |
-| `org-runtime` | register, serve or clean up an independent organization Runtime |
+| `org-runtime` | register, serve, upgrade or clean up an independent organization Runtime |
 | `plugin` | install, remove, update, and inspect plugins |
 | `remove` | remove explicitly installed packages and unused dependencies |
 | `secrets` | manage the secret vault |
@@ -776,7 +776,7 @@ explicitly advance an existing Service Home reader and release its native mainte
 
 ## org-runtime
 
-register, serve or clean up an independent organization Runtime
+register, serve, upgrade or clean up an independent organization Runtime
 
 
 ## org-runtime cleanup
@@ -827,6 +827,14 @@ serve an enrolled machine from a private stdin launch request
 | Option | Description |
 | --- | --- |
 | `--kind` | machine identity kind of the selected dedicated Home |
+
+## org-runtime upgrade
+
+explicitly advance an enrolled Runtime Home reader under native maintenance; print JSON metadata
+
+| Option | Description |
+| --- | --- |
+| `--request-id` (string) | stable identifier for this exact Home reader upgrade and its retries |
 
 ## plugin
 

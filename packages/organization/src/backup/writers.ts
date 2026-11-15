@@ -1,3 +1,4 @@
+import { OrganizationQueuedExecutionHistory as QueuedHistory } from "./queued-history"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { AuthorityJournal } from "@ericsanchezok/synergy-harness/storage/authority-journal"
 import { RuntimeMaintenance } from "@ericsanchezok/synergy-harness/storage/runtime-maintenance"
@@ -57,6 +58,7 @@ type Inventory = {
   prepared?: StorageCheckpoint.PreparedArtifacts
   historyComplete?: boolean
   publicationIncarnation?: string
+  queued?: QueuedHistory.Facts
 }
 type HistoryIndex = Pick<Inventory, "database" | "assertTarget" | "historyComplete">
 type Frame = Inventory & { target: Reference; namespaceHash: string }
@@ -116,13 +118,12 @@ function sourceRuntime(selected: Inventory, id: string) {
 function sourceSession(selected: Inventory, id: string) {
   const session = sourceValue(selected, Record.SessionDirectory, Keys.session(id))
   const runtime = sourceRuntime(selected, session.driverRuntimeID)
-  if (
-    session.sessionID !== id ||
-    session.orgID !== runtime.orgID ||
-    session.handoffID ||
-    session.retainedExecutionGrants !== 0
-  )
+  if (session.sessionID !== id || session.orgID !== runtime.orgID || session.handoffID)
     blocked("unreconciled Session binding or retained execution")
+  if (session.retainedExecutionGrants !== 0) {
+    if (!selected.queued) blocked("unreconciled Session binding or retained execution")
+    QueuedHistory.assertSession(historicalReader(selected), session, selected.queued)
+  }
   if (session.resourceIDs.length) OrganizationSessionResources.historical(historicalReader(selected), session)
   return session
 }
@@ -157,7 +158,7 @@ async function classify(selected: Inventory, key: string[], value: unknown): Pro
   const [root, kind] = key
   if (root === "organization-recovery" && kind === "publication") {
     if (selected.target && key[2] === selected.target.installationID) return "metadata"
-    PublicationRecords.historical(historicalReader(selected), key, value)
+    await PublicationRecords.historical(historicalReader(selected), key, value)
     return "exact"
   }
   if (root !== "organization") {
@@ -330,6 +331,12 @@ async function classify(selected: Inventory, key: string[], value: unknown): Pro
       const row = history.read(OrganizationHandoffRecord.RawStored, ["organization", "handoffs", handoffID])
       sourceSession(selected, row.sessionID)
     } else if (key[2]) sourceSession(selected, key[2])
+    return "exact"
+  }
+  const queued = selected.queued && QueuedHistory.record(history, key, value, selected.queued)
+  if (queued) {
+    sourceSession(selected, queued.sessionID)
+    selection(selected, queued.orgID, queued.projectID, queued.selection)
     return "exact"
   }
   const closed = await OrganizationExecutionGrants.closedRecordHistory(history, key, value)
@@ -604,6 +611,7 @@ export namespace OrganizationRecoveryWriters {
     target: Reference
     base: StorageCheckpoint.Manifest
     sources: readonly NamespaceRetirement.Inspection[]
+    queued?: readonly QueuedHistory.Source[]
     namespace: { directory: string; expected: StorageCheckpoint.Manifest }
     keys: VaultKeyProvider
     signal?: AbortSignal
@@ -830,6 +838,14 @@ export namespace OrganizationRecoveryWriters {
           yield* StorageCheckpoint.streamArtifact({ directory: namespace.directory, location: row, signal })
         })(),
       )
+      selected.queued = await QueuedHistory.inspect(
+        historicalReader(selected),
+        input.queued ?? [],
+        target,
+        sources,
+        kind === "publication",
+        assert,
+      )
       using rows = database.query<{ key: string; value: string }, []>("SELECT key,value FROM records ORDER BY key")
       using update = database.query("UPDATE records SET mode=? WHERE key=?")
       using accepted = database.query("INSERT OR IGNORE INTO history VALUES(?)")
@@ -908,7 +924,11 @@ export namespace OrganizationRecoveryWriters {
       const source = selected.sources.get(registration.runtimeID)
       if (!source) blocked("missing permanent Hosted source")
       sourceRuntime(selected, registration.runtimeID)
-      yield { sourceReferenceHash: hash(source.reference), registration }
+      yield {
+        sourceReferenceHash: hash(source.reference),
+        registration,
+        queued: selected.queued?.sources.get(registration.runtimeID),
+      }
     }
   }
   export async function assertReconciled(evidence: Inspection) {

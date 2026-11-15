@@ -28,7 +28,7 @@ import { OrganizationSyncTransfer } from "./sync-transfer"
 
 export namespace OrganizationSessionTransfer {
   export const id = "organization-runtime"
-  export const version = 5
+  export const version = 6
   const ID = z.string().min(1)
   const Count = z.number().int().nonnegative().safe()
   const LegacyHeader = z.strictObject({
@@ -50,11 +50,12 @@ export namespace OrganizationSessionTransfer {
     version: z.literal(4),
     workspaceMoveReceipt: WorkspaceMove.Receipt.nullable(),
   })
-  const CurrentHeader = ReceiptHeader.extend({
+  const SourceHeader = ReceiptHeader.extend({
     version: z.literal(5),
     workspaceSourceSnapshot: WorkspaceArchive.Subtree.nullable(),
   })
-  const Header = z.union([LegacyHeader, ReceiptHeader, CurrentHeader])
+  const CurrentHeader = SourceHeader.extend({ version: z.literal(6) })
+  const Header = z.union([LegacyHeader, ReceiptHeader, SourceHeader, CurrentHeader])
   const sourceKey = (binding: Epochs.Binding) => [
     "organization-session-transfer",
     binding.handoffID,
@@ -295,7 +296,7 @@ export namespace OrganizationSessionTransfer {
     snapshot: WorkspaceArchive.Subtree | null = null,
   ) {
     return CurrentHeader.parse({
-      version: 5,
+      version,
       capabilities: { adoption: 1, commandClosure: 1, executionContinuation: 1, corePublication: 1 },
       handoffID: context.handoffID,
       rootSessionID: context.rootSessionID,
@@ -425,7 +426,7 @@ export namespace OrganizationSessionTransfer {
     await stagedWorkspaceMove(context)
     const row = await context.staged.record(headerKey(context))
     const header = Header.parse(row?.value)
-    return header.version === 5 ? header.workspaceSourceSnapshot : null
+    return "workspaceSourceSnapshot" in header ? header.workspaceSourceSnapshot : null
   }
   async function validate(context: Owners.TargetContext) {
     const row = await context.staged.record(headerKey(context))
@@ -439,7 +440,7 @@ export namespace OrganizationSessionTransfer {
       (move && (header.sessionID !== header.rootSessionID || move.source.scopeID !== header.sourceBinding.projectID))
     )
       fail("Portable organization header has another complete WorkspaceMove receipt")
-    const snapshot = header.version === 5 ? header.workspaceSourceSnapshot : null
+    const snapshot = "workspaceSourceSnapshot" in header ? header.workspaceSourceSnapshot : null
     if (
       (snapshot ? WorkspaceArchive.subtreeHash(snapshot) : null) !== (context.mapping.workspaceSourceHash ?? null) ||
       (snapshot && (move || header.sessionID !== header.rootSessionID))
@@ -625,7 +626,7 @@ export namespace OrganizationSessionTransfer {
   export function register() {
     Owners.register(id, {
       version,
-      reads: [3, 4, version],
+      reads: [3, 4, 5, version],
       stagedDependencies: ["session-core"],
       publicationAfter: ["session-core"],
       applies: (session) => !!session.organization,

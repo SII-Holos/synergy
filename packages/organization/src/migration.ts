@@ -8,6 +8,7 @@ import { executionMigration } from "./execution-migration"
 import { executionRetentionMigration } from "./execution-retention-migration"
 import { executionHandoffMigration } from "./execution-handoff-migration"
 import { executionInfrastructureMigration } from "./execution-infrastructure-migration"
+import { executionRecoveryMigration } from "./execution-recovery-migration"
 import { OrganizationExecutionIndex } from "./execution-index"
 import { OrganizationHandoffExecution } from "./handoff"
 import { sharedProjectionMigration, sharedWindowMigration, sharedWindowHistoryMigration } from "./shared-projection"
@@ -27,6 +28,7 @@ const migrations: Migration[] = [
   executionRetentionMigration,
   executionHandoffMigration,
   executionInfrastructureMigration,
+  executionRecoveryMigration,
   OrganizationExecutionIndex.migration,
   OrganizationExecutionIndex.controlMigration,
   OrganizationHandoffExecution.migration,

@@ -32,8 +32,10 @@ export async function registerWorkerComponents(role: "agent" | "policy") {
   registerHarness()
   Features.register(plan.features)
   for (const component of plan[role]) {
-    const module: { registerWorker?: () => void; metadata?: { id: string; version: string; apiVersion: number } } =
-      await import(component.entry)
+    const module: {
+      registerWorker?: () => void | Promise<void>
+      metadata?: { id: string; version: string; apiVersion: number }
+    } = await import(component.entry)
     if (
       module.metadata?.id !== component.id ||
       module.metadata.version !== component.version ||
@@ -42,7 +44,7 @@ export async function registerWorkerComponents(role: "agent" | "policy") {
       throw new Error(`Worker component does not match the host composition: ${component.id}`)
     if (typeof module.registerWorker !== "function")
       throw new Error(`Worker component has no registrar: ${component.id}`)
-    module.registerWorker()
+    await module.registerWorker()
   }
   RuntimeComponents.registerSelection(plan[role].map(({ id, version }) => ({ id, version, apiVersion: 1 })))
   ConfigExtensions.completeRegistration()

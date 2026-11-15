@@ -626,6 +626,43 @@ export namespace HomeRestoration {
       }
     })
   }
+  export async function inspectOrdinaryCompleted() {
+    requireRegistered()
+    const runtime = RuntimeContext.current(),
+      selected = Storage.current(),
+      primary = runtime.storage
+    if (!primary) throw new RestorationError("Completed Home inspection requires its actual Runtime primary")
+    const store = primary.store,
+      artifacts = primary.artifactDirectory,
+      configuration = digest(store.options)
+    const writer = await ServerProcessLock.currentOwnership()
+    const assert = () => {
+      if (
+        RuntimeContext.current() !== runtime ||
+        runtime.storage !== primary ||
+        Storage.current() !== selected ||
+        primary.store !== store ||
+        selected.store !== store ||
+        digest(store.options) !== configuration ||
+        primary.artifactDirectory !== artifacts ||
+        selected.artifactDirectory !== artifacts ||
+        primary.artifactObjects !== undefined ||
+        selected.artifactObjects !== undefined
+      )
+        throw new RestorationError("Completed Home inspection requires its original primary Store and artifacts")
+      ServerProcessLock.assertCurrent(writer)
+    }
+    assert()
+    const info = await inspectCompletedFile({ home: runtime.host.home, root: runtime.host.root, env: runtime.host.env })
+    const record = await read(runtime.host.root)
+    if (!record || record.phase !== "completed") throw new RestorationError("Native Home completion is unavailable")
+    const { target: _target, ...retained } = record
+    if (digest(retained) !== digest(info) || digest(record.target) !== digest(await target(record.target.artifacts)))
+      throw new RestorationError("Native Home completion changed its original physical dataset")
+    await ServerProcessLock.verifyOwnership(writer)
+    assert()
+    return info
+  }
   export async function inspectCompleted() {
     requireRegistered()
     const runtime = RuntimeContext.current()

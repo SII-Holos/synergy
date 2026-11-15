@@ -462,3 +462,91 @@ test("dispatch and skip preparation retain their prior state when the permit exp
     expect(await Storage.count({ prefix: ["organization", "command-skips"] })).toBe(0)
   })
 })
+
+test("an identical observation preserves its timestamp while rechecking its request and settling its sequence", async () => {
+  await using f = await fixture()
+  await f.connect()
+  await f.run(async () => {
+    const admitted = await f.commands.input(f.credentials.alice, f.request())
+    if (admitted.kind !== "admitted") throw new Error("Expected admission")
+    const permit = admitted.delivery.authorization.permit
+    await f.commands.dispatch(permit.attemptID, admitted.connection)
+    const receipt = accepted(permit)
+    const first = await f.commands.observe(admitted.connection, receipt)
+    const requestKey = Paths.commandRequest(permit.actor.subjectID, permit.requestID)
+    const stateKey = Paths.commandState(permit.sessionID)
+    const request = await Record.read(Record.CommandRequest, requestKey)
+    const state = await Record.read(Record.CommandState, stateKey)
+    if (!request || !state) throw new Error("Expected the original request and settled command state")
+    await Storage.write(stateKey, Record.CommandState.parse({ ...state, pendingAttemptID: permit.attemptID }))
+    const clock = spyOn(Date, "now").mockReturnValue(first.updatedAt + 1)
+    try {
+      await Storage.remove(requestKey)
+      try {
+        await expect(f.commands.observe(admitted.connection, receipt)).rejects.toMatchObject({
+          data: { code: "PROTOCOL_MISMATCH" },
+        })
+        expect(await Storage.read(Paths.commandAttempt(permit.attemptID))).toEqual(first)
+        expect(await Storage.read(stateKey)).toMatchObject({ pendingAttemptID: permit.attemptID })
+      } finally {
+        await Storage.write(requestKey, request)
+      }
+      expect(await f.commands.observe(admitted.connection, receipt)).toEqual(first)
+      expect(await Storage.read(Paths.commandAttempt(permit.attemptID))).toEqual(first)
+      expect(await Storage.read(requestKey)).toEqual(request)
+      expect(await Storage.read(stateKey)).toEqual(state)
+      f.connections.revoke(permit.runtimeID)
+      await expect(f.commands.observe(admitted.connection, receipt)).rejects.toThrow()
+      expect(await Storage.read(Paths.commandAttempt(permit.attemptID))).toEqual(first)
+    } finally {
+      clock.mockRestore()
+    }
+  })
+})
+
+test("a newly observed issued skip advances its timestamp but an omitted retained skip does not", async () => {
+  await using f = await fixture()
+  await f.connect()
+  await f.run(async () => {
+    const admitted = await f.commands.input(f.credentials.alice, f.request())
+    if (admitted.kind !== "admitted") throw new Error("Expected admission")
+    const permit = admitted.delivery.authorization.permit
+    await f.commands.dispatch(permit.attemptID, admitted.connection)
+    const rejection = Command.Result.parse({
+      attempt: { schemaVersion: 1, permit, receivedAt: Date.now(), status: "rejected", reason: "STALE_BINDING" },
+    })
+    await f.commands.observe(admitted.connection, rejection)
+    expect(await Storage.read(Paths.commandState(permit.sessionID))).toMatchObject({
+      pendingAttemptID: permit.attemptID,
+    })
+    const issued = await f.commands.prepareSkip(permit.attemptID, admitted.connection)
+    const before = await Record.read(Record.CommandAttempt, Paths.commandAttempt(permit.attemptID))
+    if (!before) throw new Error("Expected the original rejected attempt")
+    const receipt = Command.Result.parse({
+      ...rejection,
+      skip: { schemaVersion: 1, permit: issued.permit, receivedAt: Date.now() },
+    })
+    const clock = spyOn(Date, "now").mockReturnValue(before.updatedAt + 1)
+    try {
+      const observed = await f.commands.observe(admitted.connection, receipt)
+      expect(observed.state).toBe(before.state)
+      expect(observed.updatedAt).toBe(before.updatedAt + 1)
+      expect(observed.result?.skip).toEqual(receipt.skip)
+      expect(
+        (await Record.read(Record.CommandState, Paths.commandState(permit.sessionID)))?.pendingAttemptID,
+      ).toBeUndefined()
+      clock.mockReturnValue(observed.updatedAt + 1)
+      expect(await f.commands.observe(admitted.connection, rejection)).toEqual(observed)
+      expect(await Storage.read(Paths.commandAttempt(permit.attemptID))).toEqual(observed)
+      const forged = structuredClone(receipt)
+      if (!forged.skip) throw new Error("Expected its issued skip")
+      forged.skip.permit.authorizedAt++
+      await expect(f.commands.observe(admitted.connection, forged)).rejects.toMatchObject({
+        data: { code: "PROTOCOL_MISMATCH" },
+      })
+      expect(await Storage.read(Paths.commandAttempt(permit.attemptID))).toEqual(observed)
+    } finally {
+      clock.mockRestore()
+    }
+  })
+})

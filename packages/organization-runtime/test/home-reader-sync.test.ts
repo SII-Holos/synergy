@@ -16,9 +16,10 @@ import { runMigrations } from "@ericsanchezok/synergy-harness/migration"
 import { prepareHostedHome, prepareMemberHome, readRuntimeHome } from "../src/home"
 import { upgradeOrganizationHome } from "../src/home-migration"
 import { selectedHomeUpgradeOwner } from "./support/home-upgrade"
+import { NativeHomeReaderContract } from "../src/home-schema"
 
 const oldReader = "native-organization-ownership-v4"
-const currentReader = "native-organization-ownership-v5"
+const currentReader = NativeHomeReaderContract
 const Changed = BusEvent.define("test.organization.home.retained", z.object({ value: z.string() }))
 const dataKey = ["home-reader-sync-fixture", "retained"]
 const hash = (value: Uint8Array | string) => createHash("sha256").update(value).digest("hex")
@@ -49,7 +50,7 @@ async function seed() {
 }
 
 for (const kind of ["member", "hosted"] as const)
-  test(`the original ${kind} Home advances reader four to five after cold lost-ACK recovery without consuming retained native deliveries`, async () => {
+  test(`the original ${kind} Home advances reader four to the current reader after cold lost-ACK recovery without consuming retained native deliveries`, async () => {
     const directory = await fs.realpath(
       await fs.mkdtemp(path.join(process.env.SYNERGY_TEST_ROOT!, "durable-sync-reader-")),
     )
@@ -108,13 +109,13 @@ for (const kind of ["member", "hosted"] as const)
               spyOn(file, "sync").mockImplementationOnce(async () => {
                 await sync()
                 lost = true
-                throw new Error("Lost original reader-five marker acknowledgement")
+                throw new Error("Lost original current-reader marker acknowledgement")
               })
             }
             return file
           })
           await expect(upgradeOrganizationHome({ home: home.home, identity: home.identity, lease })).rejects.toThrow(
-            "Lost original reader-five",
+            "Lost original current-reader",
           )
           expect(lost).toBe(true)
           expect((await fs.stat(pair(home)[0]!)).ino).toBe(originalInode)
@@ -169,74 +170,90 @@ for (const kind of ["member", "hosted"] as const)
     }
   }, 30_000)
 
-test("reader five does not reinterpret an accepted reader-three to reader-four target after its original native file publication", async () => {
-  const directory = await fs.realpath(
-    await fs.mkdtemp(path.join(process.env.SYNERGY_TEST_ROOT!, "original-reader-four-target-")),
-  )
-  try {
-    const home = await prepareHostedHome({
-      baseDirectory: directory,
-      origin: "https://organization.example",
-      identity: { orgID: "org", hostID: "original-four" },
-    })
-    for (const file of pair(home)) {
-      const value = JSON.parse(await fs.readFile(file, "utf8"))
-      await fs.writeFile(file, JSON.stringify({ ...value, readerContract: "native-organization-ownership-v3" }))
-    }
-    const originalKeys = await keys(home)
-    const owner = await selectedHomeUpgradeOwner(home, oldReader)
-    const requestID = "original-reader-four-target"
-    let retained: RuntimeMaintenance.Info | undefined
+for (const original of [
+  {
+    sourceReader: "native-organization-ownership-v3",
+    targetReader: "native-organization-ownership-v4",
+    source: "three",
+    target: "four",
+  },
+  {
+    sourceReader: "native-organization-ownership-v4",
+    targetReader: "native-organization-ownership-v5",
+    source: "four",
+    target: "five",
+  },
+] as const)
+  test(`the current reader does not reinterpret an accepted reader-${original.source} to reader-${original.target} target after its original native file publication`, async () => {
+    const directory = await fs.realpath(
+      await fs.mkdtemp(path.join(process.env.SYNERGY_TEST_ROOT!, `original-reader-${original.target}-target-`)),
+    )
     try {
-      await owner.run(async () => {
-        const lease = await RuntimeMaintenance.begin({
-          purpose: "organization-home-upgrade",
-          requestID,
-          actor: actor(requestID),
-        })
-        await RuntimeMaintenance.freeze(lease, await RuntimeMaintenance.drain(lease))
-        const actual = await RuntimeMaintenance.assertHeld(lease)
-        if (actual.version !== 2) throw new Error("An original native Home upgrade witness is required")
-        retained = actual
-        const files = HomeOwnershipFile.open({
-          root: home.root,
-          env: RuntimeContext.current().host.env,
-          selected: actual.native.target,
-        })
-        await RuntimeMaintenance.withFrozen(lease, () => files.advanceReader(actual.native.source))
+      const home = await prepareHostedHome({
+        baseDirectory: directory,
+        origin: "https://organization.example",
+        identity: { orgID: "org", hostID: `original-${original.target}` },
       })
+      for (const file of pair(home)) {
+        const value = JSON.parse(await fs.readFile(file, "utf8"))
+        await fs.writeFile(file, JSON.stringify({ ...value, readerContract: original.sourceReader }))
+      }
+      const originalKeys = await keys(home)
+      const owner = await selectedHomeUpgradeOwner(home, original.targetReader)
+      const requestID = `original-reader-${original.target}-target`
+      let retained: RuntimeMaintenance.Info | undefined
+      try {
+        await owner.run(async () => {
+          const lease = await RuntimeMaintenance.begin({
+            purpose: "organization-home-upgrade",
+            requestID,
+            actor: actor(requestID),
+          })
+          await RuntimeMaintenance.freeze(lease, await RuntimeMaintenance.drain(lease))
+          const actual = await RuntimeMaintenance.assertHeld(lease)
+          if (actual.version !== 2) throw new Error("An original native Home upgrade witness is required")
+          retained = actual
+          const files = HomeOwnershipFile.open({
+            root: home.root,
+            env: RuntimeContext.current().host.env,
+            selected: actual.native.target,
+          })
+          await RuntimeMaintenance.withFrozen(lease, () => files.advanceReader(actual.native.source))
+        })
+      } finally {
+        await owner.close()
+      }
+      if (!retained) throw new Error("The original selected native hold was not captured")
+      const originalHold = retained
+      const before = await bytes(home)
+      const originalInodes = await Promise.all(pair(home).map(async (file) => (await fs.stat(file)).ino))
+      expect(before.map((value) => JSON.parse(value).readerContract)).toEqual([
+        original.targetReader,
+        original.sourceReader,
+      ])
+      const reopened = await selectedHomeUpgradeOwner(home, original.targetReader)
+      try {
+        await reopened.run(() =>
+          RuntimeMaintenance.withHomeUpgradeRecovery({ requestID }, async (lease) => {
+            await expect(upgradeOrganizationHome({ home: home.home, identity: home.identity, lease })).rejects.toThrow(
+              "unsupported",
+            )
+            expect(await bytes(home)).toEqual(before)
+            expect(await Promise.all(pair(home).map(async (file) => (await fs.stat(file)).ino))).toEqual(originalInodes)
+            expect(await RuntimeMaintenance.assertHeld(lease)).toEqual(originalHold)
+            expect((await RuntimeMaintenance.status())?.phase).toBe("frozen")
+            expect(await keys(home)).toBe(originalKeys)
+          }),
+        )
+      } finally {
+        await reopened.close()
+      }
     } finally {
-      await owner.close()
+      await fs.rm(directory, { recursive: true, force: true })
     }
-    const original = retained
-    if (!original) throw new Error("The original target-four native hold was not captured")
-    const before = await bytes(home)
-    expect(before.map((value) => JSON.parse(value).readerContract)).toEqual([
-      oldReader,
-      "native-organization-ownership-v3",
-    ])
-    const reopened = await selectedHomeUpgradeOwner(home, oldReader)
-    try {
-      await reopened.run(() =>
-        RuntimeMaintenance.withHomeUpgradeRecovery({ requestID }, async (lease) => {
-          await expect(upgradeOrganizationHome({ home: home.home, identity: home.identity, lease })).rejects.toThrow(
-            "unsupported",
-          )
-          expect(await bytes(home)).toEqual(before)
-          expect(await RuntimeMaintenance.assertHeld(lease)).toEqual(original)
-          expect((await RuntimeMaintenance.status())?.phase).toBe("frozen")
-          expect(await keys(home)).toBe(originalKeys)
-        }),
-      )
-    } finally {
-      await reopened.close()
-    }
-  } finally {
-    await fs.rm(directory, { recursive: true, force: true })
-  }
-}, 30_000)
+  }, 30_000)
 
-test("reader five rejects targetless original backup and restore holds without changing their native Home", async () => {
+test("the current reader rejects targetless original backup and restore holds without changing their native Home", async () => {
   const directory = await fs.realpath(
     await fs.mkdtemp(path.join(process.env.SYNERGY_TEST_ROOT!, "targetless-home-hold-")),
   )

@@ -1,3 +1,4 @@
+import { OrganizationHostedPublication } from "./backup/publication"
 import { z } from "zod"
 import { createHash } from "node:crypto"
 import {
@@ -660,7 +661,11 @@ export function createCommandIntake(options: {
     const resume = session.resume
     if (!resume?.actor || resume.rootID !== accepted.effect.messageID) return
     const owner = await Epochs.inspectOwnerBinding({ sessionID: session.id, rootSessionID: session.id })
-    if (!owner) return
+    const recovery =
+      accepted.permit.deploymentIncarnation !== authority.deploymentIncarnation
+        ? await OrganizationHostedPublication.recoveryOrigin()
+        : undefined
+    if (!owner && !recovery) return
     const request = await read(Request, Keys.request(authority.orgID, resume.actor.subjectID, resume.actor.requestID))
     const control = request?.accepted
     if (
@@ -685,7 +690,10 @@ export function createCommandIntake(options: {
       current.slot?.attemptID !== control.permit.attemptID
     )
       throw failure("PROTOCOL_MISMATCH", "Execution continuation has no matching native attempt")
-    return Execution.Continuation.parse({ handoffID: owner.handoffID, receipt: result(current, current.attempt) })
+    return Execution.Continuation.parse({
+      ...(recovery ? { recovery } : { handoffID: owner!.handoffID }),
+      receipt: result(current, current.attempt),
+    })
   }
   async function taskReceipt(lookup: z.infer<typeof Lookup>, access: "execution" | "retention") {
     assertActive()
@@ -790,7 +798,6 @@ export function createCommandIntake(options: {
       const current = await records(permit)
       if (
         permit.orgID !== plan.orgID ||
-        permit.deploymentIncarnation !== plan.deploymentIncarnation ||
         permit.sessionID !== plan.sessionID ||
         permit.projectID !== plan.sourceBinding.projectID ||
         permit.commandSeq > plan.commandSeq ||
@@ -829,7 +836,7 @@ export function createCommandIntake(options: {
         )
           throw failure("PROTOCOL_MISMATCH", "Retained successor lacks its exact native independent control")
         continuation = Execution.Continuation.parse({
-          handoffID: item.continuation.handoffID,
+          ...Execution.continuationOrigin(item.continuation),
           receipt: result(controlRecords, controlRecords.attempt),
         })
       } else if (
@@ -838,6 +845,8 @@ export function createCommandIntake(options: {
         item.grantID !== item.originGrantID
       )
         throw failure("PROTOCOL_MISMATCH", "Original grant belongs to another source binding")
+      if (permit.deploymentIncarnation !== plan.deploymentIncarnation && !continuation)
+        throw failure("PERMISSION_DENIED", "Historical input requires its current independent continuation")
       if (item.generation > 0) {
         const message = await MessageV2.readInfo({
           scopeID: session.scope.id,
@@ -891,6 +900,39 @@ export function createCommandIntake(options: {
     descriptionProof(value: z.infer<typeof Lookup>): Promise<Execution.DescriptionProof> {
       return resourceProof(value, "execution")
     },
+    async reconcileQueuedContinuation(entry: Leases.Entry, grant: Execution.Grant) {
+      assertStandalone()
+      if (!grant.provenance?.recovery) return
+      return Storage.transaction(
+        async () => {
+          await Leases.recoverQueuedOriginal(entry, grant, async (accepted) => {
+            const permit = accepted.permit
+            const address = Keys.release(permit.orgID, permit.actor.subjectID, permit.requestID)
+            const current = await read(Release, address)
+            if (
+              !current ||
+              current.state !== "pending" ||
+              current.receipt ||
+              current.reconciledAt !== undefined ||
+              current.orgID !== permit.orgID ||
+              current.sessionID !== permit.sessionID ||
+              current.projectID !== permit.projectID ||
+              current.runtimeID !== permit.runtimeID ||
+              current.bindingEpoch !== permit.bindingEpoch ||
+              current.rootID !== accepted.effect.messageID ||
+              current.grantID !== permit.provisionalGrantID ||
+              current.admissionID !== permit.admissionID ||
+              current.attemptID !== permit.attemptID ||
+              current.acceptedAt !== accepted.acceptedAt ||
+              JSON.stringify(current.actor) !== JSON.stringify(permit.actor)
+            )
+              throw failure("PROTOCOL_MISMATCH", "Restored queued input lacks its original pending release owner")
+            await Storage.write(address, Release.parse({ ...current, state: "released", reconciledAt: Date.now() }))
+          })
+        },
+        { commitGuard: assertActive },
+      )
+    },
     async cleanupProof(
       value: Leases.Authority,
       selector?: { grantID: string; generation?: number },
@@ -914,7 +956,7 @@ export function createCommandIntake(options: {
         const session = await Session.get(reference.sessionID)
         if (
           permit.orgID !== reference.orgID ||
-          permit.deploymentIncarnation !== reference.deploymentIncarnation ||
+          (!reference.control && permit.deploymentIncarnation !== reference.deploymentIncarnation) ||
           permit.sessionID !== reference.sessionID ||
           permit.projectID !== reference.projectID ||
           permit.admissionID !== reference.input.admissionID ||
@@ -955,7 +997,7 @@ export function createCommandIntake(options: {
           )
             throw failure("PROTOCOL_MISMATCH", "Cleanup lacks its exact historical native control")
           continuation = Execution.Continuation.parse({
-            handoffID: selected.handoffID,
+            ...Execution.continuationOrigin(selected),
             receipt: result(current, current.attempt),
           })
         } else {

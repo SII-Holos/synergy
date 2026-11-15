@@ -1,3 +1,4 @@
+import { OrganizationHandoffHistory } from "./handoff-history"
 import { createHash } from "node:crypto"
 import { z } from "zod"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
@@ -404,12 +405,10 @@ export namespace OrganizationKnowledge {
       const status = ActivationStatus.parse(row.value)
       const activated = status.activated
       if (!activated) fail("PROTOCOL_MISMATCH", "Historical knowledge activation has no original completed selection")
-      if (
-        digest(row.key) !== digest(keys.status(sessionID)) ||
-        status.bindingEpoch !== session.bindingEpoch ||
-        status.failedManifestHash
-      )
+      if (digest(row.key) !== digest(keys.status(sessionID)) || status.failedManifestHash)
         bad("activation has no original completed selection")
+      if (status.bindingEpoch !== session.bindingEpoch)
+        await OrganizationHandoffHistory.bindingAtEpoch(reader, session, status.bindingEpoch)
       const header = reader.read(Selection, keys.activated(sessionID, activated.manifestHash))
       if (digest(Selections.summary(header)) !== digest(activated)) bad("activation summary changed")
       reader.accept(row.key)

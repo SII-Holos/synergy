@@ -26,11 +26,54 @@ export namespace OrganizationSharedHistory {
     await transcripts(source)
     await Blobs.history(source)
   }
+  async function privateHandoffControl(source: Source, session: Record.SessionDirectory, state: Record.SharedState) {
+    if (session.shareState !== "private") return false
+    if (
+      session.sessionID !== state.sessionID ||
+      session.shareGeneration !== 0 ||
+      state.shareGeneration !== 0 ||
+      state.bindingEpoch !== session.bindingEpoch ||
+      state.syncState !== "blocked" ||
+      state.nextSeq !== 1
+    )
+      invalid("private control marker has another original empty generation")
+    const prefixes = [
+      Keys.sharedEvents(session.sessionID, 0),
+      Keys.sharedSessions(session.sessionID, 0),
+      Keys.sharedBatch(session.sessionID, 0, 1).slice(0, -1),
+      Projection.generationPrefix(session.sessionID, 0),
+      Tasks.generationPrefix(session.sessionID, 0),
+      Keys.sharedBlobs(session.sessionID, 0),
+    ]
+    for (const generation of prefixes)
+      for (const _row of source.entries(generation.slice(0, -1)))
+        invalid("private control marker cannot hide shared data")
+    let selected: Awaited<ReturnType<typeof HandoffHistory.terminal>> | undefined
+    for (const row of source.entries(["organization", "session-handoffs", session.sessionID])) {
+      if (row.key.length !== 4 || !row.key[3]) invalid("private control marker has another Handoff index")
+      const record = await HandoffHistory.terminal(source, session, row.key[3])
+      if (record.phase !== "completed" || record.toEpoch !== session.bindingEpoch) continue
+      if (selected || record.targetRuntimeID !== session.driverRuntimeID || record.shareGeneration !== 0)
+        invalid("private control marker has another completed destination")
+      selected = record
+    }
+    const checkpoint =
+      selected?.version === 5 && selected.frozen?.proof.purpose === "source-frozen"
+        ? selected.frozen.proof.syncCheckpoint
+        : undefined
+    if (!checkpoint || checkpoint.pendingBatch !== null)
+      invalid("private control marker lacks its original completed empty sync transfer")
+    return true
+  }
   export async function transcripts(source: Source) {
     for (const row of source.entries(["organization", "shared-state"])) {
       const state = Record.SharedState.parse(row.value)
       if (!equal(row.key, Keys.sharedState(state.sessionID))) invalid("has another state address")
       const session = source.read(Record.SessionDirectory, Keys.session(state.sessionID))
+      if (await privateHandoffControl(source, session, state)) {
+        source.accept(row.key)
+        continue
+      }
       if (
         session.sessionID !== state.sessionID ||
         session.shareState !== "shared" ||

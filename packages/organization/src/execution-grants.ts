@@ -1,3 +1,6 @@
+import { createHash } from "node:crypto"
+import { OrganizationRecoveryPublication as RecoveryPublication } from "./backup/publication"
+import { OrganizationRecoveryPublicationRecords as PublicationRecords } from "./backup/publication-records"
 import { OrganizationExecutionHistory } from "./execution-history"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { WorkspaceContent } from "@ericsanchezok/synergy-harness/workspace/content"
@@ -195,7 +198,7 @@ export namespace OrganizationExecutionGrants {
     if (!contract?.selection) return
     await Resources.enabled(session, contract.selection)
     const grant = Execution.Grant.parse({
-      schemaVersion: 5,
+      schemaVersion: 6,
       grantID: crypto.randomUUID(),
       orgID: session.orgID,
       deploymentIncarnation: permit.deploymentIncarnation,
@@ -310,6 +313,9 @@ export function createExecutionGrants(options: {
     const continuation = proof.continuation
     const control = continuation?.receipt.accepted
     if (!continuation || !control || control.effect.operation !== "continue" || !control.effect.rootID) return
+    if (continuation.recovery) return prepareRecoveryContinuation(proof, publicKey)
+    if (!continuation.handoffID) fail("PERMISSION_DENIED", "Handoff continuation lacks its exact original origin")
+    const handoffID = continuation.handoffID
     const rootID = control.effect.rootID
     const connection = capture(proof, (await Storage.snapshot(() => machine(proof))).runtime)
     if (!options.handoffs) fail("HANDOFF_BLOCKED", "Execution continuation authority is unavailable")
@@ -326,7 +332,7 @@ export function createExecutionGrants(options: {
         const accepted = await original(proof)
         const permit = accepted.permit
         const authority = await handoffs.continuationAuthority({
-          handoffID: continuation.handoffID,
+          handoffID,
           sessionID: permit.sessionID,
           runtimeID: proof.runtimeID,
           bindingEpoch: control.permit.bindingEpoch,
@@ -359,11 +365,7 @@ export function createExecutionGrants(options: {
           predecessor.bindingEpoch !== (pointer ? session.bindingEpoch : authority.sourceBindingEpoch)
         )
           fail("PERMISSION_DENIED", "Execution continuation predecessor has another native binding")
-        if (
-          pointer &&
-          predecessor.provenance?.handoffID === continuation.handoffID &&
-          same(predecessor.provenance.control, control)
-        )
+        if (pointer && predecessor.provenance?.handoffID === handoffID && same(predecessor.provenance.control, control))
           return
         if (predecessor.provenance && control.permit.commandSeq <= predecessor.provenance.control.permit.commandSeq)
           fail("PERMISSION_DENIED", "Execution continuation cannot reuse an older control")
@@ -386,7 +388,7 @@ export function createExecutionGrants(options: {
           predecessor.retention.state === "released"
         if (
           (!pointer || !predecessor.provenance) &&
-          priorClosed?.handoffID !== continuation.handoffID &&
+          priorClosed?.handoffID !== handoffID &&
           !retainedSource &&
           !completedSource
         )
@@ -415,11 +417,11 @@ export function createExecutionGrants(options: {
         if (!exact && !consented) fail("REVISION_CONFLICT", "Execution continuation resource selection changed")
         await Resources.enabled(session, contract!.selection!)
         const grant = Execution.Grant.parse({
-          schemaVersion: 5,
+          schemaVersion: 6,
           state: "provisional",
           grantID: crypto.randomUUID(),
           orgID: predecessor.orgID,
-          deploymentIncarnation: predecessor.deploymentIncarnation,
+          deploymentIncarnation: control.permit.deploymentIncarnation,
           sessionID: predecessor.sessionID,
           projectID: predecessor.projectID,
           selectionRevision: contract!.revision,
@@ -432,7 +434,7 @@ export function createExecutionGrants(options: {
           bindingEpoch: session.bindingEpoch,
           createdAt: Date.now(),
           provenance: {
-            handoffID: continuation.handoffID,
+            handoffID,
             predecessorGrantID: predecessor.grantID,
             originGrantID: permit.provisionalGrantID,
             rootID,
@@ -480,6 +482,196 @@ export function createExecutionGrants(options: {
       },
     )
   }
+  async function prepareRecoveryContinuation(
+    proof: Execution.DescriptionProof | Execution.BindingProof,
+    publicKey: string,
+  ) {
+    const continuation = proof.continuation!
+    const origin = continuation.recovery!
+    const control = continuation.receipt.accepted!
+    if (control.effect.operation !== "continue" || !control.effect.rootID)
+      fail("PERMISSION_DENIED", "Restoration requires its explicit original root Continue")
+    const rootID = control.effect.rootID
+    const pausedSince = control.effect.pausedSince
+    const connection = capture(proof, (await Storage.snapshot(() => machine(proof))).runtime)
+    if (connection.handshake.schemas.executionRecovery !== 1)
+      fail("PROTOCOL_MISMATCH", "The current Runtime lacks its installed restoration continuation owner")
+    let predecessorID: string | undefined
+    await History.system(
+      "execution.recovery.continue",
+      async (identify, actionID) => {
+        identify({ ...control.permit.actor, requestID: actionID })
+        window(proof)
+        connection.assertCurrent()
+        const { session, runtime } = await ownedSession(proof, publicKey)
+        const accepted = await original(proof)
+        const permit = accepted.permit
+        const publication = await RecoveryPublication.read(origin.installationID)
+        const mapping = PublicationRecords.validateHosted(
+          await Storage.read(PublicationRecords.hostedKey(origin.installationID, runtime.runtimeID)),
+          publication,
+          runtime.runtimeID,
+        )
+        const signer = Record.SigningIdentity.parse(await Storage.read(Keys.signingIdentity()))
+        if (
+          runtime.runtimeKind !== "hosted" ||
+          publication.identity.orgID !== proof.orgID ||
+          publication.identity.deploymentIncarnation !== proof.deploymentIncarnation ||
+          signer.orgID !== publication.identity.orgID ||
+          signer.deploymentIncarnation !== publication.identity.deploymentIncarnation ||
+          signer.keyID !== publication.identity.keyID ||
+          signer.publicKey !== publication.identity.publicKey ||
+          origin.sourceReferenceHash !== mapping.sourceReferenceHash ||
+          runtime.publicKey !== mapping.published.publicKey ||
+          runtime.revision < mapping.published.revision ||
+          runtime.connectionEpoch < mapping.published.connectionEpoch ||
+          control.permit.deploymentIncarnation !== proof.deploymentIncarnation ||
+          control.permit.runtimeID !== runtime.runtimeID ||
+          control.permit.bindingEpoch !== session.bindingEpoch ||
+          permit.deploymentIncarnation === proof.deploymentIncarnation
+        )
+          fail("PERMISSION_DENIED", "Restoration continuation has another original publication or machine")
+        const address = Keys.rootGrant(session.sessionID, session.bindingEpoch, rootID)
+        const pointer = await Record.read(Record.RootGrant, address)
+        const predecessor = await Record.read(
+          Record.ExecutionGrant,
+          Keys.executionGrant(pointer?.grantID ?? permit.provisionalGrantID!),
+        )
+        if (
+          !predecessor ||
+          predecessor.orgID !== permit.orgID ||
+          predecessor.sessionID !== permit.sessionID ||
+          predecessor.projectID !== permit.projectID ||
+          predecessor.runtimeID !== runtime.runtimeID ||
+          predecessor.bindingEpoch !== session.bindingEpoch ||
+          predecessor.admissionID !== permit.admissionID ||
+          predecessor.attemptID !== permit.attemptID ||
+          !same(predecessor.actor, permit.actor) ||
+          (predecessor.provenance?.originGrantID ?? predecessor.grantID) !== permit.provisionalGrantID ||
+          (predecessor.state === "bound" && predecessor.rootID !== rootID)
+        )
+          fail("PERMISSION_DENIED", "Restoration continuation has another original root predecessor")
+        await currentActor(session, predecessor, proof, "session.execute")
+        if (control.permit.actor.clientKind === "api" || control.permit.actor.tokenID)
+          await assertApiExecutionActor(control.permit)
+        if (
+          predecessor.provenance &&
+          same(predecessor.provenance.control, control) &&
+          Execution.sameContinuationOrigin(predecessor.provenance, continuation)
+        )
+          return
+        const queued =
+          predecessor.state === "provisional"
+            ? (await PublicationRecords.readQueued(origin.installationID, runtime.runtimeID, mapping)).find(
+                (item) => item.grantID === predecessor.grantID,
+              )
+            : undefined
+        if (
+          predecessor.state === "provisional" &&
+          (!queued ||
+            predecessor.provenance ||
+            pointer ||
+            predecessor.grantID !== permit.provisionalGrantID ||
+            queued.sessionID !== session.sessionID ||
+            queued.rootID !== rootID ||
+            queued.acceptedHash !== createHash("sha256").update(JSON.stringify(accepted)).digest("hex") ||
+            queued.inboxID !== accepted.effect.itemID ||
+            pausedSince !== queued.pausedSince ||
+            control.effect.controlVersion <= queued.controlVersion ||
+            control.permit.commandSeq <= queued.commandSeq ||
+            session.retainedExecutionGrants === 0)
+        )
+          fail("PERMISSION_DENIED", "Restoration has no original unexecuted queued snapshot")
+        if (queued) await Index.assertRetained(predecessor)
+        if (
+          (predecessor.state === "bound" && predecessor.retention.state !== "released") ||
+          (predecessor.provenance && predecessor.provenance.control.permit.commandSeq >= control.permit.commandSeq)
+        )
+          fail("RESOURCE_UNAVAILABLE", "Restoration continuation requires its original closed generation")
+        if (!queued) {
+          const generation = predecessor.state === "bound" ? predecessor.retention.generation : 0
+          const release = await Record.read(
+            Record.ExecutionRelease,
+            Keys.executionRelease(predecessor.grantID, generation),
+          )
+          if (
+            !release ||
+            release.orgID !== predecessor.orgID ||
+            release.deploymentIncarnation !== predecessor.deploymentIncarnation ||
+            release.runtimeID !== predecessor.runtimeID ||
+            release.sessionID !== predecessor.sessionID ||
+            release.bindingEpoch !== predecessor.bindingEpoch ||
+            release.grantID !== predecessor.grantID ||
+            release.rootID !== rootID ||
+            release.generation !== generation ||
+            (predecessor.state === "bound" &&
+              predecessor.retention.state === "released" &&
+              (release.outcome !== predecessor.retention.outcome ||
+                release.releasedAt !== predecessor.retention.releasedAt))
+          )
+            fail("PROTOCOL_MISMATCH", "Restoration predecessor lacks its original immutable release")
+        }
+        await prepareResourcesDrained(predecessor.grantID)
+        predecessorID = predecessor.grantID
+        const contract = await Resources.read(session)
+        if (!contract?.selection) fail("RESOURCE_UNAVAILABLE", "Restoration requires the current selected resources")
+        await Resources.enabled(session, contract.selection)
+        const grant = Execution.Grant.parse({
+          schemaVersion: 6,
+          state: "provisional",
+          grantID: crypto.randomUUID(),
+          orgID: predecessor.orgID,
+          deploymentIncarnation: proof.deploymentIncarnation,
+          sessionID: predecessor.sessionID,
+          projectID: predecessor.projectID,
+          runtimeID: runtime.runtimeID,
+          bindingEpoch: session.bindingEpoch,
+          selectionRevision: contract.revision,
+          selection: contract.selection,
+          limits: predecessor.limits,
+          actor: predecessor.actor,
+          admissionID: predecessor.admissionID,
+          attemptID: predecessor.attemptID,
+          createdAt: Date.now(),
+          provenance: {
+            recovery: origin,
+            predecessorGrantID: predecessor.grantID,
+            originGrantID: permit.provisionalGrantID,
+            rootID: rootID,
+            control,
+          },
+        })
+        if (queued) {
+          const closedAt = Date.now()
+          await saveGrant(
+            Execution.Grant.parse({
+              ...predecessor,
+              state: "closed",
+              closedAt,
+              controlClosure: { rootID, successorGrantID: grant.grantID, closedAt },
+            }),
+          )
+        }
+        await saveGrant(grant)
+        await Storage.write(address, Record.RootGrant.parse({ grantID: grant.grantID }))
+        await Storage.write(
+          Keys.session(session.sessionID),
+          Record.SessionDirectory.parse({
+            ...session,
+            retainedExecutionGrants: session.retainedExecutionGrants + (queued ? 0 : 1),
+            rowRevision: session.rowRevision + 1,
+          }),
+        )
+      },
+      {
+        commitGuard() {
+          window(proof)
+          connection.assertCurrent()
+          if (predecessorID) assertResourcesDrained(predecessorID)
+        },
+      },
+    )
+  }
   function receivedGrant(
     proof: ReceiptProof,
     value: Execution.Grant | undefined,
@@ -492,7 +684,7 @@ export function createExecutionGrants(options: {
       !value ||
       (!control && value.grantID !== permit.provisionalGrantID) ||
       value.orgID !== permit.orgID ||
-      value.deploymentIncarnation !== permit.deploymentIncarnation ||
+      value.deploymentIncarnation !== (control?.permit.deploymentIncarnation ?? permit.deploymentIncarnation) ||
       value.sessionID !== permit.sessionID ||
       value.projectID !== permit.projectID ||
       value.runtimeID !== (control?.permit.runtimeID ?? permit.runtimeID) ||
@@ -510,14 +702,18 @@ export function createExecutionGrants(options: {
         !same(value.provenance.control, control))
     )
       fail("PERMISSION_DENIED", "Execution grant has another independent control provenance")
-    if (control && value.provenance?.handoffID !== proof.continuation?.handoffID) {
+    if (control && !Execution.sameContinuationOrigin(value.provenance, proof.continuation)) {
       const closed =
         value.state === "bound" && value.retention.state === "handoff_closed"
           ? value.retention
           : value.state === "closed"
             ? value.handoffClosure
             : undefined
-      if (access !== "retention" || closed?.handoffID !== proof.continuation?.handoffID)
+      if (
+        access !== "retention" ||
+        !proof.continuation?.handoffID ||
+        closed?.handoffID !== proof.continuation.handoffID
+      )
         fail("PERMISSION_DENIED", "Execution continuation has another permanent handoff origin")
     }
     return value
@@ -1354,7 +1550,7 @@ export function createExecutionGrants(options: {
               lookup: { subjectID: grant.actor.subjectID, requestID: grant.actor.requestID },
               continuation: grant.provenance
                 ? {
-                    handoffID: grant.provenance.handoffID,
+                    ...Execution.continuationOrigin(grant.provenance),
                     lookup: {
                       subjectID: grant.provenance.control.permit.actor.subjectID,
                       requestID: grant.provenance.control.permit.requestID,

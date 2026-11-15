@@ -86,7 +86,8 @@ export function attachMemberExecution(input: Connection) {
         await input.intake.cleanupProof(Leases.reference(proof))
         const intent = await Leases.begin(proof)
         const result = await resource.describe(proof, signal)
-        await Leases.confirm(intent, result.grant)
+        const observed = await Leases.confirm(intent, result.grant)
+        if (result.grant.provenance?.recovery) await input.intake.reconcileQueuedContinuation(observed, result.grant)
         return result
       },
       async bind(value, signal) {
@@ -94,7 +95,8 @@ export function attachMemberExecution(input: Connection) {
         await input.intake.cleanupProof(Leases.reference(proof))
         const intent = await Leases.begin(proof)
         const grant = await resource.bind(proof, signal)
-        await Leases.confirm(intent, grant)
+        const observed = await Leases.confirm(intent, grant)
+        if (grant.provenance?.recovery) await input.intake.reconcileQueuedContinuation(observed, grant)
         return grant
       },
     },

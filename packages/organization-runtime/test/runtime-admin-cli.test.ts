@@ -1,3 +1,20 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
+import { HomeOwnership } from "@ericsanchezok/synergy-harness/lifecycle/home-ownership"
+import { HomeOwnershipFile } from "@ericsanchezok/synergy-harness/lifecycle/home-ownership-file"
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
+import { StorageBootstrap } from "@ericsanchezok/synergy-harness/storage/bootstrap"
+import { MigrationRegistry } from "@ericsanchezok/synergy-harness/migration/registry"
+import { getMigrationStatus, runMigrations } from "@ericsanchezok/synergy-harness/migration"
+import { ServerProcessLock } from "@ericsanchezok/synergy-harness/util/server-process-lock"
+import { BeforeRecoveryReaderBinding } from "../src/home-schema"
+import {
+  registerOrganizationHomeMigration,
+  organizationHomeMigration,
+  organizationInitialWorkspaceReaderMigration,
+  organizationDurableSyncReaderMigration,
+  organizationRecoveryReaderMigration,
+} from "../src/home-migration"
 import { expect, test } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"
@@ -8,7 +25,10 @@ import {
   OrganizationRuntimeProtocol as Protocol,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { memberEnvironment } from "../src/environment"
-import { readRuntimeHome } from "../src/home"
+import { readRuntimeHome, prepareHostedHome, prepareMemberHome } from "../src/home"
+import { enrollRuntime } from "../src/enrollment"
+import { openHostedRuntime, openMemberRuntime } from "../src/runtime"
+import { RuntimeMaintenance } from "@ericsanchezok/synergy-harness/storage/runtime-maintenance"
 import { readRuntimeRegistration } from "../src/registration"
 import { fixture } from "./support/organization"
 
@@ -17,27 +37,116 @@ const entry = installed
   ? path.join(installed, "node_modules/.bin/synergy-org-runtime")
   : path.resolve(import.meta.dir, "../src/entry.ts")
 
-async function invoke(args: string[], input: unknown, ambient: string) {
-  const child = Bun.spawn([process.execPath, "--no-env-file", "--no-bunfig", entry, ...args], {
-    cwd: installed ?? ambient,
-    env: {
-      ...process.env,
-      SYNERGY_HOME: ambient,
-      SYNERGY_RUNTIME_ROOT: undefined,
-      NODE_PATH: undefined,
-      NODE_OPTIONS: undefined,
+async function invoke(args: string[], input: unknown, ambient: string, shared = false) {
+  const selected = shared ? path.resolve(import.meta.dir, "../../presets/src/index.ts") : entry
+  const child = Bun.spawn(
+    [process.execPath, "--no-env-file", "--no-bunfig", selected, ...(shared ? ["org-runtime"] : []), ...args],
+    {
+      cwd: installed ?? ambient,
+      env: {
+        ...process.env,
+        SYNERGY_HOME: ambient,
+        SYNERGY_RUNTIME_ROOT: undefined,
+        NODE_PATH: undefined,
+        NODE_OPTIONS: undefined,
+      },
+      stdin: new TextEncoder().encode(typeof input === "string" ? input : JSON.stringify(input)),
+      stdout: "pipe",
+      stderr: "pipe",
+      timeout: 20_000,
     },
-    stdin: new TextEncoder().encode(typeof input === "string" ? input : JSON.stringify(input)),
-    stdout: "pipe",
-    stderr: "pipe",
-    timeout: 20_000,
-  })
+  )
   const [code, stdout, stderr] = await Promise.all([
     child.exited,
     new Response(child.stdout).text(),
     new Response(child.stderr).text(),
   ])
   return { code, stdout, stderr }
+}
+
+const homeMigrationDomain = "organization-runtime-home"
+const previousHomeMigrations = [
+  organizationHomeMigration,
+  organizationInitialWorkspaceReaderMigration,
+  organizationDurableSyncReaderMigration,
+]
+type UpgradeHome = Awaited<ReturnType<typeof prepareHostedHome>> | Awaited<ReturnType<typeof prepareMemberHome>>
+
+async function preparePriorReaderCatalog(home: UpgradeHome) {
+  expect(await StorageBootstrap.status(home.root)).toBeUndefined()
+  const context = RuntimeContext.create(
+    { home: home.home, root: home.root, env: memberEnvironment(home, process.env) },
+    "oneshot",
+  )
+  return context.run(async () => {
+    const owner = HomeOwnershipFile.FencedInfo.parse(
+      JSON.parse(await fs.readFile(path.join(home.root, "home-ownership.json"), "utf8")),
+    )
+    expect(owner.readerContract).toBe("native-organization-ownership-v5")
+    HomeOwnership.select(owner)
+    await HomeOwnership.assert({ required: true })
+    registerOrganizationHomeMigration(home.identity)
+    MigrationRegistry.unregister(homeMigrationDomain)
+    MigrationRegistry.register(homeMigrationDomain, previousHomeMigrations)
+    MigrationRegistry.lock()
+    RuntimeContext.sealComposition()
+    let writer: Awaited<ReturnType<typeof ServerProcessLock.acquire>> | undefined
+    let prepared: Awaited<ReturnType<typeof StorageBootstrap.prepare>> | undefined
+    try {
+      writer = await ServerProcessLock.acquire()
+      prepared = await StorageBootstrap.prepare({ root: home.root })
+      context.storage = { store: prepared.store, artifactDirectory: path.join(home.root, "data") }
+      await runMigrations({ targetDomain: homeMigrationDomain, output: "silent" })
+      const status = (await getMigrationStatus(homeMigrationDomain))[homeMigrationDomain]
+      if (!status) throw new Error("The selected prior Home migration catalog is unavailable")
+      expect(status.completed.map((migration) => migration.id)).toEqual(
+        previousHomeMigrations.map((migration) => migration.id),
+      )
+      expect(status.pending).toEqual([])
+      const ledger = await Storage.read<Record<string, number>>(StoragePath.metaMigrationLogDomain(homeMigrationDomain))
+      expect(Object.keys(ledger).sort()).toEqual(previousHomeMigrations.map((migration) => migration.id).sort())
+      expect(ledger[organizationRecoveryReaderMigration.id]).toBeUndefined()
+      for (const name of ["home-ownership.json", "organization.json"])
+        expect(JSON.parse(await fs.readFile(path.join(home.root, name), "utf8")).readerContract).toBe(
+          "native-organization-ownership-v5",
+        )
+      await prepared.activate()
+      expect(prepared.manifest.phase).toBe("active")
+      return ledger
+    } finally {
+      try {
+        await prepared?.store.close()
+      } finally {
+        try {
+          await writer?.release()
+        } finally {
+          context.dispose()
+        }
+      }
+    }
+  })
+}
+
+async function inspectHomeMigrationLog(home: UpgradeHome) {
+  const context = RuntimeContext.create(
+    { home: home.home, root: home.root, env: memberEnvironment(home, process.env) },
+    "oneshot",
+  )
+  return context.run(async () => {
+    let attached: Awaited<ReturnType<typeof StorageBootstrap.inspect>> = undefined
+    try {
+      attached = await StorageBootstrap.inspect(home.root)
+      if (!attached) throw new Error("The original active Home dataset is unavailable")
+      context.storage = { store: attached.store, artifactDirectory: attached.artifactDirectory }
+      return await Storage.read<Record<string, number>>(StoragePath.metaMigrationLogDomain(homeMigrationDomain))
+    } finally {
+      try {
+        await attached?.store.close()
+      } finally {
+        context.dispose()
+      }
+    }
+  })
 }
 
 test("public register prepares and enrolls member and hosted Homes over TLS without changing the ambient Home", async () => {
@@ -236,3 +345,127 @@ test("public serve reuses the enrolled supervised lifecycle and graceful shutdow
     await output
   }
 }, 25_000)
+
+for (const kind of ["member", "hosted"] as const)
+  test(`public ${kind} Home upgrade reaches the native owner through shared and independent parsers`, async () => {
+    await using f = await fixture({ connections: { heartbeatMs: 25 } })
+    const identity = kind === "member" ? f.identity : { orgID: f.identity.orgID, hostID: "public-reader-upgrade" }
+    const home =
+      "accountID" in identity
+        ? await prepareMemberHome({ baseDirectory: path.join(f.root, "upgrade"), identity, origin: f.origin })
+        : await prepareHostedHome({ baseDirectory: path.join(f.root, "upgrade"), identity, origin: f.origin })
+    const ticket =
+      "accountID" in identity
+        ? await f.ticket(identity.deviceID, home.publicKey)
+        : (
+            await f.client.orgRuntime.registerHosted(
+              {
+                orgHostedRuntimeRegistration: {
+                  name: "Reader upgrade",
+                  publicKey: home.publicKey,
+                },
+              },
+              { headers: f.headers, throwOnError: true },
+            )
+          ).data
+    await enrollRuntime({ home: home.home, identity, ticket, ca: f.ca })
+    const open = () =>
+      "accountID" in identity
+        ? openMemberRuntime({ home: home.home, identity, ca: f.ca, logging: { print: false } })
+        : openHostedRuntime({ home: home.home, identity, ca: f.ca, logging: { print: false } })
+    expect(await StorageBootstrap.status(home.root)).toBeUndefined()
+    const retainedFiles = ["auth/organization-runtime.json", "organization-registration.json"]
+    const retained = await Promise.all(retainedFiles.map((name) => fs.readFile(path.join(home.root, name))))
+    for (const name of ["home-ownership.json", "organization.json"]) {
+      const file = path.join(home.root, name)
+      const value = JSON.parse(await fs.readFile(file, "utf8"))
+      const prior = { ...value, readerContract: "native-organization-ownership-v5" }
+      await fs.writeFile(
+        file,
+        JSON.stringify(
+          name === "organization.json"
+            ? BeforeRecoveryReaderBinding.parse(prior)
+            : HomeOwnershipFile.FencedInfo.parse(prior),
+        ),
+      )
+    }
+    const priorLedger = await preparePriorReaderCatalog(home)
+    await expect(readRuntimeHome(home.home, identity)).rejects.toThrow("migration")
+    const requestID = "public-native-reader-upgrade"
+    const input = { version: 1, identity }
+    const first = await invoke(["upgrade", "--request-id", requestID], input, home.home, !installed)
+    expect(first.code, first.stderr).toBe(0)
+    const receipt = JSON.parse(first.stdout)
+    expect(receipt).toMatchObject({
+      state: "upgrade-complete",
+      requestID,
+      restartRequired: true,
+      executesAgents: false,
+      schemaVersion: 2,
+      readerContract: "native-organization-ownership-v6",
+    })
+    const retry = await invoke(["upgrade", "--request-id", requestID], input, home.home)
+    expect(retry.code, retry.stderr).toBe(0)
+    expect(JSON.parse(retry.stdout)).toEqual(receipt)
+    expect(await Promise.all(retainedFiles.map((name) => fs.readFile(path.join(home.root, name))))).toEqual(retained)
+    expect((await readRuntimeHome(home.home, identity)).publicKey).toBe(home.publicKey)
+    const currentLedger = await inspectHomeMigrationLog(home)
+    expect(Object.keys(currentLedger).sort()).toEqual(
+      [...Object.keys(priorLedger), organizationRecoveryReaderMigration.id].sort(),
+    )
+    for (const [id, completedAt] of Object.entries(priorLedger)) expect(currentLedger[id]).toBe(completedAt)
+    expect(currentLedger[organizationRecoveryReaderMigration.id]).toBeGreaterThan(0)
+    await using reopened = await open()
+    const released = await reopened.run(() => RuntimeMaintenance.status())
+    expect(released).toMatchObject({
+      version: 2,
+      requestID,
+      phase: "released",
+      native: {
+        source: { schemaVersion: 2, readerContract: "native-organization-ownership-v5" },
+        target: { schemaVersion: 2, readerContract: "native-organization-ownership-v6" },
+      },
+    })
+  }, 30_000)
+
+test("public upgrade refuses a reader-six receipt paired with files falsely claiming reader five", async () => {
+  await using f = await fixture({ connections: { heartbeatMs: 25 } })
+  const identity = { orgID: f.identity.orgID, hostID: "inconsistent-reader-ledger" }
+  const home = await prepareHostedHome({ baseDirectory: path.join(f.root, "upgrade"), identity, origin: f.origin })
+  const ticket = (
+    await f.client.orgRuntime.registerHosted(
+      {
+        orgHostedRuntimeRegistration: {
+          name: "Inconsistent reader ledger",
+          publicKey: home.publicKey,
+        },
+      },
+      { headers: f.headers, throwOnError: true },
+    )
+  ).data
+  await enrollRuntime({ home: home.home, identity, ticket, ca: f.ca })
+  const original = await openHostedRuntime({ home: home.home, identity, ca: f.ca, logging: { print: false } })
+  const ledger = await original.run(() =>
+    Storage.read<Record<string, number>>(StoragePath.metaMigrationLogDomain(homeMigrationDomain)),
+  )
+  expect(ledger[organizationRecoveryReaderMigration.id]).toBeGreaterThan(0)
+  await original.close()
+  const paths = ["home-ownership.json", "organization.json"]
+  for (const name of paths) {
+    const file = path.join(home.root, name)
+    const current = JSON.parse(await fs.readFile(file, "utf8"))
+    await fs.writeFile(file, JSON.stringify({ ...current, readerContract: "native-organization-ownership-v5" }))
+  }
+  const files = await Promise.all(paths.map((name) => fs.readFile(path.join(home.root, name))))
+  const credentials = await fs.readFile(path.join(home.root, "auth", "organization-runtime.json"))
+  const result = await invoke(
+    ["upgrade", "--request-id", "inconsistent-native-reader"],
+    { version: 1, identity },
+    home.home,
+  )
+  expect(result.code).toBe(1)
+  expect(await inspectHomeMigrationLog(home)).toEqual(ledger)
+  expect(await Promise.all(paths.map((name) => fs.readFile(path.join(home.root, name))))).toEqual(files)
+  expect(await fs.readFile(path.join(home.root, "auth", "organization-runtime.json"))).toEqual(credentials)
+  await expect(readRuntimeHome(home.home, identity)).rejects.toThrow("migration")
+}, 30_000)

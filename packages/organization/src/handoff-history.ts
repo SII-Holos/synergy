@@ -350,6 +350,42 @@ export namespace OrganizationHandoffHistory {
       ),
     }
   }
+  export async function bindingAtEpoch(
+    source: Record.HistoricalReader,
+    session: Record.SessionDirectory,
+    value: number,
+  ) {
+    const requested = Handoff.Binding.shape.fromEpoch.parse(value)
+    if (session.handoffID || requested > session.bindingEpoch) invalid()
+    let runtimeID = session.driverRuntimeID,
+      bindingEpoch = session.bindingEpoch
+    let upperCommandSeq: number | undefined
+    while (bindingEpoch !== requested) {
+      let selected: HandoffRecord.RawStored | undefined
+      for (const row of source.entries(["organization", "session-handoffs", session.sessionID])) {
+        const index = Index.parse(row.value)
+        if (!HandoffRecord.same(row.key, sessionIndex(session.sessionID, index.handoffID))) invalid()
+        const record = source.read(HandoffRecord.RawStored, key(index.handoffID))
+        if (record.handoffID !== index.handoffID || record.sessionID !== session.sessionID) invalid()
+        if (record.phase !== "completed" || record.toEpoch !== bindingEpoch) continue
+        if (
+          selected ||
+          record.targetRuntimeID !== runtimeID ||
+          record.fromEpoch >= bindingEpoch ||
+          record.fromEpoch < requested ||
+          (upperCommandSeq !== undefined && record.commandSeq > upperCommandSeq)
+        )
+          invalid()
+        selected = record
+      }
+      if (!selected) invalid()
+      await terminal(source, session, selected.handoffID)
+      runtimeID = selected.sourceRuntimeID
+      bindingEpoch = selected.fromEpoch
+      upperCommandSeq = selected.commandSeq
+    }
+    return { runtimeID, bindingEpoch }
+  }
   export async function binding(source: Record.HistoricalReader, session: Record.SessionDirectory, input: Binding) {
     let incoming: HandoffRecord.RawStored | undefined
     for (const row of source.entries(["organization", "session-handoffs", session.sessionID])) {

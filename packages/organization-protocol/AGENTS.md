@@ -16,7 +16,7 @@ Desktop bridge versions require revision-bound logout phases; test old-request r
 
 Decision digests bind request, source and answer. Interaction reads page pending owners and value-free winners. Bind permits to queries; verify decision-command/interaction suites.
 
-Current execution observations belong beside immutable receipts. Bind their root and observation window to acceptance; reject observation fields in durable results.
+Observations bind accepted roots/windows; exclude them from durable results. Continuation origins are exclusive. Signed queued rosters bind complete body-free identities/digests without authority.
 
 Resources declare fixed protocols/portable model capabilities. Separate upstream config/public descriptors/secret input. Reject arbitrary Runtime options/caller-selected ownership/transport-routing credential headers. Verify `test/resource.test.ts` strict contracts.
 

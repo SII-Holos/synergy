@@ -27,7 +27,7 @@ test("version three grants upgrade without inventing handoff history and previou
     expect(await Storage.read(Keys.executionGrant(f.grant.grantID))).toEqual(legacy)
     expect(Execution.LegacyGrant3.safeParse(f.grant).success).toBe(false)
     expect((await Record.read(Record.SessionDirectory, Keys.session(f.sessionID)))!.retainedExecutionGrants).toBe(1)
-    await Storage.write(Keys.executionGrant(f.grant.grantID), { ...f.grant, schemaVersion: 6 })
+    await Storage.write(Keys.executionGrant(f.grant.grantID), { ...f.grant, schemaVersion: 7 })
     await expect(Record.read(Record.ExecutionGrant, Keys.executionGrant(f.grant.grantID))).rejects.toThrow()
   })
 })
@@ -80,7 +80,7 @@ test("bound grant retention upgrades from version two without rewriting stored e
   await f.run(async () => {
     const current = await Record.read(Record.ExecutionGrant, Keys.executionGrant(f.grant.grantID))
     expect(current).toEqual(f.grant)
-    expect(current).toMatchObject({ schemaVersion: 5, retention: { state: "held", generation: 1 } })
+    expect(current).toMatchObject({ schemaVersion: 6, retention: { state: "held", generation: 1 } })
     expect(await Storage.read(Keys.executionGrant(f.grant.grantID))).toEqual(legacy)
     expect((await Record.read(Record.SessionDirectory, Keys.session(f.sessionID)))!.retainedExecutionGrants).toBe(1)
   })

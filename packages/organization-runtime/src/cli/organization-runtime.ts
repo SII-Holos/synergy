@@ -1,6 +1,8 @@
+import { z } from "zod"
 import path from "node:path"
 import { cmd, type CommandModule } from "@ericsanchezok/synergy-util/cli-command"
-import { prepareHostedHome, prepareMemberHome } from "../home"
+import { prepareHostedHome, prepareMemberHome, RuntimeIdentity } from "../home"
+import { upgradeOrganizationRuntimeHome } from "../runtime"
 import { enrollRuntime } from "../enrollment"
 import { readRuntimeRegistration } from "../registration"
 import { RuntimeRegistrationRequest } from "../launch"
@@ -70,15 +72,61 @@ export const OrganizationRuntimeServeCommand = cmd({
   handler: (args) => serveSupervisedRuntime(args.kind),
 })
 
+export const OrganizationRuntimeUpgradeCommand = cmd({
+  command: "upgrade",
+  describe: "explicitly advance an enrolled Runtime Home reader under native maintenance; print JSON metadata",
+  builder: (yargs) =>
+    yargs
+      .option("request-id", {
+        type: "string",
+        demandOption: true,
+        describe: "stable identifier for this exact Home reader upgrade and its retries",
+      })
+      .check((args) => {
+        explicitHome()
+        z.string().min(1).max(128).parse(args["request-id"])
+        return true
+      })
+      .epilog(
+        "Private stdin requires version:1 and the original member or Hosted identity. Stop ordinary serving and select its existing SYNERGY_HOME. Failed or cancelled upgrades stay held for the same request; successful completion requires a separate serve restart.",
+      ),
+  async handler(args) {
+    const input = await readMachineInput(
+      z.strictObject({ version: z.literal(1), identity: RuntimeIdentity }),
+      "native Home reader upgrade request",
+    )
+    const controller = new AbortController()
+    const stop = () => controller.abort(new Error("Runtime Home reader upgrade cancelled"))
+    process.on("SIGINT", stop)
+    process.on("SIGTERM", stop)
+    try {
+      console.log(
+        JSON.stringify(
+          await upgradeOrganizationRuntimeHome({
+            home: explicitHome(),
+            identity: input.identity,
+            requestID: args["request-id"],
+            signal: controller.signal,
+          }),
+        ),
+      )
+    } finally {
+      process.off("SIGINT", stop)
+      process.off("SIGTERM", stop)
+    }
+  },
+})
+
 export const organizationRuntimeCommands = [
   OrganizationRuntimeRegisterCommand,
   OrganizationRuntimeServeCommand,
   createCleanupCommand(),
+  OrganizationRuntimeUpgradeCommand,
 ] as unknown as CommandModule[]
 
 export const OrganizationRuntimeCommand = cmd({
   command: "org-runtime",
-  describe: "register, serve or clean up an independent organization Runtime",
+  describe: "register, serve, upgrade or clean up an independent organization Runtime",
   builder: (yargs) => {
     for (const command of organizationRuntimeCommands) yargs.command(command)
     return yargs.demandCommand()

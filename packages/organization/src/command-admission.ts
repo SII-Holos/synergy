@@ -361,7 +361,11 @@ export function createCommandAdmissions(options: {
           ...current,
           state: result.attempt.status === "accepted" ? "accepted" : "rejected",
           result: observed,
-          updatedAt: Date.now(),
+          updatedAt:
+            equal(current.result, observed) &&
+            current.state === (result.attempt.status === "accepted" ? "accepted" : "rejected")
+              ? current.updatedAt
+              : Date.now(),
         })
         await Storage.write(Keys.commandAttempt(permit.attemptID), updated)
         if (result.accepted?.permit.attemptID !== permit.attemptID) await OrganizationExecutionGrants.reject(permit)

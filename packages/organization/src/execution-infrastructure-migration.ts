@@ -31,7 +31,7 @@ export const executionInfrastructureMigration: Migration = {
       const previous = Execution.LegacyGrant4.parse(record)
       record.schemaVersion = 5
       record.selection = { ...previous.selection, infrastructure: { workspace: null, environment: null } }
-      Execution.Grant.parse(record)
+      Execution.LegacyGrant5.parse(record)
     }
   },
 }

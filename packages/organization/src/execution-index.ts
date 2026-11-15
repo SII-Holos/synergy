@@ -69,6 +69,54 @@ export namespace OrganizationExecutionIndex {
       fail("PROTOCOL_MISMATCH", "Historical control locator has another canonical address")
     return grant.grantID
   }
+  export async function assertRetained(grant: Execution.Grant) {
+    const [coverage, value] = await Storage.readMany([
+      schemaKey,
+      [...prefix(grant.sessionID, grant.bindingEpoch), grant.grantID],
+    ])
+    if (
+      !Schema.safeParse(coverage).success ||
+      !value ||
+      Entry.parse(value).grantID !== grant.grantID ||
+      !(grant.state === "provisional" || (grant.state === "bound" && grant.retention.state === "held"))
+    )
+      fail("PROTOCOL_MISMATCH", "Execution lacks its original retained grant index")
+  }
+  export function retainedHistoryEntry(reader: Record.HistoricalReader, key: string[], value: unknown) {
+    const entry = Entry.parse(value)
+    const grant = reader.read(Record.ExecutionGrant, Keys.executionGrant(entry.grantID))
+    if (
+      !same(key, [...prefix(grant.sessionID, grant.bindingEpoch), grant.grantID]) ||
+      !same(entry, reader.read(Entry, key))
+    )
+      fail("PROTOCOL_MISMATCH", "Queued history has another original retained grant address")
+    return grant
+  }
+  export function assertRetainedHistory(
+    reader: Record.HistoricalReader,
+    session: Record.SessionDirectory,
+    grantIDs: ReadonlySet<string>,
+  ) {
+    const seen = new Set<string>()
+    for (const row of reader.entries(prefix(session.sessionID, session.bindingEpoch))) {
+      const entry = Entry.parse(row.value)
+      const grant = reader.read(Record.ExecutionGrant, Keys.executionGrant(entry.grantID))
+      if (
+        !grantIDs.has(entry.grantID) ||
+        seen.has(entry.grantID) ||
+        grant.state !== "provisional" ||
+        grant.sessionID !== session.sessionID ||
+        grant.orgID !== session.orgID ||
+        grant.runtimeID !== session.driverRuntimeID ||
+        grant.bindingEpoch !== session.bindingEpoch ||
+        !same(row.key, [...prefix(session.sessionID, session.bindingEpoch), entry.grantID])
+      )
+        fail("PROTOCOL_MISMATCH", "Queued history has another retained grant index")
+      seen.add(entry.grantID)
+    }
+    if (seen.size !== grantIDs.size || seen.size !== session.retainedExecutionGrants)
+      fail("PROTOCOL_MISMATCH", "Queued history lacks its complete original retained grant roster")
+  }
   async function updateControl(grant: Execution.Grant) {
     if (!grant.provenance) return
     if (!matchesControl(grant))

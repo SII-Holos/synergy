@@ -339,7 +339,7 @@ export function createMemberResourceClient(options: {
     const authority = control?.permit ?? permit
     if (
       value.orgID !== permit.orgID ||
-      value.deploymentIncarnation !== permit.deploymentIncarnation ||
+      value.deploymentIncarnation !== authority.deploymentIncarnation ||
       value.runtimeID !== authority.runtimeID ||
       value.sessionID !== permit.sessionID ||
       value.projectID !== permit.projectID ||
@@ -351,7 +351,7 @@ export function createMemberResourceClient(options: {
       (control
         ? value.grantID === permit.provisionalGrantID ||
           value.provenance?.originGrantID !== permit.provisionalGrantID ||
-          value.provenance?.handoffID !== proof.continuation!.handoffID ||
+          !Execution.sameContinuationOrigin(value.provenance, proof.continuation) ||
           value.provenance?.rootID !== proof.receipt.accepted!.effect.messageID ||
           JSON.stringify(value.provenance?.control) !== JSON.stringify(control)
         : value.grantID !== permit.provisionalGrantID || value.provenance !== undefined)

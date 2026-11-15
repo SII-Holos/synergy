@@ -15,8 +15,15 @@ import { FileAtomicWrite } from "@ericsanchezok/synergy-local-runtime/file/atomi
 import {
   OrganizationRuntimeProtocol as Protocol,
   OrganizationProtocol,
+  OrganizationExecutionProtocol as Execution,
 } from "@ericsanchezok/synergy-organization-protocol"
-import { HostedBinding } from "../home-schema"
+import {
+  HostedBinding,
+  ArchivedHostedBinding,
+  ArchivedHomeReaderContract,
+  NativeHomeReaderContract,
+} from "../home-schema"
+import { HomeOwnershipFile } from "@ericsanchezok/synergy-harness/lifecycle/home-ownership-file"
 import { runtimeIdentityDigest } from "../home"
 import { MemberHomeError, readRecordSnapshot } from "../record"
 import { captureCredentialRecord } from "../credentials"
@@ -54,7 +61,7 @@ const Receipt = z.strictObject({
     facts: Facts,
   }),
   registration: Protocol.HostedRegistrationRecord,
-  binding: HostedBinding,
+  binding: ArchivedHostedBinding,
   credentialHash: Hash,
   connectionEpoch: z.number().int().nonnegative().safe(),
 })
@@ -74,6 +81,10 @@ function sameInstallation(left: HomeRestoration.Info, right: HomeRestoration.Inf
 }
 
 const pending = RuntimeContext.state(() => ({ accepting: true, work: new Map<string, Promise<void>>() }))
+const restoration = RuntimeContext.state(() => ({
+  installed: false,
+  original: undefined as HomeOwnershipFile.RestorationInfo | undefined,
+}))
 const failed = new WeakSet<Promise<void>>()
 
 export namespace OrganizationHostedPublication {
@@ -224,8 +235,24 @@ export namespace OrganizationHostedPublication {
   }
   async function nativeReady(receipt: Receipt) {
     const root = RuntimeContext.current().host.root
-    const binding = await readRecordSnapshot(path.join(root, "organization.json"), HostedBinding, "identity records")
-    if (!binding || binding.value.state !== "ready" || hash(binding.value) !== hash(receipt.binding)) return false
+    const binding = await readRecordSnapshot(
+      path.join(root, "organization.json"),
+      ArchivedHostedBinding,
+      "identity records",
+    )
+    const owner = await HomeOwnershipFile.open({ root, env: RuntimeContext.current().host.env }).read()
+    if (
+      !binding ||
+      binding.value.state !== "ready" ||
+      owner?.schemaVersion !== 3 ||
+      owner.installationID !== receipt.target.installationID ||
+      owner.incarnation !== receipt.target.incarnation ||
+      owner.readerContract !== binding.value.readerContract ||
+      ArchivedHomeReaderContract.options.indexOf(binding.value.readerContract) <
+        ArchivedHomeReaderContract.options.indexOf(receipt.binding.readerContract) ||
+      hash(binding.value) !== hash({ ...receipt.binding, readerContract: binding.value.readerContract })
+    )
+      return false
     const member = {
       home: RuntimeContext.current().host.home,
       root,
@@ -250,7 +277,35 @@ export namespace OrganizationHostedPublication {
     return !!connection?.record && connection.epoch >= receipt.connectionEpoch
   }
 
-  export function register() {
+  export async function recoveryOrigin(): Promise<Execution.RecoveryOrigin | undefined> {
+    const original = restoration().original
+    if (!original) return
+    if (original.readerContract !== NativeHomeReaderContract)
+      fail("continuation requires its completed current native reader upgrade")
+    const completed = await HomeRestoration.inspectOrdinaryCompleted()
+    if (
+      completed.owner !== original.owner ||
+      completed.installationID !== original.installationID ||
+      completed.incarnation !== original.incarnation
+    )
+      fail("continuation belongs to another completed native Home")
+    const receipt = await read(completed)
+    const operation = await RuntimeMaintenance.operation(completed.installationID)
+    if (hash(receipt) !== completed.publicationHash || operation?.phase !== "released" || !(await nativeReady(receipt)))
+      fail("continuation requires the actual released native publication")
+    if (hash(await HomeRestoration.inspectOrdinaryCompleted()) !== hash(completed))
+      fail("continuation completion changed during its original publication inspection")
+    return Execution.RecoveryOrigin.parse({
+      installationID: receipt.service.installation.installationID,
+      sourceReferenceHash: receipt.service.facts.sourceReferenceHash,
+    })
+  }
+  export function continuationVersion(): 1 | undefined {
+    return restoration().installed ? 1 : undefined
+  }
+  export function register(original?: HomeOwnershipFile.RestorationInfo) {
+    restoration().installed = true
+    restoration().original = original && HomeOwnershipFile.RestorationInfo.parse(structuredClone(original))
     StorageMutationGuard.register("hosted-restoration-publication", async (tx, keys, tree) => {
       const prefix = ["organization-runtime-recovery", "publication"]
       for (const candidate of keys) {

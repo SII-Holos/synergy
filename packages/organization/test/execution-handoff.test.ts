@@ -628,6 +628,22 @@ for (const mode of ["cancel", "transfer"] as const)
             expect((await OrganizationHandoffHistory.terminal(complete, currentDirectory, next.handoffID)).phase).toBe(
               "cancelled",
             )
+            expect(
+              await OrganizationHandoffHistory.bindingAtEpoch(
+                complete,
+                currentDirectory,
+                currentDirectory.bindingEpoch,
+              ),
+            ).toEqual({
+              runtimeID: currentDirectory.driverRuntimeID,
+              bindingEpoch: currentDirectory.bindingEpoch,
+            })
+            expect(await OrganizationHandoffHistory.bindingAtEpoch(complete, currentDirectory, view.fromEpoch)).toEqual(
+              {
+                runtimeID: view.sourceRuntimeID,
+                bindingEpoch: view.fromEpoch,
+              },
+            )
             expect(await OrganizationExecutionGrants.closedHistory(complete, f.grant.grantID)).toMatchObject({
               retention: { state: "handoff_closed" },
             })
@@ -672,6 +688,61 @@ for (const mode of ["cancel", "transfer"] as const)
             ).toBe(true)
             await refused(
               OrganizationHandoffHistory.terminal(historical(missingIndex), currentDirectory, view.handoffID),
+            )
+            const reservedEpoch = await refused(
+              OrganizationHandoffHistory.bindingAtEpoch(complete, currentDirectory, next.toEpoch),
+            )
+            if (reservedEpoch.state === "rejected")
+              expect(reservedEpoch.error).toMatchObject({ data: { code: "PROTOCOL_MISMATCH" } })
+            if (mode === "transfer") {
+              await refused(
+                OrganizationHandoffHistory.bindingAtEpoch(historical(missingIndex), currentDirectory, view.fromEpoch),
+              )
+              const badActivation = new Map(history)
+              const address = ["organization", "handoffs", view.handoffID]
+              const record = complete.read(OrganizationHandoffRecord.RawStored, address)
+              if (!record.activated || record.activated.proof.purpose !== "target-activated")
+                throw new Error("Expected the actual completed target activation")
+              const signature = record.activated.signature
+              const changed = OrganizationHandoffRecord.RawStored.parse({
+                ...record,
+                activated: { ...record.activated, signature: (signature[0] === "0" ? "1" : "0") + signature.slice(1) },
+              })
+              if (!changed.activated) throw new Error("Expected its schema-valid changed activation")
+              expect(
+                await Handoff.verifyProof(
+                  changed.activated.proof,
+                  changed.activated.signature,
+                  record.target.publicKey,
+                ),
+              ).toBe(false)
+              badActivation.set(JSON.stringify(address), changed)
+              const badSignature = await refused(
+                OrganizationHandoffHistory.bindingAtEpoch(historical(badActivation), currentDirectory, view.fromEpoch),
+              )
+              if (badSignature.state === "rejected")
+                expect(badSignature.error).toMatchObject({ data: { code: "PROTOCOL_MISMATCH" } })
+              const foreignTarget = new Map(history)
+              foreignTarget.set(
+                JSON.stringify(Keys.session(f.sessionID)),
+                Record.SessionDirectory.parse({
+                  ...currentDirectory,
+                  driverRuntimeID: view.sourceRuntimeID,
+                }),
+              )
+              const foreign = historical(foreignTarget)
+              const foreignDirectory = foreign.read(Record.SessionDirectory, Keys.session(f.sessionID))
+              const mismatchedTarget = await refused(
+                OrganizationHandoffHistory.bindingAtEpoch(foreign, foreignDirectory, view.fromEpoch),
+              )
+              if (mismatchedTarget.state === "rejected")
+                expect(mismatchedTarget.error).toMatchObject({ data: { code: "PROTOCOL_MISMATCH" } })
+            }
+            expect(await OrganizationHandoffHistory.bindingAtEpoch(complete, currentDirectory, view.fromEpoch)).toEqual(
+              {
+                runtimeID: view.sourceRuntimeID,
+                bindingEpoch: view.fromEpoch,
+              },
             )
             const cutoff = new Map(history)
             const handoffKey = ["organization", "handoffs", view.handoffID]

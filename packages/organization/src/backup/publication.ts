@@ -47,7 +47,8 @@ async function writeHosted(tx: StoreTransaction, evidence: Writers.Inspection, r
     })
     const mapping = PublicationRecords.validateHosted(
       {
-        version: 1,
+        version: source.queued ? 2 : 1,
+        ...(source.queued && { queued: source.queued.proof }),
         target: receipt.target,
         namespaceHash: summary.namespaceHash,
         sourceReferenceHash: source.sourceReferenceHash,
@@ -72,13 +73,32 @@ async function writeHosted(tx: StoreTransaction, evidence: Writers.Inspection, r
         },
         () => tx.write(address, mapping),
       )
+    if (source.queued) {
+      for (const item of source.queued.items) {
+        const itemKey = PublicationRecords.queuedKey(receipt.target.installationID, original.runtimeID, item.grantID)
+        const [retained] = await tx.readMany([itemKey])
+        if (retained !== undefined && hash(retained) !== hash(item))
+          fail("cannot replace its original queued publication")
+        if (retained === undefined)
+          await writes.run(
+            {
+              tx,
+              key: itemKey,
+              assert() {
+                Writers.inspect(evidence)
+              },
+            },
+            () => tx.write(itemKey, item),
+          )
+      }
+    }
+    await PublicationRecords.readQueued(receipt.target.installationID, original.runtimeID, mapping)
     count++
   }
-  if (
-    count !== summary.hosted ||
-    (await Storage.count({ prefix: [...key(receipt.target.installationID), "hosted"] })) !== count
-  )
-    fail("Hosted publication does not cover its complete roster")
+  let stored = 0
+  for await (const row of Storage.records({ prefix: [...key(receipt.target.installationID), "hosted"], limit: 128 }))
+    if (row.key.length === 5) stored++
+  if (count !== summary.hosted || stored !== count) fail("Hosted publication does not cover its complete roster")
 }
 
 export namespace OrganizationRecoveryPublication {

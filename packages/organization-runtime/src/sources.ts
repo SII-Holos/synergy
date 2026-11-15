@@ -36,7 +36,7 @@ export function registerMemberSources(identity: RuntimeIdentity, restoration?: H
       identity: runtimeIdentityDigest(identity),
       readerContract: NativeHomeReaderContract,
     })
-  OrganizationHostedPublication.register()
+  OrganizationHostedPublication.register(restoration)
   registerOrganizationHomeMigration(identity)
   registerOrganizationNamespaceIdentity(identity)
   ConfigSource.register({

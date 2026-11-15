@@ -20,7 +20,7 @@ export namespace OrganizationExecutionLeases {
     attemptID: Identity.ID,
     acceptedHash: z.string().length(64),
   })
-  export const Authority = z.strictObject({
+  const LegacyAuthority = z.strictObject({
     version: z.literal(1),
     orgID: Identity.ID,
     deploymentIncarnation: Identity.ID,
@@ -33,9 +33,16 @@ export namespace OrganizationExecutionLeases {
     input: Lookup,
     control: Lookup.extend({ handoffID: Identity.ID }).optional(),
   })
+  const CurrentAuthority = LegacyAuthority.extend({
+    version: z.literal(2),
+    control: Lookup.extend(Execution.ContinuationOrigin.shape)
+      .refine((value) => Execution.ContinuationOrigin.strip().safeParse(value).success)
+      .optional(),
+  })
+  export const Authority = z.union([LegacyAuthority, CurrentAuthority])
   export type Authority = z.infer<typeof Authority>
   const Hint = z.strictObject({ grantID: Identity.ID, generation: z.number().int().nonnegative().safe() })
-  export const Settlement = z.discriminatedUnion("kind", [
+  const LegacySettlement = z.discriminatedUnion("kind", [
     z.strictObject({ kind: z.literal("terminal"), receipt: Execution.ReleaseReceipt }),
     z.strictObject({
       kind: z.literal("closed"),
@@ -51,11 +58,33 @@ export namespace OrganizationExecutionLeases {
     }),
     z.strictObject({ kind: z.literal("linked"), entryID: Identity.ID }),
   ])
-  export const Entry = z
+  export const Settlement = z.discriminatedUnion("kind", [
+    ...LegacySettlement.options,
+    z.strictObject({ kind: z.literal("recovered"), entryID: Identity.ID }),
+  ])
+  const LegacyEntry = z
     .strictObject({
       version: z.literal(1),
       entryID: Identity.ID,
-      authority: Authority,
+      authority: LegacyAuthority,
+      hint: Hint.optional(),
+      uncertainUntil: z.number().int().nonnegative().safe().optional(),
+      state: z.enum(["pending", "settled"]),
+      settlement: LegacySettlement.optional(),
+    })
+    .refine(
+      (value) => (value.state === "pending") === (value.settlement === undefined),
+      "Native cleanup settlement must match its state",
+    )
+    .refine(
+      (value) => !value.hint || value.uncertainUntil === undefined,
+      "A known generation cannot replace an unresolved dispatch horizon",
+    )
+  const CurrentEntry = z
+    .strictObject({
+      version: z.literal(2),
+      entryID: Identity.ID,
+      authority: CurrentAuthority,
       hint: Hint.optional(),
       uncertainUntil: z.number().int().nonnegative().safe().optional(),
       state: z.enum(["pending", "settled"]),
@@ -69,6 +98,11 @@ export namespace OrganizationExecutionLeases {
       (value) => !value.hint || value.uncertainUntil === undefined,
       "A known generation cannot replace an unresolved dispatch horizon",
     )
+  export const Entry = z.union([LegacyEntry, CurrentEntry])
+  function currentEntry(value: unknown) {
+    const stored = Entry.parse(value)
+    return CurrentEntry.parse({ ...stored, version: 2, authority: { ...stored.authority, version: 2 } })
+  }
   export type Entry = z.infer<typeof Entry>
   const Pending = z.strictObject({ version: z.literal(1), entryID: Identity.ID })
   const root = ["organization-execution-leases"]
@@ -84,7 +118,8 @@ export namespace OrganizationExecutionLeases {
   ]
   const queuedRoot = (entry: Entry) => [...rootPending(entry.authority), entry.entryID]
   const schema = [...root, "schema"]
-  const Schema = z.strictObject({ version: z.literal(1), ready: z.literal(true) })
+  const Schema = z.strictObject({ version: z.literal(2), ready: z.literal(true) })
+  const LegacySchema = z.strictObject({ version: z.literal(1), ready: z.literal(true) })
   const state = RuntimeContext.state(() => ({
     orgID: undefined as string | undefined,
     owner: undefined as
@@ -124,7 +159,7 @@ export namespace OrganizationExecutionLeases {
     const [raw] = await Storage.readMany([key(Identity.ID.parse(entryID))])
     owner()
     if (raw === undefined) fail("Native cleanup entry is unavailable")
-    const entry = Entry.parse(raw)
+    const entry = currentEntry(raw)
     if (entry.entryID !== entryID || entry.authority.orgID !== owner().orgID)
       fail("Native cleanup entry has another identity")
     return entry
@@ -161,7 +196,7 @@ export namespace OrganizationExecutionLeases {
     const control = proof.continuation?.receipt.accepted
     const permit = control?.permit ?? input.permit
     return Authority.parse({
-      version: 1,
+      version: 2,
       orgID: proof.orgID,
       deploymentIncarnation: proof.deploymentIncarnation,
       runtimeID: proof.runtimeID,
@@ -171,7 +206,7 @@ export namespace OrganizationExecutionLeases {
       rootID: input.effect.messageID,
       originGrantID: input.permit.provisionalGrantID,
       input: accepted(input),
-      ...(control && { control: { ...accepted(control), handoffID: proof.continuation!.handoffID } }),
+      ...(control && { control: { ...accepted(control), ...Execution.continuationOrigin(proof.continuation!) } }),
     })
   }
   async function enqueue(authority: Authority, deterministic?: string, uncertainUntil?: number) {
@@ -187,7 +222,7 @@ export namespace OrganizationExecutionLeases {
         return current
       }
     }
-    const entry = Entry.parse({ version: 1, entryID, authority, uncertainUntil, state: "pending" })
+    const entry = currentEntry({ version: 2, entryID, authority, uncertainUntil, state: "pending" })
     await save(entry)
     return entry
   }
@@ -197,7 +232,7 @@ export namespace OrganizationExecutionLeases {
     if (!input.permit.provisionalGrantID || input.effect.mode !== "task") return
     const permit = input.permit
     const authority = Authority.parse({
-      version: 1,
+      version: 2,
       orgID: permit.orgID,
       deploymentIncarnation: permit.deploymentIncarnation,
       runtimeID: permit.runtimeID,
@@ -208,7 +243,7 @@ export namespace OrganizationExecutionLeases {
       originGrantID: permit.provisionalGrantID,
       input: accepted(input),
     })
-    await enqueue(authority, hash(["original", authority]))
+    await enqueue(authority, hash(["original", { ...authority, version: 1 }]))
   }
   export async function begin(value: Execution.DescriptionProof | Execution.BindingProof) {
     const proof =
@@ -232,7 +267,7 @@ export namespace OrganizationExecutionLeases {
     return observeGrant(value, observed, z.number().int().nonnegative().safe().parse(inspectedAt))
   }
   async function observeGrant(value: Entry, observed: Execution.Grant, inspectedAt?: number) {
-    const entry = Entry.parse(value)
+    const entry = currentEntry(value)
     const grant = Execution.Grant.parse(observed)
     const authority = entry.authority
     if (
@@ -261,7 +296,9 @@ export namespace OrganizationExecutionLeases {
         const entryID = hash([authority, hint])
         const [raw] = await Storage.readMany([key(entryID)])
         const target =
-          raw === undefined ? Entry.parse({ version: 1, entryID, authority, hint, state: "pending" }) : Entry.parse(raw)
+          raw === undefined
+            ? currentEntry({ version: 2, entryID, authority, hint, state: "pending" })
+            : currentEntry(raw)
         if (
           JSON.stringify(target.authority) !== JSON.stringify(authority) ||
           JSON.stringify(target.hint) !== JSON.stringify(hint)
@@ -269,7 +306,7 @@ export namespace OrganizationExecutionLeases {
           fail("Native cleanup generation identity conflicts")
         await save(target)
         if (current.state === "pending" && (!current.hint || current.hint.generation === 0))
-          await save(Entry.parse({ ...current, state: "settled", settlement: { kind: "linked", entryID } }))
+          await save(currentEntry({ ...current, state: "settled", settlement: { kind: "linked", entryID } }))
         return target
       },
       {
@@ -313,6 +350,11 @@ export namespace OrganizationExecutionLeases {
       (current.hint || settlement.controlAdmissionID !== current.authority.control?.admissionID)
     )
       fail("Native absence does not match an unobserved control intent")
+    if (settlement.kind === "recovered") {
+      const target = await read(settlement.entryID)
+      if (target.entryID === current.entryID || !restoredLink(current, target))
+        fail("Native restored cleanup linkage has another original input or current recovery origin")
+    }
     if (settlement.kind === "linked") {
       const target = await read(settlement.entryID)
       if (
@@ -324,15 +366,207 @@ export namespace OrganizationExecutionLeases {
     }
   }
 
+  function restoredLink(current: Entry, target: Entry) {
+    const before = current.authority,
+      after = target.authority
+    return (
+      (!current.hint || (current.hint.grantID === before.originGrantID && current.hint.generation === 0)) &&
+      current.uncertainUntil === undefined &&
+      !before.control &&
+      !!target.hint &&
+      !!after.control &&
+      "recovery" in after.control &&
+      !!after.control.recovery &&
+      before.deploymentIncarnation !== after.deploymentIncarnation &&
+      (["orgID", "runtimeID", "sessionID", "projectID", "bindingEpoch", "rootID", "originGrantID"] as const).every(
+        (field) => before[field] === after[field],
+      ) &&
+      JSON.stringify(before.input) === JSON.stringify(after.input)
+    )
+  }
+  export async function recoverQueuedOriginal(
+    value: Entry,
+    observed: Execution.Grant,
+    commit: (accepted: Command.InputAccepted) => Promise<void>,
+  ) {
+    writing()
+    const target = await read(value.entryID),
+      grant = Execution.Grant.parse(observed)
+    const provenance = grant.provenance
+    if (!provenance?.recovery || provenance.predecessorGrantID !== provenance.originGrantID) return
+    const control = target.authority.control
+    if (
+      !control ||
+      !target.hint ||
+      grant.state === "closed" ||
+      target.hint.grantID !== grant.grantID ||
+      target.hint.generation !== (grant.state === "bound" ? grant.retention.generation : 0) ||
+      control.admissionID !== provenance.control.permit.admissionID ||
+      !("recovery" in control) ||
+      JSON.stringify(control.recovery) !== JSON.stringify(provenance.recovery) ||
+      grant.orgID !== target.authority.orgID ||
+      grant.deploymentIncarnation !== target.authority.deploymentIncarnation ||
+      grant.runtimeID !== target.authority.runtimeID ||
+      grant.sessionID !== target.authority.sessionID ||
+      grant.projectID !== target.authority.projectID ||
+      grant.bindingEpoch !== target.authority.bindingEpoch ||
+      provenance.rootID !== target.authority.rootID ||
+      provenance.originGrantID !== target.authority.originGrantID
+    )
+      fail("Restored queued cleanup has another current accepted generation")
+    const request = Records.Request.parse(
+      await Storage.read(
+        Keys.request(target.authority.orgID, target.authority.input.subjectID, target.authority.input.requestID),
+      ),
+    )
+    const input = Command.InputAccepted.parse(request.accepted),
+      permit = input.permit
+    if (
+      input.effect.mode !== "task" ||
+      acceptedHash(input) !== target.authority.input.acceptedHash ||
+      permit.provisionalGrantID !== provenance.originGrantID ||
+      permit.admissionID !== target.authority.input.admissionID ||
+      permit.attemptID !== target.authority.input.attemptID ||
+      input.effect.messageID !== target.authority.rootID
+    )
+      fail("Restored queued cleanup lacks its original native intake")
+    const authority = Authority.parse({
+      version: 2,
+      orgID: permit.orgID,
+      deploymentIncarnation: permit.deploymentIncarnation,
+      runtimeID: permit.runtimeID,
+      sessionID: permit.sessionID,
+      projectID: permit.projectID,
+      bindingEpoch: permit.bindingEpoch,
+      rootID: input.effect.messageID,
+      originGrantID: permit.provisionalGrantID,
+      input: accepted(input),
+    })
+    const entries = await captureEntries()
+    const roots = entries.filter((entry) => JSON.stringify(entry.authority) === JSON.stringify(authority))
+    if (roots.length && roots.every((entry) => entry.state === "settled")) return
+    const pending = roots.filter((entry) => entry.state === "pending")
+    if (pending.length !== 1 || !queuedOriginal(roots, pending[0]!, input) || !restoredLink(pending[0]!, target))
+      fail("Restoration cannot replace an original dispatch or generation")
+    await commit(input)
+    await save(
+      currentEntry({ ...pending[0]!, state: "settled", settlement: { kind: "recovered", entryID: target.entryID } }),
+    )
+  }
+
+  export function queuedOriginal(entries: readonly Entry[], pending: Entry, input: Command.InputAccepted) {
+    owner()
+    const permit = input.permit
+    if (input.effect.mode !== "task" || !permit.provisionalGrantID) return false
+    const authority = Authority.parse({
+      version: 2,
+      orgID: permit.orgID,
+      deploymentIncarnation: permit.deploymentIncarnation,
+      runtimeID: permit.runtimeID,
+      sessionID: permit.sessionID,
+      projectID: permit.projectID,
+      bindingEpoch: permit.bindingEpoch,
+      rootID: input.effect.messageID,
+      originGrantID: permit.provisionalGrantID,
+      input: accepted(input),
+    })
+    const originalID = hash(["original", { ...authority, version: 1 }])
+    const hint = { grantID: permit.provisionalGrantID, generation: 0 }
+    const generationIDs = new Set([hash([authority, hint]), hash([{ ...authority, version: 1 }, hint])])
+    const rows = new Map<string, Entry>()
+    for (const entry of entries) {
+      if (
+        rows.has(entry.entryID) ||
+        entry.uncertainUntil !== undefined ||
+        entry.authority.control ||
+        JSON.stringify(entry.authority) !== JSON.stringify(authority) ||
+        (entry.hint
+          ? JSON.stringify(entry.hint) !== JSON.stringify(hint) || !generationIDs.has(entry.entryID)
+          : entry.entryID !== originalID)
+      )
+        return false
+      rows.set(entry.entryID, entry)
+    }
+    const original = rows.get(originalID)
+    if (
+      !original ||
+      original.hint ||
+      pending.state !== "pending" ||
+      JSON.stringify(rows.get(pending.entryID)) !== JSON.stringify(pending) ||
+      [...rows.values()].filter((entry) => entry.state === "pending").length !== 1
+    )
+      return false
+    if (!pending.hint) return rows.size === 1 && pending.entryID === originalID
+    if (original.state !== "settled" || original.settlement?.kind !== "linked") return false
+    for (const entry of rows.values()) {
+      const visited = new Set<string>()
+      let current = entry
+      while (current.entryID !== pending.entryID) {
+        if (visited.has(current.entryID) || current.state !== "settled" || current.settlement?.kind !== "linked")
+          return false
+        visited.add(current.entryID)
+        const next = rows.get(current.settlement.entryID)
+        if (!next) return false
+        current = next
+      }
+    }
+    return true
+  }
+
+  export async function captureEntries() {
+    const selected = owner()
+    if (!selected.orgID) fail("Native capture requires its registered cleanup owner")
+    return Storage.snapshot(async () => {
+      const [coverage] = await Storage.readMany([schema])
+      if (!Schema.safeParse(coverage).success && !LegacySchema.safeParse(coverage).success)
+        fail("Native capture requires its completed owning cleanup migration")
+      const entries: Entry[] = []
+      for await (const row of Storage.records({ prefix: [...root, "entries"], limit: 128 })) {
+        const entry = currentEntry(row.value)
+        if (JSON.stringify(row.key) !== JSON.stringify(key(entry.entryID)) || entry.authority.orgID !== selected.orgID)
+          fail("Native cleanup capture found a foreign or unknown canonical entry")
+        if (entry.state === "settled" && entry.settlement) {
+          if (entry.settlement.kind !== "linked") validateHorizon(entry, entry.settlement)
+          await validateSettlement(entry, entry.settlement)
+        }
+        owner()
+        entries.push(entry)
+      }
+      const byID = new Map(entries.map((entry) => [entry.entryID, entry]))
+      const expected = entries.filter((entry) => entry.state === "pending").length
+      for (const [prefix, address] of [
+        [...root, "pending"],
+        [...root, "pending-root"],
+      ].map((prefix, index) => [prefix, index === 0 ? queued : queuedRoot] as const)) {
+        const seen = new Set<string>()
+        for await (const row of Storage.records({ prefix, limit: 128 })) {
+          const indexed = Pending.parse(row.value),
+            entry = byID.get(indexed.entryID)
+          if (
+            !entry ||
+            entry.state !== "pending" ||
+            seen.has(indexed.entryID) ||
+            JSON.stringify(row.key) !== JSON.stringify(address(entry))
+          )
+            fail("Native cleanup capture has another original pending index")
+          seen.add(indexed.entryID)
+        }
+        if (seen.size !== expected) fail("Native cleanup capture lacks its complete original pending indexes")
+      }
+      owner()
+      return entries
+    })
+  }
   export async function pendingForCapture() {
     const selected = owner()
     if (!selected.orgID) fail("Native capture requires its registered cleanup owner")
     return Storage.snapshot(async () => {
       const [coverage] = await Storage.readMany([schema])
-      if (!Schema.safeParse(coverage).success) fail("Native capture requires its completed owning cleanup migration")
+      if (!Schema.safeParse(coverage).success && !LegacySchema.safeParse(coverage).success)
+        fail("Native capture requires its completed owning cleanup migration")
       let pending = false
       for await (const row of Storage.records({ prefix: [...root, "entries"], limit: 128 })) {
-        const entry = Entry.parse(row.value)
+        const entry = currentEntry(row.value)
         if (JSON.stringify(row.key) !== JSON.stringify(key(entry.entryID)) || entry.authority.orgID !== selected.orgID)
           fail("Native cleanup capture found a foreign or unknown canonical entry")
         if (entry.state === "pending") pending = true
@@ -347,7 +581,7 @@ export namespace OrganizationExecutionLeases {
   }
 
   export async function settle(value: Entry, outcome: z.infer<typeof Settlement>) {
-    const entry = Entry.parse(value)
+    const entry = currentEntry(value)
     const settlement = Settlement.parse(outcome)
     return Storage.transaction(
       async () => {
@@ -360,7 +594,7 @@ export namespace OrganizationExecutionLeases {
         if (current.state !== "pending") return current
         validateHorizon(current, settlement)
         await validateSettlement(current, settlement)
-        const updated = Entry.parse({ ...current, state: "settled", settlement })
+        const updated = currentEntry({ ...current, state: "settled", settlement })
         await save(updated)
         return updated
       },
@@ -447,6 +681,27 @@ export namespace OrganizationExecutionLeases {
             progress(++count, 0)
           }
           await Storage.write(schema, { version: 1, ready: true })
+          progress(count, count)
+        },
+      },
+      {
+        id: "20261116-organization-native-restoration-cleanup-authority",
+        scope: "global",
+        execution: "startup",
+        dependsOn: ["20261112-organization-native-cleanup-intents"],
+        description: "Version restoration control origins without changing original cleanup entry identities",
+        async up(progress) {
+          owner()
+          let count = 0
+          for await (const row of Storage.records({ prefix: [...root, "entries"], limit: 128 })) {
+            UpgradeWork.signal()?.throwIfAborted()
+            const entry = currentEntry(row.value)
+            if (JSON.stringify(row.key) !== JSON.stringify(key(entry.entryID)) || entry.authority.orgID !== selected)
+              fail("Native cleanup upgrade found another original owner")
+            await Storage.transaction(() => save(entry))
+            progress(++count, 0)
+          }
+          await Storage.write(schema, { version: 2, ready: true })
           progress(count, count)
         },
       },

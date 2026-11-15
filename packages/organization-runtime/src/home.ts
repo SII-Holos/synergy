@@ -11,6 +11,7 @@ import { createCredentials, readCredentials } from "./credentials.js"
 import { MemberHomeError, readRecord, writeRecord } from "./record.js"
 import {
   Binding,
+  BeforeRecoveryReaderBinding,
   MemberBinding,
   HostedBinding,
   NativeHomeReaderContract,
@@ -123,7 +124,7 @@ async function withOwner<T>(
   return body(root, owner)
 }
 
-function checkIdentity(current: Binding, identity: RuntimeIdentity) {
+function checkIdentity(current: Binding | BeforeRecoveryReaderBinding, identity: RuntimeIdentity) {
   if (runtimeIdentityDigest(current.identity) !== runtimeIdentityDigest(identity))
     throw new MemberHomeError("Member Runtime identity does not match this Home")
   runtimeHomeOrigin(current.origin)
@@ -132,7 +133,7 @@ function checkIdentity(current: Binding, identity: RuntimeIdentity) {
 async function ready(
   home: string,
   root: string,
-  current: Binding,
+  current: Binding | BeforeRecoveryReaderBinding,
   restoration?: HomeOwnershipFile.RestorationInfo,
 ): Promise<RuntimeHome> {
   if (current.state !== "ready") throw new MemberHomeError("Member Runtime provisioning is incomplete")
@@ -159,6 +160,54 @@ export async function readRuntimeHome(input: string, expected: RuntimeIdentity) 
     checkIdentity(current, identity)
     return ready(home, root, current, restoration)
   })
+}
+
+export async function readRuntimeHomeForUpgrade(input: string, expected: RuntimeIdentity) {
+  const home = absolute(input)
+  const root = path.join(home, ".synergy")
+  const identity = RuntimeIdentity.parse(expected)
+  const env = { SYNERGY_TEST_HOME: process.env.SYNERGY_TEST_HOME }
+  for (const directory of [home, root]) {
+    const stat = await fs.lstat(directory)
+    if (!stat.isDirectory() || stat.isSymbolicLink())
+      throw new MemberHomeError("Runtime Home reader upgrade requires its existing independent directories")
+  }
+  const files = HomeOwnershipFile.open({ root, env })
+  const ownership = await files.read()
+  if (
+    !ownership ||
+    (ownership.schemaVersion !== 2 && ownership.schemaVersion !== 3) ||
+    ownership.owner !== "organization-runtime" ||
+    ownership.identity !== runtimeIdentityDigest(identity) ||
+    !["native-organization-ownership-v5", NativeHomeReaderContract].includes(ownership.readerContract)
+  )
+    throw new MemberHomeError("Runtime Home reader upgrade requires its original reader-five or current owner")
+  let restoration: HomeOwnershipFile.RestorationInfo | undefined
+  const installation = await readRestoration(root)
+  if (ownership.schemaVersion === 3) {
+    const completed = await inspectCompleted({ home, root, env })
+    if (
+      completed.owner !== ownership.owner ||
+      completed.installationID !== ownership.installationID ||
+      completed.incarnation !== ownership.incarnation
+    )
+      throw new MemberHomeError("Runtime Home reader upgrade has another completed installation")
+    restoration = ownership
+  } else if (installation)
+    throw new MemberHomeError("Runtime Home reader upgrade cannot adopt an unselected installation")
+  const binding = await readRecord(filename(root), Binding.or(BeforeRecoveryReaderBinding), "identity records")
+  if (!binding) throw new MemberHomeError("Runtime Home reader upgrade requires its retained binding")
+  checkIdentity(binding, identity)
+  if (
+    ownership.readerContract === "native-organization-ownership-v5" &&
+    binding.readerContract !== ownership.readerContract
+  )
+    throw new MemberHomeError("Runtime Home reader upgrade has a binding ahead of its native owner")
+  return {
+    ...(await ready(home, root, binding, restoration)),
+    ownership,
+    binding,
+  }
 }
 
 async function prepareRuntimeHome(input: { baseDirectory: string; identity: RuntimeIdentity; origin: string }) {

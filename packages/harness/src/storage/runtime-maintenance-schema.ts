@@ -14,14 +14,19 @@ export namespace RuntimeMaintenanceSchema {
   const legacyPurpose = z.enum(["organization-backup", "organization-restore"])
   export const Purpose = z.enum([...legacyPurpose.options, "organization-home-upgrade"])
   const selection = z.strictObject({
-    version: z.literal(1),
-    source: HomeOwnershipFile.FencedInfo,
-    target: HomeOwnershipFile.FencedInfo,
+    version: z.union([z.literal(1), z.literal(2)]),
+    source: z.discriminatedUnion("schemaVersion", [HomeOwnershipFile.FencedInfo, HomeOwnershipFile.RestorationInfo]),
+    target: z.discriminatedUnion("schemaVersion", [HomeOwnershipFile.FencedInfo, HomeOwnershipFile.RestorationInfo]),
     namespace: NativeNamespaceIdentity.Descriptor,
     signingHash: Hash,
   })
   const sameOwner = (value: z.infer<typeof selection>) =>
     value.namespace.owner === value.source.owner &&
+    (value.version === 1
+      ? value.source.schemaVersion === 2 && value.target.schemaVersion === 2
+      : value.source.schemaVersion === 3 &&
+        value.target.schemaVersion === 3 &&
+        value.source.incarnation === value.namespace.identity.deploymentIncarnation) &&
     JSON.stringify({ ...value.source, readerContract: value.target.readerContract }) === JSON.stringify(value.target)
   export const HomeUpgradeSelection = selection.refine(sameOwner, "Home upgrade must retain its original native owner")
   export const HomeUpgradeNative = selection

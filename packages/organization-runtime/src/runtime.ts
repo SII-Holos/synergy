@@ -1,3 +1,4 @@
+import { OrganizationHostedPublication } from "./backup/publication"
 import { z } from "zod"
 import {
   OrganizationSyncProtocol as Sync,
@@ -217,6 +218,7 @@ async function openOrganizationRuntime(input: MemberRuntimeOptions) {
                 close: context.bind(closeReleaseObserver),
               }
             }),
+            executionRecovery: OrganizationHostedPublication.continuationVersion(),
             sync: true,
             syncVersion: Sync.observationVersion,
             ...(handoff
@@ -306,3 +308,5 @@ async function openOrganizationRuntime(input: MemberRuntimeOptions) {
 }
 
 export { repairOrganizationSyncAttachmentContent } from "./sync-attachment-repair"
+
+export { upgradeOrganizationRuntimeHome } from "./home-migration"

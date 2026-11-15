@@ -25,6 +25,9 @@ import { ModelExecution } from "@ericsanchezok/synergy-harness/execution/model-e
 import { SnapshotMaintenance } from "@ericsanchezok/synergy-harness/session/snapshot-maintenance"
 import { StorageCheckpoint } from "@ericsanchezok/synergy-harness/storage/checkpoint"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
+import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
+import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
 import { TransactionalStore } from "@ericsanchezok/synergy-harness/storage/transactional-store"
 import { testRuntime } from "@ericsanchezok/synergy-harness/test/support/runtime"
 import { OrganizationRuntimeProtocol as Protocol } from "@ericsanchezok/synergy-organization-protocol"
@@ -39,12 +42,16 @@ import { readCredentials } from "../../src/credentials"
 import { fixture } from "../support/organization"
 import {
   completedHostedTask,
+  failedHostedTask,
+  continueRestoredHostedTask,
+  queuedHostedTask,
   pausedHostedTask,
   appendCompletedHostedTask,
   continueQueuedHostedTask,
-  verifyCompletedTaskHistory,
+  verifyClosedTaskHistory,
 } from "../support/hosted-task"
-import { openHostedRuntime } from "../../src/runtime"
+import { openHostedRuntime, openMemberRuntime } from "../../src/runtime"
+import { memberTaskToHosted } from "../support/member-handoff-task"
 import {
   OrganizationBackupCohort as Cohort,
   OrganizationRecoveryArchive as Archive,
@@ -63,6 +70,7 @@ import { hostedCloudResourceFixture } from "../support/backup-cloud-resources"
 import { terminalHostedCancel, settledHostedQuestion } from "../support/hosted-control-history"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Question } from "@ericsanchezok/synergy-local-runtime/question"
+import { recoveryContinuationAuthority } from "../support/recovery-continuation-authority"
 
 type CloudResources = Awaited<ReturnType<typeof hostedCloudResourceFixture>>
 
@@ -82,8 +90,10 @@ const actor = {
   requestID: "hosted-native",
 }
 
-async function openHostedFixture(input: Parameters<typeof openHostedRuntime>[0]) {
-  const home = path.resolve(input.home)
+async function openNativeFixture(
+  input: Parameters<typeof openHostedRuntime>[0] | Parameters<typeof openMemberRuntime>[0],
+) {
+  const homes = new Set([path.resolve(input.home), await fs.realpath(input.home)])
   const resources: ResourceHost.Source = {
     async sample() {
       return {
@@ -103,7 +113,7 @@ async function openHostedFixture(input: Parameters<typeof openHostedRuntime>[0])
       return {
         ...composition,
         register() {
-          if (!installed && RuntimeContext.current().host.home === home) {
+          if (!installed && homes.has(RuntimeContext.current().host.home)) {
             ResourceHost.register(resources)
             installed = true
           }
@@ -111,7 +121,9 @@ async function openHostedFixture(input: Parameters<typeof openHostedRuntime>[0])
         },
       }
     })
-    return await openHostedRuntime(input)
+    return "accountID" in input.identity
+      ? await openMemberRuntime({ ...input, identity: input.identity })
+      : await openHostedRuntime({ ...input, identity: input.identity })
   })()
   if (!(await runtime.run(async () => ResourceHost.get() === resources))) {
     await runtime.close()
@@ -123,7 +135,7 @@ async function openHostedFixture(input: Parameters<typeof openHostedRuntime>[0])
 async function source(
   production = false,
   withTask = false,
-  options: { warmWorker?: boolean; cloud?: CloudResources["sourceCloud"] } = {},
+  options: { warmWorker?: boolean; cloud?: CloudResources["sourceCloud"]; handoff?: true } = {},
 ) {
   const service = await fixture(
     production && withTask
@@ -193,11 +205,12 @@ async function source(
         return false
       })
     const runtime = production
-      ? await openHostedFixture({
+      ? await openNativeFixture({
           home: home.home,
           identity: home.identity,
           ca: service.ca,
           workspaceCoordinator,
+          ...(options.handoff ? { handoff: options.handoff } : {}),
           ...(port ? { listen: { port, token: "f".repeat(64) } } : {}),
         })
       : await testRuntime({
@@ -675,12 +688,147 @@ test("cohort capture retains Hosted holds until the original Service release reo
   }
 }, 30_000)
 
+type QueuedTargetInboxFault = {
+  kind: "target-inbox-revision"
+  injections: number
+  rawRestoreCompleted: boolean
+  rejectedBySignedRoster: boolean
+  originalInboxRestored: boolean
+  originalPermitRetained: boolean
+  sourceUnchanged: boolean
+  publicationAbsent: boolean
+  zeroModelReplay: boolean
+  failure?: unknown
+}
+
+async function rejectChangedQueuedTargetInbox(
+  input: {
+    fault: QueuedTargetInboxFault
+    permit: HomeRestoration.InstallPermit
+    request: OrganizationHostedRecovery.Request
+    scopeID: string
+    sessionID: string
+    itemID: string
+    sourceFiles: string[]
+    calls(): number
+  },
+  restore: () => Promise<unknown>,
+): Promise<never> {
+  const fault = input.fault
+  const runtime = RuntimeContext.current()
+  const store = Storage.current().store
+  const target = HomeRestoration.describe(input.permit)
+  const modelCalls = input.calls()
+  const sourceBytes = await Promise.all(input.sourceFiles.map((file) => fs.readFile(file)))
+  const address = StoragePath.sessionInboxItem(
+    Identifier.asScopeID(input.scopeID),
+    Identifier.asSessionID(input.sessionID),
+    input.itemID,
+  )
+  let original: SessionInbox.StoredItem | undefined
+  let failure: { error: unknown } | undefined
+  const guard = () => {
+    HomeRestoration.assertCurrent(input.permit)
+    HomeRestoration.assertRequest(input.permit, input.request)
+    if (RuntimeContext.current() !== runtime || Storage.current().store !== store)
+      throw new Error("Queued Target fault lost its original Runtime or Store")
+  }
+  const restoreArchive = StorageCheckpoint.restoreArchive
+  using installed = spyOn(StorageCheckpoint, "restoreArchive").mockImplementation(async (value) => {
+    const restored = await restoreArchive(value)
+    if (
+      RuntimeContext.current() !== runtime ||
+      Storage.current().store !== store ||
+      value.restoreID !== input.request.restoreID ||
+      JSON.stringify(value.expected) !== JSON.stringify(input.request.payload.source.archive)
+    )
+      return restored
+    guard()
+    if (fault.injections) throw new Error("Queued Target fault entered more than once")
+    fault.rawRestoreCompleted = true
+    const [stored] = await Storage.readMany<SessionInbox.StoredItem>([address])
+    guard()
+    if (
+      !stored ||
+      stored.id !== input.itemID ||
+      stored.sessionID !== input.sessionID ||
+      !Number.isSafeInteger(stored.revision)
+    )
+      throw new Error("Actual installed Target lacks the original canonical Inbox")
+    original = stored
+    const actual = await SessionInbox.getStored(input.sessionID, input.itemID)
+    guard()
+    expect(actual).toEqual(original)
+    fault.injections++
+    await RuntimeMaintenance.restorationTransaction(
+      { permit: input.permit, request: input.request },
+      (tx) => tx.write(address, { ...stored, revision: stored.revision + 1 }),
+      { commitGuard: guard },
+    )
+    guard()
+    expect((await Storage.readMany<SessionInbox.StoredItem>([address]))[0]?.revision).toBe(stored.revision + 1)
+    return restored
+  })
+  try {
+    await restore()
+  } catch (error) {
+    failure = { error }
+    fault.failure = error
+    fault.rejectedBySignedRoster =
+      error instanceof Error &&
+      error.message === "Hosted restoration installed queued native state differs from its signed snapshot"
+  } finally {
+    const errors: unknown[] = []
+    try {
+      guard()
+      if (original) {
+        const retained = original
+        await RuntimeMaintenance.restorationTransaction(
+          { permit: input.permit, request: input.request },
+          (tx) => tx.write(address, retained),
+          { commitGuard: guard },
+        )
+        guard()
+        fault.originalInboxRestored =
+          JSON.stringify((await Storage.readMany([address]))[0]) === JSON.stringify(original)
+      }
+      guard()
+      fault.originalPermitRetained = JSON.stringify(HomeRestoration.describe(input.permit)) === JSON.stringify(target)
+      const current = await Promise.all(input.sourceFiles.map((file) => fs.readFile(file)))
+      guard()
+      fault.sourceUnchanged = current.every((bytes, index) => bytes.equals(sourceBytes[index]!))
+      fault.publicationAbsent =
+        (await Storage.readMany([["organization-runtime-recovery", "publication", target.installationID]]))[0] ===
+        undefined
+      guard()
+      fault.zeroModelReplay = input.calls() === modelCalls
+    } catch (error) {
+      errors.push(error)
+    }
+    if (errors.length)
+      throw new AggregateError(
+        [...(failure ? [failure.error] : []), ...errors],
+        "Queued Target refusal or original fixture restoration did not complete",
+      )
+  }
+  if (!failure) throw new Error("Actual queued Target accepted changed canonical Inbox data")
+  throw failure.error
+}
+
 async function recoverHostedWriter(
   withTask = false,
   late?: "session" | "input",
   artifact?: "published" | "late",
   cloud?: CloudResources,
-  history?: "queued-continue" | "terminal-cancel" | "settled-question",
+  history?:
+    | "queued-continue"
+    | "terminal-cancel"
+    | "settled-question"
+    | "failed-root-continue"
+    | "paused-queued-capture"
+    | "paused-queued-recovery"
+    | "member-handoff",
+  queuedFault?: QueuedTargetInboxFault,
 ) {
   const started = performance.now()
   const phase = (stage: string) => {
@@ -700,18 +848,25 @@ async function recoverHostedWriter(
   using sourceScopeEnd = { [Symbol.dispose]: () => phase("source-scope-end") }
   await using selected = await source(true, withTask, {
     warmWorker: withTask,
+    ...(history === "member-handoff" ? { handoff: true as const } : {}),
     ...(cloud ? { cloud: cloud.sourceCloud } : {}),
   })
   using sourceDisposal = { [Symbol.dispose]: () => phase("source-disposal-enter") }
   phase("source-ready")
   using taskScopeEnd = { [Symbol.dispose]: () => phase("task-scope-end") }
-  await using task = withTask ? await completedHostedTask(selected) : undefined
+  const handedOff =
+    withTask && history === "member-handoff" ? await memberTaskToHosted(selected, openNativeFixture) : undefined
+  await using task = withTask
+    ? (handedOff ??
+      (history === "failed-root-continue" ? await failedHostedTask(selected) : await completedHostedTask(selected)))
+    : undefined
   using taskDisposal = { [Symbol.dispose]: () => phase("task-disposal-enter") }
   phase("task-ready")
   const artifactHistory = artifact && task ? await publishArtifactHistory(selected.service, task) : undefined
-  if (task && !late) await verifyCompletedTaskHistory(selected, task)
+  if (task && !late)
+    await verifyClosedTaskHistory(selected, task, history === "failed-root-continue" ? "failed" : "completed")
   if (history && (!task || late || artifact || cloud))
-    throw new Error("Closed control history requires its original plain completed task fixture")
+    throw new Error("Closed control history requires its original plain task fixture")
   const queuedHistory =
     history === "queued-continue" && task
       ? await continueQueuedHostedTask(selected, task, "before-recovery-queued-input")
@@ -719,6 +874,10 @@ async function recoverHostedWriter(
   const terminalCancel = history === "terminal-cancel" && task ? await terminalHostedCancel(selected, task) : undefined
   const settledQuestion =
     history === "settled-question" && task ? await settledHostedQuestion(selected, task) : undefined
+  const queuedCapture =
+    (history === "paused-queued-capture" || history === "paused-queued-recovery") && task
+      ? await queuedHostedTask(selected, task, "before-capture-saved-queued-input")
+      : undefined
   const originalCalls = task?.calls.length ?? 0
   if (cloud && !task) throw new Error("Selected cloud recovery requires its original completed Hosted task")
   const cloudSelection = cloud && task ? await cloud.select(selected.service, task) : undefined
@@ -739,6 +898,8 @@ async function recoverHostedWriter(
       }
     | undefined
   let hostedMaterial: { native: StorageCheckpoint.Manifest; snapshot: StorageCheckpoint.Manifest } | undefined
+  let queuedFacts: Parameters<typeof OrganizationRecovery.reconstruct>[0]["queued"]
+  let queuedEntries: OrganizationExecutionLeases.Entry[] | undefined
   const bytes = Buffer.from("actual Hosted private history bytes")
   await selected.runtime.run(() => Storage.writeBinary(["recovery", "proof"], bytes))
   const directory = path.join(selected.service.root, "retirement-original")
@@ -753,6 +914,15 @@ async function recoverHostedWriter(
     keys,
     actor,
   })
+  if (queuedCapture) {
+    expect(report.namespaces).toBe(2)
+    expect(report.namespaceCheckpointsComplete).toBe(true)
+    await queuedCapture.verifyUnchanged()
+    expect((await selected.runtime.run(() => RuntimeMaintenance.status()))?.phase).toBe("released")
+    expect((await selected.service.service.maintenance.run(() => RuntimeMaintenance.status()))?.phase).toBe("released")
+    if (history === "paused-queued-capture") return
+  }
+  if (history === "member-handoff") expect(report.namespaces).toBe(2)
   const opened = path.join(selected.service.root, "retirement-original-open")
   await Archive.open({ directory, outputDirectory: opened, keys })
   const inventory = Cohort.NamespaceInventory.parse(
@@ -927,10 +1097,10 @@ async function recoverHostedWriter(
           const preflight = () =>
             withPolicyTarget((policyTarget) =>
               selected.service.service.maintenance.run(() =>
-                OrganizationRecovery.preflightWriters({ source: current, target: policyTarget }),
+                OrganizationRecovery.preflightWriters({ source: current, target: policyTarget, queued: queuedFacts }),
               ),
             )
-          await preflight()
+          if (!queuedCapture) await preflight()
           await NamespaceRetirement.withSource(
             {
               archive: captured.archive,
@@ -942,6 +1112,29 @@ async function recoverHostedWriter(
               const capturedReference = NamespaceRetirement.describeSource(current)
               retiredReference = capturedReference
               const reference = capturedReference
+              if (queuedCapture) {
+                queuedFacts = await Native.withMaterial(
+                  {
+                    directory: captured.native.directory,
+                    expected: captured.native.namespace,
+                    source: reference.archive,
+                    keys,
+                  },
+                  async (material) => {
+                    const proof = Native.inspectMaterial(material).queued
+                    if (!proof) throw new Error("The real queued capture lacks its signed native roster")
+                    return [{ source: reference, ...proof }]
+                  },
+                )
+                queuedEntries = await selected.runtime.run(async () =>
+                  (await OrganizationExecutionLeases.captureEntries()).filter(
+                    (entry) =>
+                      entry.authority.sessionID === queuedCapture.accepted.permit.sessionID &&
+                      entry.authority.rootID === queuedCapture.accepted.effect.messageID,
+                  ),
+                )
+                await preflight()
+              }
               expect(reference.namespace.identity).toMatchObject({
                 kind: "hosted",
                 orgID: selected.registration.orgID,
@@ -984,18 +1177,40 @@ async function recoverHostedWriter(
                     snapshot: captured.segment.namespace,
                   })
                   await HomeRestoration.withTarget(restored.target, async (permit) => {
-                    await restored.withRestorationBase((base) =>
-                      OrganizationHostedRecovery.restore({
-                        base,
-                        permit,
-                        request,
-                        source: inspection,
-                        namespaceDirectory: path.join(selected.service.root, "records"),
-                        native: { directory: captured.native.directory, expected: captured.native.namespace },
-                        snapshot: { directory: captured.segment.directory, expected: captured.segment.namespace },
-                        keys,
-                      }),
-                    )
+                    const restore = () =>
+                      restored.withRestorationBase((base) =>
+                        OrganizationHostedRecovery.restore({
+                          base,
+                          permit,
+                          request,
+                          source: inspection,
+                          namespaceDirectory: path.join(selected.service.root, "records"),
+                          native: { directory: captured.native.directory, expected: captured.native.namespace },
+                          snapshot: { directory: captured.segment.directory, expected: captured.segment.namespace },
+                          keys,
+                        }),
+                      )
+                    if (queuedFault) {
+                      if (!queuedCapture || !task || history !== "paused-queued-recovery")
+                        throw new Error("Queued Target fault requires its actual complete recovery fixture")
+                      await rejectChangedQueuedTargetInbox(
+                        {
+                          fault: queuedFault,
+                          permit,
+                          request,
+                          scopeID: task.info.scope.id,
+                          sessionID: task.sessionID,
+                          itemID: queuedCapture.accepted.effect.itemID,
+                          sourceFiles: [
+                            path.join(selected.home.root, "home-ownership.json"),
+                            path.join(captured.native.directory, "manifest.json"),
+                            path.join(selected.service.root, "records", "manifest.json"),
+                          ],
+                          calls: () => task.calls.length,
+                        },
+                        restore,
+                      )
+                    } else await restore()
                     expect(Buffer.from(await Storage.readBinary(["recovery", "proof"]))).toEqual(bytes)
                     expect(await RuntimeMaintenance.status()).toMatchObject({
                       phase: "recovery-held",
@@ -1042,7 +1257,11 @@ async function recoverHostedWriter(
             withPolicyTarget((policyTarget) =>
               selected.service.service.maintenance.run(() =>
                 OrganizationCurrentAuthority.withCaptured(current, async (captured) => {
-                  const policy = await OrganizationRecovery.reconstruct({ source: current, target: policyTarget })
+                  const policy = await OrganizationRecovery.reconstruct({
+                    source: current,
+                    target: policyTarget,
+                    queued: queuedFacts,
+                  })
                   const physical = await OrganizationSourceRetirement.complete(policy.source)
                   await OrganizationRecovery.publishReconciled({
                     source: physical,
@@ -1051,6 +1270,7 @@ async function recoverHostedWriter(
                     native: captured.native,
                     keys,
                     writers: [inspection],
+                    queued: queuedFacts,
                     publicOrigin: "https://organization.example",
                   })
                 }),
@@ -1170,6 +1390,7 @@ async function recoverHostedWriter(
     },
   }
   const connected = Promise.withResolvers<void>()
+  let verifyRecoveryRequest: ((request: Request) => Promise<void>) | undefined
   const restoredServer = Bun.serve({
     hostname: "127.0.0.1",
     port: Number(new URL(selected.service.origin).port),
@@ -1181,7 +1402,13 @@ async function recoverHostedWriter(
         return normalService.websocket.message(socket, frame)
       },
     },
-    fetch: normalService.fetch,
+    fetch:
+      history === "failed-root-continue"
+        ? async (request, server) => {
+            if (verifyRecoveryRequest) await verifyRecoveryRequest(request)
+            return normalService.fetch(request, server)
+          }
+        : normalService.fetch,
   })
   await using listenerCleanup = {
     async [Symbol.asyncDispose]() {
@@ -1202,7 +1429,9 @@ async function recoverHostedWriter(
   const port = probe.port!
   await probe.stop(true)
   using ordinaryScopeEnd = { [Symbol.dispose]: () => phase("ordinary-scope-end") }
-  await using ordinary = await openHostedRuntime({
+  await using ordinary = await (
+    history === "failed-root-continue" || history === "paused-queued-recovery" ? openNativeFixture : openHostedRuntime
+  )({
     home: path.join(selected.service.root, "hosted-target"),
     identity: selected.home.identity,
     ca: selected.service.ca,
@@ -1235,7 +1464,7 @@ async function recoverHostedWriter(
         task.nativeRelease.rootID,
       ),
     )
-    expect(original.status).toBe("completed")
+    expect(original.status).toBe(history === "failed-root-continue" ? "failed" : "completed")
     expect(original.id).toBe(task.accepted.effect.messageID)
     if (!originalInput || originalInput.info.role !== "user")
       throw new Error("Expected the original accepted native user input")
@@ -1300,8 +1529,213 @@ async function recoverHostedWriter(
     expect(task.calls).toHaveLength(settledQuestion.baseline)
     expect(await ordinary.run(() => SessionManager.isRunning(task.sessionID))).toBe(false)
   }
+  if (history === "member-handoff" && task) {
+    if (!handedOff) throw new Error("Missing the actual completed Member Handoff history")
+    const proof = handedOff.handoffHistory
+    expect(
+      await normalService.maintenance.run(() => Storage.read(["organization", "handoffs", proof.handoffID])),
+    ).toEqual(proof.serviceRecord)
+    expect(await ordinary.run(() => proof.inspectEpoch())).toEqual(proof.targetEpoch)
+    expect(task.calls).toHaveLength(originalCalls)
+    expect(await ordinary.run(() => SessionManager.isRunning(task.sessionID))).toBe(false)
+  }
+  if ((history === "failed-root-continue" || history === "paused-queued-recovery") && task) {
+    if (queuedCapture) {
+      if (!queuedEntries) throw new Error("Missing the actual captured queued cleanup roster")
+      const actual = await ordinary.run(async () =>
+        (await OrganizationExecutionLeases.captureEntries()).filter(
+          (entry) =>
+            entry.authority.sessionID === task.sessionID &&
+            entry.authority.rootID === queuedCapture.accepted.effect.messageID,
+        ),
+      )
+      expect(actual).toEqual(queuedEntries)
+    }
+    expect(task.calls).toHaveLength(originalCalls)
+    expect(await ordinary.run(() => SessionManager.isRunning(task.sessionID))).toBe(false)
+    await ordinary.run(async () => {
+      expect(ModelExecution.mode()).toBe("worker")
+      await AgentTurn.prewarm()
+      const workers = AgentTurn.stats()
+      expect(workers.minIdle).toBeGreaterThan(0)
+      expect(workers.ready).toBeGreaterThanOrEqual(workers.minIdle)
+    })
+    expect(task.calls).toHaveLength(originalCalls)
+    const login = await selected.service.client.orgAuth.login(
+      { orgLoginInput: { loginName: "owner", password: "a long integration password" } },
+      { throwOnError: true },
+    )
+    const cookie = login.response.headers.get("set-cookie")?.split(";")[0]
+    if (!cookie) throw new Error("The restored Continue lacks its original current account login")
+    expect(login.data.account.accountID).toBe(task.accepted.permit.actor.subjectID)
+    await using authority =
+      history === "failed-root-continue"
+        ? recoveryContinuationAuthority({
+            service: normalService,
+            origin: selected.service.origin,
+            ca: selected.service.ca,
+            root: path.join(selected.service.root, "hosted-target", ".synergy"),
+            publicKey: selected.home.publicKey,
+            sessionID: task.sessionID,
+            rootID: task.nativeRelease.rootID,
+            modelCalls: () => task.calls.length,
+          })
+        : undefined
+    if (authority) verifyRecoveryRequest = authority.before
+    try {
+      await continueRestoredHostedTask(
+        {
+          ...selected,
+          runtime: ordinary,
+          service: {
+            ...selected.service,
+            service: normalService,
+            headers: { cookie, "x-csrf-token": login.data.csrfToken },
+          },
+        },
+        task,
+        queuedCapture,
+      )
+    } catch (error) {
+      if (authority) {
+        try {
+          await authority.assertQualified()
+        } catch (qualification) {
+          throw new AggregateError(
+            [error, qualification],
+            "Restored Continue and original machine authority controls failed",
+          )
+        }
+      }
+      throw error
+    } finally {
+      verifyRecoveryRequest = undefined
+    }
+    if (authority) await authority.assertQualified()
+    if (history === "paused-queued-recovery") {
+      if (!queuedCapture) throw new Error("Second capture requires the actual recovered queued input")
+      const closedCalls = task.calls.length
+      const closedEntries = await ordinary.run(() => OrganizationExecutionLeases.captureEntries())
+      expect(closedEntries.every((entry) => entry.state === "settled")).toBe(true)
+      expect(await ordinary.run(() => OrganizationExecutionLeases.pendingForCapture())).toBe(false)
+      const recovered = closedEntries.filter(
+        (entry) =>
+          entry.authority.sessionID === task.sessionID &&
+          entry.authority.rootID === queuedCapture.accepted.effect.messageID &&
+          entry.settlement?.kind === "recovered",
+      )
+      expect(recovered).toHaveLength(1)
+      const linkage = recovered[0]!.settlement
+      if (linkage?.kind !== "recovered")
+        throw new Error("Second capture lost its actual original queued cleanup bridge")
+      const firstSuccessor = closedEntries.find((entry) => entry.entryID === linkage.entryID)
+      if (!firstSuccessor) throw new Error("Second capture lost its actual current cleanup entry")
+      let successor: OrganizationExecutionLeases.Entry = firstSuccessor
+      const authority = successor.authority
+      const visited = new Set<string>()
+      while (successor.settlement?.kind === "linked") {
+        if (visited.has(successor.entryID)) throw new Error("Second capture found a cleanup linkage cycle")
+        visited.add(successor.entryID)
+        expect(successor.authority).toEqual(authority)
+        const linkedEntryID = successor.settlement.entryID
+        const next = closedEntries.find((entry) => entry.entryID === linkedEntryID)
+        if (!next) throw new Error("Second capture lost an original generation link")
+        successor = next
+      }
+      expect(successor.authority).toEqual(authority)
+      expect(successor).toMatchObject({
+        state: "settled",
+        authority: { rootID: queuedCapture.accepted.effect.messageID },
+        settlement: {
+          kind: "terminal",
+          receipt: { outcome: "completed", rootID: queuedCapture.accepted.effect.messageID },
+        },
+      })
+      const marker = () =>
+        HomeOwnershipFile.open({
+          root: RuntimeContext.current().host.root,
+          env: RuntimeContext.current().host.env,
+        }).read()
+      const [serviceOwner, hostedOwner] = await Promise.all([
+        normalService.maintenance.run(marker),
+        ordinary.run(marker),
+      ])
+      expect(serviceOwner).toMatchObject({ schemaVersion: 3, owner: "organization" })
+      expect(hostedOwner).toMatchObject({
+        schemaVersion: 3,
+        owner: "organization-runtime",
+        readerContract: NativeHomeReaderContract,
+      })
+      let participants = 0
+      phase("restored-queued-second-capture-enter")
+      const second = await Cohort.capture({
+        service: Cohort.service(normalService.maintenance),
+        async resolve(identity) {
+          expect(identity.runtimeID).toBe(selected.registration.runtimeID)
+          participants++
+          return Cohort.hosted(ordinary, { native: Native.capture })
+        },
+        directory: path.join(selected.service.root, "restored-queued-second-cohort"),
+        archiveID: "restored-queued-second-cohort",
+        buildVersion: "fixture",
+        keys,
+        actor: { ...actor, requestID: "restored-queued-second-capture" },
+      })
+      expect(second).toMatchObject({ namespaceCheckpointsComplete: true, namespaces: 2 })
+      expect(participants).toBe(1)
+      expect((await normalService.maintenance.run(() => RuntimeMaintenance.status()))?.phase).toBe("released")
+      expect((await ordinary.run(() => RuntimeMaintenance.status()))?.phase).toBe("released")
+      expect(await ordinary.run(() => OrganizationExecutionLeases.captureEntries())).toEqual(closedEntries)
+      expect(await ordinary.run(() => OrganizationExecutionLeases.pendingForCapture())).toBe(false)
+      expect(await normalService.maintenance.run(marker)).toEqual(serviceOwner)
+      expect(await ordinary.run(marker)).toEqual(hostedOwner)
+      expect(task.calls).toHaveLength(closedCalls)
+      expect(await ordinary.run(() => SessionManager.isRunning(task.sessionID))).toBe(false)
+      phase("restored-queued-second-capture-complete")
+    }
+  }
   phase("all-assertions-complete")
 }
+
+test(
+  "a real Member task reaches the sole Hosted writer by native Handoff and survives recovery without replay",
+  () => recoverHostedWriter(true, undefined, undefined, undefined, "member-handoff"),
+  90_000,
+)
+
+test(
+  "a paused accepted Hosted input stays queued while the original cohort is captured",
+  () => recoverHostedWriter(true, undefined, undefined, undefined, "paused-queued-capture"),
+  60_000,
+)
+
+test(
+  "a paused accepted original input survives full recovery and one current Continue consumes it once",
+  () => recoverHostedWriter(true, undefined, undefined, undefined, "paused-queued-recovery"),
+  60_000,
+)
+
+test("a saved failed root restores without replay and continues once through a current public command", async () => {
+  try {
+    await recoverHostedWriter(true, undefined, undefined, undefined, "failed-root-continue")
+  } catch (error) {
+    function describe(value: unknown, depth = 0): unknown {
+      if (!(value instanceof Error) || depth > 6) return String(value)
+      return {
+        name: value.name,
+        message: value.message,
+        ...("error" in value ? { error: describe(value.error, depth + 1) } : {}),
+        ...("suppressed" in value ? { suppressed: describe(value.suppressed, depth + 1) } : {}),
+        ...(value instanceof AggregateError
+          ? { errors: value.errors.map((nested) => describe(nested, depth + 1)) }
+          : {}),
+        ...(value.cause ? { cause: describe(value.cause, depth + 1) } : {}),
+      }
+    }
+    console.error("FAILED_ROOT_CONTINUE_FAILURE", JSON.stringify(describe(error)))
+    throw error
+  }
+}, 60_000)
 
 test(
   "an enrolled Hosted namespace permanently fences its actual writer and binds the original service target request",
@@ -1427,3 +1861,39 @@ test(
   () => recoverHostedWriter(true, undefined, undefined, undefined, "settled-question"),
   60_000,
 )
+
+test("a signed queued roster rejects changed actual Target Inbox before publication and preserves its original fixture", async () => {
+  const fault: QueuedTargetInboxFault = {
+    kind: "target-inbox-revision",
+    injections: 0,
+    rawRestoreCompleted: false,
+    rejectedBySignedRoster: false,
+    originalInboxRestored: false,
+    originalPermitRetained: false,
+    sourceUnchanged: false,
+    publicationAbsent: false,
+    zeroModelReplay: false,
+  }
+  const outcome = await recoverHostedWriter(
+    true,
+    undefined,
+    undefined,
+    undefined,
+    "paused-queued-recovery",
+    fault,
+  ).then(
+    () => ({ ok: true as const }),
+    (error: unknown) => ({ ok: false as const, error }),
+  )
+  expect(outcome.ok).toBe(false)
+  expect(fault.injections).toBe(1)
+  expect(fault.rawRestoreCompleted).toBe(true)
+  expect(fault.rejectedBySignedRoster).toBe(true)
+  expect(fault.originalInboxRestored).toBe(true)
+  expect(fault.originalPermitRetained).toBe(true)
+  expect(fault.sourceUnchanged).toBe(true)
+  expect(fault.publicationAbsent).toBe(true)
+  expect(fault.zeroModelReplay).toBe(true)
+  if (outcome.ok) throw new Error("Changed Target Inbox was accepted")
+  expect(outcome.error).toBe(fault.failure)
+}, 60_000)

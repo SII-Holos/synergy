@@ -1,5 +1,6 @@
 import { expect, spyOn, test } from "bun:test"
 import path from "node:path"
+import { createHash } from "node:crypto"
 import { OrganizationExecutionProtocol as Execution } from "@ericsanchezok/synergy-organization-protocol"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
@@ -262,3 +263,166 @@ for (const partition of ["runtime", "root"] as const)
       })
     })
   }, 15_000)
+
+test("an actual provisional cleanup alias is queued only with its complete original zero-generation chain", async () => {
+  await using f = await executionFixture({ execution: true })
+  const description = await f.description()
+  const input = description.receipt.accepted
+  if (!input || input.effect.mode !== "task") throw new Error("Expected the real public task acceptance")
+  const inspected = await f.connection.resources.inspectRetention(
+    Execution.InspectionProof.parse({
+      ...description,
+      purpose: "execution-retention-inspection",
+      rootID: input.effect.messageID,
+    }),
+  )
+  if (inspected.state !== "known" || inspected.grant.state !== "provisional")
+    throw new Error("Expected the actual unbound original Service grant")
+  const grant = inspected.grant
+  await f.runtime.run(async () => {
+    const before = (await Leases.captureEntries()).filter((entry) => entry.authority.rootID === input.effect.messageID)
+    expect(before).toHaveLength(1)
+    const original = before[0]!
+    expect(original).toMatchObject({
+      state: "pending",
+      authority: {
+        orgID: input.permit.orgID,
+        runtimeID: input.permit.runtimeID,
+        sessionID: input.permit.sessionID,
+        rootID: input.effect.messageID,
+        originGrantID: input.permit.provisionalGrantID,
+        input: {
+          admissionID: input.permit.admissionID,
+          attemptID: input.permit.attemptID,
+          subjectID: input.permit.actor.subjectID,
+          requestID: input.permit.requestID,
+          acceptedHash: Leases.acceptedHash(input),
+        },
+      },
+    })
+    expect(original.hint).toBeUndefined()
+    expect(original.uncertainUntil).toBeUndefined()
+    const pending = await Leases.observe(original, grant, inspected.inspectedAt)
+    const entries = (await Leases.captureEntries()).filter((entry) => entry.authority.rootID === input.effect.messageID)
+    const linked = entries.find((entry) => entry.entryID === original.entryID)
+    expect(entries).toHaveLength(2)
+    expect(linked).toEqual({ ...original, state: "settled", settlement: { kind: "linked", entryID: pending.entryID } })
+    expect(pending).toMatchObject({ state: "pending", hint: { grantID: grant.grantID, generation: 0 } })
+    expect(original.authority).toEqual(pending.authority)
+    expect(entries.filter((entry) => entry.state === "pending")).toEqual([pending])
+    const rows = await Storage.query({ prefix: ["organization-execution-leases", "entries"], limit: 3 })
+    expect(rows).toHaveLength(2)
+    expect(new Set(rows.map((row) => row.key.at(-1)))).toEqual(new Set([original.entryID, pending.entryID]))
+    const page = await Leases.page(grant.runtimeID, {
+      limit: 1,
+      target: { sessionID: input.permit.sessionID, rootID: input.effect.messageID },
+    })
+    expect(page.items).toEqual([pending])
+    expect(Leases.queuedOriginal(entries, pending, input)).toBe(true)
+    const hint = pending.hint
+    if (!hint) throw new Error("Actual provisional observation did not preserve its generation")
+    const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex")
+    const higherHint = { ...hint, generation: 1 }
+    const higher = Leases.Entry.parse({
+      ...pending,
+      entryID: digest([pending.authority, higherHint]),
+      hint: higherHint,
+    })
+    const legacyAliasID = digest([{ ...pending.authority, version: 1 }, hint])
+    expect(legacyAliasID).not.toBe(pending.entryID)
+    const cycleOriginal = Leases.Entry.parse({ ...linked, settlement: { kind: "linked", entryID: legacyAliasID } })
+    const cycleAlias = Leases.Entry.parse({
+      ...pending,
+      entryID: legacyAliasID,
+      state: "settled",
+      settlement: { kind: "linked", entryID: original.entryID },
+    })
+    const horizon = Leases.Entry.parse({ ...linked, uncertainUntil: Date.now() + 1000 })
+    const foreign = Leases.Entry.parse({
+      ...linked,
+      authority: { ...original.authority, runtimeID: "foreign-runtime" },
+    })
+    const variants: Array<{ name: string; entries: Leases.Entry[]; pending: Leases.Entry }> = [
+      { name: "missing original", entries: [pending], pending },
+      { name: "extra generation one", entries: [...entries, higher], pending },
+      {
+        name: "sole generation one",
+        entries: [Leases.Entry.parse({ ...linked, settlement: { kind: "linked", entryID: higher.entryID } }), higher],
+        pending: higher,
+      },
+      { name: "unknown original dispatch horizon", entries: [horizon, pending], pending },
+      { name: "linked cycle with independent pending tail", entries: [cycleOriginal, cycleAlias, pending], pending },
+      { name: "foreign authority", entries: [foreign, pending], pending },
+    ]
+    for (const variant of variants)
+      expect(Leases.queuedOriginal(variant.entries, variant.pending, input), variant.name).toBe(false)
+    expect(await Leases.captureEntries()).toEqual(entries)
+  })
+}, 15_000)
+
+test("queued cleanup capture rejects real missing original or either pending index and restores its exact fixture values", async () => {
+  await using f = await executionFixture({ execution: true })
+  const description = await f.description()
+  const input = description.receipt.accepted
+  if (!input || input.effect.mode !== "task") throw new Error("Expected the real public task acceptance")
+  const inspected = await f.connection.resources.inspectRetention(
+    Execution.InspectionProof.parse({
+      ...description,
+      purpose: "execution-retention-inspection",
+      rootID: input.effect.messageID,
+    }),
+  )
+  if (inspected.state !== "known" || inspected.grant.state !== "provisional")
+    throw new Error("Expected the actual unbound original Service grant")
+  const grant = inspected.grant
+  await f.runtime.run(async () => {
+    const original = (await Leases.captureEntries()).find((entry) => entry.authority.rootID === input.effect.messageID)
+    if (!original || original.hint || original.state !== "pending")
+      throw new Error("Missing actual original cleanup reception")
+    const pending = await Leases.observe(original, grant, inspected.inspectedAt)
+    const entries = await Leases.captureEntries()
+    expect(entries).toHaveLength(2)
+    expect(Leases.queuedOriginal(entries, pending, input)).toBe(true)
+    const addresses = [
+      ["organization-execution-leases", "entries", original.entryID],
+      ["organization-execution-leases", "pending", grant.runtimeID, pending.entryID],
+      [
+        "organization-execution-leases",
+        "pending-root",
+        grant.runtimeID,
+        input.permit.sessionID,
+        input.effect.messageID,
+        pending.entryID,
+      ],
+    ]
+    const originalRows = await Storage.readMany(addresses)
+    expect(originalRows.every((row) => row !== undefined)).toBe(true)
+    for (const [index, address] of addresses.entries()) {
+      const row = originalRows[index]
+      if (row === undefined) throw new Error("Missing the actual bounded original fixture row")
+      try {
+        await Storage.remove(address)
+        expect((await Storage.readMany([address]))[0]).toBeUndefined()
+        if (index === 0) {
+          const actual = await Leases.captureEntries()
+          expect(actual).toEqual([pending])
+          expect(Leases.queuedOriginal(actual, pending, input)).toBe(false)
+        } else {
+          const result = await Leases.captureEntries().then(
+            (value) => ({ ok: true as const, value }),
+            (error: unknown) => ({ ok: false as const, error }),
+          )
+          expect(result.ok).toBe(false)
+          if (result.ok) throw new Error("Incomplete pending index was accepted by the native cleanup owner")
+          if (!(result.error instanceof OrganizationRuntimeError)) throw result.error
+          expect(result.error.data).toMatchObject({ code: "PROTOCOL_MISMATCH", outcome: "rejected", retryable: false })
+        }
+      } finally {
+        await Storage.write(address, row)
+      }
+      expect(await Storage.readMany(addresses)).toEqual(originalRows)
+      expect(await Leases.captureEntries()).toEqual(entries)
+      expect(Leases.queuedOriginal(entries, pending, input)).toBe(true)
+    }
+  })
+}, 15_000)

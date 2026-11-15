@@ -1,7 +1,10 @@
+import { createHash } from "node:crypto"
+import { OrganizationRecoveryPublicationRecords as Publications } from "./backup/publication-records"
 import {
   OrganizationCommandProtocol as Command,
   OrganizationExecutionProtocol as Execution,
   OrganizationHandoffProtocol as Handoff,
+  OrganizationQueuedSnapshotProtocol as Queued,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { isDeepStrictEqual as same } from "node:util"
 import { OrganizationRecord as Record } from "./storage/records"
@@ -28,7 +31,7 @@ export namespace OrganizationExecutionHistory {
     if (
       accepted.effect.mode !== "task" ||
       grant.orgID !== permit.orgID ||
-      grant.deploymentIncarnation !== permit.deploymentIncarnation ||
+      (!grant.provenance && grant.deploymentIncarnation !== permit.deploymentIncarnation) ||
       grant.sessionID !== permit.sessionID ||
       grant.projectID !== permit.projectID ||
       grant.admissionID !== permit.admissionID ||
@@ -63,14 +66,39 @@ export namespace OrganizationExecutionHistory {
       )
         invalid()
       const session = reader.read(Record.SessionDirectory, Keys.session(grant.sessionID))
-      const handoff = await Handoffs.terminal(reader, session, provenance.handoffID)
-      const cancelled = handoff.phase === "cancelled"
-      if (
-        control.permit.commandSeq <= handoff.commandSeq ||
-        grant.runtimeID !== (cancelled ? handoff.sourceRuntimeID : handoff.targetRuntimeID) ||
-        grant.bindingEpoch !== (cancelled ? handoff.fromEpoch : handoff.toEpoch)
-      )
-        invalid()
+      const handoff = provenance.handoffID ? await Handoffs.terminal(reader, session, provenance.handoffID) : undefined
+      let recoveredItems: readonly Queued.Item[] | undefined
+      if (handoff) {
+        const cancelled = handoff.phase === "cancelled"
+        if (
+          control.permit.commandSeq <= handoff.commandSeq ||
+          handoff.deploymentIncarnation !== grant.deploymentIncarnation ||
+          grant.runtimeID !== (cancelled ? handoff.sourceRuntimeID : handoff.targetRuntimeID) ||
+          grant.bindingEpoch !== (cancelled ? handoff.fromEpoch : handoff.toEpoch)
+        )
+          invalid()
+      } else {
+        const recovery = provenance.recovery
+        if (!recovery) invalid()
+        const receipt = Publications.validate(
+          reader.read(Publications.Receipt, Publications.key(recovery.installationID)),
+          recovery.installationID,
+        )
+        const mapping = Publications.validateHosted(
+          reader.read(Publications.Hosted, Publications.hostedKey(recovery.installationID, grant.runtimeID)),
+          receipt,
+          grant.runtimeID,
+        )
+        if (
+          receipt.identity.orgID !== grant.orgID ||
+          receipt.identity.deploymentIncarnation !== grant.deploymentIncarnation ||
+          mapping.sourceReferenceHash !== recovery.sourceReferenceHash ||
+          mapping.published.runtimeID !== grant.runtimeID
+        )
+          invalid()
+        if (mapping.queued)
+          recoveredItems = await Publications.validateQueued(reader, recovery.installationID, grant.runtimeID, mapping)
+      }
       const previous = reader.read(Record.ExecutionGrant, Keys.executionGrant(provenance.predecessorGrantID))
       if (
         previous.grantID !== provenance.predecessorGrantID ||
@@ -78,7 +106,6 @@ export namespace OrganizationExecutionHistory {
         previous.sessionID !== grant.sessionID ||
         previous.projectID !== grant.projectID ||
         (root(previous) !== undefined && root(previous) !== accepted.effect.messageID) ||
-        previous.deploymentIncarnation !== grant.deploymentIncarnation ||
         previous.admissionID !== grant.admissionID ||
         previous.attemptID !== grant.attemptID ||
         !same(previous.actor, grant.actor) ||
@@ -88,20 +115,40 @@ export namespace OrganizationExecutionHistory {
             previous.provenance.control.permit.commandSeq >= control.permit.commandSeq
           : previous.grantID !== originID) ||
         !(
-          (previous.runtimeID === handoff.sourceRuntimeID && previous.bindingEpoch === handoff.fromEpoch) ||
+          (handoff && previous.runtimeID === handoff.sourceRuntimeID && previous.bindingEpoch === handoff.fromEpoch) ||
           (previous.runtimeID === grant.runtimeID && previous.bindingEpoch === grant.bindingEpoch)
         )
       )
         invalid()
-      const mapped = Handoffs.continuationSelection(handoff)
-      const exact = previous.selectionRevision === grant.selectionRevision && same(previous.selection, grant.selection)
-      const consented =
-        mapped &&
-        mapped.before.revision === previous.selectionRevision &&
-        same(mapped.before.selection, previous.selection) &&
-        mapped.after.revision === grant.selectionRevision &&
-        same(mapped.after.selection, grant.selection)
-      if (!exact && !consented) invalid()
+      if (!handoff && previous.state === "closed" && previous.controlClosure) {
+        const item = recoveredItems?.find((item) => item.grantID === previous.grantID)
+        if (
+          !item ||
+          previous.provenance ||
+          previous.grantID !== originID ||
+          item.sessionID !== previous.sessionID ||
+          item.rootID !== accepted.effect.messageID ||
+          item.acceptedHash !== createHash("sha256").update(JSON.stringify(accepted)).digest("hex") ||
+          item.inboxID !== accepted.effect.itemID ||
+          item.pausedSince !== control.effect.pausedSince ||
+          item.controlVersion >= control.effect.controlVersion ||
+          item.commandSeq >= control.permit.commandSeq ||
+          previous.controlClosure.successorGrantID !== grant.grantID
+        )
+          invalid()
+      }
+      if (handoff) {
+        const mapped = Handoffs.continuationSelection(handoff)
+        const exact =
+          previous.selectionRevision === grant.selectionRevision && same(previous.selection, grant.selection)
+        const consented =
+          mapped &&
+          mapped.before.revision === previous.selectionRevision &&
+          same(mapped.before.selection, previous.selection) &&
+          mapped.after.revision === grant.selectionRevision &&
+          same(mapped.after.selection, grant.selection)
+        if (!exact && !consented) invalid()
+      }
       Index.assertControlHistory(reader, grant)
       if (previous.state === "provisional") invalid()
       if (previous.state === "bound") {

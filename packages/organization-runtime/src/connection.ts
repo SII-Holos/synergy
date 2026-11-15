@@ -70,6 +70,7 @@ export interface MemberConnectionOptions {
     skip(authorization: Command.SignedSkip): Promise<Command.Result>
     close?(): void | Promise<void>
   }
+  executionRecovery?: 1
   sync?: boolean
   syncVersion?: 1 | typeof Sync.observationVersion
   notifications?: boolean
@@ -139,6 +140,7 @@ async function attempt(input: {
       capabilities: [
         "bridge",
         ...(options.commands ? ["commands"] : []),
+        ...(options.executionRecovery === 1 ? ["execution-recovery"] : []),
         ...(options.sync ? ["sync"] : []),
         ...(options.notifications ? ["notifications"] : []),
         ...(options.read ? ["reads"] : []),
@@ -148,6 +150,7 @@ async function attempt(input: {
       schemas: {
         bridge: 1,
         ...(options.commands ? { commands: 1 } : {}),
+        ...(options.executionRecovery === 1 ? { executionRecovery: 1 } : {}),
         ...(options.sync ? { sync: options.syncVersion ?? 1 } : {}),
         ...(options.notifications ? { notifications: Notification.Version } : {}),
         ...(options.handoff ? { handoffs: options.handoffVersion ?? 1 } : {}),

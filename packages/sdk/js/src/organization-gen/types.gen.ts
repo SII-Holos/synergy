@@ -2243,7 +2243,11 @@ export type OrgExecutionInspectionProof = {
     }
   }
   continuation?: {
-    handoffID: string
+    handoffID?: string
+    recovery?: {
+      installationID: string
+      sourceReferenceHash: string
+    }
     receipt: {
       attempt:
         | {
@@ -2557,7 +2561,11 @@ export type OrgExecutionBindingProof = {
     }
   }
   continuation?: {
-    handoffID: string
+    handoffID?: string
+    recovery?: {
+      installationID: string
+      sourceReferenceHash: string
+    }
     receipt: {
       attempt:
         | {
@@ -4322,7 +4330,11 @@ export type OrgExecutionDescriptionProof = {
     }
   }
   continuation?: {
-    handoffID: string
+    handoffID?: string
+    recovery?: {
+      installationID: string
+      sourceReferenceHash: string
+    }
     receipt: {
       attempt:
         | {
@@ -4913,7 +4925,11 @@ export type OrgExecutionHandoffInventoryPage = {
       requestID: string
     }
     continuation?: {
-      handoffID: string
+      handoffID?: string
+      recovery?: {
+        installationID: string
+        sourceReferenceHash: string
+      }
       lookup: {
         subjectID: string
         requestID: string
@@ -5038,7 +5054,11 @@ export type OrgExecutionHandoffCloseProof = {
     }
   }
   continuation?: {
-    handoffID: string
+    handoffID?: string
+    recovery?: {
+      installationID: string
+      sourceReferenceHash: string
+    }
     receipt: {
       attempt:
         | {
@@ -5096,7 +5116,7 @@ export type OrgExecutionHandoffCloseRequest = {
 }
 
 export type OrgBoundExecutionGrant = {
-  schemaVersion: 5
+  schemaVersion: 5 | 6
   grantID: string
   orgID: string
   deploymentIncarnation: string
@@ -5127,11 +5147,15 @@ export type OrgBoundExecutionGrant = {
   attemptID: string
   createdAt: number
   provenance?: {
-    handoffID: string
+    handoffID?: string
     predecessorGrantID: string
     originGrantID: string
     rootID: string
     control: OrgCommandControlAccepted
+    recovery?: {
+      installationID: string
+      sourceReferenceHash: string
+    }
   }
   state: "bound"
   rootID: string
@@ -5165,7 +5189,7 @@ export type OrgBoundExecutionGrant = {
 
 export type OrgExecutionGrant =
   | {
-      schemaVersion: 5
+      schemaVersion: 5 | 6
       grantID: string
       orgID: string
       deploymentIncarnation: string
@@ -5196,17 +5220,21 @@ export type OrgExecutionGrant =
       attemptID: string
       createdAt: number
       provenance?: {
-        handoffID: string
+        handoffID?: string
         predecessorGrantID: string
         originGrantID: string
         rootID: string
         control: OrgCommandControlAccepted
+        recovery?: {
+          installationID: string
+          sourceReferenceHash: string
+        }
       }
       state: "provisional"
     }
   | OrgBoundExecutionGrant
   | {
-      schemaVersion: 5
+      schemaVersion: 5 | 6
       grantID: string
       orgID: string
       deploymentIncarnation: string
@@ -5237,11 +5265,15 @@ export type OrgExecutionGrant =
       attemptID: string
       createdAt: number
       provenance?: {
-        handoffID: string
+        handoffID?: string
         predecessorGrantID: string
         originGrantID: string
         rootID: string
         control: OrgCommandControlAccepted
+        recovery?: {
+          installationID: string
+          sourceReferenceHash: string
+        }
       }
       state: "closed"
       closedAt: number
@@ -5425,7 +5457,11 @@ export type OrgExecutionReleaseProof = {
     }
   }
   continuation?: {
-    handoffID: string
+    handoffID?: string
+    recovery?: {
+      installationID: string
+      sourceReferenceHash: string
+    }
     receipt: {
       attempt:
         | {

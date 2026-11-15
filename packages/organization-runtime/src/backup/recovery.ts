@@ -2,6 +2,7 @@ import fs from "node:fs/promises"
 import path from "node:path"
 import { createHash } from "node:crypto"
 import { z } from "zod"
+import { OrganizationQueuedSnapshotProtocol as QueuedSnapshot } from "@ericsanchezok/synergy-organization-protocol"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { HomeRestoration } from "@ericsanchezok/synergy-harness/lifecycle/home-restoration"
 import { HomeOwnership } from "@ericsanchezok/synergy-harness/lifecycle/home-ownership"
@@ -18,10 +19,12 @@ import type { VaultKeyProvider } from "@ericsanchezok/synergy-harness/secrets/en
 import { HostedIdentity, NativeHomeReaderContract } from "../home-schema"
 import { runtimeIdentityDigest } from "../home"
 import { registerSessionSchema } from "../session-schema"
+import { OrganizationExecutionLeases as Leases } from "../execution-leases"
 import { parseRecord } from "../record"
-import { HostedBinding } from "../home-schema"
+import { ArchivedHostedBinding, HostedBinding } from "../home-schema"
 import { OrganizationHostedPublication as Publication } from "./publication"
 import { OrganizationRuntimeNative as Native } from "./native"
+import { OrganizationQueuedCapture } from "./queued-capture"
 
 const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex")
 const TargetRequest = HomeRestoration.Request.extend({
@@ -39,6 +42,20 @@ const roles = {
 } as const
 function fail(message: string): never {
   throw new Error("Hosted restoration " + message)
+}
+
+function targetBinding(bytes: Uint8Array) {
+  const original = parseRecord(bytes, ArchivedHostedBinding, "identity records")
+  if (
+    original.readerContract !== "native-organization-ownership-v5" &&
+    original.readerContract !== NativeHomeReaderContract
+  )
+    fail("requires a supported original native reader")
+  const binding = HostedBinding.parse({ ...original, readerContract: NativeHomeReaderContract })
+  return {
+    binding,
+    bytes: original.readerContract === NativeHomeReaderContract ? bytes : Buffer.from(JSON.stringify(binding) + "\n"),
+  }
 }
 
 export namespace OrganizationHostedRecovery {
@@ -103,6 +120,9 @@ export namespace OrganizationHostedRecovery {
     return Native.withMaterial({ ...native, source: reference.archive, keys, signal }, async (material) => {
       assert()
       const selected = Native.inspectMaterial(material)
+      const originalBinding = selected.files.get("binding")
+      if (!originalBinding) fail("requires its original native binding")
+      const binding = targetBinding(originalBinding)
       const registration = selected.manifest.registration
       if (
         reference.namespace.owner !== "organization-runtime" ||
@@ -123,14 +143,18 @@ export namespace OrganizationHostedRecovery {
         await HomeRestoration.verifyCurrent(permit)
         assert()
         for (const [role, relative] of Object.entries(roles)) {
-          const bytes = selected.files.get(z.enum(["binding", "credentials", "registration", "connection"]).parse(role))
+          const original = selected.files.get(
+            z.enum(["binding", "credentials", "registration", "connection"]).parse(role),
+          )
+          const bytes = role === "binding" ? binding.bytes : original
           const filename = path.join(runtime.host.root, ...relative)
           const previous = await fs.readFile(filename).catch((error: NodeJS.ErrnoException) => {
             if (error.code !== "ENOENT") throw error
           })
           assert()
-          if (previous && (!bytes || !previous.equals(bytes))) fail("cannot replace conflicting target native material")
-          if (bytes && !previous) await FileAtomicWrite.write(root, [...relative], bytes)
+          if (previous && (!bytes || (!previous.equals(bytes) && (!original || !previous.equals(original)))))
+            fail("cannot replace conflicting target native material")
+          if (bytes && (!previous || !previous.equals(bytes))) await FileAtomicWrite.write(root, [...relative], bytes)
           assert()
         }
       })
@@ -141,8 +165,8 @@ export namespace OrganizationHostedRecovery {
       assert()
       return SnapshotMaintenance.withInstalledSegment(
         { ...snapshot, source: reference.archive, namespaceDirectory, permit, request, keys, signal },
-        (installed) =>
-          StorageCheckpoint.restoreArchive({
+        async (installed) => {
+          const restored = await StorageCheckpoint.restoreArchive({
             directory: namespaceDirectory,
             base,
             expected: reference.archive,
@@ -158,7 +182,34 @@ export namespace OrganizationHostedRecovery {
               await RuntimeMaintenance.adoptRestoration(tx, { permit, request, archive })
               assert()
             },
-          }),
+          })
+          if (selected.queued) {
+            const guard = () => {
+              assert()
+              SnapshotMaintenance.assertInstalledSegment(installed)
+            }
+            guard()
+            if (selected.queued.proof.proof.maintenanceID !== reference.maintenance.maintenanceID)
+              fail("queued native material belongs to another frozen source")
+            await HomeRestoration.verifyCurrent(permit)
+            guard()
+            const expectedHash = await QueuedSnapshot.digest(selected.queued.items)
+            guard()
+            const actualHash = await Storage.snapshot(async () => {
+              const actual = await OrganizationQueuedCapture.inspect(registration)
+              guard()
+              if (!actual) fail("installed queued native state is not canonical")
+              const digest = await QueuedSnapshot.digest(actual)
+              guard()
+              return digest
+            })
+            guard()
+            if (actualHash !== expectedHash) fail("installed queued native state differs from its signed snapshot")
+            await HomeRestoration.verifyCurrent(permit)
+            guard()
+          }
+          return restored
+        },
       )
     })
   }
@@ -197,7 +248,7 @@ export namespace OrganizationHostedRecovery {
         const selected = Native.inspectMaterial(material)
         const bytes = selected.files.get("binding")
         if (!bytes) fail("requires its original native binding")
-        const binding = parseRecord(bytes, HostedBinding, "identity records")
+        const { binding } = targetBinding(bytes)
         return RuntimeMaintenance.restorationTransaction(
           { permit, request },
           (tx) =>
@@ -265,6 +316,7 @@ export async function openHostedRecovery(input: {
       HomeRestoration.register()
       Publication.register()
       registerSessionSchema({ orgID: identity.orgID })
+      Leases.register(identity.orgID)
       RuntimeMaintenance.registerProtection()
       const selected = await HomeOwnershipFile.open({ root, env: context.host.env }).read()
       if (selected?.schemaVersion === 3) {

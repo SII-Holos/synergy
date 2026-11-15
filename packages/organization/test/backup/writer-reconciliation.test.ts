@@ -370,7 +370,10 @@ test("a target with H0 command facts cannot use its H1 Hosted registration to hi
       Writers.withReconciled(input, async () => {
         entered = true
       }),
-    ).rejects.toThrow("missing H1 owner record")
+    ).rejects.toMatchObject({
+      name: "OrganizationError",
+      data: { code: "PROTOCOL_MISMATCH", outcome: "not_dispatched", retryable: false },
+    })
     expect(entered).toBe(false)
     expect(await Storage.read(Addresses.commandState("stale-session"))).toEqual({
       schemaVersion: 1,

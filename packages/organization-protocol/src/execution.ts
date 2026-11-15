@@ -109,6 +109,34 @@ export namespace OrganizationExecutionProtocol {
       closedAt: z.number().int().nonnegative(),
     }),
   ])
+  export const RecoveryOrigin = z.strictObject({
+    installationID: z.uuid(),
+    sourceReferenceHash: Protocol.Digest,
+  })
+  export type RecoveryOrigin = z.infer<typeof RecoveryOrigin>
+  export const ContinuationOrigin = z
+    .strictObject({
+      handoffID: Identity.ID.optional(),
+      recovery: RecoveryOrigin.optional(),
+    })
+    .refine(
+      (value) => (value.handoffID !== undefined) !== (value.recovery !== undefined),
+      "Continuation requires exactly one original Handoff or recovery publication",
+    )
+  export function continuationOrigin(value: z.infer<typeof ContinuationOrigin>) {
+    return ContinuationOrigin.parse({ handoffID: value.handoffID, recovery: value.recovery })
+  }
+  export function sameContinuationOrigin(left: unknown, right: unknown) {
+    const a = ContinuationOrigin.strip().safeParse(left),
+      b = ContinuationOrigin.strip().safeParse(right)
+    return (
+      a.success &&
+      b.success &&
+      a.data.handoffID === b.data.handoffID &&
+      a.data.recovery?.installationID === b.data.recovery?.installationID &&
+      a.data.recovery?.sourceReferenceHash === b.data.recovery?.sourceReferenceHash
+    )
+  }
   const LegacyFields4 = z.strictObject({
     schemaVersion: z.literal(4),
     grantID: Identity.ID,
@@ -138,13 +166,32 @@ export namespace OrganizationExecutionProtocol {
       })
       .optional(),
   })
-  const GrantFields = LegacyFields4.extend({ schemaVersion: z.literal(5), selection: Selection })
+  const LegacyFields5 = LegacyFields4.extend({ schemaVersion: z.literal(5), selection: Selection })
+  const GrantFields = LegacyFields5.extend({
+    schemaVersion: z.union([z.literal(5), z.literal(6)]),
+    provenance: LegacyFields4.shape.provenance
+      .unwrap()
+      .extend({
+        handoffID: Identity.ID.optional(),
+        recovery: RecoveryOrigin.optional(),
+      })
+      .refine(
+        (value) => ContinuationOrigin.safeParse({ handoffID: value.handoffID, recovery: value.recovery }).success,
+        "Grant continuation requires its exact original publication",
+      )
+      .optional(),
+  })
   export const BoundGrant = GrantFields.extend({
     state: z.literal("bound"),
     rootID: Identity.ID,
     boundAt: z.number().int().nonnegative(),
     retention: Retention,
-  }).meta({ ref: "OrgBoundExecutionGrant" })
+  })
+    .refine(
+      (value) => value.schemaVersion === 6 || value.provenance?.recovery === undefined,
+      "Legacy grants cannot contain a restoration continuation",
+    )
+    .meta({ ref: "OrgBoundExecutionGrant" })
   export type BoundGrant = z.infer<typeof BoundGrant>
   export const Grant = z
     .discriminatedUnion("state", [
@@ -164,8 +211,35 @@ export namespace OrganizationExecutionProtocol {
       }),
     ])
     .refine((value) => value.actor.orgID === value.orgID, "Grant actor belongs to another organization")
+    .refine(
+      (value) => value.schemaVersion === 6 || value.provenance?.recovery === undefined,
+      "Legacy grants cannot contain a restoration continuation",
+    )
     .meta({ ref: "OrgExecutionGrant" })
   export type Grant = z.infer<typeof Grant>
+  export const LegacyGrant5 = z
+    .discriminatedUnion("state", [
+      LegacyFields5.extend({ state: z.literal("provisional") }),
+      LegacyFields5.extend({
+        state: z.literal("bound"),
+        rootID: Identity.ID,
+        boundAt: z.number().int().nonnegative(),
+        retention: Retention,
+      }),
+      LegacyFields5.extend({
+        state: z.literal("closed"),
+        closedAt: z.number().int().nonnegative(),
+        handoffClosure: HandoffClosure.extend({ rootID: Identity.ID, generation: z.literal(0) }).optional(),
+        controlClosure: z
+          .strictObject({
+            rootID: Identity.ID,
+            successorGrantID: Identity.ID,
+            closedAt: z.number().int().nonnegative(),
+          })
+          .optional(),
+      }),
+    ])
+    .refine((value) => value.actor.orgID === value.orgID, "Grant actor belongs to another organization")
   export const LegacyGrant4 = z
     .discriminatedUnion("state", [
       LegacyFields4.extend({ state: z.literal("provisional") }),
@@ -200,12 +274,10 @@ export namespace OrganizationExecutionProtocol {
     }),
     LegacyFields3.extend({ state: z.literal("closed"), closedAt: z.number().int().nonnegative() }),
   ])
-  export const Continuation = z
-    .strictObject({ handoffID: Identity.ID, receipt: Command.ControlResult })
-    .refine(
-      (value) => value.receipt.attempt.status === "accepted" && value.receipt.accepted?.effect.operation === "continue",
-      "Execution continuation requires an accepted explicit Continue",
-    )
+  export const Continuation = ContinuationOrigin.safeExtend({ receipt: Command.ControlResult }).refine(
+    (value) => value.receipt.attempt.status === "accepted" && value.receipt.accepted?.effect.operation === "continue",
+    "Execution continuation requires an accepted explicit Continue",
+  )
   export type Continuation = z.infer<typeof Continuation>
   const ReceivedProof = z
     .strictObject({
@@ -239,7 +311,6 @@ export namespace OrganizationExecutionProtocol {
           continuation.permit.projectID === permit.projectID &&
           continuation.permit.connectionEpoch <= value.connectionEpoch &&
           permit.orgID === value.orgID &&
-          permit.deploymentIncarnation === value.deploymentIncarnation &&
           !!permit.provisionalGrantID
         )
       return (
@@ -539,7 +610,7 @@ export namespace OrganizationExecutionProtocol {
     generation: z.number().int().nonnegative().safe(),
     originGrantID: Identity.ID,
     lookup: Lookup,
-    continuation: z.strictObject({ handoffID: Identity.ID, lookup: Lookup }).optional(),
+    continuation: ContinuationOrigin.safeExtend({ lookup: Lookup }).optional(),
   })
   export const HandoffInventoryPage = z
     .strictObject({

@@ -16,7 +16,7 @@ export const commands: CommandEntry[] = [
   },
   {
     command: "org-runtime",
-    describe: "register, serve or clean up an independent organization Runtime",
+    describe: "register, serve, upgrade or clean up an independent organization Runtime",
     initialization: "owner",
     load: async () =>
       (await import("./cli/organization-runtime")).OrganizationRuntimeCommand as unknown as CommandModule,

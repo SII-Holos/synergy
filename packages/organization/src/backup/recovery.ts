@@ -1,3 +1,4 @@
+import { OrganizationQueuedExecutionHistory } from "./queued-history"
 import { createHash } from "node:crypto"
 import type { z } from "zod"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
@@ -250,7 +251,12 @@ export namespace OrganizationRecovery {
       open = false
     }
   }
-  export async function reconstruct(input: { source: Current.Source; target: Target; signal?: AbortSignal }) {
+  export async function reconstruct(input: {
+    source: Current.Source
+    target: Target
+    queued?: readonly OrganizationQueuedExecutionHistory.Source[]
+    signal?: AbortSignal
+  }) {
     const source = input.source
     const target = targets.get(input.target)
     const signal = input.signal
@@ -283,6 +289,7 @@ export namespace OrganizationRecovery {
             target: target.reference,
             base: target.base,
             namespace: captured.namespace,
+            queued: input.queued,
             keys: captured.keys,
             signal: cancellation,
           },
@@ -318,7 +325,12 @@ export namespace OrganizationRecovery {
       })
     })
   }
-  export async function preflightWriters(input: { source: Current.Source; target: Target; signal?: AbortSignal }) {
+  export async function preflightWriters(input: {
+    source: Current.Source
+    target: Target
+    queued?: readonly OrganizationQueuedExecutionHistory.Source[]
+    signal?: AbortSignal
+  }) {
     const source = input.source
     const target = targets.get(input.target)
     const signal = input.signal
@@ -339,6 +351,7 @@ export namespace OrganizationRecovery {
           target: target.reference,
           base: target.base,
           namespace: captured.namespace,
+          queued: input.queued,
           keys: captured.keys,
           signal: cancellation,
         })
@@ -386,7 +399,7 @@ export namespace OrganizationRecovery {
     }
     const provider = input.keys
     const keys = Object.freeze({ current: provider.current.bind(provider), resolve: provider.resolve.bind(provider) })
-    await reconstructCold({ source, target: input.target, namespace, native, keys, signal })
+    await reconstructCold({ source, target: input.target, namespace, native, queued: input.queued, keys, signal })
     return Retirement.withVerified(
       source,
       (inspection) =>
@@ -449,6 +462,7 @@ export namespace OrganizationRecovery {
                     target: target.reference,
                     base: target.base,
                     sources: writers,
+                    queued: input.queued,
                     namespace,
                     keys,
                     signal,
@@ -463,6 +477,7 @@ export namespace OrganizationRecovery {
                   request: target.request,
                   target: target.reference,
                   base: target.base,
+                  queued: input.queued,
                   namespace,
                   keys,
                   signal,
@@ -476,6 +491,7 @@ export namespace OrganizationRecovery {
     )
   }
   export function reconstructCold(input: {
+    queued?: readonly OrganizationQueuedExecutionHistory.Source[]
     source: Retirement.Receipt
     target: Target
     namespace: { directory: string; expected: StorageCheckpoint.Manifest }
@@ -547,6 +563,7 @@ export namespace OrganizationRecovery {
               request: target.request,
               target: target.reference,
               base: target.base,
+              queued: input.queued,
               namespace,
               keys,
               signal,

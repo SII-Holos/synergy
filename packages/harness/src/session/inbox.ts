@@ -614,6 +614,17 @@ export namespace SessionInbox {
     )
   }
 
+  export async function hasMaterialized(sessionID: string, itemID: string): Promise<boolean> {
+    const session = await readSession(sessionID)
+    const [receipt] = await Storage.readMany([
+      [
+        ...StoragePath.sessionRoot(Identifier.asScopeID(session.scope.id), Identifier.asSessionID(sessionID)),
+        "inbox-materialized",
+        Identifier.schema("inbox").parse(itemID),
+      ],
+    ])
+    return receipt !== undefined
+  }
   export async function get(sessionID: string, itemID: string): Promise<Item> {
     return publicItem(await getStored(sessionID, itemID))
   }

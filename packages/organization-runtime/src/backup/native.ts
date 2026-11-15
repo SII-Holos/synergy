@@ -15,7 +15,11 @@ import { TransactionalStore } from "@ericsanchezok/synergy-harness/storage/trans
 import { Global } from "@ericsanchezok/synergy-harness/global"
 import type { VaultKeyProvider } from "@ericsanchezok/synergy-harness/secrets/encrypted-store"
 import { withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
-import { OrganizationRuntimeProtocol as Protocol } from "@ericsanchezok/synergy-organization-protocol"
+import {
+  OrganizationRuntimeProtocol as Protocol,
+  OrganizationQueuedSnapshotProtocol as QueuedSnapshot,
+} from "@ericsanchezok/synergy-organization-protocol"
+import { OrganizationQueuedCapture } from "./queued-capture"
 import { HostedIdentity, HostedBinding, ArchivedHostedBinding, ArchivedHomeReaderContract } from "../home-schema"
 import { readHostedHome, runtimeIdentityDigest, runtimeHomeOrigin } from "../home"
 import { captureCredentialRecord, verifyCredentialRecord } from "../credentials"
@@ -35,7 +39,7 @@ export namespace OrganizationRuntimeNative {
     sha256: z.string().regex(/^[a-f0-9]{64}$/),
   })
   const Startup = z.strictObject({ identity: HostedIdentity, ca: z.array(z.string().min(1)).nullable() })
-  export const Manifest = z.strictObject({
+  const LegacyManifest = z.strictObject({
     format: z.literal("synergy-organization-runtime-native"),
     version: z.literal(1),
     source: StorageCheckpoint.Manifest,
@@ -50,7 +54,17 @@ export namespace OrganizationRuntimeNative {
       connection: File.optional(),
     }),
   })
+  export const Manifest = z.discriminatedUnion("version", [
+    LegacyManifest,
+    LegacyManifest.extend({ version: z.literal(2), queued: QueuedSnapshot.SignedProof }),
+  ])
   export type Manifest = z.infer<typeof Manifest>
+  const QueuedPage = z.strictObject({
+    version: z.literal(1),
+    ordinal: z.number().int().nonnegative().safe(),
+    items: z.array(QueuedSnapshot.Item).min(1).max(128),
+  })
+  type QueuedMaterial = { proof: QueuedSnapshot.SignedProof; items: QueuedSnapshot.Item[] }
   const state = RuntimeContext.state(() => ({ startup: undefined as z.infer<typeof Startup> | undefined }))
   const captured = new WeakMap<
     object,
@@ -58,6 +72,7 @@ export namespace OrganizationRuntimeNative {
   >()
   const metadataKey = ["runtime-native", "manifest"]
   const fileKey = (role: Role) => ["runtime-native", "file", role]
+  const queuedKey = (ordinal: number) => ["runtime-native", "queued", String(ordinal).padStart(16, "0")]
   const digest = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex")
   function fail(message: string): never {
     throw new MemberHomeError("Hosted native recovery " + message)
@@ -152,18 +167,7 @@ export namespace OrganizationRuntimeNative {
     }
     const task = async () => {
       await frozen()
-      if (await read(() => OrganizationExecutionLeases.pendingForCapture()))
-        throw new RuntimeMaintenance.Blocked({
-          message: "Hosted recovery requires reconciled execution generations",
-          requirements: [
-            {
-              owner: "organization-execution-leases",
-              code: "execution_generation_pending",
-              label: "Reconcile original execution cleanup before native backup capture",
-              recoverable: true,
-            },
-          ],
-        })
+      const pending = await read(() => OrganizationExecutionLeases.pendingForCapture())
       const proof = await read(() => NativeNamespaceIdentity.capture())
       const descriptor = NativeNamespaceIdentity.inspect(proof)
       if (descriptor.owner !== "organization-runtime" || descriptor.identity.kind !== "hosted")
@@ -211,9 +215,43 @@ export namespace OrganizationRuntimeNative {
           descriptor.identity.publicKey !== verified.registration.publicKey
         )
           fail("belongs to another namespace identity")
+        const queued = pending ? await read(() => OrganizationQueuedCapture.inspect(verified.registration)) : undefined
+        if (pending && !queued?.length)
+          throw new RuntimeMaintenance.Blocked({
+            message: "Hosted recovery requires reconciled execution generations",
+            requirements: [
+              {
+                owner: "organization-execution-leases",
+                code: "execution_generation_pending",
+                label: "Reconcile original execution cleanup before native backup capture",
+                recoverable: true,
+              },
+            ],
+          })
+        const authorization = queued?.length
+          ? await read(async () => {
+              const proof = QueuedSnapshot.Proof.parse({
+                version: 1,
+                purpose: "native-queued-snapshot",
+                orgID: verified.registration.orgID,
+                deploymentIncarnation: verified.registration.deploymentIncarnation,
+                runtimeID: verified.registration.runtimeID,
+                namespaceHash: digest(Buffer.from(JSON.stringify(StorageCheckpoint.Manifest.parse(source.namespace)))),
+                maintenanceID: lease.maintenanceID,
+                count: queued.length,
+                itemsHash: await QueuedSnapshot.digest(queued),
+              })
+              const signing = await verifyCredentialRecord(credentials.bytes)
+              return QueuedSnapshot.SignedProof.parse({
+                proof,
+                signature: await QueuedSnapshot.sign(proof, signing.privateKey),
+              })
+            })
+          : undefined
         const manifest = Manifest.parse({
           format: "synergy-organization-runtime-native",
-          version: 1,
+          version: authorization ? 2 : 1,
+          ...(authorization ? { queued: authorization } : {}),
           source: source.namespace,
           startup,
           ...verified,
@@ -236,6 +274,14 @@ export namespace OrganizationRuntimeNative {
           const handle = { store, artifactDirectory: path.join(temporary, "artifacts") }
           await Storage.provide(handle, async () => {
             for (const [role, bytes] of files) await Storage.writeBinary(fileKey(role), bytes)
+            if (queued)
+              for (let offset = 0; offset < queued.length; offset += 128) {
+                const ordinal = offset / 128
+                await Storage.write(
+                  queuedKey(ordinal),
+                  QueuedPage.parse({ version: 1, ordinal, items: queued.slice(offset, offset + 128) }),
+                )
+              }
             await Storage.write(metadataKey, manifest)
           })
           assert()
@@ -281,10 +327,23 @@ export namespace OrganizationRuntimeNative {
     const provider = input.keys
     const keys = Object.freeze({ current: provider.current.bind(provider), resolve: provider.resolve.bind(provider) })
     let manifest: Manifest | undefined
+    const pages = new Map<number, z.infer<typeof QueuedPage>>()
     const artifacts = new Map<Role, { sha256: string; size: number }>()
     for await (const entry of StorageCheckpoint.entries({ directory, expected, keys, signal })) {
       if (entry.type === "record" && JSON.stringify(entry.key) === JSON.stringify(metadataKey) && !manifest) {
         manifest = Manifest.parse(entry.value)
+        continue
+      }
+      if (
+        entry.type === "record" &&
+        entry.key.length === 3 &&
+        entry.key[0] === "runtime-native" &&
+        entry.key[1] === "queued"
+      ) {
+        const page = QueuedPage.parse(entry.value)
+        if (JSON.stringify(entry.key) !== JSON.stringify(queuedKey(page.ordinal)) || pages.has(page.ordinal))
+          fail("contains a changed or duplicate queued metadata page")
+        pages.set(page.ordinal, page)
         continue
       }
       if (entry.type !== "artifact") fail("contains an unsupported native record")
@@ -318,7 +377,37 @@ export namespace OrganizationRuntimeNative {
       verified.connectionEpoch !== manifest.connectionEpoch
     )
       fail("has inconsistent registration or connection state")
-    return { manifest, files }
+    let queued: QueuedMaterial | undefined
+    if (manifest.version === 1) {
+      if (pages.size) fail("legacy native material cannot carry queued metadata")
+    } else {
+      const proof = manifest.queued.proof
+      if (
+        proof.orgID !== manifest.registration.orgID ||
+        proof.deploymentIncarnation !== manifest.registration.deploymentIncarnation ||
+        proof.runtimeID !== manifest.registration.runtimeID ||
+        proof.namespaceHash !== digest(Buffer.from(JSON.stringify(source))) ||
+        pages.size !== Math.ceil(proof.count / 128)
+      )
+        fail("queued metadata belongs to another frozen namespace or Runtime")
+      const items: QueuedSnapshot.Item[] = []
+      for (let ordinal = 0; ordinal < pages.size; ordinal++) {
+        const page = pages.get(ordinal)
+        if (!page || page.items.length !== Math.min(128, proof.count - ordinal * 128))
+          fail("has missing or incomplete queued metadata pages")
+        items.push(...page.items)
+      }
+      if (items.length !== proof.count) fail("queued metadata has another complete roster or native signature")
+      const itemsHash = await QueuedSnapshot.digest(items)
+      signal?.throwIfAborted()
+      const signatureMatches =
+        itemsHash === proof.itemsHash &&
+        (await QueuedSnapshot.verify(proof, manifest.queued.signature, manifest.registration.publicKey))
+      signal?.throwIfAborted()
+      if (!signatureMatches) fail("queued metadata has another complete roster or native signature")
+      queued = { proof: manifest.queued, items }
+    }
+    return { manifest, files, ...(queued ? { queued } : {}) }
   }
   export async function verify(input: Parameters<typeof material>[0]): Promise<Manifest> {
     return (await material(input)).manifest
@@ -369,7 +458,10 @@ export namespace OrganizationRuntimeNative {
   export interface Material {
     readonly kind: "hosted-native-material"
   }
-  const materials = new WeakMap<Material, { manifest: Manifest; files: Map<Role, Uint8Array>; assert(): void }>()
+  const materials = new WeakMap<
+    Material,
+    { manifest: Manifest; files: Map<Role, Uint8Array>; queued?: QueuedMaterial; assert(): void }
+  >()
   export function inspectMaterial(material: Material) {
     const selected = materials.get(material)
     if (!selected) fail("requires its original verified native material")
@@ -377,6 +469,14 @@ export namespace OrganizationRuntimeNative {
     return {
       manifest: Manifest.parse(selected.manifest),
       files: new Map([...selected.files].map(([role, bytes]) => [role, new Uint8Array(bytes)])),
+      ...(selected.queued
+        ? {
+            queued: {
+              proof: QueuedSnapshot.SignedProof.parse(selected.queued.proof),
+              items: selected.queued.items.map((item) => QueuedSnapshot.Item.parse(item)),
+            },
+          }
+        : {}),
     }
   }
 }

@@ -30,4 +30,4 @@ Verify publication chunks/authorized receipts. Knowledge commits one authorized 
 
 Cloud locators own attribution. Public file results retain logical Workspace references; native receipts stay physical. Signed pre-freeze source capture uses original save/detach/current participant guards. File CAS preserves root/namespace commit guards/drainage. Verify cloud/Runtime workspace-files suites.
 
-Drain accepted completions/freeze rosters; incomplete segments block completion. Installations bind native/Snapshot; guard adoption commits. Preflight completed history before retirement. Verify service-maintenance/cohort/service-native*/service-snapshot-install and backup/writer-reconciliation.
+Drain accepted completions/freeze rosters; incomplete segments block completion. Installations bind native/Snapshot; guard adoption commits. Preflight canonical history before retirement. Verify service-maintenance/cohort/service-native*/service-snapshot-install and backup/writer-reconciliation.
