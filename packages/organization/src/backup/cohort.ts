@@ -422,11 +422,20 @@ export namespace OrganizationBackupCohort {
       failure = error
       throw error
     } finally {
-      const outcomes = await Promise.allSettled(
-        sources
-          .filter((source) => source.lease)
-          .map((source) => run(source.source, () => RuntimeMaintenance.release(source.lease!))),
-      )
+      const service = sources[0]!
+      const outcomes: PromiseSettledResult<Awaited<ReturnType<typeof RuntimeMaintenance.release>>>[] =
+        await Promise.allSettled(
+          service.lease ? [run(service.source, () => RuntimeMaintenance.release(service.lease!))] : [],
+        )
+      if (!outcomes.some((outcome) => outcome.status === "rejected"))
+        outcomes.push(
+          ...(await Promise.allSettled(
+            sources
+              .slice(1)
+              .filter((source) => source.lease)
+              .map((source) => run(source.source, () => RuntimeMaintenance.release(source.lease!))),
+          )),
+        )
       const errors = outcomes.flatMap((outcome) => (outcome.status === "rejected" ? [outcome.reason] : []))
       await fs.rm(temporary, { recursive: true, force: true })
       if (errors.length)

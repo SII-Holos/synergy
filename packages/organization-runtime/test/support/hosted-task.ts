@@ -22,6 +22,8 @@ interface HostedTaskRuntime {
     connectionCloseCount: number
     connectionCloses: readonly {
       code: number
+      reason?: "rejected" | "registration_revoked" | "account_removed" | "other"
+      observedAt?: number
       readyState: number
       pendingFrames: number
       pendingBytes: number
@@ -295,13 +297,16 @@ export async function appendCompletedHostedTask(
     } catch {
       last.managerObservation = "unavailable"
     }
-  }).catch((error) => {
+  }).catch(async (error) => {
     const upstream = task.upstreamObservation()
     console.error(
       "HOSTED_TASK_RELEASE_FAILURE",
       JSON.stringify({
         stage: "second-original-release",
         inputAccepted: true,
+        inputAcceptedAt: accepted.acceptedAt,
+        inputConnectionEpoch: accepted.permit.connectionEpoch,
+        releaseWaitingAt: waitingAt,
         observedAt: Date.now(),
         waitedMs: Date.now() - waitingAt,
         reads,
@@ -311,6 +316,12 @@ export async function appendCompletedHostedTask(
         ...selected.connectionObservation?.(),
       }),
     )
+    await observeTaskFailure({
+      runtime: selected.runtime,
+      accepted,
+      stage: "second-original-release",
+      upstreamCalls: upstream.bodies - baseline.bodies,
+    })
     throw error
   })
   expect(release.receipt?.outcome).toBe("completed")

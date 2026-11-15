@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0214](0214-cohort-release-reopened-hosted-before-service.md)
+
 - [0213](0213-native-binding-cycle-check-used-set-add-result.md)
 
 - [0212](0212-retained-prepared-receipt-concealed-target-activation.md)

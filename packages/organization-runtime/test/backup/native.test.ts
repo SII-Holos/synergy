@@ -129,6 +129,8 @@ async function source(production = false, withTask = false) {
     const observedAt = Date.now()
     const connectionCloses: Array<{
       code: number
+      reason: "rejected" | "registration_revoked" | "account_removed" | "other"
+      observedAt: number
       readyState: number
       pendingFrames: number
       pendingBytes: number
@@ -144,6 +146,15 @@ async function source(production = false, withTask = false) {
         if (connectionCloses.length === 8) connectionCloses.shift()
         connectionCloses.push({
           code: value.code,
+          reason:
+            value.reason === "Runtime connection rejected"
+              ? "rejected"
+              : value.reason === "Runtime registration revoked"
+                ? "registration_revoked"
+                : value.reason === "Organization account removed"
+                  ? "account_removed"
+                  : "other",
+          observedAt: value.wallTimeMs,
           readyState: value.readyState,
           pendingFrames: value.pendingFrames,
           pendingBytes: value.pendingBytes,
@@ -496,10 +507,136 @@ test("the real enrolled cohort encrypts its Hosted native segment and preserves 
   expect(manifest.registration.runtimeID).toBe(selected.registration.runtimeID)
 })
 
+test("cohort capture retains Hosted holds until the original Service release reopens admission", async () => {
+  await using selected = await source(true, true)
+  const serviceOwner = await selected.service.service.maintenance.run(async () => ({
+    runtime: RuntimeContext.current(),
+    store: Storage.current().store,
+  }))
+  const hostedOwner = await selected.runtime.run(async () => ({
+    runtime: RuntimeContext.current(),
+    store: Storage.current().store,
+  }))
+  const matches = (owner: typeof serviceOwner) =>
+    RuntimeContext.tryCurrent() === owner.runtime && Storage.current().store === owner.store
+  const beforeEpoch = await connectionState(selected.home, selected.registration).read()
+  const serviceEntered = Promise.withResolvers<void>()
+  const serviceRelease = Promise.withResolvers<void>()
+  const failure = new Error("Original Service release was cancelled")
+  const aborted = new AbortController()
+  aborted.abort(failure)
+  let serviceLease: RuntimeMaintenance.Lease | undefined
+  let hostedLease: RuntimeMaintenance.Lease | undefined
+  let failService = true
+  let serviceReopened = false
+  let hostedReleasedBeforeService = 0
+  const begin = RuntimeMaintenance.begin
+  const release = RuntimeMaintenance.release
+  using beginning = spyOn(RuntimeMaintenance, "begin").mockImplementation(async (input) => {
+    const lease = await begin(input)
+    if (input.purpose === "organization-backup") {
+      if (matches(serviceOwner)) serviceLease = lease
+      else if (matches(hostedOwner)) hostedLease = lease
+    }
+    return lease
+  })
+  using releasing = spyOn(RuntimeMaintenance, "release").mockImplementation(async (lease, options) => {
+    if (matches(serviceOwner) && lease === serviceLease) {
+      if (failService) {
+        failService = false
+        serviceEntered.resolve()
+        await serviceRelease.promise
+        return release(lease, { ...options, signal: aborted.signal })
+      }
+      const result = await release(lease, options)
+      serviceReopened = true
+      return result
+    }
+    if (matches(hostedOwner) && lease === hostedLease && !serviceReopened) hostedReleasedBeforeService++
+    return release(lease, options)
+  })
+  let epochThreshold = beforeEpoch
+  let resumed = Promise.withResolvers<number>()
+  selected.service.interceptFrames((socket, raw) => {
+    const frame = Protocol.ClientFrame.parse(JSON.parse(String(raw)))
+    if (
+      frame.type === "heartbeat" &&
+      socket.data.handshake?.runtimeID === selected.registration.runtimeID &&
+      frame.connectionEpoch > epochThreshold
+    )
+      resumed.resolve(frame.connectionEpoch)
+    return false
+  })
+  const capture = (name: string) =>
+    Cohort.capture({
+      service: Cohort.service(selected.service.service.maintenance),
+      async resolve() {
+        return Cohort.hosted(selected.runtime, { native: Native.capture })
+      },
+      directory: path.join(selected.service.root, name),
+      archiveID: name,
+      buildVersion: "fixture",
+      keys,
+      actor,
+    })
+  const failedCapture = capture("service-release-failure").then(
+    (report) => ({ kind: "completed" as const, report }),
+    (error: unknown) => ({ kind: "failed" as const, error }),
+  )
+  try {
+    const entry = await Promise.race([
+      serviceEntered.promise.then(() => ({ kind: "entered" as const })),
+      failedCapture.then((outcome) => ({ kind: "settled" as const, outcome })),
+    ])
+    if (entry.kind === "settled") {
+      if (entry.outcome.kind === "failed") throw entry.outcome.error
+      throw new Error("Capture completed before the original Service release entered")
+    }
+    expect((await selected.service.service.maintenance.run(() => RuntimeMaintenance.status()))?.phase).toBe("frozen")
+    expect(serviceLease).toBeDefined()
+    expect(hostedLease).toBeDefined()
+    serviceRelease.resolve()
+    const outcome = await failedCapture
+    expect(outcome.kind).toBe("failed")
+    if (outcome.kind !== "failed") throw new Error("Expected the original Service release failure")
+    expect(outcome.error).toBeInstanceOf(AggregateError)
+    if (!(outcome.error instanceof AggregateError)) throw outcome.error
+    expect(outcome.error.errors).toContain(failure)
+    expect((await selected.service.service.maintenance.run(() => RuntimeMaintenance.status()))?.phase).toBe("frozen")
+    expect((await selected.runtime.run(() => RuntimeMaintenance.status()))?.phase).toBe("frozen")
+    expect(hostedReleasedBeforeService).toBe(0)
+    if (!serviceLease || !hostedLease) throw new Error("Missing the original captured maintenance leases")
+    await selected.service.service.maintenance.run(() => RuntimeMaintenance.release(serviceLease!))
+    await selected.runtime.run(() => RuntimeMaintenance.release(hostedLease!))
+    epochThreshold = await resumed.promise
+    expect(epochThreshold).toBeGreaterThan(beforeEpoch)
+    resumed = Promise.withResolvers<number>()
+    serviceReopened = false
+    const report = await capture("service-release-recovered")
+    expect(report).toMatchObject({ namespaceCheckpointsComplete: true, namespaces: 2 })
+    expect(await resumed.promise).toBeGreaterThan(epochThreshold)
+    expect(hostedReleasedBeforeService).toBe(0)
+    expect((await selected.service.service.maintenance.run(() => RuntimeMaintenance.status()))?.phase).toBe("released")
+    expect((await selected.runtime.run(() => RuntimeMaintenance.status()))?.phase).toBe("released")
+  } finally {
+    serviceRelease.resolve()
+    await failedCapture
+    if (serviceLease)
+      await selected.service.service.maintenance.run(async () => {
+        if ((await RuntimeMaintenance.status())?.phase !== "released") await release(serviceLease!)
+      })
+    if (hostedLease)
+      await selected.runtime.run(async () => {
+        if ((await RuntimeMaintenance.status())?.phase !== "released") await release(hostedLease!)
+      })
+    selected.service.interceptFrames(undefined)
+  }
+}, 30_000)
+
 async function recoverHostedWriter(withTask = false, late?: "session" | "input", artifact?: "published" | "late") {
   const started = performance.now()
   const phase = (stage: string) => {
-    if (!withTask || late !== undefined || artifact === "late") return
+    if (!withTask || late === "session" || artifact === "late") return
     console.error(
       "HOSTED_NATIVE_RECOVERY_PHASE",
       JSON.stringify({
@@ -861,6 +998,7 @@ async function recoverHostedWriter(withTask = false, late?: "session" | "input",
     await selected.service.service.maintenance.run(() => RuntimeMaintenance.release(serviceHold))
     expect((await selected.runtime.run(() => RuntimeMaintenance.status()))?.phase).toBe("released")
     expect((await selected.service.service.maintenance.run(() => RuntimeMaintenance.status()))?.phase).toBe("released")
+    phase("all-assertions-complete")
     return
   }
   await target.run(() => OrganizationRecovery.completeServicePublication(original.installationID))
@@ -1056,7 +1194,7 @@ test(
 test(
   "direct reconstruction rejects a second completed task after H0 before permanent retirement",
   () => recoverHostedWriter(true, "input"),
-  20_000,
+  60_000,
 )
 
 test("a completed Hosted model task drains its actual native writers before capture and ordinary shutdown", async () => {

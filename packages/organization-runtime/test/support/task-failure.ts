@@ -66,7 +66,8 @@ function safeCode(value: unknown) {
 export async function observeTaskFailure(input: {
   runtime: Runtime
   accepted: Command.InputAccepted
-  stage: "hosted-model-start" | "member-tool-entry" | "native-root-completion" | "native-release"
+  stage:
+    "hosted-model-start" | "member-tool-entry" | "native-root-completion" | "native-release" | "second-original-release"
   upstreamCalls: number
   contextCalls?: number
 }) {
