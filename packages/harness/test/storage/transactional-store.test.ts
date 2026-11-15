@@ -103,7 +103,12 @@ for (const backend of storageTestBackends()) {
             if (/^SELECT\b/i.test(statement)) {
               reads++
               for (const row of rows)
-                bodyBytes += typeof row.body === "string" ? Buffer.byteLength(row.body) : row.body instanceof Uint8Array ? row.body.byteLength : 0
+                bodyBytes +=
+                  typeof row.body === "string"
+                    ? Buffer.byteLength(row.body)
+                    : row.body instanceof Uint8Array
+                      ? row.body.byteLength
+                      : 0
             }
             return rows
           },
@@ -133,10 +138,11 @@ for (const backend of storageTestBackends()) {
       })
       const collision = () =>
         store.transaction(async (tx) => {
-          await tx.raw.query(
-            "UPDATE storage_records SET key_text = ? WHERE namespace = ? AND key_text = ?",
-            [JSON.stringify(["another-owner"]), store.options.namespace, JSON.stringify(child)],
-          )
+          await tx.raw.query("UPDATE storage_records SET key_text = ? WHERE namespace = ? AND key_text = ?", [
+            JSON.stringify(["another-owner"]),
+            store.options.namespace,
+            JSON.stringify(child),
+          ])
           await tx.write(child, { value: "invalid" }, { expectedRevision: 999n })
         })
       expect(await failure(collision())).toMatchObject({
@@ -195,7 +201,9 @@ for (const backend of storageTestBackends()) {
                 return query<Row>(statement, values, options)
               },
             )
-            tx.guardMutations(async () => { throw denied })
+            tx.guardMutations(async () => {
+              throw denied
+            })
             await tx.write(child, { value: "denied" })
           }),
         ),
@@ -211,17 +219,20 @@ for (const backend of storageTestBackends()) {
               installing = true
               await tx.write(["compat_pending", "metadata-guard"], { retained: true })
               tx.restrictToPublishedOwners()
-              await tx.raw.query(
-                "UPDATE storage_records SET key_text = ? WHERE namespace = ? AND key_text = ?",
-                [JSON.stringify(["another-owner"]), store.options.namespace, JSON.stringify(child)],
-              )
+              await tx.raw.query("UPDATE storage_records SET key_text = ? WHERE namespace = ? AND key_text = ?", [
+                JSON.stringify(["another-owner"]),
+                store.options.namespace,
+                JSON.stringify(child),
+              ])
             })
             await tx.write(child, { value: "blocked" }, { expectedRevision: 999n })
           }),
         )
-        expect(error).toMatchObject(deleted
-          ? { name: "StorageConflictError", message: "A deleted record cannot be revived by a delayed writer" }
-          : { name: "SessionPreparingError" })
+        expect(error).toMatchObject(
+          deleted
+            ? { name: "StorageConflictError", message: "A deleted record cannot be revived by a delayed writer" }
+            : { name: "SessionPreparingError" },
+        )
         expect(await store.readMany([["compat_pending", "metadata-guard"]])).toEqual([undefined])
         expect(await store.versioned(child)).toMatchObject({ value: { value: "original" }, revision: 1n })
       }
@@ -240,10 +251,11 @@ for (const backend of storageTestBackends()) {
         await store.transaction(async (tx) => {
           const connection = tx.raw
           if (mode === "raw-key-repair")
-            await connection.query(
-              "UPDATE storage_records SET key_text = ? WHERE namespace = ? AND key_text = ?",
-              [JSON.stringify(["temporary-key-mismatch"]), store.options.namespace, JSON.stringify(child)],
-            )
+            await connection.query("UPDATE storage_records SET key_text = ? WHERE namespace = ? AND key_text = ?", [
+              JSON.stringify(["temporary-key-mismatch"]),
+              store.options.namespace,
+              JSON.stringify(child),
+            ])
           tx.restrictToPublishedOwners()
           const entered = Promise.withResolvers<void>()
           const release = Promise.withResolvers<void>()
@@ -272,18 +284,18 @@ for (const backend of storageTestBackends()) {
               if (reached.outcome.kind === "rejected") throw reached.outcome.error
               throw new Error("The original publication read was not reached")
             }
-            if (mode === "typed-revision")
-              await tx.write(child, { value: "newer" }, { expectedRevision: 1n })
+            if (mode === "typed-revision") await tx.write(child, { value: "newer" }, { expectedRevision: 1n })
             else if (mode === "raw-revision")
               await query(
                 "UPDATE storage_records SET body = ?, revision = revision + 1 WHERE namespace = ? AND key_text = ?",
                 [JSON.stringify({ value: "newer" }), store.options.namespace, JSON.stringify(child)],
               )
             else
-              await query(
-                "UPDATE storage_records SET key_text = ? WHERE namespace = ? AND key_text = ?",
-                [JSON.stringify(child), store.options.namespace, JSON.stringify(["temporary-key-mismatch"])],
-              )
+              await query("UPDATE storage_records SET key_text = ? WHERE namespace = ? AND key_text = ?", [
+                JSON.stringify(child),
+                store.options.namespace,
+                JSON.stringify(["temporary-key-mismatch"]),
+              ])
           } finally {
             release.resolve()
             await pending
