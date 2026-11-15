@@ -20,6 +20,7 @@ const log = Log.create({ service: "migration" })
 
 const runtimeState = RuntimeContext.state(() => ({
   states: new WeakMap<object, { running?: Promise<MigrationSummary>; summary?: MigrationSummary }>(),
+  accessPlan: undefined as { generation: number; entries: ReturnType<typeof MigrationPlan.ordered> } | undefined,
 }))
 const cohortRoot = ["compat_import", "cohorts"]
 type Cohort = { domain: string; id: string; residentComplete: boolean }
@@ -93,6 +94,24 @@ function collectByDomain(options?: { targetDomain?: string }): Map<string, Migra
     }
   }
   return result
+}
+
+function accessMigrations() {
+  const state = runtimeState()
+  const generation = MigrationRegistry.generation()
+  let plan = state.accessPlan
+  if (!plan || plan.generation !== generation) {
+    plan = { generation, entries: MigrationPlan.ordered(collectByDomain()) }
+    state.accessPlan = plan
+  }
+  return plan.entries.map(({ domain, migration }) => ({
+    domain,
+    migration: {
+      ...migration,
+      ...(migration.dependsOn ? { dependsOn: [...migration.dependsOn] } : {}),
+      ...(migration.emptyInput ? { emptyInput: migration.emptyInput.map((prefix) => [...prefix]) } : {}),
+    },
+  }))
 }
 
 /**
@@ -659,7 +678,7 @@ export async function getMigrationStatus(
 }
 
 export async function upgradeSessionRecords(owners: Array<{ scopeID: string; sessionID: string }>) {
-  const migrations = MigrationPlan.ordered(collectByDomain()).filter(({ migration }) => migration.onAccess)
+  const migrations = accessMigrations().filter(({ migration }) => migration.onAccess)
   if (!migrations.length || !owners.length) return
   const unique = [...new Map(owners.map((owner) => [JSON.stringify([owner.scopeID, owner.sessionID]), owner])).values()]
   for (let offset = 0; offset < unique.length; offset += 128) {
@@ -721,9 +740,7 @@ async function prepareMigrations(owner: MigrationOwner, execution: "session" | "
       ? ["sessions", owner.scopeID, owner.sessionID]
       : ["operations", owner.scopeID, owner.operationID]
   const ownerKey = [...root, ...(owner.kind === "session" ? ["info"] : ["rollout", "journal", "head"])]
-  const migrations = MigrationPlan.ordered(collectByDomain()).filter(
-    ({ migration }) => migration.execution === execution,
-  )
+  const migrations = accessMigrations().filter(({ migration }) => migration.execution === execution)
   if (Storage.inTransaction()) {
     const [record, ...receipts] = await Storage.readMany([
       ownerKey,
