@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0218](0218-dns-positive-waited-for-pending-sibling.md)
+
 - [0217](0217-continue-returned-before-scheduled-owner-completed.md)
 
 - [0216](0216-native-control-lookups-repeated-sql-dispatches.md)
