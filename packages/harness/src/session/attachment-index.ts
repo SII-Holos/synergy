@@ -90,13 +90,25 @@ export namespace SessionAttachmentIndex {
     part: PartContent.Stored,
     expectedRevision?: bigint,
   ) {
+    const revision = await inspectProducer(tx, key, part, expectedRevision)
+    await tx.removeTree(root(key))
+    return writeProjection(tx, key, part, revision)
+  }
+  async function inspectProducer(
+    tx: StoreTransaction,
+    key: string[],
+    part: PartContent.Stored,
+    expectedRevision?: bigint,
+  ) {
     assertKey(key)
     if (part.sessionID !== key[2] || part.messageID !== key[4] || part.id !== key[6])
       throw new StorageIntegrityError("Attachment index belongs to another Session Part")
     const [revision] = await tx.revisions([key])
     if (revision === undefined || (expectedRevision !== undefined && revision !== expectedRevision))
       throw new StorageConflictError("Canonical attachment producer changed during preparation")
-    await tx.removeTree(root(key))
+    return revision
+  }
+  async function writeProjection(tx: StoreTransaction, key: string[], part: PartContent.Stored, revision: bigint) {
     if (part.type !== "tool" && part.type !== "attachment")
       return tx.write(
         headerKey(key),
@@ -264,10 +276,13 @@ export namespace SessionAttachmentIndex {
       if (pending.length) {
         const { SessionHistoryDisplay } = await import("./history-display")
         await Storage.transaction(async (tx) => {
+          UpgradeWork.signal()?.throwIfAborted()
+          await tx.removeTrees(pending.map(root))
           for (const key of pending) {
             UpgradeWork.signal()?.throwIfAborted()
             const record = await tx.versioned<PartContent.Stored>(key)
-            await capture(tx, key, record.value, record.revision)
+            const revision = await inspectProducer(tx, key, record.value, record.revision)
+            await writeProjection(tx, key, record.value, revision)
             await SessionHistoryDisplay.refreshPart(owner.scopeID, record.value)
           }
         })

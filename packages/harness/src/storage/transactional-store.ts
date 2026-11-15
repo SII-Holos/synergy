@@ -1053,6 +1053,40 @@ export class StoreTransaction {
     }
   }
 
+  async removeTrees(prefixes: string[][]): Promise<void> {
+    this.check(true)
+    if (!prefixes.length) return
+    if (prefixes.length > 128 || prefixes.some((prefix) => !prefix.length))
+      throw new StorageIntegrityError("Tree removal batches require at most 128 nonempty prefixes")
+    const selected = prefixes.map((prefix) => prefix.slice())
+    const roots = [...new Map(selected.map((prefix) => [keyID(prefix), keyParameter(this.keys, prefix)])).values()]
+    const artifacts = selected.map((prefix) => this.artifactSubtree(prefix))
+    await this.assertAdmitted(selected, true)
+    await this.mutationGuard?.(selected, true)
+    const condition = artifacts.map((entry) => `(${entry.condition})`).join(" OR ")
+    const artifactValues = artifacts.flatMap((entry) => entry.values)
+    await this.connection.query(
+      `INSERT INTO storage_artifact_gc(namespace, pack) SELECT namespace, pack FROM storage_artifacts WHERE ${condition} ON CONFLICT(namespace, pack) DO NOTHING`,
+      artifactValues,
+    )
+    await this.connection.query(`DELETE FROM storage_artifacts WHERE ${condition}`, artifactValues)
+    const tree = `WITH RECURSIVE roots(key_id) AS (VALUES ${roots.map(() => "(?)").join(",")}), tree(key_id) AS MATERIALIZED (
+      SELECT node.key_id FROM roots CROSS JOIN storage_nodes node WHERE node.namespace = ? AND node.key_id = roots.key_id
+      UNION
+      SELECT node.key_id FROM tree CROSS JOIN storage_nodes node WHERE node.namespace = ? AND node.parent_id = tree.key_id
+    ) `
+    await this.connection.query(
+      tree +
+        "UPDATE storage_records SET body = NULL, revision = revision + 1, updated = ? WHERE namespace = ? AND key_id IN (SELECT key_id FROM tree) AND body IS NOT NULL",
+      [...roots, this.namespace, this.namespace, Date.now(), this.namespace],
+    )
+    await this.connection.query(
+      tree + "DELETE FROM storage_nodes WHERE namespace = ? AND key_id IN (SELECT key_id FROM tree)",
+      [...roots, this.namespace, this.namespace, this.namespace],
+    )
+    await this.cleanDanglingNodes(selected)
+  }
+
   // Provenance: docs/research/2026-09-22-interactive-storage-validation.md
   // Local adaptation: indexed addressed-key joins bound interference from unrelated historical nodes.
   // Every join is driven by addressed keys. A namespace-led OR/IN predicate

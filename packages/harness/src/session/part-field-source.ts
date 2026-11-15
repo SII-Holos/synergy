@@ -358,6 +358,12 @@ export namespace SessionPartFieldSource {
   }
 
   async function captureCurrent(tx: StoreTransaction, key: string[], expectedRevision?: bigint) {
+    const record = await readCurrent(tx, key, expectedRevision)
+    await remove(tx, key)
+    return writeProjection(tx, key, record.value, record.revision)
+  }
+
+  async function readCurrent(tx: StoreTransaction, key: string[], expectedRevision?: bigint) {
     assertKey(key)
     // Producer values can have stateful toJSON; only this transaction's encoded record is canonical.
     const record = await tx.versioned<unknown>(key)
@@ -367,7 +373,10 @@ export namespace SessionPartFieldSource {
     const value = Stored.parse(record.value)
     if (value.id !== key[6] || value.messageID !== key[4] || value.sessionID !== key[2])
       throw new StorageIntegrityError("Native field record belongs to another canonical producer")
-    await remove(tx, key)
+    return { value, revision }
+  }
+
+  async function writeProjection(tx: StoreTransaction, key: string[], value: PartContent.Stored, revision: bigint) {
     const fields: Source[] = []
     if (value.type === "text" || value.type === "reasoning") {
       const checkpoint = PartContent.checkpoint(value)
@@ -484,9 +493,12 @@ export namespace SessionPartFieldSource {
       })
       if (pending.length)
         await Storage.transaction(async (tx) => {
+          UpgradeWork.signal()?.throwIfAborted()
+          await tx.removeTrees(pending.map(root))
           for (const key of pending) {
             UpgradeWork.signal()?.throwIfAborted()
-            await captureCurrent(tx, key)
+            const record = await readCurrent(tx, key)
+            await writeProjection(tx, key, record.value, record.revision)
           }
         })
       count += canonical.length

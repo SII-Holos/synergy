@@ -34,6 +34,7 @@ export const POSTGRES_TEST_FILES = [
   "test/storage/postgres-ownership.test.ts",
   "test/storage/prune-contract.test.ts",
   "test/storage/transactional-store.test.ts",
+  "test/storage/tree-removal-batch.test.ts",
   "test/storage/text-projection.test.ts",
   "test/storage/usage-ledger.test.ts",
   "test/session/transfer-read-batch.test.ts",
