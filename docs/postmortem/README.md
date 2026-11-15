@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0215](0215-offline-home-retirement-left-telemetry-producers-active.md)
+
 - [0214](0214-cohort-release-reopened-hosted-before-service.md)
 
 - [0213](0213-native-binding-cycle-check-used-set-add-result.md)

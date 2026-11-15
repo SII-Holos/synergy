@@ -117,6 +117,8 @@ Use `synergy data storage status` to inspect the active dataset, `verify` to che
 
 Trusted Home relocation verifies each source binding against its native directory identity and binds verified destinations to the target Home namespace. Relocated directory identities advance their binding generation; historical snapshot roots and generations remain unchanged. Destination Workspaces and grants are retained on conflicts. Scope, Session, Agenda and Channel owners relocate their known Home-local paths, while unknown fields remain untouched. Missing or replaced active directories fail the move before source removal. Source and target Homes must be disjoint, including filesystem aliases. Native directory claims exclude active Workspace users throughout copying and source removal, alongside the offline Home locks. Copied Git main and linked worktrees reconnect within the destination Home; incomplete Git relationships and unrelated destination worktrees stop the move and preserve the source.
 
+When `data move --remove-original` retires the source Home, it stops and drains that Runtime's telemetry mirror, metrics, telemetry Store and log before copying under its offline Home locks. Selected diagnostic files include the accepted writes, and those producers cannot recreate the retired source. A move retaining the source keeps its diagnostic producers available.
+
 ## Credentials and independent hosts
 
 Retired network credentials are removed by a versioned startup migration. Historical contacts, mailbox records and Session metadata remain stored without a live identity service.

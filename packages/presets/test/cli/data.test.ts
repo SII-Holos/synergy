@@ -25,6 +25,8 @@ import { runtimeHome } from "@ericsanchezok/synergy-harness/test/support/runtime
 import { registerFullPreset } from "../../src/registration"
 import { ObservabilityStore } from "@ericsanchezok/synergy-harness/observability/store"
 import { ObservabilityMetrics } from "@ericsanchezok/synergy-harness/observability/metrics"
+import { ObservabilityConfig } from "@ericsanchezok/synergy-harness/observability/config"
+import { ObservabilityWriter } from "@ericsanchezok/synergy-harness/observability"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { StorageBootstrap } from "@ericsanchezok/synergy-harness/storage/bootstrap"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
@@ -473,6 +475,93 @@ describe("data move command", () => {
         expect(await fs.readFile(path.join(record.binding.path!, "native.txt"), "utf8")).toBe("workspace bytes")
       } finally {
         await imported.store.close()
+      }
+    }))
+  test("remove-original drains the original telemetry writer before copying and removing its home", () =>
+    runtime.run(async () => {
+      const { executeMove } = await import("../../src/cli/data/move")
+      await using target = await tmpdir()
+      const root = Global.Path.root
+      const relative = path.join("state", "observability", "traces", "retirement.jsonl")
+      const file = path.join(root, relative)
+      const line = '{"type":"retained-before-retirement"}\n'
+      clackState.multiselectResult = ["state"]
+      const entered = Promise.withResolvers<void>()
+      const release = Promise.withResolvers<void>()
+      const append = fs.appendFile
+      const remove = fs.rm
+      const stop = ObservabilityWriter.stop
+      let held = false
+      let settled = false
+      let drainedBeforeRemoval = false
+      using holding = spyOn(fs, "appendFile").mockImplementation(async (...args: Parameters<typeof fs.appendFile>) => {
+        if (!held && String(args[0]) === file) {
+          held = true
+          entered.resolve()
+          await release.promise
+        }
+        return append(...args)
+      })
+      using stopping = spyOn(ObservabilityWriter, "stop").mockImplementation(async () => {
+        release.resolve()
+        await stop()
+      })
+      using removing = spyOn(fs, "rm").mockImplementation(async (filename, options) => {
+        if (String(filename) === root && options?.recursive) {
+          drainedBeforeRemoval = settled
+          release.resolve()
+          await writing
+        }
+        return remove(filename, options)
+      })
+      ObservabilityConfig.refresh({ observability: { performance: { storage: { jsonlMirrorEnabled: true } } } })
+      ObservabilityWriter.append(file, line)
+      const writing = ObservabilityWriter.flush().then(() => {
+        settled = true
+      })
+      try {
+        await Promise.race([
+          entered.promise,
+          writing.then(() => {
+            throw new Error("The original telemetry writer settled before entering its held file append")
+          }),
+        ])
+        await executeMove({ target: target.path, removeOriginal: true, dryRun: false })
+        expect(held).toBe(true)
+        expect(drainedBeforeRemoval).toBe(true)
+        expect(await Bun.file(path.join(target.path, ".synergy", relative)).text()).toBe(line)
+        ObservabilityWriter.append(file, line)
+        await ObservabilityWriter.flush()
+        ObservabilityMetrics.record({
+          name: "retirement.after",
+          value: 1,
+          unit: "count",
+          module: "observability",
+          sampleRate: 1,
+        })
+        ObservabilityMetrics.flushAggregates(true)
+        ObservabilityStore.flush(true)
+        expect(await dirExists(root)).toBe(false)
+      } finally {
+        release.resolve()
+        await writing
+        await ObservabilityWriter.stop()
+      }
+    }))
+  test("a move preserving its source keeps that Runtime's telemetry writer available", () =>
+    runtime.run(async () => {
+      const { executeMove } = await import("../../src/cli/data/move")
+      await using target = await tmpdir()
+      const file = path.join(Global.Path.state, "observability", "traces", "preserved.jsonl")
+      const line = '{"type":"retained-source"}\n'
+      ObservabilityConfig.refresh({ observability: { performance: { storage: { jsonlMirrorEnabled: true } } } })
+      try {
+        await executeMove({ target: target.path, removeOriginal: false, dryRun: false })
+        ObservabilityWriter.append(file, line)
+        await ObservabilityWriter.flush()
+        expect(await Bun.file(file).text()).toBe(line)
+      } finally {
+        await ObservabilityWriter.stop()
       }
     }))
   test("remove-original releases its storage locks without recreating the source home", () =>
