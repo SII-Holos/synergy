@@ -17,6 +17,9 @@ import {
 import { cert, key as certificateKey } from "@ericsanchezok/synergy-testing/organization-tls"
 import { HomeOwnership } from "@ericsanchezok/synergy-harness/lifecycle/home-ownership"
 import { RuntimeMaintenance } from "@ericsanchezok/synergy-harness/storage/runtime-maintenance"
+import { RuntimeComponents } from "@ericsanchezok/synergy-harness/lifecycle"
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
+import { ResourceHost } from "@ericsanchezok/synergy-harness/resources/host"
 import { SnapshotMaintenance } from "@ericsanchezok/synergy-harness/session/snapshot-maintenance"
 import { StorageCheckpoint } from "@ericsanchezok/synergy-harness/storage/checkpoint"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
@@ -67,6 +70,44 @@ const actor = {
   displayName: "Operator",
   clientKind: "system" as const,
   requestID: "hosted-native",
+}
+
+async function openHostedFixture(input: Parameters<typeof openHostedRuntime>[0]) {
+  const home = path.resolve(input.home)
+  const resources: ResourceHost.Source = {
+    async sample() {
+      return {
+        sampledAt: Date.now(),
+        quality: "complete",
+        pressure: "normal",
+        domains: [{ kind: "physical", capacityBytes: 16 * 1024 ** 3, availableBytes: 8 * 1024 ** 3 }],
+        processRssBytes: 0,
+      }
+    },
+  }
+  const runtime = await (async () => {
+    const compose = RuntimeComponents.compose
+    using configured = spyOn(RuntimeComponents, "compose").mockImplementation((...args) => {
+      const composition = compose(...args)
+      let installed = false
+      return {
+        ...composition,
+        register() {
+          if (!installed && RuntimeContext.current().host.home === home) {
+            ResourceHost.register(resources)
+            installed = true
+          }
+          composition.register()
+        },
+      }
+    })
+    return await openHostedRuntime(input)
+  })()
+  if (!(await runtime.run(async () => ResourceHost.get() === resources))) {
+    await runtime.close()
+    throw new Error("The original Hosted fixture did not register its selected resource observations")
+  }
+  return runtime
 }
 
 async function source(production = false, withTask = false) {
@@ -121,7 +162,7 @@ async function source(production = false, withTask = false) {
         return false
       })
     const runtime = production
-      ? await openHostedRuntime({
+      ? await openHostedFixture({
           home: home.home,
           identity: home.identity,
           ca: service.ca,
