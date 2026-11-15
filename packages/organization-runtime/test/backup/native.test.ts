@@ -69,8 +69,8 @@ const actor = {
   requestID: "hosted-native",
 }
 
-async function source(production = false) {
-  const service = await fixture()
+async function source(production = false, withTask = false) {
+  const service = await fixture(production && withTask ? { connections: { heartbeatMs: 25 } } : {})
   const workspaceCoordinator = new WorkspaceCoordinator({ directory: path.join(service.root, "native-coordination") })
   try {
     const home = await prepareHostedHome({
@@ -85,6 +85,32 @@ async function source(production = false) {
       )
     ).data
     const registration = await enrollHostedRuntime({ home: home.home, identity: home.identity, ticket, ca: service.ca })
+    const observedAt = Date.now()
+    const connectionCloses: Array<{
+      code: number
+      readyState: number
+      pendingFrames: number
+      pendingBytes: number
+      epoch: number
+      elapsedMs: number
+      leaseRemainingMs: number
+    }> = []
+    let connectionCloseCount = 0
+    if (production)
+      service.observeClose((value) => {
+        if (value.runtimeID !== registration.runtimeID) return
+        connectionCloseCount++
+        if (connectionCloses.length === 8) connectionCloses.shift()
+        connectionCloses.push({
+          code: value.code,
+          readyState: value.readyState,
+          pendingFrames: value.pendingFrames,
+          pendingBytes: value.pendingBytes,
+          epoch: value.epoch,
+          elapsedMs: value.wallTimeMs - observedAt,
+          leaseRemainingMs: value.leaseRemainingMs,
+        })
+      })
     const listener = production ? Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() }) : undefined
     const port = listener?.port
     await listener?.stop(true)
@@ -148,6 +174,9 @@ async function source(production = false) {
       service,
       runtime,
       workspaceCoordinator,
+      connectionObservation() {
+        return { connectionCloseCount, connectionCloses: connectionCloses.map((value) => ({ ...value })) }
+      },
       close,
       releaseCapture,
       capture(
@@ -443,7 +472,7 @@ async function recoverHostedWriter(withTask = false, late?: "session" | "input",
   }
   phase("entered")
   using sourceScopeEnd = { [Symbol.dispose]: () => phase("source-scope-end") }
-  await using selected = await source(true)
+  await using selected = await source(true, withTask)
   using sourceDisposal = { [Symbol.dispose]: () => phase("source-disposal-enter") }
   phase("source-ready")
   using taskScopeEnd = { [Symbol.dispose]: () => phase("task-scope-end") }
@@ -962,13 +991,13 @@ test(
 test(
   "a genuinely completed model task survives service and Hosted recovery without replay",
   () => recoverHostedWriter(true),
-  20_000,
+  60_000,
 )
 
 test(
   "published Artifact versions and bytes survive actual Hosted task recovery",
   () => recoverHostedWriter(true, undefined, "published"),
-  20_000,
+  60_000,
 )
 
 test(

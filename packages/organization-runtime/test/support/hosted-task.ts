@@ -17,6 +17,18 @@ interface HostedTaskRuntime {
   service: Awaited<ReturnType<typeof fixture>>
   registration: { runtimeID: string }
   runtime: { run<T>(body: () => Promise<T>): Promise<T> }
+  connectionObservation?(): {
+    connectionCloseCount: number
+    connectionCloses: readonly {
+      code: number
+      readyState: number
+      pendingFrames: number
+      pendingBytes: number
+      epoch: number
+      elapsedMs: number
+      leaseRemainingMs: number
+    }[]
+  }
 }
 
 async function startHostedTask(selected: HostedTaskRuntime, hold: boolean) {
@@ -164,6 +176,7 @@ async function startHostedTask(selected: HostedTaskRuntime, hold: boolean) {
           waitedMs: Date.now() - waitingAt,
           upstreamHeaders,
           upstreamBodies: calls.length,
+          ...selected.connectionObservation?.(),
         }),
       )
       await observeTaskFailure({

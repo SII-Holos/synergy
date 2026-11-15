@@ -6,6 +6,8 @@ import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/ledger"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { LoopJob } from "@ericsanchezok/synergy-harness/session/loop-job"
+import { AgentTurn } from "@ericsanchezok/synergy-harness/session/agent-turn"
+import { RuntimeResources } from "@ericsanchezok/synergy-harness/resources/runtime"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { ObservabilityRedaction } from "@ericsanchezok/synergy-harness/observability/redaction"
 import {
@@ -102,6 +104,29 @@ export async function observeTaskFailure(input: {
           binding.data.driverRuntimeID === input.accepted.permit.runtimeID &&
           binding.data.bindingEpoch === input.accepted.permit.bindingEpoch
         observed.managerRunning = SessionManager.isRunning(session.id)
+        const manager = SessionManager.getRuntime(session.id)
+        const now = Date.now()
+        observed.loopPhase = manager?.owner?.phase ?? "unknown"
+        observed.ownerRootMatches = manager?.owner?.rootID === input.accepted.effect.messageID
+        observed.ownerAborted = manager?.owner?.lease.signal.aborted ?? "unknown"
+        observed.executionPhase = manager?.executionPhase ?? "unknown"
+        observed.executionPhaseAgeMs =
+          manager?.executionPhaseStartedAt === undefined
+            ? "unknown"
+            : Math.max(0, now - manager.executionPhaseStartedAt)
+        observed.managerStatus = manager?.status.type ?? "unknown"
+        const activity = manager?.status.type === "busy" ? manager.status.activity : undefined
+        observed.activityPhase = activity?.phase ?? "unknown"
+        observed.activityAgeMs = activity ? Math.max(0, now - activity.startedAt) : "unknown"
+        const resources = RuntimeResources.status()
+        observed.resources = {
+          state: resources.state,
+          reason: resources.reason,
+          active: resources.active,
+          queued: resources.queued,
+        }
+        const model = AgentTurn.stats()
+        observed.model = { workers: model.workers, ready: model.ready, active: model.active, queued: model.queued }
         observed.activeBackgroundCount = LoopJob.activeBackgroundCount(session.id, input.accepted.effect.messageID)
         observed.profile = session.controlProfile
         observed.paused = session.paused?.reason
@@ -116,6 +141,8 @@ export async function observeTaskFailure(input: {
         observed.runExecutionStatus = run?.execution?.status ?? "unknown"
         const errors: Array<{ name: string; code?: string; errorName?: string; message?: string }> = []
         observed.errors = errors
+        const headerRoles = { user: 0, assistant: 0 }
+        observed.headerRoles = headerRoles
         for await (const info of MessageV2.readNewestInfos({
           scopeID: Identifier.asScopeID(session.scope.id),
           sessionID: Identifier.asSessionID(session.id),
@@ -123,6 +150,7 @@ export async function observeTaskFailure(input: {
         })) {
           abort.signal.throwIfAborted()
           observed.messagesRead = Number(observed.messagesRead) + 1
+          headerRoles[info.role]++
           if (info.role !== "assistant" || !info.error) continue
           const parsed = failure.safeParse(info.error)
           if (parsed.success)

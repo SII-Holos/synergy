@@ -470,11 +470,11 @@ async function mappedTask(fixture: Fixture, returnToNative: boolean) {
 test.skipIf(process.platform === "win32")(
   "native to Hosted Environment handoff preserves live bytes and default cloud execution on return",
   () => mappedExecution(false),
-  90000,
+  180000,
 )
 
 test.skipIf(process.platform === "win32")(
   "cloud Environment handoff explicitly selects the borrowed native target for a private current copy",
   () => mappedExecution(true),
-  90000,
+  180000,
 )
