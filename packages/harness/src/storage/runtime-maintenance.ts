@@ -194,12 +194,13 @@ export namespace RuntimeMaintenance {
     return value === undefined ? undefined : schema.parse(value)
   }
   async function current(tx: StoreTransaction) {
-    const pointer = await read(tx, CurrentPointer, currentKey)
-    if (!pointer) {
-      if ((await tx.queryKeys({ prefix: root, limit: 1 })).length)
+    const observed = await tx.readWithPrefixWitness(currentKey, root)
+    if (!observed.found) {
+      if (observed.hasPrefixRecords)
         throw new Blocked({ message: "Maintenance history has no current operation pointer" })
       return
     }
+    const pointer = CurrentPointer.parse(observed.value)
     const [value, retirement] = await tx.readMany([
       operationKey(pointer.maintenanceID),
       Retirements.key(pointer.maintenanceID),

@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0216](0216-native-control-lookups-repeated-sql-dispatches.md)
+
 - [0215](0215-offline-home-retirement-left-telemetry-producers-active.md)
 
 - [0214](0214-cohort-release-reopened-hosted-before-service.md)

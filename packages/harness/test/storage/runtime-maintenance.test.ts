@@ -5,9 +5,10 @@ import { RuntimeMaintenance } from "../../src/storage/runtime-maintenance"
 import { MaintenanceRetirementRecords } from "../../src/storage/maintenance-retirement-records"
 import { Storage } from "../../src/storage/storage"
 import { TransactionalStore, StoreTransaction, type TransactionOptions } from "../../src/storage/transactional-store"
-import { StorageCommitUnknownError } from "../../src/storage/errors"
+import { SessionPreparingError, StorageCommitUnknownError, StorageIntegrityError } from "../../src/storage/errors"
+import type { SqlQueryOptions, SqlRow, SqlValue } from "../../src/storage/sql-contract"
 import { storageTestRuntime } from "../support/storage-runtime"
-import { storageTestOptions } from "../support/storage-backends"
+import { storageTestBackends, storageTestOptions } from "../support/storage-backends"
 
 async function fixture() {
   let runtime = await storageTestRuntime()
@@ -501,3 +502,214 @@ test("a cold Runtime retains a previous cohort's hold and cannot reuse its old l
     await expect(RuntimeMaintenance.assertAdmission()).rejects.toThrow()
   })
 })
+
+test("empty maintenance admission reads its canonical point and prefix witness in one native statement", async () => {
+  await using f = await fixture()
+  await f.run(() =>
+    Storage.snapshot(async (tx) => {
+      const query = tx.raw.query.bind(tx.raw)
+      let calls = 0
+      using reads = spyOn(tx.raw, "query").mockImplementation(
+        <Row extends SqlRow = SqlRow>(statement: string, values?: SqlValue[], options?: SqlQueryOptions) => {
+          calls++
+          return query<Row>(statement, values, options)
+        },
+      )
+      expect(await RuntimeMaintenance.status()).toBeUndefined()
+      expect(calls).toBe(1)
+    }),
+  )
+})
+
+test("maintenance point records remain authoritative when their derived node is absent or collides", async () => {
+  await using f = await fixture()
+  const key = ["runtime_maintenance", "current"]
+  await f.store.write(key, { maintenanceID: "missing-operation" })
+  await f.store.transaction((tx) =>
+    tx.raw.query(
+      "DELETE FROM storage_nodes WHERE namespace = ? AND key_id IN (SELECT key_id FROM storage_records WHERE namespace = ? AND key_text = ?)",
+      [f.store.options.namespace, f.store.options.namespace, JSON.stringify(key)],
+    ),
+  )
+  await f.run(async () => {
+    expect(await Storage.queryKeys({ prefix: ["runtime_maintenance"], limit: 1 })).toEqual([])
+    const blocked = await RuntimeMaintenance.assertAdmission().then(
+      () => undefined,
+      (error: unknown) => error,
+    )
+    expect(blocked).toBeInstanceOf(RuntimeMaintenance.Blocked)
+    if (!(blocked instanceof Error)) throw new Error("The canonical pointer must refuse its missing operation")
+    expect(blocked.message).toBe("Maintenance operation is missing or inconsistent")
+    await f.store.remove(key)
+    expect(await RuntimeMaintenance.status()).toBeUndefined()
+    await f.store.transaction((tx) =>
+      tx.raw.query("UPDATE storage_records SET key_text = ? WHERE namespace = ? AND key_text = ?", [
+        JSON.stringify(["foreign-key"]),
+        f.store.options.namespace,
+        JSON.stringify(key),
+      ]),
+    )
+    const collision = await RuntimeMaintenance.status().then(
+      () => undefined,
+      (error: unknown) => error,
+    )
+    expect(collision).toBeInstanceOf(StorageIntegrityError)
+  })
+})
+
+test("maintenance parses its canonical point before an unused malformed prefix witness", async () => {
+  await using f = await fixture()
+  await f.run(() =>
+    Storage.transaction(async (tx) => {
+      const current = ["runtime_maintenance", "current"]
+      const orphan = ["runtime_maintenance", "0"]
+      await tx.write(current, { maintenanceID: 7 })
+      await tx.write(orphan, {})
+      await tx.raw.query("UPDATE storage_records SET key_text = ? WHERE namespace = ? AND key_text = ?", [
+        "{",
+        f.store.options.namespace,
+        JSON.stringify(orphan),
+      ])
+      const malformed = await RuntimeMaintenance.status().then(
+        () => undefined,
+        (error: unknown) => error,
+      )
+      if (!(malformed instanceof Error)) throw new Error("The original malformed pointer must be refused")
+      expect(malformed.name).toBe("ZodError")
+      await tx.raw.query("UPDATE storage_records SET body = ? WHERE namespace = ? AND key_text = ?", [
+        "{",
+        f.store.options.namespace,
+        JSON.stringify(current),
+      ])
+      const encoding = await RuntimeMaintenance.status().then(
+        () => undefined,
+        (error: unknown) => error,
+      )
+      expect(encoding).toBeInstanceOf(StorageIntegrityError)
+      await tx.remove(current)
+      const prefix = await RuntimeMaintenance.status().then(
+        () => undefined,
+        (error: unknown) => error,
+      )
+      expect(prefix).toBeInstanceOf(SyntaxError)
+      await tx.raw.query("UPDATE storage_records SET key_text = ? WHERE namespace = ? AND key_text = ?", [
+        "null",
+        f.store.options.namespace,
+        "{",
+      ])
+      const malformedKey = await RuntimeMaintenance.status().then(
+        () => undefined,
+        (error: unknown) => error,
+      )
+      expect(malformedKey).toBeInstanceOf(RuntimeMaintenance.Blocked)
+    }),
+  )
+})
+
+test("maintenance prefix observations see staged orphan writes, removal and rollback without cached authority", async () => {
+  await using f = await fixture()
+  const rollback = new Error("Original maintenance observation rollback")
+  await f.run(async () => {
+    const outcome = await Storage.transaction(async (tx) => {
+      expect(await RuntimeMaintenance.status()).toBeUndefined()
+      await tx.write(["runtime_maintenance", "operations", "orphan"], { preserved: true })
+      const orphan = await RuntimeMaintenance.assertAdmission().then(
+        () => undefined,
+        (error: unknown) => error,
+      )
+      expect(orphan).toBeInstanceOf(RuntimeMaintenance.Blocked)
+      await tx.removeTree(["runtime_maintenance"])
+      expect(await RuntimeMaintenance.status()).toBeUndefined()
+      await tx.write(["runtime_maintenance", "operations", "rolled-back"], { preserved: true })
+      throw rollback
+    }).then(
+      () => undefined,
+      (error: unknown) => error,
+    )
+    expect(outcome).toBe(rollback)
+    expect(await RuntimeMaintenance.status()).toBeUndefined()
+  })
+})
+
+test.skipIf(storageTestBackends().at(-1) !== "sqlite")(
+  "a non-null maintenance pointer never evaluates the original prefix traversal",
+  async () => {
+    await using f = await fixture()
+    await f.store.write(["runtime_maintenance", "current"], { maintenanceID: "missing-operation" })
+    let pointerOutcome: unknown
+    let failedPrefix: unknown
+    const outcome = await f
+      .run(() =>
+        Storage.transaction(async (tx) => {
+          await tx.raw.query(
+            "CREATE TEMP VIEW storage_nodes AS SELECT namespace, abs(-9223372036854775807 - (segment <> '')) AS key_id, parent_id, segment FROM main.storage_nodes",
+          )
+          pointerOutcome = await RuntimeMaintenance.status().then(
+            () => undefined,
+            (error: unknown) => error,
+          )
+          if (!(pointerOutcome instanceof Error))
+            throw new Error("The original canonical pointer must still refuse its missing operation")
+          expect(pointerOutcome.message).toBe("Maintenance operation is missing or inconsistent")
+          failedPrefix = await tx.queryKeys({ prefix: ["runtime_maintenance"], limit: 1 }).then(
+            () => undefined,
+            (error: unknown) => error,
+          )
+          if (!(failedPrefix instanceof Error))
+            throw new Error("The original SQLite prefix must evaluate the controlled fault")
+          expect(failedPrefix.message).toBe("integer overflow")
+          throw failedPrefix
+        }),
+      )
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      )
+    expect(pointerOutcome).toBeInstanceOf(RuntimeMaintenance.Blocked)
+    expect(failedPrefix).toBeInstanceOf(Error)
+    expect(outcome).toBe(failedPrefix)
+    await f.store.transaction(async (tx) => {
+      expect(
+        await tx.raw.query("SELECT name FROM sqlite_temp_master WHERE type = 'view' AND name = 'storage_nodes'"),
+      ).toEqual([])
+    })
+  },
+)
+
+for (const present of [false, true]) {
+  test(`maintenance point-prefix selectors reject an unpublished Session prefix with a ${present ? "present" : "missing"} external point`, async () => {
+    await using f = await fixture()
+    const sessionID = "pending-selector"
+    const prefix = ["sessions", "scope", sessionID]
+    const point = present ? ["external-point"] : []
+    const value = { preserved: true }
+    await f.store.write([...prefix, "info"], { id: sessionID })
+    if (present) await f.store.write(point, value)
+    await f.store.write(["compat_pending", sessionID], { sessionID })
+    let admitted: unknown
+    const error = await f.store
+      .snapshot(async (tx) => {
+        tx.restrictToPublishedOwners()
+        return tx.readWithPrefixWitness(point, prefix)
+      })
+      .then(
+        (value) => {
+          admitted = value
+        },
+        (error: unknown) => error,
+      )
+    expect(admitted).toBeUndefined()
+    expect(error).toBeInstanceOf(SessionPreparingError)
+    if (!(error instanceof SessionPreparingError))
+      throw new Error("Both declared selectors must belong to published owners")
+    expect(error.data.sessionID).toBe(sessionID)
+    await f.store.remove(["compat_pending", sessionID])
+    await f.store.write(["compat_pending", "unrelated-selector"], { sessionID: "unrelated-selector" })
+    expect(
+      await f.store.snapshot(async (tx) => {
+        tx.restrictToPublishedOwners()
+        return tx.readWithPrefixWitness(point, prefix)
+      }),
+    ).toEqual(present ? { found: true, value } : { found: false, hasPrefixRecords: true })
+  })
+}

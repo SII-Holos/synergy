@@ -376,12 +376,14 @@ export class StoreTransaction {
   }
 
   private async assertAdmitted(keys: string[][], tree = false) {
-    if (!this.publishedOnly) return
+    if (!this.publishedOnly) return 0
     const owners = [...new Set(keys.filter((key) => key[0] === "sessions" && key.length >= 3).map((key) => key[2]))]
     const broad = tree && keys.some((key) => !key.length || (key[0] === "sessions" && key.length < 3))
-    if (!owners.length && !broad) return
+    if (!owners.length && !broad) return 0
+    let queries = 0
     for (let offset = 0; broad || offset < owners.length; offset += 128) {
       const batch = owners.slice(offset, offset + 128)
+      queries++
       const [pending] = await this.connection.query(
         `SELECT order_key FROM storage_records WHERE namespace = ? AND kind = 'compat_pending' AND body IS NOT NULL${broad ? "" : ` AND order_key IN (${batch.map(() => "?").join(",")})`} LIMIT 1`,
         [this.namespace, ...(broad ? [] : batch)],
@@ -393,9 +395,11 @@ export class StoreTransaction {
         })
       if (broad) break
     }
+    return queries
   }
 
   private active = true
+  private queryRevision = 0
   private failure?: unknown
   private readonly connection: SqlConnection
   /**
@@ -423,6 +427,7 @@ export class StoreTransaction {
     this.connection = {
       query: async <Row extends SqlRow = SqlRow>(statement: string, values?: SqlValue[]) => {
         this.check()
+        this.queryRevision++
         try {
           return await connection.query<Row>(statement, values)
         } catch (error) {
@@ -532,6 +537,33 @@ export class StoreTransaction {
     return result
   }
 
+  async readWithPrefixWitness<T = unknown>(
+    key: string[],
+    prefix: string[],
+  ): Promise<{ found: true; value: T } | { found: false; hasPrefixRecords: boolean }> {
+    this.check()
+    await this.assertAdmitted([key])
+    await this.assertAdmitted([prefix], true)
+    const probe = this.queryStatement({ prefix, limit: 1 }, "key_text")
+    const [row] = await this.connection.query<
+      SqlRow & {
+        point_id: SqlValue
+        point_key_text: string | null
+        point_body: RecordRow["body"]
+        prefix_key_text: string | null
+      }
+    >(
+      `SELECT point_record.key_id AS point_id, point_record.key_text AS point_key_text, point_record.body AS point_body, CASE WHEN point_record.body IS NULL THEN (${probe.statement}) ELSE NULL END AS prefix_key_text FROM (SELECT 1) singleton LEFT JOIN storage_records point_record ON point_record.namespace = ? AND point_record.key_id = ?`,
+      [...probe.values, this.namespace, keyParameter(this.keys, key)],
+    )
+    if (!row) throw new StorageIntegrityError("Storage point and prefix observation returned no row")
+    if (row.point_id !== null && row.point_key_text !== JSON.stringify(key))
+      throw new StorageIntegrityError("Logical key identity collision")
+    if (row.point_body !== null) return { found: true, value: RecordCodec.decode<T>(row.point_body) }
+    if (row.prefix_key_text !== null) JSON.parse(row.prefix_key_text)
+    return { found: false, hasPrefixRecords: row.prefix_key_text !== null }
+  }
+
   async revisions(keys: string[][]): Promise<(bigint | undefined)[]> {
     this.check()
     await this.assertAdmitted(keys)
@@ -558,8 +590,8 @@ export class StoreTransaction {
     await this.assertAdmitted([key])
     await this.mutationGuard?.([key], false)
     if (key[0] === "compat_pending") this.admission.pending = true
-    if (key[0] === "sessions" && key.length >= 4) await this.assertNotDeleted([...key.slice(0, 3), "info"])
-    await this.put(key, value, options)
+    const revision = key[0] === "sessions" && key.length >= 4 ? await this.sessionWriteRevision(key) : undefined
+    await this.put(key, value, options, revision)
   }
 
   async writeMany(entries: Array<{ key: string[]; value: unknown }>): Promise<void> {
@@ -750,15 +782,58 @@ export class StoreTransaction {
     await this.put(key, value, { expectedRevision: 0n, updated })
   }
 
+  private async sessionWriteRevision(key: string[]): Promise<bigint> {
+    const owner = keyParameter(this.keys, [...key.slice(0, 3), "info"])
+    const targetKey = key.slice()
+    let target: SqlValue | undefined
+    let invalid: { error: unknown } | undefined
+    try {
+      target = keyParameter(this.keys, targetKey)
+    } catch (error) {
+      invalid = { error }
+    }
+    const selected = target === undefined ? [owner] : [owner, target]
+    const observed = this.queryRevision
+    const rows = await this.connection.query<
+      SqlRow & {
+        key_id: SqlValue
+        key_text: string
+        revision: bigint | number | string
+        deleted: SqlValue
+      }
+    >(
+      `SELECT key_id, key_text, revision, CASE WHEN body IS NULL THEN 1 ELSE 0 END AS deleted FROM storage_records WHERE namespace = ? AND key_id IN (${selected.map(() => "?").join(",")})`,
+      [this.namespace, ...selected],
+    )
+    const indexed = new Map(rows.map((row) => [keyHex(row.key_id), row]))
+    if (Number(indexed.get(keyHex(owner))?.deleted) === 1)
+      throw new StorageConflictError("A deleted record cannot be revived by a delayed writer")
+    this.check()
+    const admissionQueries = await this.assertAdmitted([key])
+    const changed = key.length !== targetKey.length || key.some((segment, index) => segment !== targetKey[index])
+    if (invalid && !changed) throw invalid.error
+    let previous: Pick<RecordRow, "key_text" | "revision"> | undefined
+    if (target === undefined || changed || this.queryRevision !== observed + 1 + admissionQueries) {
+      const [current] = await this.connection.query<Pick<RecordRow, "key_text" | "revision">>(
+        "SELECT key_text, revision FROM storage_records WHERE namespace = ? AND key_id = ?",
+        [this.namespace, keyParameter(this.keys, key)],
+      )
+      previous = current
+    } else previous = indexed.get(keyHex(target))
+    if (previous && previous.key_text !== JSON.stringify(key))
+      throw new StorageIntegrityError("Logical key identity collision")
+    return previous ? BigInt(previous.revision) : 0n
+  }
+
   private async put<T>(
     key: string[],
     value: T,
     options: { expectedRevision?: bigint; updated?: number } = {},
+    previousRevision?: bigint,
   ): Promise<void> {
     this.check(true)
     if (!key.length) throw new StorageIntegrityError("Cannot write the storage root")
-    const previous = await this.row(key)
-    const revision = previous ? BigInt(previous.revision) : 0n
+    const revision = previousRevision ?? BigInt((await this.row(key))?.revision ?? 0)
     if (options.expectedRevision !== undefined && options.expectedRevision !== revision)
       throw new StorageConflictError("Storage revision changed")
     const legacyNodes = this.keys === "hex"
@@ -1153,6 +1228,11 @@ export class StoreTransaction {
   }
 
   private async queryRows<Row extends SqlRow>(input: RecordQuery, columns: string, count = false): Promise<Row[]> {
+    const query = this.queryStatement(input, columns, count)
+    return this.connection.query<Row>(query.statement, query.values)
+  }
+
+  private queryStatement(input: RecordQuery, columns: string, count = false) {
     this.check()
     const subtree =
       input.prefix?.length && input.kind === undefined && input.sessionID === undefined && input.messageID === undefined
@@ -1212,10 +1292,10 @@ export class StoreTransaction {
       ? "WITH RECURSIVE tree(node_id) AS (SELECT key_id FROM storage_nodes WHERE namespace = ? AND key_id = ? UNION ALL SELECT node.key_id FROM tree CROSS JOIN storage_nodes node WHERE node.namespace = ? AND node.parent_id = tree.node_id) "
       : ""
     if (subtree) values.unshift(this.namespace, keyParameter(this.keys, input.prefix!), this.namespace)
-    return this.connection.query<Row>(
-      `${traversal}SELECT ${columns} FROM ${subtree ? "tree CROSS JOIN " : ""}storage_records WHERE ${conditions.join(" AND ")}${this.visibility()}${count ? "" : ` ORDER BY order_key ${direction}, key_id ${direction} LIMIT ?`}`,
+    return {
+      statement: `${traversal}SELECT ${columns} FROM ${subtree ? "tree CROSS JOIN " : ""}storage_records WHERE ${conditions.join(" AND ")}${this.visibility()}${count ? "" : ` ORDER BY order_key ${direction}, key_id ${direction} LIMIT ?`}`,
       values,
-    )
+    }
   }
 
   async *records<T = unknown>(): AsyncGenerator<StoredRecord<T>> {

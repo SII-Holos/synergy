@@ -5,6 +5,7 @@ import { randomBytes } from "node:crypto"
 import { Database } from "bun:sqlite"
 import { initializeSqliteEngine } from "../../src/storage/sqlite-engine"
 import { TransactionalStore, type StoreTransaction } from "../../src/storage/transactional-store"
+import type { SqlQueryOptions, SqlRow, SqlValue } from "../../src/storage/sql-contract"
 
 import { storageTestBackends } from "../support/storage-backends"
 
@@ -80,6 +81,226 @@ for (const backend of storageTestBackends()) {
         optional: { future: true },
       })
       expect(await store.read<Record<string, unknown>>(["session_index", "session"])).toEqual({ scopeID: "scope" })
+    })
+
+    test("single Session writes read fresh owner and target metadata in one native dispatch without transferring bodies", async () => {
+      const store = await open()
+      const owner = ["sessions", "scope", "metadata-work", "info"]
+      const payload = randomBytes(16 * 1024).toString("base64")
+      const records = Array.from({ length: 8 }, (_, index) => [...owner.slice(0, 3), "messages", String(index), "info"])
+      await store.transaction(async (tx) => {
+        await tx.write(owner, { id: "metadata-work", payload })
+        for (const [index, key] of records.entries()) await tx.write(key, { index, pass: -1, payload })
+      })
+      let reads = 0
+      let bodyBytes = 0
+      await store.transaction(async (tx) => {
+        const connection = tx.raw
+        const query = connection.query
+        using observed = spyOn(connection, "query").mockImplementation(
+          async <Row extends SqlRow = SqlRow>(statement: string, values?: SqlValue[], options?: SqlQueryOptions) => {
+            const rows = await query<Row>(statement, values, options)
+            if (/^SELECT\b/i.test(statement)) {
+              reads++
+              for (const row of rows)
+                bodyBytes += typeof row.body === "string" ? Buffer.byteLength(row.body) : row.body instanceof Uint8Array ? row.body.byteLength : 0
+            }
+            return rows
+          },
+        )
+        for (let pass = 0; pass < 2; pass++)
+          for (const [index, key] of records.entries())
+            await tx.write(key, { index, pass, payload }, { expectedRevision: BigInt(pass + 1) })
+      })
+      for (const [index, key] of records.entries()) {
+        expect(await store.versioned(key)).toMatchObject({ value: { index, pass: 1, payload }, revision: 3n })
+      }
+      expect(await store.read(owner)).toEqual({ id: "metadata-work", payload })
+      await store.write(owner, { id: "metadata-work", payload, current: true })
+      expect((await store.versioned(owner)).revision).toBe(2n)
+      console.info("SESSION_SINGLE_WRITE_METADATA_WORK", JSON.stringify({ writes: 16, reads, bodyBytes }))
+      expect(reads).toBe(16)
+      expect(bodyBytes).toBe(0)
+    })
+
+    test("single Session write metadata retains tombstone before collision and CAS errors with complete rollback", async () => {
+      const store = await open()
+      const owner = ["sessions", "scope", "metadata-errors", "info"]
+      const child = [...owner.slice(0, 3), "messages", "message", "info"]
+      await store.transaction(async (tx) => {
+        await tx.write(owner, { id: "metadata-errors" })
+        await tx.write(child, { value: "original" })
+      })
+      const collision = () =>
+        store.transaction(async (tx) => {
+          await tx.raw.query(
+            "UPDATE storage_records SET key_text = ? WHERE namespace = ? AND key_text = ?",
+            [JSON.stringify(["another-owner"]), store.options.namespace, JSON.stringify(child)],
+          )
+          await tx.write(child, { value: "invalid" }, { expectedRevision: 999n })
+        })
+      expect(await failure(collision())).toMatchObject({
+        name: "StorageIntegrityError",
+        message: "Logical key identity collision",
+      })
+      expect(await store.versioned(child)).toMatchObject({ value: { value: "original" }, revision: 1n })
+      expect(await failure(store.transaction((tx) => tx.write(child, {}, { expectedRevision: 999n })))).toMatchObject({
+        name: "StorageConflictError",
+        message: "Storage revision changed",
+      })
+      await store.remove(owner)
+      expect(await failure(collision())).toMatchObject({
+        name: "StorageConflictError",
+        message: "A deleted record cannot be revived by a delayed writer",
+      })
+      expect(await failure(store.write([...child, ""], {}))).toMatchObject({
+        name: "StorageConflictError",
+        message: "A deleted record cannot be revived by a delayed writer",
+      })
+      expect(await store.versioned(child)).toMatchObject({ value: { value: "original" }, revision: 1n })
+    })
+
+    test("single Session writes observe original guard mutations and retain the later publication check", async () => {
+      const store = await open()
+      const owner = ["sessions", "scope", "metadata-guard", "info"]
+      const child = [...owner.slice(0, 3), "messages", "message", "info"]
+      await store.transaction(async (tx) => {
+        await tx.write(owner, { id: "metadata-guard" })
+        await tx.write(child, { value: "original" })
+      })
+      let guarded = false
+      expect(
+        await failure(
+          store.transaction(async (tx) => {
+            tx.guardMutations(async (keys) => {
+              if (guarded || !keys.some((key) => JSON.stringify(key) === JSON.stringify(child))) return
+              guarded = true
+              await tx.write(child, { value: "guard changed target" })
+            })
+            await tx.write(child, { value: "stale caller" }, { expectedRevision: 1n })
+          }),
+        ),
+      ).toMatchObject({ name: "StorageConflictError", message: "Storage revision changed" })
+      expect(guarded).toBe(true)
+      expect(await store.versioned(child)).toMatchObject({ value: { value: "original" }, revision: 1n })
+      const denied = new Error("original metadata guard denied")
+      let deniedReads = 0
+      expect(
+        await failure(
+          store.transaction(async (tx) => {
+            const query = tx.raw.query
+            using observed = spyOn(tx.raw, "query").mockImplementation(
+              <Row extends SqlRow = SqlRow>(statement: string, values?: SqlValue[], options?: SqlQueryOptions) => {
+                if (/^SELECT\b/i.test(statement)) deniedReads++
+                return query<Row>(statement, values, options)
+              },
+            )
+            tx.guardMutations(async () => { throw denied })
+            await tx.write(child, { value: "denied" })
+          }),
+        ),
+      ).toBe(denied)
+      expect(deniedReads).toBe(0)
+      for (const deleted of [false, true]) {
+        if (deleted) await store.remove(owner)
+        const error = await failure(
+          store.transaction(async (tx) => {
+            let installing = false
+            tx.guardMutations(async (keys) => {
+              if (installing || !keys.some((key) => JSON.stringify(key) === JSON.stringify(child))) return
+              installing = true
+              await tx.write(["compat_pending", "metadata-guard"], { retained: true })
+              tx.restrictToPublishedOwners()
+              await tx.raw.query(
+                "UPDATE storage_records SET key_text = ? WHERE namespace = ? AND key_text = ?",
+                [JSON.stringify(["another-owner"]), store.options.namespace, JSON.stringify(child)],
+              )
+            })
+            await tx.write(child, { value: "blocked" }, { expectedRevision: 999n })
+          }),
+        )
+        expect(error).toMatchObject(deleted
+          ? { name: "StorageConflictError", message: "A deleted record cannot be revived by a delayed writer" }
+          : { name: "SessionPreparingError" })
+        expect(await store.readMany([["compat_pending", "metadata-guard"]])).toEqual([undefined])
+        expect(await store.versioned(child)).toMatchObject({ value: { value: "original" }, revision: 1n })
+      }
+    })
+
+    test("single Session metadata remains fresh across a held original publication read and same-transaction typed or raw writes", async () => {
+      for (const mode of ["typed-revision", "raw-revision", "raw-key-repair"] as const) {
+        const store = await open()
+        const owner = ["sessions", "scope", "metadata-interleave", "info"]
+        const child = [...owner.slice(0, 3), "messages", "message", "info"]
+        await store.transaction(async (tx) => {
+          await tx.write(owner, { id: "metadata-interleave" })
+          await tx.write(child, { value: "original" })
+          await tx.write(["compat_pending", "unrelated-metadata-owner"], { retained: true })
+        })
+        await store.transaction(async (tx) => {
+          const connection = tx.raw
+          if (mode === "raw-key-repair")
+            await connection.query(
+              "UPDATE storage_records SET key_text = ? WHERE namespace = ? AND key_text = ?",
+              [JSON.stringify(["temporary-key-mismatch"]), store.options.namespace, JSON.stringify(child)],
+            )
+          tx.restrictToPublishedOwners()
+          const entered = Promise.withResolvers<void>()
+          const release = Promise.withResolvers<void>()
+          const query = connection.query
+          let admissions = 0
+          using observed = spyOn(connection, "query").mockImplementation(
+            async <Row extends SqlRow = SqlRow>(statement: string, values?: SqlValue[], options?: SqlQueryOptions) => {
+              const rows = await query<Row>(statement, values, options)
+              if (/^SELECT order_key FROM storage_records\b/i.test(statement) && ++admissions === 2) {
+                entered.resolve()
+                await release.promise
+              }
+              return rows
+            },
+          )
+          const pending = tx.write(child, { value: "caller" }, { expectedRevision: 1n }).then(
+            () => ({ kind: "resolved" as const }),
+            (error: unknown) => ({ kind: "rejected" as const, error }),
+          )
+          try {
+            const reached = await Promise.race([
+              entered.promise.then(() => ({ kind: "held" as const })),
+              pending.then((outcome) => ({ kind: "early" as const, outcome })),
+            ])
+            if (reached.kind === "early") {
+              if (reached.outcome.kind === "rejected") throw reached.outcome.error
+              throw new Error("The original publication read was not reached")
+            }
+            if (mode === "typed-revision")
+              await tx.write(child, { value: "newer" }, { expectedRevision: 1n })
+            else if (mode === "raw-revision")
+              await query(
+                "UPDATE storage_records SET body = ?, revision = revision + 1 WHERE namespace = ? AND key_text = ?",
+                [JSON.stringify({ value: "newer" }), store.options.namespace, JSON.stringify(child)],
+              )
+            else
+              await query(
+                "UPDATE storage_records SET key_text = ? WHERE namespace = ? AND key_text = ?",
+                [JSON.stringify(child), store.options.namespace, JSON.stringify(["temporary-key-mismatch"])],
+              )
+          } finally {
+            release.resolve()
+            await pending
+          }
+          const outcome = await pending
+          if (mode === "raw-key-repair") expect(outcome).toEqual({ kind: "resolved" })
+          else {
+            expect(outcome.kind).toBe("rejected")
+            if (outcome.kind === "rejected")
+              expect(outcome.error).toMatchObject({ name: "StorageConflictError", message: "Storage revision changed" })
+          }
+        })
+        expect(await store.versioned(child)).toMatchObject({
+          value: { value: mode === "raw-key-repair" ? "caller" : "newer" },
+          revision: 2n,
+        })
+      }
     })
 
     test("bulk writes preserve revisions, tree identity, tombstones and rollback checkpoints", async () => {
