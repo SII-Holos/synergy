@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test"
+import { z } from "zod"
 import path from "node:path"
 import { tmpdir } from "../support/fixture"
 import { testRuntime } from "../support/runtime"
@@ -7,6 +8,7 @@ import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
 import { SessionManager } from "../../src/session/manager"
 import { SessionTransferCore as Core } from "../../src/session/transfer-core"
+import { SessionTransferOwners as Owners } from "../../src/session/transfer-owners"
 import { Storage } from "../../src/storage/storage"
 import { StoragePath } from "../../src/storage/path"
 import { Identifier } from "../../src/id/id"
@@ -64,4 +66,81 @@ test("stored Core metadata keeps its canonical index, Scope and root without hyd
     })
     await expect(Core.storedInfo(selector)).rejects.toThrow("canonical owner")
   })
+})
+
+test("optional stored Core presence rejects partial pairs and mismatched canonical owners", async () => {
+  await using runtime = await testRuntime({ register: Core.register })
+  const failure = (pending: Promise<unknown>) =>
+    pending.then(
+      () => undefined,
+      (error: unknown) => error,
+    )
+  await runtime.run(() =>
+    ScopeContext.provide({
+      scope: Scope.home(),
+      workspace: null,
+      fn: async () => {
+        const absent = { scopeID: "home", sessionID: Identifier.ascending("session") }
+        expect(await Core.storedInfoIfPresent(absent)).toBeUndefined()
+        expect(await Core.storedInfoIfComplete(absent)).toBeUndefined()
+        expect(await failure(Core.storedInfo(absent))).toBeInstanceOf(Owners.Rejected)
+        const session = await Session.create({ workspace: null, environmentID: null })
+        const selector = { scopeID: session.scope.id, sessionID: session.id }
+        const indexKey = StoragePath.sessionIndex(Identifier.asSessionID(session.id))
+        const infoKey = StoragePath.sessionInfo(
+          Identifier.asScopeID(session.scope.id),
+          Identifier.asSessionID(session.id),
+        )
+        const expected = await Core.storedInfo(selector)
+        expect(await Core.storedInfoIfPresent(selector)).toEqual(expected)
+        const discarded = new Error("Rollback the partial canonical pair")
+        for (const missing of [indexKey, infoKey]) {
+          const outcome = await failure(
+            Storage.transaction(async () => {
+              await Storage.remove(missing)
+              expect(await Core.storedInfoIfComplete(selector)).toBeUndefined()
+              const rejected = await failure(Core.storedInfoIfPresent(selector))
+              expect(rejected).toBeInstanceOf(Owners.Rejected)
+              expect(rejected).toMatchObject({ data: { message: "Stored Session metadata or index is absent" } })
+              throw discarded
+            }),
+          )
+          expect(outcome).toBe(discarded)
+          expect(await Core.storedInfoIfPresent(selector)).toEqual(expected)
+        }
+        for (const [change, message] of [
+          [{ scopeID: "another-scope" }, "Stored Session metadata index changed its actual Scope"],
+          [{ sessionID: "another-session" }, "Stored Session metadata and index have another canonical owner"],
+          [{ parentID: "another-parent" }, "Stored Session metadata and index have another canonical owner"],
+        ] as const) {
+          const rejected = await failure(
+            Storage.transaction(async () => {
+              await Storage.update<Record<string, unknown>>(indexKey, (index) => Object.assign(index, change))
+              return Core.storedInfoIfPresent(selector)
+            }),
+          )
+          expect(rejected).toBeInstanceOf(Owners.Rejected)
+          expect(rejected).toMatchObject({ data: { message } })
+          expect(await Core.storedInfoIfPresent(selector)).toEqual(expected)
+        }
+        const malformed = await failure(
+          Storage.transaction(async () => {
+            await Storage.update<Record<string, unknown>>(indexKey, (index) => {
+              index.scopeID = 1
+            })
+            return Core.storedInfoIfPresent(selector)
+          }),
+        )
+        expect(malformed).toBeInstanceOf(z.ZodError)
+        expect(await Core.storedInfoIfPresent(selector)).toEqual(expected)
+        const foreign = { ...selector, scopeID: "another-scope" }
+        expect(await failure(Core.storedInfo(foreign))).toMatchObject({
+          data: { message: "Stored Session metadata or index is absent" },
+        })
+        expect(await failure(Core.storedInfoIfPresent(foreign))).toMatchObject({
+          data: { message: "Stored Session metadata index changed its actual Scope" },
+        })
+      },
+    }),
+  )
 })

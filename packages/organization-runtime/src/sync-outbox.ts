@@ -146,8 +146,10 @@ export interface WriteOwner {
 const StoredSessionIndex = z.object({ scopeID: z.string().min(1) })
 
 async function storedSession(sessionID: string, scopeID: string | undefined, incomplete: boolean) {
-  if (incomplete && scopeID !== undefined) {
-    const present = await Core.storedInfoIfComplete({ scopeID, sessionID })
+  if (scopeID !== undefined) {
+    const present = incomplete
+      ? await Core.storedInfoIfComplete({ scopeID, sessionID })
+      : await Core.storedInfoIfPresent({ scopeID, sessionID })
     return present ? Session.Info.parse({ ...present.raw, workspace: null }) : undefined
   }
   const indexKey = StoragePath.sessionIndex(Identifier.asSessionID(sessionID))
@@ -190,7 +192,8 @@ async function resolveBinding(sessionID: string, orgID: string, scopeID: string 
   const visited = new Set<string>()
   let current = initial
   while (true) {
-    if (!visited.add(current.id)) return
+    if (visited.has(current.id)) return
+    visited.add(current.id)
     chain.push(current)
     if (!current.parentID) break
     if (!current.cortex || current.cortex.parentSessionID !== current.parentID) return

@@ -8,6 +8,7 @@ import { SessionTransferCore as Core } from "@ericsanchezok/synergy-harness/sess
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
+import type { SqlQueryOptions, SqlRow, SqlValue } from "../../harness/src/storage/sql-contract"
 import { registerSessionSchema } from "../src/session-schema"
 import { binding, mutationBinding, Draft } from "../src/sync-outbox"
 import { pumpNativeSync } from "../src/sync-native-source"
@@ -262,7 +263,7 @@ test("fresh native creation-pair probes preserve absence, owner validation and c
 })
 
 test("canonical stored Session readers keep invalid selection failures in their returned Promise", async () => {
-  for (const read of [Core.storedInfo, Core.storedInfoIfComplete]) {
+  for (const read of [Core.storedInfo, Core.storedInfoIfComplete, Core.storedInfoIfPresent]) {
     for (const selection of [
       { scopeID: "", sessionID: "invalid-session" },
       { scopeID: "home", sessionID: "" },
@@ -276,4 +277,187 @@ test("canonical stored Session readers keep invalid selection failures in their 
       expect(await rejected(pending)).toBeInstanceOf(z.ZodError)
     }
   }
+})
+
+test("ordinary known-Scope binding reads its canonical pair in one native data statement", async () => {
+  await using runtime = await testRuntime({ register: () => registerSessionSchema(original) })
+  await runtime.run(async () => {
+    const scope = await Scope.registerProject({
+      type: "project",
+      id: original.projectID,
+      local: null,
+      time: { created: 1, updated: 1 },
+    })
+    await ScopeContext.provide({
+      scope,
+      workspace: null,
+      fn: async () => {
+        const session = await Session.create({ organization: original, workspace: null, environmentID: null })
+        const expected = await binding(session.id, original.orgID, scope.id)
+        expect(expected?.rootSessionID).toBe(session.id)
+        await Storage.transaction(async (tx) => {
+          const raw = tx.raw
+          const query = raw.query
+          let dataStatements = 0
+          raw.query = <Row extends SqlRow>(statement: string, values?: SqlValue[], options?: SqlQueryOptions) => {
+            if (statement.startsWith("SELECT ") && statement.includes("FROM storage_records")) dataStatements++
+            return query<Row>(statement, values, options)
+          }
+          let selected: Awaited<ReturnType<typeof binding>>
+          try {
+            selected = await binding(session.id, original.orgID, scope.id)
+          } finally {
+            raw.query = query
+          }
+          expect(selected).toEqual(expected)
+          expect(dataStatements).toBe(1)
+        })
+      },
+    })
+  })
+})
+
+test("ordinary known-Scope binding retains current driver facts and dynamic owner validation", async () => {
+  await using runtime = await testRuntime({ register: () => registerSessionSchema(original) })
+  await using other = await testRuntime({ register: () => registerSessionSchema(original) })
+  await runtime.run(async () => {
+    const scope = await Scope.registerProject({
+      type: "project",
+      id: original.projectID,
+      local: null,
+      time: { created: 1, updated: 1 },
+    })
+    await ScopeContext.provide({
+      scope,
+      workspace: null,
+      fn: async () => {
+        const session = await Session.create({ organization: original, workspace: null, environmentID: null })
+        const selector = { scopeID: scope.id, sessionID: session.id }
+        const key = StoragePath.sessionInfo(Identifier.asScopeID(scope.id), Identifier.asSessionID(session.id))
+        const before = await binding(session.id, original.orgID, scope.id)
+        const discarded = new Error("Discard the current driver change")
+        expect(
+          await rejected(
+            Storage.transaction(async () => {
+              await Storage.update<Record<string, unknown>>(key, (raw) => {
+                raw.organization = { ...original, driverRuntimeID: "next-runtime", bindingEpoch: 2 }
+              })
+              const current = await binding(session.id, original.orgID, scope.id)
+              expect(current?.binding).toEqual({ ...original, driverRuntimeID: "next-runtime", bindingEpoch: 2 })
+              expect(await binding(session.id, original.orgID)).toEqual(current)
+              throw discarded
+            }),
+          ),
+        ).toBe(discarded)
+        expect(await binding(session.id, original.orgID, scope.id)).toEqual(before)
+        const malformed = await rejected(
+          Storage.transaction(async () => {
+            await Storage.update<Record<string, unknown>>(key, (raw) => {
+              raw.organization = { ...original, bindingEpoch: "invalid" }
+            })
+            expect((await Core.storedInfoIfPresent(selector))?.raw.organization).toMatchObject({
+              bindingEpoch: "invalid",
+            })
+            await binding(session.id, original.orgID, scope.id)
+          }),
+        )
+        expect(malformed).toBeInstanceOf(z.ZodError)
+        expect(await binding(session.id, original.orgID, scope.id)).toEqual(before)
+        expect(await other.run(() => binding(session.id, original.orgID, scope.id))).toBeUndefined()
+        expect(await binding(session.id, original.orgID, scope.id)).toEqual(before)
+      },
+    })
+  })
+})
+
+test("native binding rejects a persisted Cortex parent cycle within its original read window", async () => {
+  await using runtime = await testRuntime({ register: () => registerSessionSchema(original) })
+  await runtime.run(async () => {
+    const scope = await Scope.registerProject({
+      type: "project",
+      id: original.projectID,
+      local: null,
+      time: { created: 1, updated: 1 },
+    })
+    await ScopeContext.provide({
+      scope,
+      workspace: null,
+      fn: async () => {
+        const sessions = [
+          await Session.create({ organization: original, workspace: null, environmentID: null }),
+          await Session.create({ organization: original, workspace: null, environmentID: null }),
+        ]
+        const entries: Array<{ key: string[]; value: unknown }> = []
+        const restore: Array<{ key: string[]; value: unknown }> = []
+        for (const [index, session] of sessions.entries()) {
+          const parent = sessions[1 - index]!
+          const stored = await Core.storedInfo({ scopeID: scope.id, sessionID: session.id })
+          const cortex = {
+            taskID: `cycle-task-${index}`,
+            parentSessionID: parent.id,
+            parentMessageID: Identifier.ascending("message"),
+            description: "Persisted cyclic ancestry fixture",
+            agent: "binding-cycle-fixture",
+            startedAt: 1,
+            completedAt: 2,
+            status: "completed" as const,
+          }
+          const raw = { ...stored.raw, parentID: parent.id, cortex }
+          const parsed = Session.Info.parse({ ...raw, workspace: null })
+          const infoKey = StoragePath.sessionInfo(Identifier.asScopeID(scope.id), Identifier.asSessionID(session.id))
+          const indexKey = StoragePath.sessionIndex(Identifier.asSessionID(session.id))
+          const [indexValue] = await Storage.readMany([indexKey])
+          entries.push({ key: infoKey, value: raw }, { key: indexKey, value: Session.toIndex(parsed) })
+          restore.push({ key: infoKey, value: stored.raw }, { key: indexKey, value: indexValue })
+        }
+        await Storage.withMigrationRecords(() => Storage.transaction((tx) => tx.writeMany(entries)))
+        try {
+          for (const [index, session] of sessions.entries()) {
+            const stored = await Core.storedInfo({ scopeID: scope.id, sessionID: session.id })
+            expect(stored.info.parentID).toBe(sessions[1 - index]!.id)
+            expect(Session.Info.parse({ ...stored.raw, workspace: null }).cortex?.parentSessionID).toBe(
+              stored.info.parentID,
+            )
+          }
+          for (const read of [binding, mutationBinding]) {
+            const readMany = Storage.readMany
+            let canonicalReads = 0
+            const budget = new Error("Cyclic native ancestry exceeded its original canonical read window")
+            Storage.readMany = <T>(keys: string[][]) => {
+              if (
+                keys.length === 2 &&
+                keys[0]?.[0] === "session_index" &&
+                sessions.some((session) => keys[0]?.[1] === session.id) &&
+                keys[1]?.[0] === "sessions" &&
+                keys[1]?.[1] === scope.id &&
+                keys[1]?.[3] === "info"
+              ) {
+                canonicalReads++
+                if (canonicalReads > sessions.length + 1) return Promise.reject(budget)
+              }
+              return readMany<T>(keys)
+            }
+            let outcome:
+              { kind: "resolved"; value: Awaited<ReturnType<typeof read>> } | { kind: "rejected"; error: unknown }
+            try {
+              outcome = await read(sessions[0]!.id, original.orgID, scope.id).then(
+                (value) => ({ kind: "resolved" as const, value }),
+                (error: unknown) => ({ kind: "rejected" as const, error }),
+              )
+            } finally {
+              Storage.readMany = readMany
+            }
+            expect({ outcome, canonicalReads }).toEqual({
+              outcome: { kind: "resolved", value: undefined },
+              canonicalReads: sessions.length + 1,
+            })
+          }
+        } finally {
+          await Storage.withMigrationRecords(() => Storage.transaction((tx) => tx.writeMany(restore)))
+        }
+        expect((await binding(sessions[0]!.id, original.orgID, scope.id))?.rootSessionID).toBe(sessions[0]!.id)
+        expect((await binding(sessions[1]!.id, original.orgID, scope.id))?.rootSessionID).toBe(sessions[1]!.id)
+      },
+    })
+  })
 })

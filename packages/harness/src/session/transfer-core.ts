@@ -192,25 +192,28 @@ export namespace SessionTransferCore {
 
   function readStoredInfo(
     input: { scopeID: string; sessionID: string },
-    complete: false,
+    mode: "required",
   ): Promise<ReturnType<typeof decodeInfo>>
   function readStoredInfo(
     input: { scopeID: string; sessionID: string },
-    complete: true,
+    mode: "complete" | "present",
   ): Promise<ReturnType<typeof decodeInfo> | undefined>
-  async function readStoredInfo(input: { scopeID: string; sessionID: string }, complete: boolean) {
+  async function readStoredInfo(
+    input: { scopeID: string; sessionID: string },
+    mode: "required" | "complete" | "present",
+  ) {
     const { scopeID, sessionID } = StoredInfoSelector.parse(input)
     return Storage.snapshot(async () => {
       const [indexValue, value] = await Storage.readMany([
         StoragePath.sessionIndex(Identifier.asSessionID(sessionID)),
         StoragePath.sessionInfo(Identifier.asScopeID(scopeID), Identifier.asSessionID(sessionID)),
       ])
-      if (complete && indexValue !== undefined) {
+      if (mode !== "required" && indexValue !== undefined) {
         const selected = StoredInfoScope.parse(indexValue)
         if (selected.scopeID !== scopeID) fail("Stored Session metadata index changed its actual Scope")
       }
       if (indexValue === undefined || value === undefined) {
-        if (complete) return
+        if (mode === "complete" || (mode === "present" && indexValue === undefined && value === undefined)) return
         fail("Stored Session metadata or index is absent")
       }
       const { raw, info } = decodeInfo(value)
@@ -228,12 +231,17 @@ export namespace SessionTransferCore {
   }
 
   export function storedInfo(input: { scopeID: string; sessionID: string }) {
-    return readStoredInfo(input, false)
+    return readStoredInfo(input, "required")
   }
 
   /** Reads a current creation pair without accepting a partial pair as ownership. */
   export function storedInfoIfComplete(input: { scopeID: string; sessionID: string }) {
-    return readStoredInfo(input, true)
+    return readStoredInfo(input, "complete")
+  }
+
+  /** Absence is valid only when neither canonical record exists. */
+  export function storedInfoIfPresent(input: { scopeID: string; sessionID: string }) {
+    return readStoredInfo(input, "present")
   }
 
   export async function stagedInfo(

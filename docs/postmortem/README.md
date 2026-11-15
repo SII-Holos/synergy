@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0213](0213-native-binding-cycle-check-used-set-add-result.md)
+
 - [0212](0212-retained-prepared-receipt-concealed-target-activation.md)
 
 - [0211](0211-cleanup-page-mixed-pending-and-settled-snapshots.md)
