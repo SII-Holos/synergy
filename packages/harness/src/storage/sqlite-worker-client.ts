@@ -15,6 +15,8 @@ import type { StorageMaintenanceOperation } from "@ericsanchezok/synergy-util/ru
 import type { SqliteMaintenanceResult, SqliteRequest, SqliteResponse, SqlRow } from "./sql-contract"
 
 const log = Log.create({ service: "storage.worker" })
+const FINGERPRINT_ENTRIES = 128
+const FINGERPRINT_BYTES = 128 * 1024
 
 export function captureSqliteWorkerHost() {
   const host = RuntimeContext.tryCurrent()?.host
@@ -80,6 +82,8 @@ export class SqliteWorkerClient {
   private readonly budgets = StorageBudgets.capture()
   private readonly worker: Bun.Subprocess
   private readonly pending = new Map<number, PendingRequest>()
+  private readonly sqlFingerprints = new Map<string, { value: string; bytes: number }>()
+  private sqlFingerprintBytes = 0
   private sequence = 0
   private queuedBytes = 0
   private closed = false
@@ -144,6 +148,7 @@ export class SqliteWorkerClient {
           return
         }
         this.closed = true
+        this.clearSqlFingerprints()
         for (const id of this.pending.keys())
           this.settle(id, { error: new Error(`SQLite worker exited with code ${code}`) })
       },
@@ -170,6 +175,7 @@ export class SqliteWorkerClient {
     if (this.unavailableError) return
     this.unavailableError = error
     this.closed = true
+    this.clearSqlFingerprints()
     this.stopping = true
     this.worker.kill()
     for (const id of this.pending.keys()) this.settle(id, { error })
@@ -226,12 +232,7 @@ export class SqliteWorkerClient {
     const startedAt = performance.now()
     const ceiling =
       request.maintenance && request.maintenance !== "reclaim" ? budgets.hardCeilingMs : budgets.ordinaryCeilingMs
-    const fingerprint = request.statement
-      ? createHash("sha256")
-          .update(request.statement.replace(/'(?:[^']|'')*'/g, "?").replace(/\b\d+\b/g, "?"))
-          .digest("hex")
-          .slice(0, 16)
-      : request.action
+    const fingerprint = request.statement ? this.sqlFingerprint(request.statement) : request.action
     const maintenance = request.maintenance
       ? beginStorageMaintenance(request.maintenance, deadline + budgets.probeAttempts * budgets.probeTimeoutMs)
       : undefined
@@ -274,6 +275,34 @@ export class SqliteWorkerClient {
       else this.settle(id, { error })
     }
     return promise
+  }
+
+  private sqlFingerprint(statement: string) {
+    const cached = this.sqlFingerprints.get(statement)
+    if (cached) {
+      this.sqlFingerprints.delete(statement)
+      this.sqlFingerprints.set(statement, cached)
+      return cached.value
+    }
+    const value = createHash("sha256")
+      .update(statement.replace(/'(?:[^']|'')*'/g, "?").replace(/\b\d+\b/g, "?"))
+      .digest("hex")
+      .slice(0, 16)
+    const bytes = 2 * (statement.length + value.length)
+    if (bytes > FINGERPRINT_BYTES) return value
+    while (this.sqlFingerprints.size >= FINGERPRINT_ENTRIES || this.sqlFingerprintBytes + bytes > FINGERPRINT_BYTES) {
+      const [key, previous] = this.sqlFingerprints.entries().next().value!
+      this.sqlFingerprints.delete(key)
+      this.sqlFingerprintBytes -= previous.bytes
+    }
+    this.sqlFingerprints.set(statement, { value, bytes })
+    this.sqlFingerprintBytes += bytes
+    return value
+  }
+
+  private clearSqlFingerprints() {
+    this.sqlFingerprints.clear()
+    this.sqlFingerprintBytes = 0
   }
 
   private arm(id: number, pending: PendingRequest, delay: number) {
@@ -444,6 +473,7 @@ export class SqliteWorkerClient {
         log.warn("storage worker did not finish closing; terminating owned process", { role: this.role, error })
       } finally {
         this.closed = true
+        this.clearSqlFingerprints()
         this.worker.kill()
         for (const id of this.pending.keys()) this.settle(id, { error: new StorageClosedError() })
         await this.within(this.worker.exited, remaining(), "worker exit").catch(() => {})
