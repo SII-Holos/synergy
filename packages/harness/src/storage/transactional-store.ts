@@ -87,6 +87,14 @@ export interface StoredRecord<T = unknown> {
 
 type RecordRow = SqlRow & { key_text: string; body: string | Uint8Array | null; revision: bigint | number | string }
 
+type SessionWriteMetadata = {
+  targetKey: string[]
+  target: SqlValue | undefined
+  invalid: { error: unknown } | undefined
+  queryRevision: number
+  previous: Pick<RecordRow, "key_text" | "revision"> | undefined
+}
+
 function keyDigest(key: readonly string[]) {
   if (!Array.isArray(key) || key.some((value) => typeof value !== "string" || value.length === 0))
     throw new StorageIntegrityError("A storage key must contain nonempty string segments")
@@ -590,8 +598,8 @@ export class StoreTransaction {
     await this.assertAdmitted([key])
     await this.mutationGuard?.([key], false)
     if (key[0] === "compat_pending") this.admission.pending = true
-    const revision = key[0] === "sessions" && key.length >= 4 ? await this.sessionWriteRevision(key) : undefined
-    await this.put(key, value, options, revision)
+    const plan = key[0] === "sessions" && key.length >= 4 ? await this.sessionWriteMetadata(key) : undefined
+    await this.put(key, value, options, plan)
   }
 
   async writeMany(entries: Array<{ key: string[]; value: unknown }>): Promise<void> {
@@ -782,7 +790,7 @@ export class StoreTransaction {
     await this.put(key, value, { expectedRevision: 0n, updated })
   }
 
-  private async sessionWriteRevision(key: string[]): Promise<bigint> {
+  private async sessionWriteMetadata(key: string[]): Promise<SessionWriteMetadata> {
     const owner = keyParameter(this.keys, [...key.slice(0, 3), "info"])
     const targetKey = key.slice()
     let target: SqlValue | undefined
@@ -808,32 +816,40 @@ export class StoreTransaction {
     const indexed = new Map(rows.map((row) => [keyHex(row.key_id), row]))
     if (Number(indexed.get(keyHex(owner))?.deleted) === 1)
       throw new StorageConflictError("A deleted record cannot be revived by a delayed writer")
-    this.check()
-    const admissionQueries = await this.assertAdmitted([key])
-    const changed = key.length !== targetKey.length || key.some((segment, index) => segment !== targetKey[index])
-    if (invalid && !changed) throw invalid.error
-    let previous: Pick<RecordRow, "key_text" | "revision"> | undefined
-    if (target === undefined || changed || this.queryRevision !== observed + 1 + admissionQueries) {
-      const [current] = await this.connection.query<Pick<RecordRow, "key_text" | "revision">>(
-        "SELECT key_text, revision FROM storage_records WHERE namespace = ? AND key_id = ?",
-        [this.namespace, keyParameter(this.keys, key)],
-      )
-      previous = current
-    } else previous = indexed.get(keyHex(target))
-    if (previous && previous.key_text !== JSON.stringify(key))
-      throw new StorageIntegrityError("Logical key identity collision")
-    return previous ? BigInt(previous.revision) : 0n
+    return {
+      targetKey,
+      target,
+      invalid,
+      queryRevision: observed + 1,
+      previous: target === undefined ? undefined : indexed.get(keyHex(target)),
+    }
   }
 
   private async put<T>(
     key: string[],
     value: T,
     options: { expectedRevision?: bigint; updated?: number } = {},
-    previousRevision?: bigint,
+    plan?: SessionWriteMetadata,
   ): Promise<void> {
     this.check(true)
     if (!key.length) throw new StorageIntegrityError("Cannot write the storage root")
-    const revision = previousRevision ?? BigInt((await this.row(key))?.revision ?? 0)
+    let previous: Pick<RecordRow, "key_text" | "revision"> | undefined
+    if (plan) {
+      const admissionQueries = await this.assertAdmitted([key])
+      const changed =
+        key.length !== plan.targetKey.length || key.some((segment, index) => segment !== plan.targetKey[index])
+      if (plan.invalid && !changed) throw plan.invalid.error
+      if (plan.target === undefined || changed || this.queryRevision !== plan.queryRevision + admissionQueries) {
+        const [current] = await this.connection.query<Pick<RecordRow, "key_text" | "revision">>(
+          "SELECT key_text, revision FROM storage_records WHERE namespace = ? AND key_id = ?",
+          [this.namespace, keyParameter(this.keys, key)],
+        )
+        previous = current
+      } else previous = plan.previous
+      if (previous && previous.key_text !== JSON.stringify(key))
+        throw new StorageIntegrityError("Logical key identity collision")
+    } else previous = await this.row(key)
+    const revision = previous ? BigInt(previous.revision) : 0n
     if (options.expectedRevision !== undefined && options.expectedRevision !== revision)
       throw new StorageConflictError("Storage revision changed")
     const legacyNodes = this.keys === "hex"

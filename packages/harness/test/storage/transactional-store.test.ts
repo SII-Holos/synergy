@@ -238,6 +238,102 @@ for (const backend of storageTestBackends()) {
       }
     })
 
+    test("single Session writes retain row-phase publication admission after native metadata delivery", async () => {
+      for (const mode of ["unrestricted", "late-publication", "late-publication-before-collision"] as const) {
+        const store = await open()
+        const owner = ["sessions", "scope", "metadata-late-publication", "info"]
+        const child = [...owner.slice(0, 3), "messages", "message", "info"]
+        await store.transaction(async (tx) => {
+          await tx.write(owner, { id: "metadata-late-publication" })
+          await tx.write(child, { value: "original" })
+          await tx.write(["compat_pending", "metadata-late-publication"], { retained: true })
+          if (mode === "late-publication-before-collision")
+            await tx.raw.query("UPDATE storage_records SET key_text = ? WHERE namespace = ? AND key_text = ?", [
+              JSON.stringify(["another-logical-key"]),
+              store.options.namespace,
+              JSON.stringify(child),
+            ])
+        })
+        let reachedNativeRead = false
+        let observedDelivery = false
+        let restricted = false
+        let mutationAfterRestriction = false
+        const outcome = await store
+          .transaction(async (tx) => {
+            const connection = tx.raw
+            const query = connection.query
+            const entered = Promise.withResolvers<{ delivery: Promise<SqlRow[]> }>()
+            const release = Promise.withResolvers<void>()
+            let held = false
+            using observed = spyOn(connection, "query").mockImplementation(
+              <Row extends SqlRow = SqlRow>(statement: string, values?: SqlValue[], options?: SqlQueryOptions) => {
+                if (restricted && /^INSERT INTO storage_(?:nodes|records)\b/i.test(statement))
+                  mutationAfterRestriction = true
+                const native = query<Row>(statement, values, options)
+                const parentOrMetadata =
+                  statement === "SELECT body FROM storage_records WHERE namespace = ? AND key_id = ?" ||
+                  statement.startsWith(
+                    "SELECT key_id, key_text, revision, CASE WHEN body IS NULL THEN 1 ELSE 0 END AS deleted FROM storage_records ",
+                  )
+                if (!parentOrMetadata || held) return native
+                held = true
+                const original: Promise<Row[]> = native.then(async (rows) => {
+                  reachedNativeRead = true
+                  entered.resolve({ delivery: original })
+                  await release.promise
+                  return rows
+                })
+                return original
+              },
+            )
+            const pending = tx.write(child, { value: "caller" }, { expectedRevision: 1n }).then(
+              () => ({ kind: "resolved" as const }),
+              (error: unknown) => ({ kind: "rejected" as const, error }),
+            )
+            try {
+              const reached = await Promise.race([
+                entered.promise.then(({ delivery }) => ({ kind: "held" as const, delivery })),
+                pending.then((result) => ({ kind: "early" as const, result })),
+              ])
+              if (reached.kind === "early") {
+                if (reached.result.kind === "rejected") throw reached.result.error
+                throw new Error("The original native parent or metadata read was not reached")
+              }
+              const caller = reached.delivery.then(() => {
+                observedDelivery = true
+                if (mode === "unrestricted") return
+                tx.restrictToPublishedOwners()
+                restricted = true
+              })
+              release.resolve()
+              await caller
+              const result = await pending
+              if (result.kind === "rejected") throw result.error
+            } finally {
+              release.resolve()
+              await pending
+            }
+          })
+          .then(
+            () => ({ kind: "resolved" as const }),
+            (error: unknown) => ({ kind: "rejected" as const, error }),
+          )
+        expect(reachedNativeRead).toBe(true)
+        expect(observedDelivery).toBe(true)
+        if (mode === "unrestricted") {
+          expect(restricted).toBe(false)
+          expect(outcome).toEqual({ kind: "resolved" })
+          expect(await store.versioned(child)).toMatchObject({ value: { value: "caller" }, revision: 2n })
+        } else {
+          expect(restricted).toBe(true)
+          expect(outcome).toMatchObject({ kind: "rejected", error: { name: "SessionPreparingError" } })
+          expect(mutationAfterRestriction).toBe(false)
+          if (mode === "late-publication")
+            expect(await store.versioned(child)).toMatchObject({ value: { value: "original" }, revision: 1n })
+        }
+      }
+    })
+
     test("single Session metadata remains fresh across a held original publication read and same-transaction typed or raw writes", async () => {
       for (const mode of ["typed-revision", "raw-revision", "raw-key-repair"] as const) {
         const store = await open()

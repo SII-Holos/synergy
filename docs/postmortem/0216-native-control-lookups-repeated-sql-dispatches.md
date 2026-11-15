@@ -16,20 +16,24 @@ The original offset-1000-to-1100 callback and flush dispatched 19,817 requests: 
 - Sixteen actual single Session writes reduced metadata SELECTs from 32 to 16 and transferred bodies from 528,499 bytes to zero. The original guard, error ordering and typed/raw interleavings remain covered.
 - Combined SQLite owner and Store/compatibility/node neighbors passed 49 cases and 412 assertions; Harness types passed. Real PostgreSQL 17.11 owner and storage contracts passed 43 cases and 565 assertions with two explicit SQLite-only skips.
 - The same original callback window then dispatched 17,113 requests. The 2,704-request difference is exactly the 2,004 maintenance and 700 single-write reads removed; every other measured request family, including 641 reader requests, remained equal. No thin-target reread was needed in this window. Its workload, transaction/scan counters and single callback were preserved. This is a work-count comparison, not complete capacity or elapsed-time acceptance.
+- The original full capacity case passed at `1ab2f8d27` before the row-phase correction: 10,000 native writes in 100 transactions took 89.859 seconds; produced data reached 95.937 seconds, drained work 223.208 seconds and total work 305.624 seconds. The case passed 6,082 assertions in 306.804 seconds. All four owned process IDs were absent after cleanup. This is an actual local pre-correction result, not final-HEAD or Linux acceptance.
+- A real native-metadata Promise barrier then exposed a separate direct-transaction phase regression: changing publication restriction without issuing SQL left the query serial unchanged, and the optimized write resolved where rejection was required. The exact old write/put path passed all 16 control assertions. A metadata-only plan with admission and target checks restored to the original put row phase also passed those 16 assertions. The complete Store file then passed 21 cases and 202 assertions; Harness types passed. No production nested-snapshot incident or capacity attribution follows from this control.
 
 ## Root cause
 
 The proven local defect is repeated independent Store work. Empty maintenance checks separately observe the point and derived prefix. Single writes separately select parent deletion and target identity/revision with unneeded bodies. A naive combination can add full retained-prefix work or reuse stale metadata across admission.
 
-The [decision](../decisions/implemented/bug-fix/2026-11-15-combine-fresh-store-control-lookups.md) retains independent canonical identity, conditional prefix work, both selector admissions and the later write checks. A complete connection query serial forces a fresh target read after unexpected activity. These results do not identify IPC, SQLite scheduling, background work or host load as the sole capacity cause.
+The [decision](../decisions/implemented/bug-fix/2026-11-15-combine-fresh-store-control-lookups.md) retains independent canonical identity, conditional prefix work, both selector admissions and the later write checks. A complete connection query serial forces a fresh target read after unexpected SQL activity. It does not observe a publication-mode change that performs no query. Moving that admission into an earlier helper advanced its original phase across an await; retaining a metadata-only plan keeps later admission, selector and target/collision checks inside the original `put` row phase. The controlled public-transaction regression does not establish a production nested-snapshot incident. These results do not identify IPC, SQLite scheduling, background work or host load as the sole capacity cause.
 
 ## Guardrails
 
 - [x] Machine check: `packages/harness/test/storage/runtime-maintenance.test.ts` — native statement bound, actual prefix-fault control, missing nodes, malformed records, dual-selector publication and rollback.
-- [x] Machine check: `packages/harness/test/storage/transactional-store.test.ts` — actual SELECT/body-byte bound, parent/error priority, original guards and held typed/raw interleavings.
+- [x] Machine check: `packages/harness/test/storage/transactional-store.test.ts` — actual SELECT/body-byte bound, parent/error priority, original guards, held typed/raw interleavings and real metadata-delivery restriction changes without SQL.
 - [x] Machine check: `packages/harness/test/storage/{compat-admission,node-cleanup}.test.ts` — existing publication filtering, tombstones and traversal cleanup.
-- [x] Machine check: real PostgreSQL owner/storage contracts in `packages/harness/test/storage/{transactional-store,runtime-maintenance,postgres-contract}.test.ts`.
-- [ ] Machine check: complete original 10,000-message, 100-transaction workload under unchanged 240-second producer and 600-second whole-case budgets.
+- [x] Machine check: pre-row-phase-correction PostgreSQL owner/storage contracts in `packages/harness/test/storage/{transactional-store,runtime-maintenance,postgres-contract}.test.ts`.
+- [x] Machine check: the original 10,000-message, 100-transaction capacity workload passed at `1ab2f8d27` under its unchanged 240-second producer and 600-second whole-case budgets.
+
+Final delivery must repeat owner/backend and original full capacity acceptance at its final source revision; the earlier capacity and backend runs do not accept the row-phase correction.
 
 ## Lessons
 
