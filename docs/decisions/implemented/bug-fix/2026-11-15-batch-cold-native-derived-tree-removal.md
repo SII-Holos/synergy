@@ -30,6 +30,8 @@ The new array operation deliberately groups removal admission and guards and cle
 
 Artifact ranges must remain addressed indexed work on the actual backend. Reusing the original range builder is insufficient evidence if an OR plan degrades into a namespace scan. The Store controls inspect the actual SQLite statement plan alongside namespace, segment, orphan-reference, retained-pack, revision and rollback behavior. Owner controls retain malformed suffix and changed-revision interleavings. The new Store cases belong to the existing shared PostgreSQL contract inventory. Executed results and remaining validation belong to the [incident record](../../../postmortem/0219-cold-derived-pages-repeated-tree-cleanup.md).
 
+The PostgreSQL control uses the exact original GC and delete statements and parameters under rolled-back diagnostic savepoints before forwarding each ordinary operation. With the ordinary planner, it accepts owner-index filtering bounded by the selected Session owner and rejects a real namespace-only scan against thousands of unrelated references. It does not require the SQLite per-prefix seek shape or force planner settings. Index scan candidate counters and heap visits remain separate observations. See the PostgreSQL [EXPLAIN contract](https://www.postgresql.org/docs/17/using-explain.html) and [index combination behavior](https://www.postgresql.org/docs/17/indexes-bitmap-scans.html).
+
 Reduced native dispatch is a local work bound, not measured CI speed or complete capacity acceptance. Ordinary native append is unchanged.
 
 ## Related

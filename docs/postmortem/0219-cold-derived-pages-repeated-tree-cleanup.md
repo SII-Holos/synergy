@@ -19,6 +19,7 @@ The diagnostic's anonymous `insert:artifacts` classification matched the first w
 - The first Store execution passed its two guard cases but failed its SQLite plan cases at COMMIT because the diagnostic EXPLAIN statement remained active in the worker cache. That fixture failure is not a production RED. The plan check was moved to an independent readonly connection over the same database, using the exact captured statement and parameters and explicit statement finalization; the corrected two-file run passed ten cases and 134 assertions, retaining the exact statement and indexed-range/no-table-scan assertions.
 - The initial owning TypeScript run reported only the new range test's optional-byte result. The test adds an explicit missing-byte failure before comparison; the complete owning TypeScript rerun passed, with tracked sources and HEAD unchanged and the unrelated build-info bytes preserved. This test correction is not a production semantic defect.
 - The new tree-removal contract file was added to the existing PostgreSQL contract inventory, so the supported PostgreSQL CI jobs select its two scenarios. Registration is not a PostgreSQL execution result.
+- The first PostgreSQL plan control incorrectly used ordinary revision reads to inspect deleted rows and selected nonmatching files with an exact-name filter. These fixture and selection failures were corrected using the existing raw tombstone reader and one whole selected file. The resulting real plan and semantic control passed one case and 151 assertions; filtered JUnit entries were recorded separately, and the owned container was removed.
 
 ## Root cause
 
@@ -32,12 +33,12 @@ The page then serially rereads each canonical producer under its original writer
 - [x] Machine check: `packages/harness/test/storage/tree-removal-batch.test.ts` — complete SQLite Store execution after diagnostic-statement finalization, including actual plan, formats, overlapping revisions, exact ranges, independent artifact refs, retained shared packs, foreign namespace, guard/publication refusal and rollback.
 - [x] Machine check: the twelve complete owner and original neighbor files passed 69 cases and 1,496 assertions, including attachment-index, part-field-header, artifact-subtree, node-cleanup, compatibility admission and existing Store contracts; the owning TypeScript check passed.
 - [x] Machine check: the four complete owning files passed against real PostgreSQL 17.11: 46 cases and 625 assertions, with two explicit SQLite-only skips. The required publication and two new tree-removal cases passed, and the exact selected file inventory and task-owned container removal were verified. The same Store inputs remain unchanged.
-- [ ] Machine check: PostgreSQL query-plan and original configured CI acceptance remain separate; registration in `POSTGRES_TEST_FILES` does not prove those runs.
+- [x] Machine check: the actual PostgreSQL 17.11 artifact-plan control passed 151 assertions with the ordinary planner and sequential scans enabled. Two original mutations each visited 128 selected-owner candidates among 8,192 unrelated same-namespace references; the namespace-only negative scan visited 8,448 total candidates and was rejected. Exact original statements and parameters were probed under rolled-back savepoints before their ordinary operations, then tombstones, orphan references, retained neighbors, foreign namespace and GC were verified. This permits owner-index filtering, not per-Part exact seeks or a latency claim.
 - [x] Machine check: the complete original Channels delivery-work file passed five cases and 26 assertions, including both 500- and 5000-message histories with over 2000 Parts, under its unchanged workload and deadlines.
 - [ ] Machine check: complete original CI acceptance remains required on the published candidate.
 - The [implemented decision](../decisions/implemented/bug-fix/2026-11-15-batch-cold-native-derived-tree-removal.md) defines the new array-operation semantics and unchanged ordinary capture.
 
-The checked local owner and large-history cases do not accept the pending backend or CI gates. This correction does not change the ordinary capacity producer or establish a whole-capacity improvement.
+These checked local results do not accept the remaining configured CI gates. This correction does not change the ordinary capacity producer or establish a whole-capacity improvement.
 
 ## Lessons
 

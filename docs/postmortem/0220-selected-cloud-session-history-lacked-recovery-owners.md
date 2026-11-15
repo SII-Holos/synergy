@@ -28,7 +28,7 @@ A generic H0/H1 hash explanation was also insufficient: Session and resource-con
 - [x] Machine check: nine complete Service resource/recovery files retain native target ports, lost object-write acknowledgement, cold retry, complete saved heads and original writer checks.
 - [x] Machine check: the selected-cloud case in `packages/organization-runtime/test/backup/native.test.ts` composes the real Hosted native/Snapshot archive, Service resource facet, permanent writer proof and original publication. Its pause controls retain canonical schema/index/binding/signature checks and refuse a correctly signed foreign payload using only RAM archive copies.
 - [x] Machine check: complete Runtime native recovery, selected Member cloud recovery and Member command-history files pass 21 cases and 496 assertions in 99.346 seconds with unchanged source/HEAD; the three owning TypeScript checks pass. The retained interrupted-stream negative logs are expected observations, not test failures.
-- [ ] Machine check: final coherent canonical quality, the new actual PostgreSQL control, exact-head CI and final installed/real-Home acceptance remain to be recorded.
+- [ ] Machine check: final coherent canonical quality, exact-head CI and final installed/real-Home acceptance remain to be recorded.
 - The [recovery decision](../decisions/implemented/bug-fix/2026-11-16-recover-selected-cloud-session-history.md) keeps historical metadata separate from installation and execution authority. The [catalog route incident](0221-cloud-catalog-routes-forwarded-resource-selectors-into-strict-pages.md) records the independent HTTP page-selector defect.
 
 ## Lessons
