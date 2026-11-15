@@ -230,9 +230,60 @@ test.skipIf(process.platform === "win32")(
       const physical = await f.physical(started.executionID)
       const scopeID = await machine.runtime.run(async () => (await Session.get(accepted.sessionID)).scope.id)
       let retirements = 0,
-        inspections = 0
+        inspections = 0,
+        coldInspections = 0
+      let originalRetirementEpoch: number | undefined
       let retirementReply: { status: number; code?: string; message?: string; outcome?: string } | undefined
       let loseInspectionReplies = false
+      let phase: "before-close" | "closing" | "closed" | "reopening" | "reopened" = "before-close"
+      const counts = {
+        inspection: 0,
+        retirementInspection: 0,
+        retirement: 0,
+        cleanupDiscovery: 0,
+        cleanupReconciliation: 0,
+      }
+      const observations: Array<{
+        endpoint: keyof typeof counts
+        enteredPhase: string
+        settledPhase?: string
+        kind?: string
+        originalIDMatches?: boolean
+        originalRuntimeMatches?: boolean
+        connectionEpoch?: number
+        status?: number
+        dropped?: boolean
+      }> = []
+      let overflow = 0
+      const observe = (endpoint: keyof typeof counts) => {
+        counts[endpoint]++
+        const value: (typeof observations)[number] = { endpoint, enteredPhase: phase }
+        observations.push(value)
+        if (observations.length > 24) {
+          observations.shift()
+          overflow++
+        }
+        return value
+      }
+      const state = (info: EnvironmentExecution.Info) => {
+        const observation = info.sourceObservation
+        const parsed = EnvironmentExecution.Info.shape.state.safeParse(
+          typeof observation === "object" && observation !== null
+            ? Object.getOwnPropertyDescriptor(observation, "state")?.value
+            : undefined,
+        )
+        return {
+          state: info.state,
+          sourceState: parsed.success ? parsed.data : "unavailable",
+          hasSource: info.source !== undefined,
+          outputCursor: info.outputCursor,
+        }
+      }
+      let firstCold: ReturnType<typeof state> | undefined
+      let lastCold: ReturnType<typeof state> | undefined
+      let coldReads = 0
+      let coldBaseline: number | undefined
+      let verified = false
       service.interceptHTTP(async (request) => {
         const pathname = new URL(request.url).pathname
         if (
@@ -243,16 +294,61 @@ test.skipIf(process.platform === "win32")(
             pathname === "/runtime/v1/environments/execution/retirement/inspection"
               ? CloudExecution.RetirementInspectionRequest.parse(await request.clone().json())
               : CloudExecution.InspectionRequest.parse(await request.clone().json())
-          if (signed.proof.kind !== "execution" || signed.proof.id !== started.executionID) return
-          if (pathname === "/runtime/v1/environments/execution/retirement/inspection") inspections++
+          const observation = observe(
+            pathname === "/runtime/v1/environments/execution/retirement/inspection"
+              ? "retirementInspection"
+              : "inspection",
+          )
+          observation.kind = signed.proof.kind
+          observation.originalIDMatches = signed.proof.kind === "execution" && signed.proof.id === started.executionID
+          observation.originalRuntimeMatches = signed.proof.authority.proof.runtimeID === machine.registration.runtimeID
+          observation.connectionEpoch = signed.proof.authority.proof.connectionEpoch
           const response = await service.service.fetch(request)
-          return loseInspectionReplies && response.status === 200 ? Response.json(null) : response
+          observation.status = response.status
+          observation.settledPhase = phase
+          if (!observation.originalIDMatches) return response
+          if (response.status === 200) {
+            inspections++
+            if (
+              observation.originalRuntimeMatches &&
+              (observation.enteredPhase === "reopening" || observation.enteredPhase === "reopened") &&
+              originalRetirementEpoch !== undefined &&
+              signed.proof.authority.proof.connectionEpoch > originalRetirementEpoch
+            )
+              coldInspections++
+          }
+          observation.dropped = loseInspectionReplies && response.status === 200
+          return observation.dropped ? Response.json(null) : response
+        }
+        if (
+          pathname === "/runtime/v1/environments/cleanups" ||
+          pathname === "/runtime/v1/environments/cleanups/reconciliation"
+        ) {
+          const observation = observe(
+            pathname === "/runtime/v1/environments/cleanups" ? "cleanupDiscovery" : "cleanupReconciliation",
+          )
+          const response = await service.service.fetch(request)
+          observation.status = response.status
+          observation.settledPhase = phase
+          return response
         }
         if (pathname !== "/runtime/v1/environments/execution/retirement") return
         const signed = CloudExecution.RetirementRequest.parse(await request.clone().json())
         if (signed.proof.kind !== "execution") return
+        const observation = observe("retirement")
+        observation.kind = signed.proof.kind
+        observation.originalIDMatches = signed.proof.id === started.executionID
+        observation.originalRuntimeMatches = signed.proof.authority.proof.runtimeID === machine.registration.runtimeID
+        observation.connectionEpoch = signed.proof.authority.proof.connectionEpoch
+        if (observation.originalIDMatches && observation.originalRuntimeMatches) {
+          originalRetirementEpoch = signed.proof.authority.proof.connectionEpoch
+          loseInspectionReplies = true
+        }
         retirements++
         const response = await service.service.fetch(request)
+        observation.status = response.status
+        observation.settledPhase = phase
+        observation.dropped = response.status === 200
         const body = z.object({ code: z.string(), message: z.string(), outcome: z.string() }).safeParse(
           await response
             .clone()
@@ -261,16 +357,17 @@ test.skipIf(process.platform === "win32")(
         )
         retirementReply = { status: response.status, ...(body.success && body.data) }
         if (response.status !== 200) return response
-        loseInspectionReplies = true
         return Response.json(null)
       })
       try {
+        phase = "closing"
         let failure: unknown
         try {
           await machine.close()
         } catch (error) {
           failure = error
         }
+        phase = "closed"
         expect(retirementReply, JSON.stringify(retirementReply)).toMatchObject({ status: 200 })
         expect(unknownOutcome(failure)).toBe(true)
         expect(originalRuntime.status).toBe("closed")
@@ -282,21 +379,49 @@ test.skipIf(process.platform === "win32")(
         expect(original.uses.some((use) => use.kind === "operation" && use.ownership.kind === "execution")).toBe(false)
         const before = inspections,
           effects = f.nativeEffects(physical.execution.id)
+        coldBaseline = before
         loseInspectionReplies = false
+        phase = "reopening"
         const reopened = await machine.reopen()
+        phase = "reopened"
         expect(reopened === originalRuntime).toBe(false)
         const signal = AbortSignal.timeout(5000)
         for (;;) {
           signal.throwIfAborted()
-          if ((await reopened.run(() => EnvironmentExecution.get(started.executionID, scopeID))).state === "completed")
-            break
+          const info = await reopened.run(() => EnvironmentExecution.get(started.executionID, scopeID))
+          coldReads++
+          lastCold = state(info)
+          firstCold ??= lastCold
+          if (info.state === "completed") break
           await Bun.sleep(10)
         }
         expect(inspections).toBeGreaterThan(before)
+        expect(coldInspections).toBeGreaterThan(0)
         expect(retirements).toBe(1)
         expect(f.nativeEffects(physical.execution.id)).toEqual(effects)
+        verified = true
       } finally {
         service.interceptHTTP(undefined)
+        if (!verified)
+          console.error(
+            "PROCESS_COLD_OBSERVATION_FAILURE",
+            JSON.stringify({
+              verified,
+              phase,
+              physicalBeforeClose: physical.execution.state,
+              firstCold,
+              lastCold,
+              coldReads,
+              coldBaseline,
+              inspections,
+              coldInspections,
+              originalRetirementEpoch,
+              retirements,
+              counts,
+              overflow,
+              observations,
+            }),
+          )
       }
     }),
   30000,
