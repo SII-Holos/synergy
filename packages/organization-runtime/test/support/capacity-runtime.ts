@@ -197,6 +197,100 @@ export const CapacityMetrics = z.object({
     }),
   ),
 })
+const CapacityRangeFamily = z.enum([
+  "none",
+  "environment-execution-active",
+  "native-sync-delivery",
+  "event-delivery",
+  "organization-sync",
+  "execution-leases",
+  "other",
+])
+const CapacityRangeKind = z.enum(["none", "session", "message", "part", "other"])
+const CapacityRangeCounts = z.object({
+  calls: z.number().int().nonnegative(),
+  maxRows: z.number().int().nonnegative(),
+  maxLimit: z.number().int().nonnegative(),
+  unbounded: z.number().int().nonnegative(),
+})
+export const CapacityProgressStorage = z.object({
+  maxReadMany: z.number().int().nonnegative(),
+  rangeCalls: z.number().int().nonnegative(),
+  ranges: z
+    .array(
+      CapacityRangeCounts.extend({
+        family: CapacityRangeFamily,
+        kind: CapacityRangeKind,
+        depth: z.number().int().nonnegative().optional(),
+        scope: z.boolean(),
+        session: z.boolean(),
+        message: z.boolean(),
+        cursor: z.boolean(),
+        descending: z.boolean(),
+      }),
+    )
+    .max(32),
+  overflow: CapacityRangeCounts.extend({ entries: z.number().int().nonnegative() }),
+})
+function progressStorage(metrics: z.infer<typeof CapacityMetrics>): z.infer<typeof CapacityProgressStorage> {
+  const ranges = new Map<string, z.infer<typeof CapacityProgressStorage>["ranges"][number]>()
+  const overflow = { entries: 0, calls: 0, maxRows: 0, maxLimit: 0, unbounded: 0 }
+  let rangeCalls = 0
+  for (const range of metrics.ranges) {
+    let selector: Record<string, unknown> = { kind: "other", prefix: ["other"] }
+    try {
+      const parsed: unknown = JSON.parse(range.selector)
+      if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed))
+        selector = parsed as Record<string, unknown>
+    } catch {}
+    const prefix = Array.isArray(selector.prefix) ? selector.prefix : undefined
+    const family: z.infer<typeof CapacityRangeFamily> = !prefix
+      ? "none"
+      : prefix[0] === "environment_execution_active"
+        ? "environment-execution-active"
+        : prefix[0] === "event_delivery"
+          ? prefix[1] === "organization-native-sync"
+            ? "native-sync-delivery"
+            : "event-delivery"
+          : prefix[0] === "organization-sync"
+            ? "organization-sync"
+            : prefix[0] === "organization-execution-leases"
+              ? "execution-leases"
+              : "other"
+    const kind: z.infer<typeof CapacityRangeKind> =
+      selector.kind === undefined
+        ? "none"
+        : selector.kind === "session" || selector.kind === "message" || selector.kind === "part"
+          ? selector.kind
+          : "other"
+    const shape = {
+      family,
+      kind,
+      ...(typeof selector.depth === "number" && Number.isSafeInteger(selector.depth) && selector.depth >= 0
+        ? { depth: selector.depth }
+        : {}),
+      scope: selector.scope === true,
+      session: selector.session === true,
+      message: selector.message === true,
+      cursor: selector.cursor === true,
+      descending: selector.descending === true,
+    }
+    const key = JSON.stringify(shape)
+    let current = ranges.get(key)
+    if (!current && ranges.size < 32) {
+      current = { ...shape, calls: 0, maxRows: 0, maxLimit: 0, unbounded: 0 }
+      ranges.set(key, current)
+    }
+    const counts = current ?? overflow
+    if (!current) overflow.entries++
+    counts.calls += range.calls
+    counts.maxRows = Math.max(counts.maxRows, range.maxRows)
+    counts.maxLimit = Math.max(counts.maxLimit, range.maxLimit)
+    counts.unbounded += range.unbounded
+    rangeCalls += range.calls
+  }
+  return { maxReadMany: metrics.maxReadMany, rangeCalls, ranges: [...ranges.values()], overflow }
+}
 export const WrittenHistory = z.object({
   sessionID: z.string(),
   count: z.number(),
@@ -263,6 +357,7 @@ export const CapacityReply = z.discriminatedUnion("type", [
     jscTuningPresent: z.boolean().optional(),
     coverageRequested: z.boolean().optional(),
     profilerRequested: z.boolean().optional(),
+    storage: CapacityProgressStorage.optional(),
   }),
   z.object({ type: z.literal("result"), id: z.string(), result: z.unknown() }),
   z.object({ type: z.literal("failed"), id: z.string().optional(), message: z.string() }),
@@ -408,6 +503,7 @@ async function main() {
                         cpuSystemMs: cpu.system / 1000,
                         ...executionOptions,
                         ...nativeOrder.snapshot(),
+                        storage: progressStorage(memory),
                       })
                     }
                   }

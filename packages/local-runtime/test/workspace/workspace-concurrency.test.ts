@@ -20,6 +20,7 @@ import { FileCoordination } from "../../src/file/coordination"
 import { RuntimeMaintenance } from "@ericsanchezok/synergy-harness/storage/runtime-maintenance"
 import { AtomicFile } from "@ericsanchezok/synergy-util/atomic-file"
 import { OwnedTree } from "../../src/process/owned-tree"
+import { Observability } from "@ericsanchezok/synergy-harness/observability"
 
 test("an exited full-access Bash does not block another worktree while its turn continues", async () => {
   await using runtime = await testRuntime({ env: { SHELL: process.platform === "win32" ? "cmd.exe" : "/bin/sh" } })
@@ -154,6 +155,29 @@ for (const shared of [false, true])
     await using runtime = await testRuntime({ env: { SHELL: process.platform === "win32" ? "cmd.exe" : "/bin/sh" } })
     stage("runtime-ready")
     const selectedRuntime = await runtime.run(() => RuntimeContext.current())
+    const bTraceID = process.platform === "win32" ? Observability.traceId("bash") : undefined
+    const bTraceTypes = new Set([
+      "bash.parser.start",
+      "bash.parser.end",
+      "bash.parser.error",
+      "bash.process.registered",
+      "process.spawn",
+      "bash.child.exit",
+      "bash.child.close",
+      "bash.child.error",
+      "attachment.discovery.start",
+      "attachment.discovery.end",
+      "attachment.discovery.error",
+    ])
+    const emit = Observability.emit
+    using nativeTrace =
+      process.platform === "win32"
+        ? spyOn(Observability, "emit").mockImplementation((type, input) => {
+            if (RuntimeContext.tryCurrent() === selectedRuntime && input?.traceId === bTraceID && bTraceTypes.has(type))
+              stage("b-native-trace", { event: type })
+            return emit(type, input)
+          })
+        : undefined
     let diagnosingExclusive = false
     const exclusiveObservation = new AsyncLocalStorage<boolean>()
     const selected = () =>
@@ -306,13 +330,13 @@ for (const shared of [false, true])
             },
           })
           stage("worktrees-and-sessions-ready")
-          const context = (identity: { sessionID: string; messageID: string; callID: string }) => ({
+          const context = (identity: { sessionID: string; messageID: string; callID: string }, traceId?: string) => ({
             ...identity,
             agent: PrimaryAgentIdentity.names.general,
             abort: AbortSignal.timeout(10_000),
             metadata() {},
             async ask() {},
-            extra: { shellBypassSandbox: true, controlProfile: "full_access" },
+            extra: { shellBypassSandbox: true, controlProfile: "full_access", ...(traceId ? { traceId } : {}) },
           })
           await ScopeContext.provide({
             scope,
@@ -345,7 +369,7 @@ for (const shared of [false, true])
                         async (identity) => {
                           stage("b-native-execute")
                           const value = await LocalBashBackend.execute(params, {
-                            ...context(identity),
+                            ...context(identity, bTraceID),
                             workBrief: "concurrent work",
                           })
                           stage("b-native-returned", { exit: value.metadata.exit ?? null })

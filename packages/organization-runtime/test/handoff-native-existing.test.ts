@@ -36,6 +36,15 @@ type Stage =
   | "prepare"
   | "accept"
   | "drive"
+  | "preview-complete"
+  | "difference-pages-complete"
+  | "wrong-source-hash-returned"
+  | "wrong-target-digest-returned"
+  | "wrong-diff-hash-returned"
+  | "wrong-revision-returned"
+  | "target-files-entered"
+  | "target-files-released"
+  | "target-files-settled"
   | "target-close"
   | "target-reopen"
   | "target-history"
@@ -317,6 +326,7 @@ async function adopted(
   )?.proof
   if (difference?.purpose !== "target-difference")
     throw new Error("Native adoption did not expose its complete difference")
+  phase("preview-complete")
   expect(difference.difference.sourceSnapshotHash).toBe(frozen.workspaceSourceHash)
   const entries: z.infer<typeof Handoff.DifferencePage>["items"] = []
   let cursor: string | undefined
@@ -328,6 +338,7 @@ async function adopted(
     entries.push(...page.differencePage.items)
     cursor = page.differencePage.cursor
   } while (cursor)
+  phase("difference-pages-complete")
   expect(entries.length).toBe(difference.difference.entries)
   for (const name of ["different.bin", "source-only.txt", "target-only.txt"])
     expect(entries.some((entry) => entry.path === name)).toBe(true)
@@ -340,7 +351,11 @@ async function adopted(
       expect(entries.some((entry) => entry.path === name)).toBe(true)
   const consent = Handoff.DifferenceConsent.strip().parse(difference.difference)
   if (scenario === "complete") {
-    for (const key of ["sourceSnapshotHash", "targetDigest", "diffHash"] as const) {
+    for (const [key, returned] of [
+      ["sourceSnapshotHash", "wrong-source-hash-returned"],
+      ["targetDigest", "wrong-target-digest-returned"],
+      ["diffHash", "wrong-diff-hash-returned"],
+    ] as const) {
       const wrong = await fixture.service.client.orgHandoff.accept(
         {
           handoffID,
@@ -352,6 +367,7 @@ async function adopted(
         },
         { headers: fixture.service.headers },
       )
+      phase(returned)
       expect(wrong.response.status).toBe(409)
     }
     const wrongRevision = await fixture.service.client.orgHandoff.accept(
@@ -361,6 +377,7 @@ async function adopted(
       },
       { headers: fixture.service.headers },
     )
+    phase("wrong-revision-returned")
     expect(wrongRevision.response.status).toBe(409)
     expect((await fixture.service.client.orgHandoff.get({ handoffID }, options)).data.workspaceDifferenceAccepted).toBe(
       false,
@@ -418,12 +435,12 @@ async function adopted(
     const resume = Promise.withResolvers<void>()
     const prepareTarget = Files.prepareTarget
     using preparation = spyOn(Files, "prepareTarget").mockImplementation(async (input) => {
-      if (
+      const original =
         input.binding.handoffID === handoffID &&
         input.binding.sessionID === source.sessionID &&
         input.binding.targetID === target.registration.runtimeID &&
         input.nativeMode === "existing"
-      ) {
+      if (original) {
         expect(input.binding).toEqual({
           scopeID: fixture.project.projectID,
           sessionID: source.sessionID,
@@ -433,10 +450,16 @@ async function adopted(
           fromEpoch: inspected.bindingEpoch,
           toEpoch: inspected.bindingEpoch + 1,
         })
+        phase("target-files-entered")
         entered.resolve()
         await resume.promise
+        phase("target-files-released")
       }
-      return prepareTarget(input)
+      try {
+        return await prepareTarget(input)
+      } finally {
+        if (original) phase("target-files-settled")
+      }
     })
     const preparing = drive("prepare-target").then(
       (value) => ({ kind: "completed" as const, value }),
@@ -691,5 +714,5 @@ for (const scenario of ["complete", "target-changed", "source-replaced"] as cons
       ? "a native source offers explicit adoption of the destination member's existing directory"
       : `native existing-directory adoption rejects ${scenario} after exact difference consent`,
     () => execute(scenario),
-    45000,
+    scenario === "complete" ? 90000 : 45000,
   )

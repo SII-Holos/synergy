@@ -109,62 +109,125 @@ async function waitUntil(fn: () => Promise<boolean>) {
   }
 }
 
+function processStages(fixture: string) {
+  const started = performance.now()
+  return (stage: string) => {
+    if (process.platform === "win32")
+      console.info(JSON.stringify({ fixture, stage, elapsedMs: performance.now() - started }))
+  }
+}
+
 test("logical Workspaces cannot run worktree preparation callbacks on the controller", async () => {
+  const stage = processStages("logical-workspace-process")
+  stage("test-enter")
   const { EnvironmentResources } = await import("@ericsanchezok/synergy-harness/environment/resources")
   const { WorkspaceCatalog } = await import("@ericsanchezok/synergy-harness/workspace")
   const { Worktree } = await import("../../src/workspace/worktree")
+  stage("imports-ready")
   await using runtime = await testRuntime()
+  stage("runtime-ready")
   await runtime.run(async () => {
+    stage("runtime-entered")
     await using tmp = await tmpdir({ git: true })
+    stage("temporary-project-ready")
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
+        stage("scope-entered")
+        stage("workspace-create-enter")
         const workspace = await WorkspaceCatalog.create({
           scopeID: ScopeContext.current.scope.id,
           backend: { provider: "objects", spec: { blobStore: "local", settings: { namespace: "fixture" } } },
         })
+        stage("workspace-create-returned")
+        stage("resources-resolve-enter")
         await using resources = await EnvironmentResources.resolve({
           origin: runtime.origin("process-1"),
           scopeID: workspace.scopeID,
           workspaceID: workspace.id,
           needs: { workspace: true },
         })
+        stage("resources-resolve-returned")
+        stage("readdir-before-enter")
         const before = await fs.readdir(tmp.path)
-        await expect(
-          EnvironmentResources.provide(resources, "worktree", () =>
-            Worktree.create({ name: "remote", bind: false, baseRef: "current" }),
-          ),
-        ).rejects.toThrow("native directory Workspace")
+        stage("readdir-before-returned")
+        stage("worktree-negative-enter")
+        const outcome = await EnvironmentResources.provide(resources, "worktree", () =>
+          Worktree.create({ name: "remote", bind: false, baseRef: "current" }),
+        ).then(
+          () => ({ kind: "completed" as const }),
+          (error: unknown) => ({ kind: "rejected" as const, error }),
+        )
+        stage(outcome.kind === "rejected" ? "worktree-rejected" : "worktree-completed")
+        expect(() => {
+          if (outcome.kind === "rejected") throw outcome.error
+        }).toThrow("native directory Workspace")
+        stage("worktree-negative-verified")
+        stage("readdir-after-enter")
         expect(await fs.readdir(tmp.path)).toEqual(before)
+        stage("readdir-after-returned")
       },
     })
+    stage("scope-returned")
   })
+  stage("runtime-body-returned")
 })
 
 test("a remote Session cannot create a native worktree through its project Scope", async () => {
+  const stage = processStages("remote-session-worktree")
+  stage("test-enter")
   const { Environment } = await import("@ericsanchezok/synergy-harness/environment")
   const { Session } = await import("@ericsanchezok/synergy-harness/session")
   const { Worktree } = await import("../../src/workspace/worktree")
+  stage("imports-ready")
   await using runtime = await testRuntime()
+  stage("runtime-ready")
   await runtime.run(async () => {
+    stage("runtime-entered")
     await using tmp = await tmpdir({ git: true })
+    stage("temporary-project-ready")
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
+        stage("scope-entered")
+        stage("environment-bind-enter")
         const remote = await Environment.bind({
           scopeID: ScopeContext.current.scope.id,
           ownerID: "remote",
           provider: "docker",
           spec: { host: { endpoint: "unix:///absent.sock" }, image: "executor:test" },
         })
+        stage("environment-bind-returned")
+        stage("session-create-enter")
         const session = await Session.create({ environmentID: remote.id })
+        stage("session-create-returned")
+        stage("readdir-before-enter")
         const before = await fs.readdir(tmp.path)
-        await expect(
-          Worktree.create({ sessionID: session.id, name: "remote", bind: false, baseRef: "current" }),
-        ).rejects.toThrow("native Environment")
+        stage("readdir-before-returned")
+        stage("worktree-negative-enter")
+        const outcome = await Worktree.create({
+          sessionID: session.id,
+          name: "remote",
+          bind: false,
+          baseRef: "current",
+        }).then(
+          () => ({ kind: "completed" as const }),
+          (error: unknown) => ({ kind: "rejected" as const, error }),
+        )
+        stage(outcome.kind === "rejected" ? "worktree-rejected" : "worktree-completed")
+        expect(() => {
+          if (outcome.kind === "rejected") throw outcome.error
+        }).toThrow("native Environment")
+        stage("worktree-negative-verified")
+        stage("readdir-after-enter")
         expect(await fs.readdir(tmp.path)).toEqual(before)
+        stage("readdir-after-returned")
+        stage("environment-idle-read-enter")
         expect((await Environment.get(remote.id, session.scope.id)).state).toBe("idle")
+        stage("environment-idle-read-returned")
       },
     })
+    stage("scope-returned")
   })
+  stage("runtime-body-returned")
 })

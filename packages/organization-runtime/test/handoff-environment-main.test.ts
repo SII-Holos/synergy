@@ -4,6 +4,7 @@ import path from "node:path"
 import {
   OrganizationCommandProtocol as Command,
   OrganizationHandoffProtocol as Handoff,
+  OrganizationProtocol,
 } from "@ericsanchezok/synergy-organization-protocol"
 import { EnvironmentExecution } from "@ericsanchezok/synergy-harness/environment/execution"
 import { Session } from "@ericsanchezok/synergy-harness/session"
@@ -18,9 +19,52 @@ const quote = (value: string) => "'" + value.replaceAll("'", "'\\''") + "'"
 const command = (program: string) => [process.execPath, "-e", program].map(quote).join(" ")
 
 async function stage<T>(name: string, body: () => Promise<T>) {
+  const observed = name === "cloud-environment-return:prepare-target"
+  const started = observed ? performance.now() : 0
+  if (observed)
+    console.error(
+      "ENVIRONMENT_MAPPING_TARGET_PHASE",
+      JSON.stringify({ leg: "return", operation: "prepare-target", phase: "entered", elapsedMs: 0 }),
+    )
   try {
-    return await body()
+    const result = await body()
+    if (observed)
+      console.error(
+        "ENVIRONMENT_MAPPING_TARGET_PHASE",
+        JSON.stringify({
+          leg: "return",
+          operation: "prepare-target",
+          phase: "completed",
+          elapsedMs: performance.now() - started,
+        }),
+      )
+    return result
   } catch (cause) {
+    if (observed) {
+      let failure = {}
+      try {
+        const property = (value: unknown, key: string): unknown =>
+          typeof value === "object" && value !== null ? Object.getOwnPropertyDescriptor(value, key)?.value : undefined
+        const data = property(cause, "data")
+        const parsed = OrganizationProtocol.Error.pick({ code: true, outcome: true })
+          .strip()
+          .safeParse({
+            code: property(cause, "code") ?? property(data, "code"),
+            outcome: property(cause, "outcome") ?? property(data, "outcome"),
+          })
+        if (parsed.success) failure = parsed.data
+      } catch {}
+      console.error(
+        "ENVIRONMENT_MAPPING_TARGET_PHASE",
+        JSON.stringify({
+          leg: "return",
+          operation: "prepare-target",
+          phase: "failed",
+          elapsedMs: performance.now() - started,
+          ...failure,
+        }),
+      )
+    }
     throw new Error("Environment mapping stage failed: " + name, { cause })
   }
 }

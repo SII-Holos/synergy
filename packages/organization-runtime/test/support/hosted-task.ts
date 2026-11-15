@@ -11,6 +11,7 @@ import { OrganizationCommandRecords as Records } from "../../src/command-records
 import { OrganizationExecutionLeases } from "../../src/execution-leases"
 import { OrganizationIntakePath as Keys } from "../../src/storage/path"
 import type { fixture } from "./organization"
+import { observeTaskFailure } from "./task-failure"
 
 interface HostedTaskRuntime {
   service: Awaited<ReturnType<typeof fixture>>
@@ -21,11 +22,13 @@ interface HostedTaskRuntime {
 async function startHostedTask(selected: HostedTaskRuntime, hold: boolean) {
   const started = Promise.withResolvers<void>()
   const calls: unknown[] = []
+  let upstreamHeaders = 0
   const streams = new Set<ReadableStreamDefaultController<Uint8Array>>()
   const upstream = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
     async fetch(request) {
+      upstreamHeaders++
       calls.push(await request.json())
       started.resolve()
       if (hold)
@@ -148,7 +151,29 @@ async function startHostedTask(selected: HostedTaskRuntime, hold: boolean) {
         options,
       )
     ).data
-    await bounded(started.promise)
+    const waitingAt = Date.now()
+    try {
+      await bounded(started.promise)
+    } catch (error) {
+      console.error(
+        "HOSTED_TASK_START_FAILURE",
+        JSON.stringify({
+          stage: "hosted-model-start",
+          inputAccepted: true,
+          observedAt: Date.now(),
+          waitedMs: Date.now() - waitingAt,
+          upstreamHeaders,
+          upstreamBodies: calls.length,
+        }),
+      )
+      await observeTaskFailure({
+        runtime: selected.runtime,
+        accepted,
+        stage: "hosted-model-start",
+        upstreamCalls: calls.length,
+      }).catch(() => undefined)
+      throw error
+    }
     return {
       sessionID,
       accepted,
