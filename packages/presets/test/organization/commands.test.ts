@@ -442,15 +442,80 @@ test("unreceived creation can be skipped before the Session exists and retried w
   const delayed = await runtime.run(() => receiver.intake.create(first))
   expect(delayed.attempt.status).toBe("skipped")
   expect(delayed.accepted).toEqual(retry.data)
-  const input = await client.orgCommands.input(
-    {
+  const entered = Promise.withResolvers<Command.Result>()
+  const release = Promise.withResolvers<void>()
+  const observe = f.commands.observe
+  const callbackState: { outcome?: Promise<{ kind: "settled" } | { kind: "failed"; error: unknown }> } = {}
+  using originalReceipt = spyOn(f.commands, "observe").mockImplementation((...args) => {
+    const operation = (async () => {
+      const observed = await observe(...args)
+      if (args[1].attempt.permit.requestID === "after-create") {
+        entered.resolve(args[1])
+        await release.promise
+      }
+      return observed
+    })()
+    if (args[1].attempt.permit.requestID === "after-create")
+      callbackState.outcome = operation.then(
+        () => ({ kind: "settled" as const }),
+        (error: unknown) => ({ kind: "failed" as const, error }),
+      )
+    return operation
+  })
+  const submitted = (async () => {
+    const response = await client.orgCommands.input({
       sessionID: retry.data.effect.sessionID,
       orgCommandInputRequest: { ...f.request("after-create"), sessionID: retry.data.effect.sessionID },
-    },
-    { throwOnError: true },
+    })
+    if (response.data) return { data: Command.InputAccepted.parse(response.data) }
+    expect(response.response.status).toBe(504)
+    expect(response.error).toMatchObject({
+      code: "COMMAND_OUTCOME_UNKNOWN",
+      requestID: "after-create",
+      outcome: "unknown",
+    })
+    const original = await entered.promise
+    expect(original.attempt.status).toBe("accepted")
+    const current = await client.orgCommands.get(
+      { sessionID: retry.data.effect.sessionID, requestID: "after-create" },
+      { throwOnError: true },
+    )
+    expect(current.data.state).toBe("accepted")
+    expect(current.data.accepted).toEqual(original.accepted)
+    return { data: Command.InputAccepted.parse(current.data.accepted) }
+  })()
+  const outcome = submitted.then(
+    (value) => ({ kind: "returned" as const, value }),
+    (error: unknown) => ({ kind: "failed" as const, error }),
   )
-  expect(input.data.intakeSeq).toBe(2)
-  expect(input.data.permit.commandSeq).toBe(3)
+  try {
+    const committed = await Promise.race([
+      entered.promise.then((result) => ({ kind: "committed" as const, result })),
+      outcome,
+    ])
+    if (committed.kind === "failed") throw committed.error
+    if (committed.kind !== "committed")
+      throw new Error("The original input returned before the retained Service receipt was observed")
+    expect(committed.result.attempt.status).toBe("accepted")
+    expect(committed.result.accepted?.permit).toMatchObject({
+      orgID: binding.orgID,
+      runtimeID: binding.driverRuntimeID,
+      sessionID: retry.data.effect.sessionID,
+      requestID: "after-create",
+      connectionEpoch: 1,
+      bindingEpoch: 1,
+    })
+    const completed = await outcome
+    if (completed.kind === "failed") throw completed.error
+    expect(completed.value.data.intakeSeq).toBe(2)
+    expect(completed.value.data.permit.commandSeq).toBe(3)
+    expect(receiver.inputs.filter((value) => value.authorization.permit.requestID === "after-create")).toHaveLength(1)
+  } finally {
+    release.resolve()
+    await Promise.all([outcome, callbackState.outcome?.then(() => undefined)])
+  }
+  const callback = await callbackState.outcome
+  if (callback?.kind === "failed") throw callback.error
 })
 
 async function nativeSession(runtime: Awaited<ReturnType<typeof testRuntime>>, sessionID: string) {

@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0217](0217-continue-returned-before-scheduled-owner-completed.md)
+
 - [0216](0216-native-control-lookups-repeated-sql-dispatches.md)
 
 - [0215](0215-offline-home-retirement-left-telemetry-producers-active.md)
