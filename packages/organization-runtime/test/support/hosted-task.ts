@@ -235,12 +235,12 @@ async function startHostedTask(
   }
 }
 
-async function until<T>(read: () => Promise<T | undefined>) {
-  const deadline = Date.now() + 4000
+async function until<T>(read: () => Promise<T | undefined>, timeout: number | null = 4000) {
+  const deadline = timeout === null ? undefined : Date.now() + timeout
   for (;;) {
     const value = await read()
     if (value !== undefined) return value
-    if (Date.now() >= deadline) throw new Error("The original Hosted task did not settle")
+    if (deadline !== undefined && Date.now() >= deadline) throw new Error("The original Hosted task did not settle")
     await new Promise<void>((resolve) => setTimeout(resolve, 5))
   }
 }
@@ -249,15 +249,18 @@ async function releasedTask(
   selected: HostedTaskRuntime,
   requestID: string,
   observe?: (value: ReturnType<typeof Records.Release.parse> | undefined) => void,
+  timeout: number | null = 4000,
 ) {
   const releaseKey = Keys.release(selected.service.identity.orgID, selected.service.identity.accountID, requestID)
-  return until(() =>
-    selected.runtime.run(async () => {
-      const [raw] = await Storage.readMany([releaseKey])
-      const value = raw === undefined ? undefined : Records.Release.parse(raw)
-      observe?.(value)
-      return value?.state === "released" ? value : undefined
-    }),
+  return until(
+    () =>
+      selected.runtime.run(async () => {
+        const [raw] = await Storage.readMany([releaseKey])
+        const value = raw === undefined ? undefined : Records.Release.parse(raw)
+        observe?.(value)
+        return value?.state === "released" ? value : undefined
+      }),
+    timeout,
   )
 }
 
@@ -288,39 +291,44 @@ export async function appendCompletedHostedTask(
   const waitingAt = Date.now()
   let reads = 0
   let last: Record<string, unknown> | undefined
-  const release = await releasedTask(selected, requestID, (value) => {
-    reads++
-    const observedAt = Date.now()
-    last = {
-      observedAt,
-      releaseState: value?.state ?? "missing",
-      receiptOutcome: value?.receipt?.outcome ?? "absent",
-      originalRelease:
-        value !== undefined &&
-        value.sessionID === accepted.permit.sessionID &&
-        value.rootID === accepted.effect.messageID &&
-        value.runtimeID === accepted.permit.runtimeID &&
-        value.bindingEpoch === accepted.permit.bindingEpoch &&
-        value.grantID === accepted.permit.provisionalGrantID,
-    }
-    try {
-      const manager = SessionManager.getRuntime(task.sessionID)
-      const activity = manager?.status.type === "busy" ? manager.status.activity : undefined
-      Object.assign(last, {
-        managerPresent: manager !== undefined,
-        ownerPresent: manager?.owner !== undefined,
-        ownerRootMatches: manager?.owner?.rootID === accepted.effect.messageID,
-        ownerAborted: manager?.owner?.lease.signal.aborted ?? "absent",
-        loopPhase: manager?.owner?.phase ?? "absent",
-        executionPhase: manager?.executionPhase ?? "absent",
-        activityPhase: activity?.phase ?? "absent",
-        activityRootMatches: activity?.rootID === accepted.effect.messageID,
-        activityAgeMs: activity ? Math.max(0, observedAt - activity.startedAt) : "absent",
-      })
-    } catch {
-      last.managerObservation = "unavailable"
-    }
-  }).catch(async (error) => {
+  const release = await releasedTask(
+    selected,
+    requestID,
+    (value) => {
+      reads++
+      const observedAt = Date.now()
+      last = {
+        observedAt,
+        releaseState: value?.state ?? "missing",
+        receiptOutcome: value?.receipt?.outcome ?? "absent",
+        originalRelease:
+          value !== undefined &&
+          value.sessionID === accepted.permit.sessionID &&
+          value.rootID === accepted.effect.messageID &&
+          value.runtimeID === accepted.permit.runtimeID &&
+          value.bindingEpoch === accepted.permit.bindingEpoch &&
+          value.grantID === accepted.permit.provisionalGrantID,
+      }
+      try {
+        const manager = SessionManager.getRuntime(task.sessionID)
+        const activity = manager?.status.type === "busy" ? manager.status.activity : undefined
+        Object.assign(last, {
+          managerPresent: manager !== undefined,
+          ownerPresent: manager?.owner !== undefined,
+          ownerRootMatches: manager?.owner?.rootID === accepted.effect.messageID,
+          ownerAborted: manager?.owner?.lease.signal.aborted ?? "absent",
+          loopPhase: manager?.owner?.phase ?? "absent",
+          executionPhase: manager?.executionPhase ?? "absent",
+          activityPhase: activity?.phase ?? "absent",
+          activityRootMatches: activity?.rootID === accepted.effect.messageID,
+          activityAgeMs: activity ? Math.max(0, observedAt - activity.startedAt) : "absent",
+        })
+      } catch {
+        last.managerObservation = "unavailable"
+      }
+    },
+    null,
+  ).catch(async (error) => {
     const upstream = task.upstreamObservation()
     console.error(
       "HOSTED_TASK_RELEASE_FAILURE",
@@ -348,8 +356,10 @@ export async function appendCompletedHostedTask(
     throw error
   })
   expect(release.receipt?.outcome).toBe("completed")
-  await until(() =>
-    selected.runtime.run(async () => ((await OrganizationExecutionLeases.pendingForCapture()) ? undefined : true)),
+  await until(
+    () =>
+      selected.runtime.run(async () => ((await OrganizationExecutionLeases.pendingForCapture()) ? undefined : true)),
+    null,
   )
   return accepted
 }
@@ -744,21 +754,23 @@ export async function continueRestoredHostedTask(
     controlVersion: control.controlVersion + 1,
   })
   if (queued) expect(continued.effect).toMatchObject({ itemID: accepted.effect.itemID, messageID: rootID, rootID })
-  const settled = await until(() =>
-    selected.runtime.run(async () => {
-      for await (const row of Storage.records({ prefix: ["organization-execution-leases", "entries"], limit: 128 })) {
-        const entry = OrganizationExecutionLeases.Entry.parse(row.value)
-        if (
-          entry.authority.sessionID === saved.id &&
-          entry.authority.rootID === rootID &&
-          entry.authority.control?.admissionID === continued.permit.admissionID &&
-          entry.state === "settled" &&
-          entry.settlement?.kind === "terminal"
-        )
-          return entry
-      }
-      return undefined
-    }),
+  const settled = await until(
+    () =>
+      selected.runtime.run(async () => {
+        for await (const row of Storage.records({ prefix: ["organization-execution-leases", "entries"], limit: 128 })) {
+          const entry = OrganizationExecutionLeases.Entry.parse(row.value)
+          if (
+            entry.authority.sessionID === saved.id &&
+            entry.authority.rootID === rootID &&
+            entry.authority.control?.admissionID === continued.permit.admissionID &&
+            entry.state === "settled" &&
+            entry.settlement?.kind === "terminal"
+          )
+            return entry
+        }
+        return undefined
+      }),
+    null,
   ).catch(async (error) => {
     await observeTaskFailure({
       runtime: selected.runtime,
@@ -804,8 +816,10 @@ export async function continueRestoredHostedTask(
     kind: "terminal",
     receipt: { outcome: "completed", rootID: rootID },
   })
-  await until(() =>
-    selected.runtime.run(async () => ((await OrganizationExecutionLeases.pendingForCapture()) ? undefined : true)),
+  await until(
+    () =>
+      selected.runtime.run(async () => ((await OrganizationExecutionLeases.pendingForCapture()) ? undefined : true)),
+    null,
   )
   const run = await selected.runtime.run(() => RolloutLedger.getRun(owner, rootID))
   expect(run).toMatchObject({ id: rootID, status: "completed" })
