@@ -102,6 +102,7 @@ export function registerNativeEnvironment(options: { coordinator?: WorkspaceCoor
       if (status.state === "unknown") throw new Error("Cannot release another native allocation")
       await (await executors.get(request.requestID))?.close()
       executors.delete(request.requestID)
+      await fs.rm(path.join(path.dirname(filename(request)), request.requestID), { recursive: true, force: true })
       await fs.unlink(filename(request))
       await AtomicFile.syncDirectories(path.dirname(filename(request)))
     },

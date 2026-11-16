@@ -69,7 +69,7 @@ test("detaching a replaced materialized mount cannot delete the replacement dire
   try {
     const empty = WorkspaceTree.encode({ version: 1, entries: [] })
     const manifest = WorkspaceTree.hash(empty)
-    await host.putBlob(manifest, empty)
+    await host.putBlob(manifest, empty, { kind: "mount", id: "materialized" })
     const mount = await host.mount({
       id: "materialized",
       workspaceID: "workspace",
@@ -382,7 +382,7 @@ test("a completed directory mutation retries only its failed checkpoint after a 
   const host = new NativeWorkspaceFiles(options)
   const empty = WorkspaceTree.encode({ version: 1, entries: [] })
   const manifest = WorkspaceTree.hash(empty)
-  await host.putBlob(manifest, empty)
+  await host.putBlob(manifest, empty, { kind: "mount", id: "materialized" })
   const mount = await host.mount({
     id: "materialized",
     workspaceID: "workspace",
@@ -391,9 +391,9 @@ test("a completed directory mutation retries only its failed checkpoint after a 
     source: { kind: "materialized", manifest },
   })
   const put = host.putBlob.bind(host)
-  host.putBlob = async (hash, bytes) => {
+  host.putBlob = async (hash, bytes, owner) => {
     if (await fs.stat(path.join(mount.path, "folder")).catch(() => undefined)) throw new Error("checkpoint interrupted")
-    await put(hash, bytes)
+    await put(hash, bytes, owner)
   }
   const input = { id: "mkdir", mount, change: { kind: "mkdir" as const, path: "folder" } }
   await expect(host.mutate(input)).rejects.toThrow("checkpoint interrupted")

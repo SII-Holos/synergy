@@ -11,6 +11,8 @@ export namespace WorkspaceProtocol {
     .regex(/^[a-zA-Z0-9_-][a-zA-Z0-9_.:-]*$/)
   export const Reference = z.object({ id: ID, workspaceID: ID, generation: z.number().int().positive() })
   export type Reference = z.infer<typeof Reference>
+  export const BlobOwner = z.object({ kind: z.enum(["mount", "checkpoint", "execution"]), id: ID })
+  export type BlobOwner = z.infer<typeof BlobOwner>
   export const CheckpointFailure = z.object({ mount: Reference, failure: WorkspaceErrors.Failure })
   export type CheckpointFailure = z.infer<typeof CheckpointFailure>
   export const Observation = z.object({ epoch: z.string().uuid(), version: z.number().int().nonnegative() })
@@ -171,6 +173,6 @@ export interface WorkspaceFileHost {
   checkpoint(input: WorkspaceProtocol.CheckpointInput): Promise<WorkspaceProtocol.Checkpoint>
   acknowledge(id: string): Promise<void>
   checkpointStatus(id: string): Promise<WorkspaceProtocol.CheckpointStatus | undefined>
-  putBlob(hash: string, bytes: Uint8Array): Promise<void>
+  putBlob(hash: string, bytes: Uint8Array, owner: WorkspaceProtocol.BlobOwner): Promise<void>
   getBlob(hash: string, maximumBytes: number): Promise<Uint8Array>
 }

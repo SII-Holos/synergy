@@ -97,7 +97,8 @@ export namespace ExecutionHost {
               return Response.json({ error: "Workspace operations unavailable" }, { status: 404 })
             const hash = WorkspaceTree.Hash.parse(url.pathname.slice("/v1/workspace-objects/".length))
             if (request.method === "PUT") {
-              await input.executor.files.putBlob(hash, new Uint8Array(await request.arrayBuffer()))
+              const owner = WorkspaceProtocol.BlobOwner.parse(Object.fromEntries(url.searchParams))
+              await input.executor.files.putBlob(hash, new Uint8Array(await request.arrayBuffer()), owner)
               return Response.json(true)
             }
             if (request.method === "GET")
@@ -375,6 +376,15 @@ export namespace ExecutionHost {
           },
           put: {
             summary: "Stage an immutable Workspace object",
+            parameters: [
+              {
+                name: "kind",
+                in: "query",
+                required: true,
+                schema: { type: "string", enum: ["mount", "checkpoint", "execution"] },
+              },
+              { name: "id", in: "query", required: true, schema: { type: "string" } },
+            ],
             requestBody: {
               required: true,
               content: { "application/octet-stream": { schema: { type: "string", format: "binary" } } },
