@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0227](0227-cross-os-receipt-polling-lost-original-target-rejection.md)
+
 - [0226](0226-cross-os-bootstrap-counted-peer-runner-allocation.md)
 
 - [0225](0225-handoff-object-proofs-compared-unrelated-clocks.md)

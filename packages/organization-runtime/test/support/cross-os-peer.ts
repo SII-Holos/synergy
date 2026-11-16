@@ -31,6 +31,8 @@ import { MemberIdentity, prepareMemberHome } from "../../src/home"
 import { enrollMemberRuntime } from "../../src/enrollment"
 import { openMemberRuntime } from "../../src/runtime"
 import { readCommandControlVersion } from "../../src/command-intake"
+import { OrganizationHandoffTarget as HandoffTarget } from "../../src/handoff-target"
+import { createTargetPreparationObservation } from "./cross-os-failures"
 
 const ID = z.string().min(1).max(256)
 export const Action = z.discriminatedUnion("kind", [
@@ -111,8 +113,20 @@ export async function createPeer(input: {
   await probe.stop(true)
   const token = randomBytes(32).toString("hex")
   const wake = spyOn(SessionManager, "scheduleWake").mockImplementation(() => {})
+  const targetPreparation = createTargetPreparationObservation()
   let runtime: Awaited<ReturnType<typeof openMemberRuntime>>
   try {
+    const createTarget = HandoffTarget.create
+    using targetFactory = spyOn(HandoffTarget, "create").mockImplementation((options) => {
+      const target = createTarget(options)
+      if (options.runtimeID !== registration.runtimeID) return target
+      return {
+        ...target,
+        prepare(value: Parameters<typeof target.prepare>[0]) {
+          return targetPreparation.observe(target.prepare(value), value.signal)
+        },
+      }
+    })
     runtime = await openMemberRuntime({
       home: home.home,
       identity: home.identity,
@@ -442,5 +456,6 @@ export async function createPeer(input: {
     wake.mockRestore()
     closed = true
   }
-  return { registration, dispatch, close }
+
+  return { registration, dispatch, close, targetPreparationFailures: targetPreparation.snapshot }
 }

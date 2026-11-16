@@ -10,6 +10,7 @@ import { Resolver, getServers } from "node:dns/promises"
 import { OrganizationProtocol } from "@ericsanchezok/synergy-organization-protocol"
 import {
   safeCrossOSTransportText,
+  createTargetPreparationObservation,
   safeCrossOSHeaderFailure,
   recordCrossOSHeaderFailure,
   isOriginalHeaderTimeout,
@@ -90,7 +91,7 @@ test("cross-OS JSON transport counts streamed bytes before decoding and cancels 
   await expect(readControlJSON(new Response("invalid-json"))).rejects.toBeInstanceOf(SyntaxError)
 })
 
-test("cross-OS failure facts preserve canonical codes and original fixture frames without body, credentials or paths", () => {
+test("cross-OS failure facts preserve canonical codes and original fixture frames without body, credentials or paths", async () => {
   const secret = "private-body-and-credential"
   let getters = 0
   const failure = {
@@ -116,6 +117,42 @@ test("cross-OS failure facts preserve canonical codes and original fixture frame
     status: 504,
     frames: [{ file: "test/handoff-cross-os.test.ts", line: 42, column: 7 }],
   })
+  expect(getters).toBe(0)
+  const preparation = createTargetPreparationObservation()
+  for (let index = 0; index < 5; index++) {
+    const controller = new AbortController()
+    if (index === 1) controller.abort()
+    const pending = Promise.withResolvers<unknown>()
+    const observed = preparation.observe(pending.promise, controller.signal)
+    expect(observed).toBe(pending.promise)
+    expect(preparation.snapshot()).toHaveLength(Math.min(index, 4))
+    pending.reject(failure)
+    expect(await observed.catch((error: unknown) => error)).toBe(failure)
+  }
+  const snapshot = preparation.snapshot()
+  expect(snapshot).toHaveLength(4)
+  expect(snapshot.map((fact) => fact.signalAborted)).toEqual([false, true, false, false])
+  expect(
+    snapshot.every((fact) => fact.operation === "prepare-target" && fact.error.code === "COMMAND_OUTCOME_UNKNOWN"),
+  ).toBe(true)
+  expect(JSON.stringify(snapshot)).not.toContain(secret)
+  snapshot[0]!.error.name = "mutated snapshot"
+  expect(preparation.snapshot()[0]!.error.name).toBe("OrganizationError")
+  const successful = Promise.resolve({ retained: "original result" })
+  expect(preparation.observe(successful, new AbortController().signal)).toBe(successful)
+  expect(await successful).toEqual({ retained: "original result" })
+  expect(preparation.snapshot()).toHaveLength(4)
+  const hostile = createTargetPreparationObservation()
+  const hostileSignal = new Proxy(new AbortController().signal, {
+    get() {
+      throw new Error(secret)
+    },
+  })
+  const rejected = Promise.reject(failure)
+  expect(hostile.observe(rejected, hostileSignal)).toBe(rejected)
+  expect(await rejected.catch((error: unknown) => error)).toBe(failure)
+  await Promise.resolve()
+  expect(hostile.snapshot()).toEqual([])
   expect(getters).toBe(0)
   expect(JSON.stringify(observed)).not.toContain(secret)
   expect(JSON.stringify(observed)).not.toContain("/private/runner")

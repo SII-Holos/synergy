@@ -1,6 +1,32 @@
 import { ObservabilityRedaction } from "@ericsanchezok/synergy-harness/observability/redaction"
 import { safeCrossOSFailure } from "./cross-os-transport"
 
+export function createTargetPreparationObservation() {
+  const failures: Array<{
+    operation: "prepare-target"
+    signalAborted: boolean
+    error: ReturnType<typeof safeCrossOSFailure>
+  }> = []
+  return {
+    observe<T>(pending: Promise<T>, signal: AbortSignal): Promise<T> {
+      void pending.catch((error: unknown) => {
+        try {
+          if (failures.length < 4)
+            failures.push({
+              operation: "prepare-target",
+              signalAborted: signal.aborted,
+              error: safeCrossOSFailure(error),
+            })
+        } catch {}
+      })
+      return pending
+    },
+    snapshot(): Readonly<typeof failures> {
+      return structuredClone(failures)
+    },
+  }
+}
+
 export type HeaderFailure = {
   name: string
   code?: string

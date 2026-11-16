@@ -511,6 +511,7 @@ async function host() {
     operation: string
     driveOperation?: Handoff.Drive["operation"]
     denialReason?: ReturnType<typeof handoffDenialReason>
+    machine?: Pick<Handoff.MachineResult, "state" | "stage"> & { factsCount: number }
     elapsedMs: number
     status?: number
     content?: string
@@ -519,6 +520,7 @@ async function host() {
   const requestFailures: typeof requests = []
   let phase = "service-bootstrap"
   let started = performance.now()
+  let targetPreparationFailures: Awaited<ReturnType<typeof createPeer>>["targetPreparationFailures"] = () => []
   try {
     const service = await setup("darwin-service-bootstrap", () =>
       openOrganizationService({
@@ -862,6 +864,7 @@ async function host() {
         ).data
       },
     })
+    targetPreparationFailures = darwin.targetPreparationFailures
     cleanups.push({ owner: "darwin-peer", close: () => darwin.close() })
     const linuxID = await until(
       async () => linuxRuntimeID,
@@ -1083,9 +1086,16 @@ async function host() {
             const driveObservation: NonNullable<typeof activeDrive> = { operation }
             activeDrive = driveObservation
             try {
-              return Handoff.MachineResult.parse(
+              const result = Handoff.MachineResult.parse(
                 (await client.orgHandoff.drive({ handoffID, orgHandoffDrive: { operation, requestID } }, options)).data,
               )
+              if (driveObservation.record)
+                driveObservation.record.machine = {
+                  state: result.state,
+                  stage: result.stage,
+                  factsCount: result.facts.length,
+                }
+              return result
             } catch (error) {
               if (driveObservation.record) driveObservation.record.denialReason = handoffDenialReason(error)
               if (
@@ -1331,6 +1341,7 @@ async function host() {
           costs,
           errors: errors.map(safeFailure),
           requests: failedRequests,
+          targetPreparationFailures: targetPreparationFailures(),
           transport: failedTransport,
           postFailureOriginHandled: Math.max(
             0,
@@ -1493,6 +1504,7 @@ async function linux() {
         status: "failed",
         elapsedMs: performance.now() - started,
         errors: errors.map(safeFailure),
+        targetPreparationFailures: peer.targetPreparationFailures(),
       }),
     )
   try {
@@ -1574,6 +1586,7 @@ async function linux() {
         throw new AggregateError(errors, "Actual Linux peer failure and original cleanup failed")
       }
     }
+    if (errors.length) await failed().catch(() => {})
   }
 }
 
