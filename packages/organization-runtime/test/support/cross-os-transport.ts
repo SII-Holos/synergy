@@ -356,7 +356,12 @@ export function artifactName(role: PublicPeer["role"], stage: ArtifactStage) {
   return `cross-os-${role}-${stage}-${current.id}-${current.attempt}`
 }
 // Provenance: https://github.com/actions/upload-artifact/blob/v4/README.md#improvements — finalized public-key artifacts are available before either live peer job exits.
-export async function waitArtifact(role: PublicPeer["role"], stage: ArtifactStage, signal: AbortSignal) {
+export async function waitArtifact(
+  role: PublicPeer["role"],
+  stage: ArtifactStage,
+  signal: AbortSignal,
+  pollIntervalMs = 250,
+) {
   signal.throwIfAborted()
   if (((stage === "origin" || stage === "bootstrap") && role !== "darwin") || (stage === "health" && role !== "linux"))
     throw new Error("Cross-OS rendezvous has another fixed peer stage")
@@ -379,7 +384,7 @@ export async function waitArtifact(role: PublicPeer["role"], stage: ArtifactStag
     const found = listing.artifacts.filter((item) => item.name === name)
     if (found.length > 1) throw new Error("Run-bound cross-OS artifact name is ambiguous")
     if (!found.length) {
-      await retrySleep(250, signal)
+      await retrySleep(pollIntervalMs, signal)
       continue
     }
     const artifact = found[0]!
@@ -428,6 +433,19 @@ export async function waitArtifact(role: PublicPeer["role"], stage: ArtifactStag
     return value
   }
 }
+export async function waitPeerReady(role: PublicPeer["role"], signal: AbortSignal) {
+  signal.throwIfAborted()
+  const local = await identity()
+  if (local.public.role !== role || process.platform !== role)
+    throw new Error("Cross-OS assembly requires this actual prepared peer")
+  const peer = role === "darwin" ? "linux" : "darwin"
+  // Provenance: https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api#primary-rate-limit-for-github_token-in-github-actions — runner assembly must leave room within the shared API quota.
+  await waitArtifact(peer, "public", signal, 5000)
+  signal.throwIfAborted()
+  const filename = path.join(state(), "rendezvous", artifactName(peer, "public") + ".zip")
+  await fs.rename(filename, filename + ".assembly")
+  signal.throwIfAborted()
+}
 export async function verifyNativeRun() {
   const id = process.env.SYNERGY_CROSS_OS_NATIVE_RUN
   if (!id || !/^\d+$/.test(id)) throw new Error("An exact-head Native Assets run is required")
@@ -448,5 +466,7 @@ if (import.meta.main) {
   const command = process.argv[2]
   if (command === "identity") await prepareIdentity(z.enum(["darwin", "linux"]).parse(process.argv[3]))
   else if (command === "native-run") await verifyNativeRun()
+  else if (command === "peer-ready")
+    await waitPeerReady(z.enum(["darwin", "linux"]).parse(process.argv[3]), AbortSignal.timeout(15 * 60 * 1000))
   else throw new Error("Unknown cross-OS preparation command")
 }

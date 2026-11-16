@@ -74,7 +74,7 @@ jobs:
           - role: linux
             runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 17
+    timeout-minutes: 32
     env:
       SYNERGY_CROSS_OS_ROLE: ${{ matrix.role }}
       SYNERGY_CROSS_OS_NATIVE_RUN: ${{ needs.assets.outputs.run }}
@@ -98,13 +98,6 @@ jobs:
         run: |
           bun packages/organization-runtime/test/support/cross-os-transport.ts native-run
           bun packages/organization-runtime/test/support/cross-os-transport.ts identity "$SYNERGY_CROSS_OS_ROLE"
-      - name: Publish only run-bound public keys
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: cross-os-${{ matrix.role }}-public-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ env.SYNERGY_CROSS_OS_STATE }}/public.json
-          if-no-files-found: error
-          retention-days: 1
       - name: Restore actual Darwin SQLite
         if: matrix.role == 'darwin'
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -178,6 +171,15 @@ jobs:
             (root / 'cloudflared').write_bytes(source.extractfile(member).read())
           (root / 'cloudflared').chmod(0o755)
           PY
+      - name: Publish only run-bound public keys
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cross-os-${{ matrix.role }}-public-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.SYNERGY_CROSS_OS_STATE }}/public.json
+          if-no-files-found: error
+          retention-days: 1
+      - name: Wait for both fully prepared peer runners within the separate assembly budget
+        run: bun packages/organization-runtime/test/support/cross-os-transport.ts peer-ready "$SYNERGY_CROSS_OS_ROLE"
       - name: Start the original native peer and keep its process alive
         shell: bash
         run: |

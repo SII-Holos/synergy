@@ -165,6 +165,26 @@ describe("required CI topology", () => {
     expect(workflow.jobs.docker!.needs).toEqual(["plan", "benchmark-prepare"])
     expect(Object.keys(workflow.jobs).filter((name) => name.startsWith("docker"))).toEqual(["docker_direct", "docker"])
   })
+  test("cross-OS peers finish native preparation before starting the shared business window", async () => {
+    const cross = Bun.YAML.parse(
+      await readFile(path.join(root, ".github/workflows/organization-cross-os.yml"), "utf8"),
+    ) as { jobs: Record<string, Job> }
+    const peer = cross.jobs.peer!
+    const steps = peer.steps!
+    const publish = steps.findIndex((step) => step.with?.path === "${{ env.SYNERGY_CROSS_OS_STATE }}/public.json")
+    const ready = steps.findIndex((step) => step.run?.includes("cross-os-transport.ts peer-ready"))
+    const start = steps.findIndex((step) => step.name === "Start the original native peer and keep its process alive")
+    expect(publish).toBeGreaterThanOrEqual(0)
+    expect(ready).toBeGreaterThan(publish)
+    expect(start).toBeGreaterThan(ready)
+    for (const [index, step] of steps.entries()) {
+      if (step.uses?.startsWith("actions/download-artifact@") || step.uses?.startsWith("oven-sh/setup-bun@"))
+        expect(index, step.name).toBeLessThan(publish)
+      if (step.name?.startsWith("Install ") || step.name?.startsWith("Prepare ") || step.run?.startsWith("bun install"))
+        expect(index, step.name).toBeLessThan(publish)
+    }
+    expect(peer["timeout-minutes"]).toBe(32)
+  })
   test("every dev/main push and the daily cold run remain enabled", () => {
     expect(workflow.on.push.branches).toEqual(["dev", "main"])
     expect(workflow.on.schedule.length).toBe(1)

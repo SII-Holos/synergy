@@ -24,6 +24,7 @@ import {
   encode,
   PublicPeer,
   waitArtifact,
+  waitPeerReady,
 } from "./support/cross-os-transport"
 import {
   observeDNSAfterFailedHealth,
@@ -1365,6 +1366,8 @@ test("the original Linux peer verifies real strict HTTPS identity before its fix
   )
   expect(handled).toBe(4)
   expect(await waitArtifact("darwin", "origin", stopped.signal).catch((error: unknown) => error)).toBe(reason)
+  for (const role of ["darwin", "linux"] as const)
+    expect(await waitPeerReady(role, stopped.signal).catch((error: unknown) => error)).toBe(reason)
 }, 15000)
 
 test("the fixed peer health receipt is sealed, signed and bound to its original endpoint, stage and run", () => {
