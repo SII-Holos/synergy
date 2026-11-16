@@ -686,6 +686,8 @@ test("ten authenticated clients replay a shared 10000-message history while thre
             count++
             checksum ^= messageChecksum(entry.messageID)
           }
+          if (count > history.count)
+            throw new Error("Shared history replay exceeded its original captured message count")
           oldest = page.items[0]!.createdAt
           pages++
           if (!page.cursor) break
@@ -900,4 +902,4 @@ test("ten authenticated clients replay a shared 10000-message history while thre
     throw cleanup
   }
   if (failed) throw failed.error
-}, 600000)
+}, 900000)

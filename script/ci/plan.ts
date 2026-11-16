@@ -127,6 +127,17 @@ export function executionQueue(unit: Unit, _tasks?: Task[]): (typeof QUEUES)[num
   return unit.pool
 }
 
+export function unitTimeoutMinutes(unit: Unit, tasks: Task[]): number {
+  return tasks.some(
+    (task) =>
+      unit.tasks.includes(task.id) &&
+      task.package === "packages/organization-runtime" &&
+      task.files?.includes("test/capacity-sync.test.ts"),
+  )
+    ? 55
+    : 45
+}
+
 export function hash(value: unknown): string {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex")
 }

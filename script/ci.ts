@@ -21,6 +21,7 @@ import {
   executionQueue,
   needsBuild,
   QUEUES,
+  unitTimeoutMinutes,
   validatePlan,
   type Mode,
   type Plan,
@@ -231,7 +232,11 @@ async function main() {
       outputs[pool] = JSON.stringify(
         plan.units
           .filter((unit) => executionQueue(unit, selectedTasks) === pool)
-          .map((unit) => ({ ...unit, postgres: plan.tasks.find((task) => task.id === unit.tasks[0])?.variant ?? "" })),
+          .map((unit) => ({
+            ...unit,
+            timeoutMinutes: unitTimeoutMinutes(unit, plan.tasks),
+            postgres: plan.tasks.find((task) => task.id === unit.tasks[0])?.variant ?? "",
+          })),
       )
       outputs[`${pool}_count`] = String(
         plan.units.filter((unit) => executionQueue(unit, selectedTasks) === pool).length,

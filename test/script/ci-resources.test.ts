@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { buildUnits, runTaskQueue, type Task } from "../../script/ci/plan"
+import { buildUnits, runTaskQueue, unitTimeoutMinutes, type Task } from "../../script/ci/plan"
 import { catalog } from "../../script/ci/catalog"
 
 const task = (id: string, browser = false): Task => ({
@@ -103,4 +103,21 @@ test("native Runtime and Harness suites exclude other heavy work while light wor
   )
   expect(modeled).toHaveLength(1)
   expect(modeled[0]!.seconds).toBe(10)
+  const capacity = suites.find((entry) => entry.files?.includes("test/capacity-sync.test.ts"))!
+  const adjacent = suites.find((entry) => entry.package === capacity.package && entry.id !== capacity.id)!
+  const capacityTasks = [capacity, adjacent]
+  const capacityUnits = buildUnits(capacityTasks, "full")
+  const original = capacityUnits.find((unit) => unit.tasks.includes(capacity.id))!
+  const sibling = capacityUnits.find((unit) => unit.tasks.includes(adjacent.id))!
+  expect(original.id).not.toBe(sibling.id)
+  expect(unitTimeoutMinutes(original, capacityTasks)).toBe(55)
+  expect(unitTimeoutMinutes(sibling, capacityTasks)).toBe(45)
+  const moved = [
+    { ...capacity, files: capacity.files!.filter((file) => file !== "test/capacity-sync.test.ts") },
+    { ...adjacent, files: [...adjacent.files!, "test/capacity-sync.test.ts"] },
+  ]
+  expect(unitTimeoutMinutes(original, moved)).toBe(45)
+  expect(unitTimeoutMinutes(sibling, moved)).toBe(55)
+  expect(unitTimeoutMinutes({ ...sibling, id: "renamed-capacity-owner" }, moved)).toBe(55)
+  expect(unitTimeoutMinutes(original, [{ ...capacity, package: "packages/local-runtime" }])).toBe(45)
 })

@@ -28,4 +28,4 @@ The existing native-binding fixture measures actual native data SELECTs through 
 
 ## Consequences
 
-Each ordinary known-Scope check reads the same two canonical rows once, reducing two data SELECTs to one without reducing the number of validation checks. Unknown-Scope lookup and the already-batched creation mutation path retain their costs. Persisted representations, transport APIs, workload, queue windows, and the original 240s/600s capacity budgets do not change. This native work bound is not proof of the full capacity deadline or a host-independent performance improvement.
+Each ordinary known-Scope check reads the same two canonical rows once, reducing two data SELECTs to one without reducing the number of validation checks. Unknown-Scope lookup and the already-batched creation mutation path retain their costs. Persisted representations, transport APIs, workload, queue windows, and the [separate capacity correctness allowances](../testing/2026-11-16-calibrate-the-capacity-ci-correctness-budget.md) do not change. This native work bound is not proof of the full capacity deadline or a host-independent performance improvement.

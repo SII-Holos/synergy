@@ -11,7 +11,7 @@ interface Job {
   name?: string
   if?: string
   needs?: string[]
-  "timeout-minutes"?: number
+  "timeout-minutes"?: number | string
   strategy?: { "max-parallel": number; "fail-fast": boolean }
   steps?: { name?: string; if?: string | boolean; run?: string; uses?: string; with?: Record<string, unknown> }[]
 }
@@ -155,6 +155,9 @@ describe("required CI topology", () => {
       const job = workflow.jobs[pool]!
       expect(job.strategy?.["max-parallel"]).toBe(limit)
       expect(job.strategy?.["fail-fast"]).toBe(false)
+      expect(job["timeout-minutes"]).toBe(
+        ["linux", "linux_core", "linux_full"].includes(pool) ? "${{ matrix.timeoutMinutes }}" : 45,
+      )
       expect(job.steps?.some((step) => step.with?.["if-no-files-found"] === "error")).toBe(true)
     }
     expect(workflow.jobs.contracts!.needs).toEqual(["plan"])
@@ -270,7 +273,7 @@ describe("required CI topology", () => {
     ) as { jobs: Record<string, Job> }
     for (const configured of [workflow, diagnostic]) {
       const job = configured.jobs["benchmark-prepare"]!
-      expect(job["timeout-minutes"]! * 60 - seconds).toBeGreaterThanOrEqual(180)
+      expect(Number(job["timeout-minutes"]) * 60 - seconds).toBeGreaterThanOrEqual(180)
       const collect = job.steps!.find((step) => step.run?.includes("synergy_bench/ci_evidence.py"))!
       expect(collect).toBeDefined()
       expect(collect.if).toBe("failure() || cancelled()")

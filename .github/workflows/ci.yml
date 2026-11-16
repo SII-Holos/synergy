@@ -380,7 +380,7 @@ jobs:
     needs: [plan, prepare]
     if: ${{ !cancelled() && needs.plan.result == 'success' && needs.prepare.result == 'success' && needs.plan.outputs.linux_count != '0' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: ${{ matrix.timeoutMinutes }}
     strategy:
       fail-fast: false
       max-parallel: 6
@@ -438,7 +438,7 @@ jobs:
     needs: [plan, prepare, prepare-core]
     if: ${{ !cancelled() && needs.plan.result == 'success' && needs.prepare-core.result == 'success' && needs.plan.outputs.linux_core_count != '0' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: ${{ matrix.timeoutMinutes }}
     strategy:
       fail-fast: false
       max-parallel: 1
@@ -496,7 +496,7 @@ jobs:
     needs: [plan, prepare, prepare-full]
     if: ${{ !cancelled() && needs.plan.result == 'success' && needs.prepare-full.result == 'success' && needs.plan.outputs.linux_full_count != '0' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: ${{ matrix.timeoutMinutes }}
     strategy:
       fail-fast: false
       max-parallel: 4
