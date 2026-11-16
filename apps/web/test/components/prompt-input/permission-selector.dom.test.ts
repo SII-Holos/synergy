@@ -1,15 +1,12 @@
 import { afterAll, afterEach, beforeAll, beforeEach, expect, test } from "bun:test"
-import { fixturePort } from "@ericsanchezok/synergy-testing/fixture"
 import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
 import { chromium, type Browser, type Page } from "playwright"
-import { createServer, type ViteDevServer } from "vite"
-import solid from "vite-plugin-solid"
-import tailwind from "@tailwindcss/vite"
+import { createBrowserFixture, type BrowserFixture } from "../../support/browser-fixture"
 
 let browser: Browser
 let page: Page
-let server: ViteDevServer
+let server: BrowserFixture
 let directory: string
 const errors: string[] = []
 const source = path.resolve(import.meta.dir, "../../../src")
@@ -102,25 +99,15 @@ beforeAll(async () => {
     render(() => <MetaProvider><Font /><I18nProvider i18n={setupI18n({locale:"en",messages:{en:{}}})}><ThemeProvider><DialogProvider><Fixture /></DialogProvider></ThemeProvider></I18nProvider></MetaProvider>, document.getElementById("root"))
     `,
   )
-  server = await createServer({
-    configFile: false,
+  server = await createBrowserFixture({
     root: directory,
-    cacheDir: path.join(directory, ".vite"),
-    plugins: [solid(), tailwind()],
-    resolve: {
-      alias: [
-        { find: "@/context/locale", replacement: path.join(directory, "locale.ts") },
-        { find: "@", replacement: source },
-      ],
-    },
-    optimizeDeps: {
-      noDiscovery: true,
-      include: ["solid-js", "solid-js/web", "solid-js/jsx-runtime", "@lingui/core", "@lingui/solid", "fuzzysort"],
-    },
-    server: { host: "127.0.0.1", port: await fixturePort(), fs: { allow: [path.resolve(source, "../../..")] } },
+    styled: true,
+    localized: false,
+    aliases: [
+      { find: "@/context/locale", replacement: path.join(directory, "locale.ts") },
+      { find: "@", replacement: source },
+    ],
   })
-  await server.listen()
-  await server.warmupRequest("/main.tsx")
   browser = await chromium.launch({ headless: true })
 }, 60_000)
 
@@ -129,7 +116,7 @@ beforeEach(async () => {
   page = await browser.newPage({ viewport: { width: 800, height: 650 }, reducedMotion: "reduce" })
   page.setDefaultTimeout(5000)
   page.on("pageerror", (error) => errors.push(error.message))
-  await page.goto(server.resolvedUrls!.local[0]!)
+  await page.goto(server.url)
   await page
     .locator(".prompt-input-toolbar-button")
     .waitFor({ timeout: 15_000 })
@@ -334,7 +321,7 @@ test("permission selector remains reachable at 375px and preserves switching fee
 })
 
 test("permission selection waits for acceptance, stays open on rejection or failure, and disables pending choices", async () => {
-  await page.goto(`${server.resolvedUrls!.local[0]}?deferred`)
+  await page.goto(`${server.url}?deferred`)
   const trigger = page.getByRole("button", { name: "Guarded permission mode", exact: true })
   const listbox = page.getByRole("listbox", { name: "Permission mode", exact: true })
   const guarded = page.getByRole("option", { name: /^Guarded/ })
@@ -384,7 +371,7 @@ test("permission selection waits for acceptance, stays open on rejection or fail
 }, 30_000)
 
 test("the real Full Access confirmation keeps the menu unchanged until the owner commits", async () => {
-  await page.goto(`${server.resolvedUrls!.local[0]}?deferred&confirm`)
+  await page.goto(`${server.url}?deferred&confirm`)
   const trigger = page.getByRole("button", { name: "Guarded permission mode", exact: true })
   await trigger.click()
   await page.getByRole("option", { name: /^Full Access/ }).click()
@@ -417,7 +404,7 @@ test("the real Full Access confirmation keeps the menu unchanged until the owner
 }, 30_000)
 
 test("hiding the view dismisses a pending permission menu without reopening it on return", async () => {
-  await page.goto(`${server.resolvedUrls!.local[0]}?deferred`)
+  await page.goto(`${server.url}?deferred`)
   const trigger = page.getByRole("button", { name: "Guarded permission mode", exact: true })
   const listbox = page.getByRole("listbox", { name: "Permission mode", exact: true })
   await trigger.click()

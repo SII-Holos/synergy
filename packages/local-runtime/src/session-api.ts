@@ -264,7 +264,10 @@ export async function submitCommand(input: Parameters<typeof SessionInvoke.comma
 /** Admit a durable recovery request and wait for execution for in-process callers. */
 export async function continueSession(sessionID: string): Promise<boolean> {
   const result = await SessionResume.request({ sessionID })
-  if (result.outcome === "accepted") await SessionManager.wake(sessionID)
+  if (result.outcome === "accepted") {
+    await SessionManager.wake(sessionID)
+    await SessionManager.waitForIdle(sessionID)
+  }
   return result.handled
 }
 

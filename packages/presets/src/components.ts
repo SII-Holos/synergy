@@ -21,6 +21,8 @@ import { lsp } from "@ericsanchezok/synergy-lsp/component"
 import { mcp } from "@ericsanchezok/synergy-mcp/component"
 import { media } from "@ericsanchezok/synergy-media/component"
 import { note } from "@ericsanchezok/synergy-note/component"
+import { organization } from "@ericsanchezok/synergy-organization/component"
+import { organizationRuntime } from "@ericsanchezok/synergy-organization-runtime/component"
 import { workbench } from "@ericsanchezok/synergy-workbench/component"
 import { workflowComponents } from "@ericsanchezok/synergy-workflows/component"
 import { pluginKit } from "@ericsanchezok/synergy-plugin-kit/component"
@@ -41,6 +43,8 @@ export function fullComponents(): RuntimeComponent[] {
     mcp(),
     media(),
     note(),
+    organization(),
+    organizationRuntime(),
     workbench(),
     ...workflowComponents(),
     channelBlueprint(),

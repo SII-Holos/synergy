@@ -3,6 +3,11 @@ import os from "node:os"
 import path from "node:path"
 import { $ } from "bun"
 
+export async function generateOrganizationOpenApi(): Promise<string> {
+  const { organizationOpenApi } = await import("@ericsanchezok/synergy-organization/http")
+  return JSON.stringify(await organizationOpenApi())
+}
+
 export async function generateOpenApi(): Promise<string> {
   const root = path.resolve(import.meta.dirname, "..")
   const home = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-openapi-"))

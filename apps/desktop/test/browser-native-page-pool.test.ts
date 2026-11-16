@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
 import { EventEmitter } from "node:events"
-import { electronAppEmitter, electronMockState, registerElectronMock } from "./electron-mock"
+import { electronAppEmitter, electronMock, electronMockState, registerElectronMock } from "./electron-mock"
 
 const commands: unknown[] = []
 const nativeViewports: Array<{ width: number; height: number } | null> = []
@@ -14,6 +14,9 @@ let nextDiagnosticsError: Error | null = null
 let failDispose = false
 let viewCreationAttempts = 0
 let captureOperation: (() => Promise<void>) | undefined
+let diagnosticStart: ((pageId: string) => Promise<void>) | undefined
+const sessions = new Map<string, MockWebContents["session"]>()
+let previousFromPartition: unknown
 
 class MockDebugger extends EventEmitter {
   attached = false
@@ -42,7 +45,16 @@ class MockDebugger extends EventEmitter {
 }
 
 class MockWebContents extends EventEmitter {
-  readonly session = { setProxy: async () => undefined }
+  session = {
+    clears: 0,
+    setProxy: async () => undefined,
+    clearStorageData: async () => {
+      this.session.clears++
+    },
+  }
+  get storageClears() {
+    return this.session.clears
+  }
   readonly debugger = new MockDebugger()
   url = "about:blank"
   title = ""
@@ -111,6 +123,9 @@ class MockWebContentsView {
   constructor(options: { webPreferences?: { partition?: string } }) {
     viewCreationAttempts++
     if (failNewViews) throw new Error("view creation failed")
+    const partition = options.webPreferences?.partition ?? ""
+    this.webContents.session = sessions.get(partition) ?? this.webContents.session
+    sessions.set(partition, this.webContents.session)
     views.push(this)
     partitions.push(options.webPreferences?.partition ?? "")
   }
@@ -135,16 +150,28 @@ class MockWebContentsView {
 const appEvents = electronAppEmitter
 registerElectronMock()
 beforeEach(() => {
+  sessions.clear()
+  previousFromPartition = Reflect.get(electronMock.session, "fromPartition")
+  Reflect.set(electronMock.session, "fromPartition", (partition: string) => {
+    const value = sessions.get(partition) ?? new MockWebContents().session
+    sessions.set(partition, value)
+    return value
+  })
   electronMockState.viewBuilder = (options) =>
     new MockWebContentsView(options as Electron.WebContentsViewConstructorOptions)
 })
 afterEach(() => {
   electronMockState.viewBuilder = null
+  if (previousFromPartition === undefined) Reflect.deleteProperty(electronMock.session, "fromPartition")
+  else Reflect.set(electronMock.session, "fromPartition", previousFromPartition)
+  diagnosticStart = undefined
 })
 
 mock.module("../src/browser-host-diagnostics.js", () => ({
   BrowserHostDiagnostics: class {
+    constructor(private options: { pageId: string }) {}
     async start() {
+      await diagnosticStart?.(this.options.pageId)
       if (!nextDiagnosticsError) return
       const error = nextDiagnosticsError
       nextDiagnosticsError = null
@@ -207,6 +234,212 @@ async function until(predicate: () => boolean, timeoutMs = 500): Promise<void> {
 }
 
 describe("Browser native page pool", () => {
+  test("destroy waits for an already-started native creation and closes its late view", async () => {
+    const pool = new BrowserNativePagePool()
+    const held = Promise.withResolvers<void>()
+    let entered = false
+    diagnosticStart = async () => {
+      entered = true
+      await held.promise
+    }
+    const creating = pool.create(input("late"))
+    const outcome = creating.then(
+      () => "created",
+      () => "cancelled",
+    )
+    await until(() => entered)
+    const view = views.at(-1)!
+    let closed = false
+    const closing = pool.destroy().then(() => {
+      closed = true
+    })
+    try {
+      await Bun.sleep(10)
+      expect(closed).toBe(false)
+    } finally {
+      held.resolve()
+      await Promise.all([outcome, closing])
+      diagnosticStart = undefined
+      await pool.destroy()
+    }
+    expect(await outcome).toBe("cancelled")
+    expect(view.webContents.destroyed).toBe(true)
+  })
+
+  test("a retired native lifetime drains its pending popup without waiting for another member", async () => {
+    const pool = new BrowserNativePagePool()
+    const a = new AbortController(),
+      b = new AbortController()
+    const heldA = Promise.withResolvers<void>(),
+      heldB = Promise.withResolvers<void>()
+    const popups: BrowserNativePageHandle[] = []
+    const parent = await pool.create({
+      ...input("member-a"),
+      signal: a.signal,
+      onPopup: (_input, page) => popups.push(page),
+    })
+    const createPopup = openPopup!
+    let waiting = 0
+    diagnosticStart = async (pageId) => {
+      waiting++
+      await (pageId === "page-pending-b" ? heldB.promise : heldA.promise)
+    }
+    const other = pool.create({ ...input("pending-b"), signal: b.signal })
+    let drained = false
+    let draining = Promise.resolve()
+    try {
+      const popup = createPopup({ url: "https://example.com/popup" } as Electron.HandlerDetails)
+      expect(popup.action).toBe("allow")
+      const popupContents = popup.createWindow!({ webPreferences: {} }) as unknown as MockWebContents
+      await until(() => waiting === 2)
+      a.abort()
+      draining = pool.drain(a.signal).then(() => {
+        drained = true
+      })
+      await Bun.sleep(10)
+      expect(drained).toBe(false)
+      heldA.resolve()
+      await draining
+      expect(popupContents.destroyed).toBe(true)
+      expect(parent.isAlive()).toBe(false)
+      expect(popups).toEqual([])
+      expect(createPopup({ url: "https://example.com/late" } as Electron.HandlerDetails).action).toBe("deny")
+      await expect(pool.create({ ...input("forbidden"), signal: a.signal })).rejects.toThrow("closed")
+      heldB.resolve()
+      expect((await other).isAlive()).toBe(true)
+    } finally {
+      heldA.resolve()
+      heldB.resolve()
+      await Promise.allSettled([other, draining])
+      diagnosticStart = undefined
+      await pool.destroy()
+    }
+  })
+
+  test("reserves the Desktop page limit across Runtime owners before asynchronous creation", async () => {
+    const pool = new BrowserNativePagePool()
+    const attempts = viewCreationAttempts
+    try {
+      const results = await Promise.allSettled(
+        Array.from({ length: 65 }, (_, index) => pool.create(input(`runtime-${index}`))),
+      )
+      const created = results.flatMap((result) => (result.status === "fulfilled" ? [result.value] : []))
+      expect(created).toHaveLength(64)
+      expect(viewCreationAttempts - attempts).toBe(64)
+      expect(results[64]).toMatchObject({
+        status: "rejected",
+        reason: { message: "Desktop Browser page limit reached." },
+      })
+      await created[0].destroy()
+      await pool.create(input("released-capacity"))
+      expect(viewCreationAttempts - attempts).toBe(65)
+    } finally {
+      await pool.destroy()
+    }
+  })
+
+  test("clears a temporary partition after its last page even when another Runtime reuses its profile ID", async () => {
+    const pool = new BrowserNativePagePool()
+    const profile = (partition: string) => ({ id: "shared-profile", partition, revision: 0 })
+    try {
+      const first = await pool.create({ ...input("member-a-first"), profile: profile("synergy-browser-member-a") })
+      const firstContents = views.at(-1)!.webContents
+      const second = await pool.create({ ...input("member-a-second"), profile: profile("synergy-browser-member-a") })
+      const secondContents = views.at(-1)!.webContents
+      await pool.create({ ...input("member-b"), profile: profile("synergy-browser-member-b") })
+      const otherContents = views.at(-1)!.webContents
+      await first.destroy()
+      expect(firstContents.storageClears).toBe(0)
+      await second.destroy()
+      expect(secondContents.storageClears).toBe(1)
+      expect(otherContents.storageClears).toBe(0)
+      expect(otherContents.destroyed).toBe(false)
+    } finally {
+      await pool.destroy()
+    }
+  })
+
+  for (const failed of [false, true])
+    test(`a temporary partition remains live during pending creation (failure: ${failed})`, async () => {
+      const pool = new BrowserNativePagePool()
+      const profile = { id: "temporary", partition: "synergy-browser-pending-temporary", revision: 0 }
+      const first = await pool.create({ ...input("temporary-first"), profile })
+      const firstContents = views.at(-1)!.webContents
+      const held = Promise.withResolvers<void>()
+      let entered = false
+      diagnosticStart = async () => {
+        entered = true
+        await held.promise
+      }
+      const pending = pool.create({ ...input("temporary-next"), profile })
+      const outcome = pending.then(
+        (page) => ({ page }),
+        (error: unknown) => ({ error }),
+      )
+      try {
+        await until(() => entered)
+        await first.destroy()
+        expect(firstContents.storageClears).toBe(0)
+        if (failed) nextDiagnosticsError = new Error("Creation rejected after the previous page closed")
+        held.resolve()
+        const result = await outcome
+        if ("page" in result) await result.page.destroy()
+        expect("error" in result).toBe(failed)
+        expect(views.at(-1)!.webContents.storageClears).toBe(1)
+      } finally {
+        held.resolve()
+        await outcome
+        diagnosticStart = undefined
+        nextDiagnosticsError = null
+        await pool.destroy()
+      }
+    })
+
+  test("new temporary pages wait for an already-running clear while retirement drains that clear", async () => {
+    const pool = new BrowserNativePagePool()
+    const a = new AbortController(),
+      b = new AbortController()
+    const profile = { id: "temporary", partition: "synergy-browser-clearing", revision: 0 }
+    const first = await pool.create({ ...input("clearing-first"), profile, signal: a.signal })
+    const native = views.at(-1)!.webContents.session
+    const clear = native.clearStorageData
+    const held = Promise.withResolvers<void>()
+    let entered = false,
+      retired = false,
+      opened = false
+    native.clearStorageData = async () => {
+      entered = true
+      await held.promise
+      await clear()
+    }
+    const closing = first.destroy()
+    let creating: Promise<BrowserNativePageHandle> | undefined
+    let draining = Promise.resolve()
+    try {
+      await until(() => entered)
+      const attempts = viewCreationAttempts
+      a.abort()
+      draining = pool.drain(a.signal).then(() => {
+        retired = true
+      })
+      creating = pool.create({ ...input("clearing-next"), profile, signal: b.signal }).then((page) => {
+        opened = true
+        return page
+      })
+      await Bun.sleep(10)
+      expect({ retired, opened, attempts: viewCreationAttempts }).toEqual({ retired: false, opened: false, attempts })
+      held.resolve()
+      const [, , page] = await Promise.all([closing, draining, creating])
+      expect(page.isAlive()).toBe(true)
+      expect(native.clears).toBe(1)
+    } finally {
+      held.resolve()
+      await Promise.allSettled([closing, draining, creating])
+      native.clearStorageData = clear
+      await pool.destroy()
+    }
+  })
+
   test("activates drawing in the mounted renderer without changing its background policy", async () => {
     const children = new Set<MockWebContentsView>()
     let drawable = false

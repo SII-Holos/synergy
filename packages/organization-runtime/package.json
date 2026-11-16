@@ -1,0 +1,78 @@
+{
+  "name": "@ericsanchezok/synergy-organization-runtime",
+  "version": "1.1.26",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "bin": {
+    "synergy-org-runtime": "./dist/entry.js"
+  },
+  "exports": {
+    "./home": "./src/home.ts",
+    "./handoff-recovery": "./src/handoff-recovery.ts",
+    "./handoff-cleanup-runtime": "./src/handoff-cleanup-runtime.ts",
+    "./home-migration": "./src/home-migration.ts",
+    "./enrollment": "./src/enrollment.ts",
+    "./registration": "./src/registration.ts",
+    "./connection": "./src/connection.ts",
+    "./runtime": "./src/runtime.ts",
+    "./error": "./src/error.ts",
+    "./component": "./src/component.ts",
+    "./launch": "./src/launch.ts",
+    "./environment": "./src/environment.ts",
+    "./workspace-files": "./src/workspace-files.ts",
+    "./backup": "./src/backup/native.ts",
+    "./backup/recovery": "./src/backup/recovery.ts",
+    "./backup/knowledge": "./src/backup/knowledge.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "bun ../../script/build-workspace.ts packages/organization-runtime",
+    "test": "bun ../testing/script/test-ci.ts",
+    "test:ci": "bun ../testing/script/test-ci.ts",
+    "test:coverage": "bun ../testing/script/coverage-run.ts"
+  },
+  "dependencies": {
+    "@ericsanchezok/synergy-agent-runtime": "workspace:*",
+    "@ericsanchezok/synergy-browser-runtime": "workspace:*",
+    "@ericsanchezok/synergy-cli": "workspace:*",
+    "@ericsanchezok/synergy-harness": "workspace:*",
+    "@ericsanchezok/synergy-local-runtime": "workspace:*",
+    "@ericsanchezok/synergy-organization-protocol": "workspace:*",
+    "@ericsanchezok/synergy-sdk": "workspace:*",
+    "@ericsanchezok/synergy-server": "workspace:*",
+    "@ericsanchezok/synergy-util": "workspace:*",
+    "hono": "catalog:",
+    "hono-openapi": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@ericsanchezok/synergy-browser-core": "workspace:*",
+    "@ericsanchezok/synergy-organization": "workspace:*",
+    "@ericsanchezok/synergy-testing": "workspace:*",
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "@tsconfig/bun": "catalog:",
+    "@types/bun": "catalog:",
+    "@types/node": "catalog:",
+    "typescript": "catalog:"
+  },
+  "synergy": {
+    "formatVersion": 1,
+    "kind": "component",
+    "id": "organization-runtime",
+    "version": "1.1.26",
+    "compatibility": {
+      "synergy": "1.1.26"
+    },
+    "apiVersion": 1,
+    "entry": "./dist/component.js",
+    "export": "organizationRuntime",
+    "requires": {
+      "local-runtime": "1.1.26"
+    },
+    "features": {
+      "kind": "foundation",
+      "definitions": []
+    }
+  }
+}

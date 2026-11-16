@@ -1,6 +1,7 @@
 import { z } from "zod"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { JsonValue } from "../util/json-value"
+import { EnvironmentUseOwnershipSchema } from "./use-ownership-schema"
 
 export namespace EnvironmentSchema {
   export const Target = z
@@ -39,14 +40,32 @@ export namespace EnvironmentSchema {
     })
     .meta({ ref: "EnvironmentInfo" })
   export type Info = z.infer<typeof Info>
-  export const Use = z.object({
+  export const LegacyUse = z.object({
     id: z.string(),
     target: Target,
     createdAt: z.number(),
     kind: z.enum(["operation", "admission"]).default("operation"),
     ownerEpoch: z.string().optional(),
   })
+  export const Use = LegacyUse.extend({
+    kind: z.enum(["operation", "admission"]),
+    ownership: EnvironmentUseOwnershipSchema.Info,
+  })
   export type Use = z.infer<typeof Use>
+  export const UseRecord = z.strictObject({
+    schemaVersion: z.literal(2),
+    use: Use.passthrough().extend({ target: Target.passthrough() }),
+  })
+  const LegacyUseRecord = LegacyUse.passthrough().extend({
+    target: Target.passthrough(),
+    ownership: z.never().optional(),
+    schemaVersion: z.never().optional(),
+  })
+  export function upgradeUse(value: unknown) {
+    if (value && typeof value === "object" && "schemaVersion" in value) return UseRecord.parse(value)
+    const original = LegacyUseRecord.parse(value)
+    return UseRecord.parse({ schemaVersion: 2, use: { ...original, ownership: { kind: "legacy-unknown" } } })
+  }
   export const Unavailable = NamedError.create(
     "EnvironmentUnavailable",
     z.object({ message: z.string(), environmentID: z.string() }),

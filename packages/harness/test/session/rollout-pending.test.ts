@@ -4,6 +4,7 @@ import { StoragePath } from "../../src/storage/path"
 import { RolloutArtifact } from "../../src/session/rollout/artifact"
 import { RolloutJournal } from "../../src/session/rollout/journal"
 import { RolloutLedger } from "../../src/session/rollout/ledger"
+import { RuntimeMaintenance } from "../../src/storage/runtime-maintenance"
 import { RolloutPending } from "../../src/session/rollout/pending"
 import { RolloutRecovery } from "../../src/session/rollout/recovery"
 import { RolloutSnapshot } from "../../src/session/rollout/snapshot"
@@ -201,3 +202,108 @@ test("settle leaves an untrusted ledger untouched", () =>
   }))
 
 afterRuntimeTests(() => runtime.close())
+test("maintenance settles the original touched rollout before freezing so shutdown needs no canonical write", async () => {
+  const entered = Promise.withResolvers<void>()
+  const finish = Promise.withResolvers<void>()
+  const tail = { kind: "operation" as const, scopeID: "maintenance", operationID: "native-tail" }
+  await using runtime = await testRuntime({
+    register() {
+      RuntimeMaintenance.configure({ required: ["sessions", "loop-jobs", "environments", "native-tail"] })
+      RuntimeMaintenance.register("native-tail", {
+        version: 1,
+        order: 300,
+        async suspend(context) {
+          await RuntimeMaintenance.assertDraining(context.lease)
+        },
+        async drain(context) {
+          await RuntimeMaintenance.assertDraining(context.lease)
+          entered.resolve()
+          await finish.promise
+          await RolloutLedger.beginRun(tail, "tail")
+          await RolloutLedger.finishRun(tail, "tail", "completed")
+        },
+        async inspect() {
+          return []
+        },
+        async release(context) {
+          await RuntimeMaintenance.assertReleasing(context.lease)
+        },
+      })
+    },
+  })
+  await runtime.run(async () => {
+    const owner = { kind: "operation" as const, scopeID: "maintenance", operationID: "completed" }
+    await RolloutLedger.beginRun(owner, "task")
+    await RolloutLedger.finishRun(owner, "task", "completed")
+    expect((await RolloutPending.tracked())?.owners).toContainEqual(owner)
+    const lease = await RuntimeMaintenance.begin({
+      purpose: "organization-backup",
+      requestID: "settle-rollout",
+      actor: {
+        kind: "system",
+        subjectID: "operator",
+        displayName: "Operator",
+        clientKind: "system",
+        requestID: "settle-rollout",
+      },
+    })
+    try {
+      const draining = RuntimeMaintenance.drain(lease)
+      await entered.promise
+      expect((await RolloutPending.tracked())?.owners).toContainEqual(owner)
+      finish.resolve()
+      const drained = await draining
+      expect((await RolloutPending.tracked())?.owners).not.toContainEqual(owner)
+      expect((await RolloutPending.tracked())?.owners).not.toContainEqual(tail)
+      await RuntimeMaintenance.freeze(lease, drained)
+      await RolloutRecovery.settle()
+      expect((await RolloutLedger.getRun(owner, "task")).status).toBe("completed")
+    } finally {
+      finish.resolve()
+      await RuntimeMaintenance.release(lease)
+    }
+  })
+})
+
+test("failed native rollout settlement preserves its pending owner and refuses maintenance freeze", async () => {
+  await using runtime = await testRuntime({
+    register() {
+      RuntimeMaintenance.configure({ required: ["sessions", "loop-jobs", "environments"] })
+    },
+  })
+  await runtime.run(async () => {
+    const target = { kind: "operation" as const, scopeID: "maintenance", operationID: "failed-settlement" }
+    await RolloutLedger.beginRun(target, "task")
+    await RolloutLedger.finishRun(target, "task", "completed")
+    const lease = await RuntimeMaintenance.begin({
+      purpose: "organization-backup",
+      requestID: "failed-rollout-settlement",
+      actor: {
+        kind: "system",
+        subjectID: "operator",
+        displayName: "Operator",
+        clientKind: "system",
+        requestID: "failed-rollout-settlement",
+      },
+    })
+    try {
+      const reason = new Error("Original rollout settlement did not commit")
+      const recovered = RolloutPending.recovered
+      {
+        using failed = spyOn(RolloutPending, "recovered").mockImplementation((identity) => {
+          if (identity.kind === "operation" && identity.operationID === target.operationID) throw reason
+          return recovered(identity)
+        })
+        await expect(RuntimeMaintenance.drain(lease)).rejects.toBe(reason)
+        expect((await RuntimeMaintenance.operation(lease.maintenanceID))?.phase).toBe("draining")
+        expect((await RolloutPending.tracked())?.owners).toContainEqual(target)
+        expect((await RolloutLedger.getRun(target, "task")).status).toBe("completed")
+      }
+      const receipt = await RuntimeMaintenance.drain(lease)
+      await RuntimeMaintenance.freeze(lease, receipt)
+      expect((await RolloutPending.tracked())?.owners).not.toContainEqual(target)
+    } finally {
+      await RuntimeMaintenance.release(lease)
+    }
+  })
+})

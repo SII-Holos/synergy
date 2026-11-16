@@ -428,3 +428,57 @@ test.each(["complete", "absolute-common", "external", "target-conflict"] as cons
     }),
   30_000,
 )
+
+test("Home transfer rejects changed target configuration after attachment without importing or deleting source bytes", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir()
+    const sourceRoot = path.join(tmp.path, "source")
+    const targetRoot = path.join(tmp.path, "target")
+    const bytes = Buffer.from([0, 255, 17, 128, 64])
+    let original: Awaited<ReturnType<typeof StorageBootstrap.status>>
+    for (const root of [sourceRoot, targetRoot]) {
+      const prepared = await StorageBootstrap.prepare({ root })
+      try {
+        await prepared.store.write(["transfer-fixture", "owner"], { source: root === sourceRoot })
+        await prepared.activate()
+        if (root === targetRoot) original = prepared.manifest
+      } finally {
+        await prepared.store.close()
+      }
+    }
+    if (!original) throw new Error("Expected the original active target manifest")
+    await Bun.write(path.join(sourceRoot, "data", "owned-source.bin"), bytes)
+    const configuration = path.join(targetRoot, "config", "synergy.d", "130-storage.jsonc")
+    const before = await fs.readFile(configuration).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return undefined
+      throw error
+    })
+    await using locks = await SnapshotArchive.lockHomes([sourceRoot, targetRoot])
+    try {
+      await expect(
+        DataTransfer.withTargetFiles(sourceRoot, targetRoot, async () => {
+          await fs.mkdir(path.dirname(configuration), { recursive: true })
+          await Bun.write(
+            configuration,
+            JSON.stringify({ storage: { backend: "sqlite", namespace: "different-target" } }),
+          )
+          await DataTransfer.merge(sourceRoot, targetRoot)
+        }),
+      ).rejects.toThrow("Configured namespace differs from the active data namespace")
+      expect(await fs.readFile(path.join(sourceRoot, "data", "owned-source.bin"))).toEqual(bytes)
+      expect(await Bun.file(path.join(targetRoot, "data", "owned-source.bin")).exists()).toBe(false)
+      expect(await StorageBootstrap.status(targetRoot)).toEqual(original)
+    } finally {
+      if (before) await fs.writeFile(configuration, before)
+      else await fs.rm(configuration, { force: true })
+    }
+    const restored = await StorageBootstrap.inspect(targetRoot)
+    if (!restored) throw new Error("Expected the original target Store")
+    try {
+      expect(await restored.store.read(["transfer-fixture", "owner"])).toEqual({ source: false })
+    } finally {
+      await restored.store.close()
+    }
+    await mergeWhenIdle(sourceRoot, targetRoot)
+    expect(await fs.readFile(path.join(targetRoot, "data", "owned-source.bin"))).toEqual(bytes)
+  }))

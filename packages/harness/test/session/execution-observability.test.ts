@@ -1,5 +1,6 @@
 import { afterAll, afterEach, expect, mock, spyOn, test } from "bun:test"
 import { z } from "zod"
+import type { ActorStamp } from "@ericsanchezok/synergy-util/actor-stamp"
 import { spawn } from "node:child_process"
 import { once } from "node:events"
 import { Agent } from "../../src/agent/agent"
@@ -91,10 +92,11 @@ const agent = Agent.Info.parse({
   options: {},
 })
 
-async function turn() {
+async function turn(actor?: ActorStamp.Info) {
   const session = await Session.create({ controlProfile: "full_access" })
   const user = await createUserMessage({
     sessionID: session.id,
+    actor,
     model: { providerID: model.providerID, modelID: model.id },
     parts: [{ type: "text", text: "observe execution" }],
   })
@@ -113,17 +115,17 @@ async function turn() {
     cost: 0,
     tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
   }
-  await Session.updateMessage(assistant)
+  const savedAssistant = MessageV2.Assistant.parse(await Session.updateMessage(assistant))
   const lease = SessionManager.acquire(session.id)!
   SessionManager.bindRootTask(lease, user.info.id)
   const processor = SessionProcessor.create({
-    assistantMessage: assistant,
+    assistantMessage: savedAssistant,
     sessionID: session.id,
     model,
     abort: lease.signal,
     generation: lease.generation,
   })
-  return { session, user: user.info, assistant, lease, processor }
+  return { session, user: user.info, assistant: savedAssistant, lease, processor }
 }
 
 async function fixture(run: (clock: { now: number }) => Promise<void>) {
@@ -152,6 +154,54 @@ function inflight(sessionID: string) {
   ToolResolver.sweepActiveTraces()
   return ObservabilityStore.queryInflight({ sessionID }).find((span) => span.name === "tool.execution")!
 }
+
+test("tool execution carries the recorded root actor independently of later input and tool mutation", () =>
+  runtime.run(() =>
+    fixture(async () => {
+      const actor: ActorStamp.Info = {
+        kind: "account",
+        subjectID: "account-a",
+        orgID: "org-a",
+        displayName: "Alice",
+        clientKind: "desktop",
+        requestID: "request-a",
+      }
+      const current = await turn(actor)
+      try {
+        await createUserMessage(
+          {
+            sessionID: current.session.id,
+            actor: { ...actor, subjectID: "account-b", displayName: "Bob", requestID: "request-b" },
+            noReply: true,
+            parts: [{ type: "text", text: "An independent collaborator's supplement" }],
+          },
+          current.user.id,
+        )
+        const resolved = await tools(current)
+        let calls = 0
+        execute = async (ctx) => {
+          calls++
+          expect(ctx.actor).toEqual(actor)
+          ctx.actor!.displayName = "Tool-local edit"
+        }
+        for (const callID of ["actor-first", "actor-second"]) {
+          await current.processor.executeToolCall({
+            callID,
+            toolName: probe.id,
+            args: {},
+            tool: resolved.executionTools[probe.id],
+          })
+        }
+        expect(calls).toBe(2)
+        expect(current.processor.message.actor).toEqual(actor)
+        expect(
+          (await MessageV2.get({ sessionID: current.session.id, messageID: current.assistant.id })).info.actor,
+        ).toEqual(actor)
+      } finally {
+        await SessionManager.release(current.lease, { requestNextWork: false })
+      }
+    }),
+  ))
 
 for (const count of [256, 1024])
   test(`${count} growing metadata callbacks observe only their coalesced effective update`, () =>
@@ -767,9 +817,9 @@ test("foreground task uses child waiting through capacity handoff and retains ca
       let child: Awaited<ReturnType<typeof Cortex.prepare>> | undefined
       const entered = Promise.withResolvers<void>()
       const waitFor = Cortex.waitFor
-      const cancel = Cortex.cancel
+      const cancel = Cortex.cancelOnParentAbort
       const cancelling: Promise<unknown>[] = []
-      using cancellation = spyOn(Cortex, "cancel").mockImplementation((...args) => {
+      using cancellation = spyOn(Cortex, "cancelOnParentAbort").mockImplementation((...args) => {
         const result = cancel(...args)
         cancelling.push(result)
         return result
@@ -807,6 +857,7 @@ test("foreground task uses child waiting through capacity handoff and retains ca
         expect(span.stalled).toBe(0)
         SessionManager.signalAbort(current.session.id)
         await expect(execution).rejects.toThrow()
+        expect(cancelling).toHaveLength(1)
         await Promise.all(cancelling)
         expect(Cortex.get(child!.id)?.status).toBe("cancelled")
         expect(ObservabilityStore.queryInflight({ sessionID: current.session.id })).toEqual([])

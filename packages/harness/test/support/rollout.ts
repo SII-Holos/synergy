@@ -5,12 +5,83 @@ import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { Session } from "@ericsanchezok/synergy-harness/session"
+import { RolloutTool } from "../../src/session/rollout/tool"
 import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/ledger"
 import { RolloutTransportRecorder } from "@ericsanchezok/synergy-harness/session/rollout/transport-recorder"
 import { ProviderPricing } from "@ericsanchezok/synergy-harness/provider/pricing"
 
 export { contextDraft } from "./context-usage"
 export { RolloutCall } from "../../src/session/rollout/call"
+
+export async function withRun<T>(
+  input: { session: Session.Info },
+  action: (identity: { sessionID: string; rootID: string; messageID: string }) => Promise<T>,
+) {
+  const session = input.session
+  const rootID = Identifier.ascending("message")
+  const messageID = Identifier.ascending("message")
+  await Session.updateMessage({
+    id: rootID,
+    sessionID: session.id,
+    role: "user",
+    rootID,
+    isRoot: true,
+    agent: PrimaryAgentIdentity.names.general,
+    model: { providerID: "fixture", modelID: "fixture" },
+    time: { created: Date.now() },
+  })
+  await Session.updateMessage({
+    id: messageID,
+    sessionID: session.id,
+    role: "assistant",
+    rootID,
+    parentID: rootID,
+    agent: PrimaryAgentIdentity.names.general,
+    mode: "default",
+    modelID: "fixture",
+    providerID: "fixture",
+    path: { cwd: session.workspace?.path ?? null, root: session.workspace?.path ?? null },
+    cost: 0,
+    tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+    time: { created: Date.now() },
+  })
+  const owner = { kind: "session" as const, scopeID: session.scope.id, sessionID: session.id }
+  await RolloutLedger.beginRun(owner, rootID)
+  let status: "completed" | "failed" = "failed"
+  try {
+    const result = await action({ sessionID: session.id, rootID, messageID })
+    status = "completed"
+    return result
+  } finally {
+    await RolloutLedger.finishRun(owner, rootID, status)
+  }
+}
+
+export async function withToolRun<T>(
+  input: {
+    session: Session.Info
+    tool: string
+    callID?: string
+    args?: Parameters<typeof RolloutLedger.beginTool>[0]["args"]
+  },
+  action: (identity: { sessionID: string; messageID: string; callID: string }) => Promise<T>,
+) {
+  return withRun(input, async ({ sessionID, rootID, messageID }) => {
+    const callID = input.callID ?? Identifier.ascending("part")
+    const result = await RolloutTool.execute(
+      {
+        owner: { kind: "session", scopeID: input.session.scope.id, sessionID },
+        runID: rootID,
+        messageID,
+        toolCallID: callID,
+        tool: input.tool,
+        args: input.args ?? {},
+      },
+      async () => ({ value: await action({ sessionID, messageID, callID }) }),
+    )
+    return result.value
+  })
+}
 
 export async function measurePhase<T>(phase: string, body: () => Promise<T>): Promise<T> {
   const started = performance.now()

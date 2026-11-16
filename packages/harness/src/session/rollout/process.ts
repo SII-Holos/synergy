@@ -59,6 +59,13 @@ export namespace RolloutProcess {
       stream: await RolloutArtifact.get(input.owner, stream.id),
     }
     await RolloutLedger.writeProcess(process).catch(onFailure)
+    if (ProcessRegistry.get(process.id))
+      ProcessRegistry.recordOwnership({
+        id: process.id,
+        owner: process.owner,
+        runID: process.runID,
+        toolExecutionID: process.toolExecutionID,
+      })
     const tool = (await RolloutLedger.tools(input.owner, input.runID)).find((tool) => tool.id === input.toolExecutionID)
     let lastPublished = 0
     const publish = async (force = false) => {

@@ -9,6 +9,7 @@ import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
 import { WorkspaceTree } from "@ericsanchezok/synergy-harness/workspace/tree"
 import { SessionTransferWorkspace } from "@ericsanchezok/synergy-harness/session/transfer-workspace"
 import { NativeWorkspaceTree } from "./workspace/tree"
+import { NativeSessionTransferPhysical } from "./session-transfer-physical"
 
 const directory = async (id: string) => {
   if (!/^[a-f0-9-]{36}$/.test(id))
@@ -22,53 +23,58 @@ export function registerSessionTransferWorkspace() {
     async capture(workspaceID, store, consume) {
       const info = await WorkspaceCatalog.get(workspaceID, ScopeContext.current.scope.id)
       const workspace = await WorkspaceBinding.validate(info.id, info.scopeID, info.binding.generation)
-      return WorkspaceAccess.exclusive([workspace.path], async () => {
-        await WorkspaceBinding.validate(info.id, info.scopeID, workspace.generation)
-        const runtime = await fs.realpath(Global.Path.root)
-        const root = await fs.realpath(workspace.path)
-        const relative = path
-          .relative(path.join(await fs.realpath(Global.Path.data), "session-transfers"), root)
-          .split(path.sep)
-        const receivedWorkspace =
-          relative.length === 2 && /^[a-f0-9-]{36}$/.test(relative[0]!) && relative[1] === "workspace"
-        if (
-          !receivedWorkspace &&
-          (runtime === root || runtime.startsWith(root + path.sep) || root.startsWith(runtime + path.sep))
-        )
-          throw new SessionTransferWorkspace.Rejected({ message: "Session transfer Workspace overlaps Runtime data" })
-        const git = path.join(workspace.path, ".git")
-        const stat = await fs.lstat(git).catch((error: NodeJS.ErrnoException) => {
-          if (error.code === "ENOENT") return undefined
-          throw error
-        })
-        if (stat && !stat.isDirectory())
-          throw new SessionTransferWorkspace.Rejected({
-            message: "Session transfer does not support linked Git worktrees",
+      return NativeSessionTransferPhysical.withWorkspaceClaim(workspaceID, () =>
+        WorkspaceAccess.exclusive([workspace.path], async () => {
+          await WorkspaceBinding.validate(info.id, info.scopeID, workspace.generation)
+          const runtime = await fs.realpath(Global.Path.root)
+          const root = await fs.realpath(workspace.path)
+          const relative = path
+            .relative(path.join(await fs.realpath(Global.Path.data), "session-transfers"), root)
+            .split(path.sep)
+          const receivedWorkspace =
+            relative.length === 2 && /^[a-f0-9-]{36}$/.test(relative[0]!) && relative[1] === "workspace"
+          if (
+            !receivedWorkspace &&
+            (runtime === root || runtime.startsWith(root + path.sep) || root.startsWith(runtime + path.sep))
+          )
+            throw new SessionTransferWorkspace.Rejected({ message: "Session transfer Workspace overlaps Runtime data" })
+          const git = path.join(workspace.path, ".git")
+          const stat = await fs.lstat(git).catch((error: NodeJS.ErrnoException) => {
+            if (error.code === "ENOENT") return undefined
+            throw error
           })
-        if (
-          stat &&
-          (await fs
-            .readdir(path.join(git, "worktrees"))
-            .catch((error: NodeJS.ErrnoException) => {
-              if (error.code === "ENOENT") return []
-              throw error
+          if (stat && !stat.isDirectory())
+            throw new SessionTransferWorkspace.Rejected({
+              message: "Session transfer does not support linked Git worktrees",
             })
-            .then((entries) => entries.length))
-        )
-          throw new SessionTransferWorkspace.Rejected({
-            message: "Session transfer requires a Git root without linked worktrees",
-          })
-        if (stat && /\b(?:worktree|objectformat|alternates)\s*=/.test(await Bun.file(path.join(git, "config")).text()))
-          throw new SessionTransferWorkspace.Rejected({
-            message: "Session transfer requires self-contained Git metadata",
-          })
-        if (await Bun.file(path.join(git, "objects", "info", "alternates")).exists())
-          throw new SessionTransferWorkspace.Rejected({
-            message: "Session transfer requires self-contained Git objects",
-          })
-        const tree = await NativeWorkspaceTree.capture(workspace.path, store)
-        return consume(info, tree)
-      })
+          if (
+            stat &&
+            (await fs
+              .readdir(path.join(git, "worktrees"))
+              .catch((error: NodeJS.ErrnoException) => {
+                if (error.code === "ENOENT") return []
+                throw error
+              })
+              .then((entries) => entries.length))
+          )
+            throw new SessionTransferWorkspace.Rejected({
+              message: "Session transfer requires a Git root without linked worktrees",
+            })
+          if (
+            stat &&
+            /\b(?:worktree|objectformat|alternates)\s*=/.test(await Bun.file(path.join(git, "config")).text())
+          )
+            throw new SessionTransferWorkspace.Rejected({
+              message: "Session transfer requires self-contained Git metadata",
+            })
+          if (await Bun.file(path.join(git, "objects", "info", "alternates")).exists())
+            throw new SessionTransferWorkspace.Rejected({
+              message: "Session transfer requires self-contained Git objects",
+            })
+          const tree = await NativeWorkspaceTree.capture(workspace.path, store)
+          return consume(info, tree)
+        }),
+      )
     },
     async materialize(id, tree, store) {
       const root = await directory(id)

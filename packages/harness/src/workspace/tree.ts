@@ -3,19 +3,27 @@ import path from "node:path"
 import { z } from "zod"
 
 export namespace WorkspaceTree {
+  export function importHeader(entry: Header, destination: string): Header {
+    Path.parse(destination)
+    Path.parse(entry.path)
+    if (entry.path !== "entry" && !entry.path.startsWith("entry/")) throw new Error("Transfer entry escaped its source")
+    const filename = destination + entry.path.slice("entry".length)
+    if (entry.kind === "symlink") {
+      const target = path.posix.join(path.posix.dirname(entry.path), entry.target)
+      if (target !== "entry" && !target.startsWith("entry/")) throw new Error("Transfer link escaped its source")
+      const relocated = path.posix.join(path.posix.dirname(filename), entry.target)
+      if (relocated !== destination && !relocated.startsWith(destination + "/"))
+        throw new Error("Transfer link escaped its destination")
+    }
+    if (entry.kind === "file")
+      return { kind: entry.kind, path: filename, mode: entry.mode, size: entry.size, hash: entry.hash }
+    return { ...entry, path: filename }
+  }
   export function importEntries(raw: unknown, destination: string): Entry[] {
     Path.parse(destination)
     const tree = Manifest.parse(raw)
     if (!tree.entries.some((entry) => entry.path === "entry")) throw new Error("Transfer has no root entry")
-    for (const entry of tree.entries) {
-      if (entry.path !== "entry" && !entry.path.startsWith("entry/"))
-        throw new Error("Transfer entry escaped its source")
-      if (entry.kind === "symlink") {
-        const target = path.posix.normalize(path.posix.join(path.posix.dirname(entry.path), entry.target))
-        if (target !== "entry" && !target.startsWith("entry/")) throw new Error("Transfer link escaped its source")
-      }
-    }
-    return tree.entries.map((entry) => ({ ...entry, path: destination + entry.path.slice("entry".length) }))
+    return tree.entries.map((entry) => ({ ...entry, path: importHeader(entry, destination).path }))
   }
   export const chunkBytes = 4 * 1024 * 1024
   export const manifestBytes = 64 * 1024 * 1024
@@ -61,6 +69,12 @@ export namespace WorkspaceTree {
     z.object({ path: Path, kind: z.literal("symlink"), mode: Mode, target: z.string().min(1).max(4096) }),
   ])
   export type Entry = z.infer<typeof Entry>
+  export const Header = z.discriminatedUnion("kind", [
+    Entry.options[0].omit({ chunks: true }).strict(),
+    Entry.options[1].strict(),
+    Entry.options[2].strict(),
+  ])
+  export type Header = z.infer<typeof Header>
   export const Manifest = z
     .object({ version: z.literal(1), entries: z.array(Entry).max(100_000) })
     .superRefine((value, context) => {
@@ -113,6 +127,9 @@ export namespace WorkspaceTree {
   export function children(manifest: Manifest, directory: string): readonly Entry[] {
     return index(manifest).children.get(directory) ?? []
   }
+  export function get(manifest: Manifest, filename: string): Entry | undefined {
+    return index(manifest).entries.get(filename)
+  }
 
   export function resolve(
     manifest: Manifest,
@@ -139,8 +156,14 @@ export namespace WorkspaceTree {
     throw new Error("Workspace symbolic link cycle")
   }
 
-  export function entryVersion(entry: Entry, revision?: number) {
-    return `entry:${hash(new TextEncoder().encode(JSON.stringify([entry, revision])))}`
+  export function entryVersion(entry: Header, revision?: number) {
+    const metadata =
+      entry.kind === "file"
+        ? { path: entry.path, kind: entry.kind, mode: entry.mode, size: entry.size, hash: entry.hash }
+        : entry.kind === "directory"
+          ? { path: entry.path, kind: entry.kind, mode: entry.mode }
+          : { path: entry.path, kind: entry.kind, mode: entry.mode, target: entry.target }
+    return `entry:${hash(new TextEncoder().encode(JSON.stringify([metadata, revision])))}`
   }
 
   export function hash(bytes: Uint8Array) {

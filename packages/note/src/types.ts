@@ -32,6 +32,10 @@ export namespace NoteTypes {
       }),
     })
     .meta({ ref: "NoteInfo" })
+  export const PersistedInfo = InfoBase.extend({ time: InfoBase.shape.time.passthrough() })
+    .passthrough()
+    .meta({ ref: "NotePersistedInfo" })
+  export type PersistedInfo = z.infer<typeof PersistedInfo>
   export const Info = NoteDocumentKinds.schema(InfoBase, "info") as z.ZodObject<
     typeof InfoBase.shape & ExtensionShape<NoteInfoExtensions>
   >

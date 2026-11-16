@@ -8,18 +8,28 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { LocalBashBackend } from "@ericsanchezok/synergy-local-runtime/tools/bash/local"
 import { Shell } from "@ericsanchezok/synergy-harness/util/shell"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+import { Session } from "@ericsanchezok/synergy-harness/session"
+import { withToolRun } from "@ericsanchezok/synergy-harness/test/support/rollout"
 import { testRuntime } from "../support/runtime"
 
 function testContext() {
   return {
-    sessionID: "ses_bash_github_token",
-    messageID: "msg_bash_github_token",
     agent: PrimaryAgentIdentity.names.coding,
     abort: new AbortController().signal,
     extra: { shellBypassSandbox: true },
     metadata() {},
     async ask() {},
   }
+}
+
+async function executeLocalBash(
+  params: Parameters<typeof LocalBashBackend.execute>[0],
+  context: Omit<Parameters<typeof LocalBashBackend.execute>[1], "sessionID" | "messageID" | "callID">,
+) {
+  const session = await Session.create({})
+  return withToolRun({ session, tool: "bash", args: { ...params } }, (identity) =>
+    LocalBashBackend.execute(params, { ...context, ...identity }),
+  )
 }
 
 async function withBash(credential: boolean, fn: (tmp: Awaited<ReturnType<typeof tmpdir>>) => Promise<void>) {
@@ -58,7 +68,7 @@ test("local bash injects the managed GH_TOKEN via env for GitHub CLI commands", 
       scope: await tmp.scope(),
       fn: async () => {
         // Plain gh invocation receives the managed token through the child env.
-        const ghResult = await LocalBashBackend.execute(
+        const ghResult = await executeLocalBash(
           {
             command: "gh",
 
@@ -69,7 +79,7 @@ test("local bash injects the managed GH_TOKEN via env for GitHub CLI commands", 
         expect(ghResult.output).toBe("stored-gh-token")
 
         // A non-gh command never sees the token.
-        const nonGhResult = await LocalBashBackend.execute(
+        const nonGhResult = await executeLocalBash(
           {
             command: "printf '%s' \"${GH_TOKEN:-missing}\"",
 
@@ -96,7 +106,7 @@ test("local bash injects the managed GH_TOKEN for mixed, chained, and piped invo
       scope: await tmp.scope(),
       fn: async () => {
         // Chained: env injection is visible to every command in the invocation.
-        const chainedResult = await LocalBashBackend.execute(
+        const chainedResult = await executeLocalBash(
           {
             command: `gh && ${printTokenOrMissing}`,
 
@@ -108,7 +118,7 @@ test("local bash injects the managed GH_TOKEN for mixed, chained, and piped invo
 
         if (usesPosixShell) {
           // Mixed commands still inject for the gh command.
-          const mixedResult = await LocalBashBackend.execute(
+          const mixedResult = await executeLocalBash(
             {
               command: "echo ok; gh",
 
@@ -119,7 +129,7 @@ test("local bash injects the managed GH_TOKEN for mixed, chained, and piped invo
           expect(mixedResult.output).toBe("ok\nstored-gh-token")
 
           // Piped: the gh process and its peers all inherit the injected env.
-          const pipedResult = await LocalBashBackend.execute(
+          const pipedResult = await executeLocalBash(
             {
               command: "gh | cat",
 
@@ -140,7 +150,7 @@ test("local bash does not override an explicit GH_TOKEN established in the comma
       scope: await tmp.scope(),
       fn: async () => {
         // Prefix assignment on the gh command itself wins over the injected env.
-        const prefixResult = await LocalBashBackend.execute(
+        const prefixResult = await executeLocalBash(
           {
             command: "GH_TOKEN=explicit-gh-token gh",
 
@@ -151,7 +161,7 @@ test("local bash does not override an explicit GH_TOKEN established in the comma
         expect(prefixResult.output).toBe("explicit-gh-token")
 
         // An export earlier in the invocation also wins over the injected env.
-        const exportResult = await LocalBashBackend.execute(
+        const exportResult = await executeLocalBash(
           {
             command: "export GH_TOKEN=exported-gh-token; gh",
 
@@ -170,7 +180,7 @@ test("local bash adds no output notice when no GitHub credential is connected", 
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const result = await LocalBashBackend.execute(
+        const result = await executeLocalBash(
           {
             command: "gh",
 

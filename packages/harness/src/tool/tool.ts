@@ -16,6 +16,7 @@ import { ToolExposure } from "./exposure"
 import type { FileToolGroup } from "./file-tool-group"
 export { FileToolGroup } from "./file-tool-group"
 import type { ToolDisplay } from "@ericsanchezok/synergy-util/tool"
+import type { ActorStamp } from "@ericsanchezok/synergy-util/actor-stamp"
 import type { SettingCondition as PluginSettingCondition } from "@ericsanchezok/synergy-util/setting-condition"
 type PluginJsonSchema = Record<string, unknown>
 
@@ -110,6 +111,7 @@ export namespace Tool {
 
   export type Context<M extends Metadata = Metadata> = {
     sessionID: string
+    actor?: ActorStamp.Info
     messageID: string
     agent: string
     abort: AbortSignal

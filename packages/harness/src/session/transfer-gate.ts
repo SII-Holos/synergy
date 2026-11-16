@@ -3,8 +3,21 @@ import { z } from "zod"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { Storage } from "../storage/storage"
 import { StorageMutationGuard } from "../storage/mutation-guard"
+import { RuntimeMaintenance } from "../storage/runtime-maintenance"
+import type { SessionTransferEpochs } from "./transfer-epochs"
+import { WorkspaceAccess } from "../workspace/access"
+import { registerSessionEnvironmentOrigin } from "./environment-origin"
 
 export namespace SessionTransferGate {
+  type EpochAuthority = Pick<typeof SessionTransferEpochs, "isFrozen" | "assertOwnerMutation" | "register">
+  const registration = RuntimeContext.state(() => ({
+    epochs: undefined as Omit<EpochAuthority, "register"> | undefined,
+  }))
+  function epochs() {
+    const selected = registration().epochs
+    if (!selected) throw new Error("Session transfer Gate requires its selected epoch authority")
+    return selected
+  }
   export const Blocked = NamedError.create(
     "SessionTransferBlocked",
     z.object({ sessionID: z.string(), migrationID: z.string(), message: z.string() }),
@@ -26,11 +39,14 @@ export namespace SessionTransferGate {
   }
 
   export async function isFrozen(sessionID: string) {
+    const selected = epochs()
     const [gate] = await Storage.readMany([key(sessionID)])
-    return !!gate
+    return !!gate || (await selected.isFrozen(sessionID))
   }
 
   export async function assert(sessionID: string) {
+    const selected = epochs()
+    await RuntimeMaintenance.assertAdmission()
     const [gate] = await Storage.readMany<z.infer<typeof Info>>([key(sessionID)])
     if (gate)
       throw new Blocked({
@@ -38,9 +54,49 @@ export namespace SessionTransferGate {
         migrationID: gate.migrationID,
         message: "Session transfer owns this Session; resume it on the destination or cancel before cutover",
       })
+    if (await selected.isFrozen(sessionID))
+      throw new Blocked({
+        sessionID,
+        migrationID: "binding-epoch",
+        message: "Session transfer freezes this execution binding",
+      })
   }
 
-  export function register() {
+  export async function assertOwnerMutation(sessionID: string) {
+    await epochs().assertOwnerMutation(sessionID)
+    const [reservation, value] = await Storage.readMany([reservationKey(sessionID), key(sessionID)])
+    const active = activation.getStore()
+    const reserved = z.object({ migrationID: z.string() }).optional().parse(reservation)
+    if (reserved && (active?.runtime !== RuntimeContext.current() || active.migrationID !== reserved.migrationID))
+      throw new Blocked({
+        sessionID,
+        migrationID: reserved.migrationID,
+        message: "Session transfer reserves this identity on the destination",
+      })
+    if (value !== undefined) {
+      const gate = Info.parse(value)
+      throw new Blocked({
+        sessionID,
+        migrationID: gate.migrationID,
+        message: "Session transfer prevents changes to retained source data",
+      })
+    }
+  }
+
+  export function register(input: { epochs: EpochAuthority }) {
+    RuntimeContext.assertCompositionOpen("Session transfer Gate")
+    if (registration().epochs) throw new Error("Session transfer Gate already has its epoch authority")
+    const selected = input.epochs
+    selected.register()
+    registration().epochs = {
+      isFrozen: selected.isFrozen.bind(selected),
+      assertOwnerMutation: selected.assertOwnerMutation.bind(selected),
+    }
+    registerSessionEnvironmentOrigin({ admission: assert, mutation: assertOwnerMutation })
+    WorkspaceAccess.registerSessionAuthority({
+      admission: assert,
+      mutation: (sessionID) => Storage.transaction(() => assertOwnerMutation(sessionID)),
+    })
     StorageMutationGuard.register("session-transfer", async (tx, keys, tree) => {
       const owners = [
         ...new Set(

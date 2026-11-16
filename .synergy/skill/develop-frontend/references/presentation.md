@@ -19,6 +19,8 @@ Read [Frontend localization](../../../../docs/architecture/localization.md) befo
 6. Keep the Settings language control global, responsive, and recoverable: Follow System, English, and Simplified Chinese apply without refresh, do not follow project Scope, and must preserve language self-names so a user can switch back after a mistake.
 7. Run extraction after each coherent copy change, translate every new `zh-CN` message, remove obsolete entries, and keep strict compilation green. When removing or renaming IDs, update affected terminology assertions and include `apps/web/test/script/i18n-check.test.ts` in focused verification; do not restore unused copy to satisfy a stale assertion. Finish with the repository localization contract so new hard-coded product text cannot bypass the catalog.
 
+Use a local object literal of static descriptors for enum, record or signal-based message selection. Keep every table entry extractable; do not replace valid lookups with translation adapters or allowlist exceptions. Run the source-contract tests when changing how these tables are resolved, including invalid entries outside the selected state.
+
 ## Use Semantic Icons
 
 Non-tool product UI expresses meaning through `packages/ui/src/components/semantic-icon.tsx`.
@@ -45,6 +47,8 @@ Compile repeated Review acceptance fixtures before serving them, so development 
 When retiring an account or feature entry, preserve the surviving control’s dimensions, menu placement, icon sizing, alignment and hover treatment unless the user asks to redesign them. Compare expanded and collapsed states with the existing implementation before replacing a shared presentation primitive.
 
 For reading-surface copy and quote changes, exercise the real renderer with mixed prose, inline/display math, partial formula selections, tables and code indentation. Reuse trusted renderer source for semantic atoms instead of flattening visual and accessibility nodes together. Keep toolbar, native copy and quoted text consistent without mutating the live selection; verify editable and excluded selections keep their existing owners, including the shared clipboard's textarea fallback. Capture source annotations in a lightweight shared module so selection actions do not load the Markdown parser.
+
+Measure rendered word ranges when changing prose wrapping. Include ordinary English, Chinese and a long unbroken URL at narrow and wide sizes; page width alone cannot detect words split between lines or text hidden by overflow. Compare non-scrolling descendant ranges against the outer reading viewport, not only two widths on the same expanded element; code and table readers retain local horizontal scrolling. For long-history screenshots, wait for the requested body to hydrate, scroll through the actual reading viewport, and assert row geometry inside it. Inspect the captured image independently: DOM presence, hit testing and geometry alone do not establish settled painting of virtualized content.
 
 Keep model configuration and recovery inside the existing model selector. Verify that provider changes preserve shell and Composer geometry, input focus and reading position; cover Home, project overrides, unresolved Scope snapshots and Settings recovery without adding polling.
 
@@ -136,3 +140,5 @@ Read `docs/reference/frontend-theming.md` before changing the color contract, ad
 bun test --cwd packages/ui test/theme.test.ts test/theme-generation.test.ts
 bun test --cwd apps/web test/testing/color-token-contract.test.ts
 ```
+
+For finite conversation history, click Latest without assigning its destination in the fixture. Verify the final hydrated message through the existing virtualizer, independent of fetching the recent metadata page. Settle mounted-body geometry before the first screenshot and retain a pixel-content check alongside descendant ranges; DOM visibility and hit testing do not prove paint. Use finite native scroll distances for reading checks and preserve an initial blank image as failed evidence rather than retrying screenshots until one passes.

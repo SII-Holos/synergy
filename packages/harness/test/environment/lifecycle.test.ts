@@ -2,7 +2,7 @@ import { describe, expect, test, spyOn } from "bun:test"
 import { Environment } from "../../src/environment"
 import { EnvironmentProviders, type EnvironmentProvider } from "../../src/environment/provider"
 import { Storage } from "../../src/storage/storage"
-import { testRuntime } from "../support/runtime"
+import { testEnvironmentRuntime as testRuntime } from "../support/environment-origin"
 import { runtimeHome } from "../support/runtime-home"
 import { StorageRecovery } from "../../src/storage/recovery"
 
@@ -57,8 +57,19 @@ describe("Environment lifecycle", () => {
     try {
       await first.run(async () => {
         id = (await Environment.bind({ scopeID: "scope", ownerID: "owner", provider: "fixture", spec: {} })).id
-        await Environment.acquire(id, { scopeID: "scope", useID: "preparing", capabilities: [], kind: "admission" })
-        await Environment.acquire(id, { scopeID: "scope", useID: "operation", capabilities: [] })
+        await Environment.acquire(id, {
+          scopeID: "scope",
+          useID: "preparing",
+          ownership: first.origin("preparing"),
+          capabilities: [],
+          kind: "admission",
+        })
+        await Storage.write(["environment_use", id, "operation"], {
+          id: "operation",
+          target: Environment.targetOf(await Environment.get(id, "scope")),
+          createdAt: Date.now(),
+          kind: "operation",
+        })
         await StorageRecovery.recoverOwners()
         expect(await Environment.uses(id)).toHaveLength(2)
       })
@@ -85,8 +96,18 @@ describe("Environment lifecycle", () => {
       expect(first.id).toBe(second.id)
       expect(calls.allocate).toBe(0)
       const [a, b] = await Promise.all([
-        Environment.acquire(first.id, { scopeID: "scope", useID: "tool-a", capabilities: ["exec"] }),
-        Environment.acquire(first.id, { scopeID: "scope", useID: "tool-b", capabilities: ["files"] }),
+        Environment.acquire(first.id, {
+          scopeID: "scope",
+          useID: "tool-a",
+          ownership: runtime.origin("tool-a"),
+          capabilities: ["exec"],
+        }),
+        Environment.acquire(first.id, {
+          scopeID: "scope",
+          useID: "tool-b",
+          ownership: runtime.origin("tool-b"),
+          capabilities: ["files"],
+        }),
       ])
       expect(calls.allocate).toBe(1)
       expect(a.target).toEqual(b.target)
@@ -97,7 +118,12 @@ describe("Environment lifecycle", () => {
       await b.release()
       await Environment.deallocate(first.id, { scopeID: "scope" })
       expect(calls.deallocate).toBe(1)
-      const next = await Environment.acquire(first.id, { scopeID: "scope", useID: "tool-c", capabilities: ["exec"] })
+      const next = await Environment.acquire(first.id, {
+        scopeID: "scope",
+        useID: "tool-c",
+        ownership: runtime.origin("tool-c"),
+        capabilities: ["exec"],
+      })
       expect(next.target.generation).toBe(a.target.generation + 1)
       await expect(Environment.assertTarget(a.target, "scope")).rejects.toMatchObject({ name: "EnvironmentStale" })
       await next.release()
@@ -110,7 +136,12 @@ describe("Environment lifecycle", () => {
     await runtime.run(async () => {
       const info = await Environment.bind({ scopeID: "scope", ownerID: "session", provider: "fixture", spec: {} })
       await expect(
-        Environment.acquire(info.id, { scopeID: "scope", useID: "pty", capabilities: ["pty"] }),
+        Environment.acquire(info.id, {
+          scopeID: "scope",
+          useID: "pty",
+          ownership: runtime.origin("pty"),
+          capabilities: ["pty"],
+        }),
       ).rejects.toMatchObject({ name: "EnvironmentUnavailable" })
       expect(await Environment.uses(info.id)).toHaveLength(0)
       expect(calls.allocate).toBe(1)
@@ -132,9 +163,19 @@ describe("Environment lifecycle", () => {
     await runtime.run(async () => {
       const info = await Environment.bind({ scopeID: "scope", ownerID: "session", provider: "fixture", spec: {} })
       await expect(
-        Environment.acquire(info.id, { scopeID: "scope", useID: "tool", capabilities: ["exec"] }),
+        Environment.acquire(info.id, {
+          scopeID: "scope",
+          useID: "tool",
+          ownership: runtime.origin("tool"),
+          capabilities: ["exec"],
+        }),
       ).rejects.toThrow("response lost")
-      const use = await Environment.acquire(info.id, { scopeID: "scope", useID: "tool", capabilities: ["exec"] })
+      const use = await Environment.acquire(info.id, {
+        scopeID: "scope",
+        useID: "tool",
+        ownership: runtime.origin("tool"),
+        capabilities: ["exec"],
+      })
       expect(calls.allocate).toBe(1)
       expect(use.target.generation).toBe(1)
       await use.release()
@@ -172,10 +213,20 @@ describe("Environment lifecycle", () => {
     await runtime.run(async () => {
       const info = await Environment.bind({ scopeID: "scope", ownerID: "session", provider: "fixture", spec: {} })
       await expect(
-        Environment.acquire(info.id, { scopeID: "scope", useID: "tool", capabilities: ["exec"] }),
+        Environment.acquire(info.id, {
+          scopeID: "scope",
+          useID: "tool",
+          ownership: runtime.origin("tool"),
+          capabilities: ["exec"],
+        }),
       ).rejects.toThrow("response lost")
       const before = await Environment.get(info.id, "scope")
-      const use = await Environment.acquire(info.id, { scopeID: "scope", useID: "tool", capabilities: ["exec"] })
+      const use = await Environment.acquire(info.id, {
+        scopeID: "scope",
+        useID: "tool",
+        ownership: runtime.origin("tool"),
+        capabilities: ["exec"],
+      })
       expect(pending).toBe(false)
       expect(resumes).toBe(1)
       expect(calls.allocate).toBe(1)
@@ -196,7 +247,12 @@ test("a lost allocation with a retained Workspace view cannot become an empty re
   await using runtime = await testRuntime({ register: () => EnvironmentProviders.register(host) })
   await runtime.run(async () => {
     const environment = await Environment.bind({ scopeID: "scope", ownerID: "session", provider: "fixture", spec: {} })
-    const use = await Environment.acquire(environment.id, { scopeID: "scope", useID: "prepare", capabilities: [] })
+    const use = await Environment.acquire(environment.id, {
+      scopeID: "scope",
+      useID: "prepare",
+      ownership: runtime.origin("prepare"),
+      capabilities: [],
+    })
     const { WorkspaceCatalog } = await import("../../src/workspace/catalog")
     const workspace = await WorkspaceCatalog.create({
       scopeID: "scope",
@@ -219,7 +275,12 @@ test("a lost allocation with a retained Workspace view cannot become an empty re
     expect((await Environment.reconcile(environment.id, "scope")).state).toBe("unavailable")
     expect((await WorkspaceCatalog.get(workspace.id, "scope")).activeMount?.state).toBe("unavailable")
     await expect(
-      Environment.acquire(environment.id, { scopeID: "scope", useID: "next", capabilities: [] }),
+      Environment.acquire(environment.id, {
+        scopeID: "scope",
+        useID: "next",
+        ownership: runtime.origin("next"),
+        capabilities: [],
+      }),
     ).rejects.toMatchObject({ name: "EnvironmentUnavailable" })
   })
 })
@@ -255,9 +316,28 @@ test("Runtime maintenance reclaims idle managed compute and preserves active and
       spec: {},
       idleTimeoutMs: 0,
     })
-    await (await Environment.acquire(idle.id, { scopeID: "scope", useID: "once", capabilities: [] })).release()
-    const active = await Environment.acquire(busy.id, { scopeID: "scope", useID: "active", capabilities: [] })
-    await (await Environment.acquire(native.id, { scopeID: "scope", useID: "once", capabilities: [] })).release()
+    await (
+      await Environment.acquire(idle.id, {
+        scopeID: "scope",
+        useID: "once",
+        ownership: runtime.origin("once"),
+        capabilities: [],
+      })
+    ).release()
+    const active = await Environment.acquire(busy.id, {
+      scopeID: "scope",
+      useID: "active",
+      ownership: runtime.origin("active"),
+      capabilities: [],
+    })
+    await (
+      await Environment.acquire(native.id, {
+        scopeID: "scope",
+        useID: "once",
+        ownership: runtime.origin("once"),
+        capabilities: [],
+      })
+    ).release()
     const deadline = Date.now() + 20_000
     while ((await Environment.get(idle.id, "scope")).state !== "idle") {
       if (Date.now() > deadline) throw new Error("Runtime did not schedule idle reclamation")
@@ -277,7 +357,12 @@ test("Environment event snapshots have a strictly increasing update watermark", 
     const environment = await Environment.bind({ scopeID: "scope", ownerID: "clock", provider: "fixture", spec: {} })
     const clock = spyOn(Date, "now").mockReturnValue(environment.updatedAt + 10)
     try {
-      const use = await Environment.acquire(environment.id, { scopeID: "scope", useID: "work", capabilities: ["exec"] })
+      const use = await Environment.acquire(environment.id, {
+        scopeID: "scope",
+        useID: "work",
+        ownership: runtime.origin("work"),
+        capabilities: ["exec"],
+      })
       const ready = await Environment.get(environment.id, "scope")
       await use.release()
       const released = await Environment.deallocate(environment.id, { scopeID: "scope" })

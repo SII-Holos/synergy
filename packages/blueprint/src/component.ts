@@ -1,3 +1,6 @@
+import { registerBlueprintTransferOwner } from "./transfer"
+import { registerBlueprintTransferGuard } from "./transfer-guard"
+import { registerBlueprintTransferMigrations } from "./transfer-index"
 import { componentFeatures } from "./features"
 import { registerAgentContributions } from "./agent-contributions"
 import { registerSessionMigrations } from "./session-migration"
@@ -34,6 +37,9 @@ export function blueprint(): RuntimeComponent {
       registerSessionMigrations()
       registerSessionSchema()
       registerBlueprintMigrations()
+      registerBlueprintTransferMigrations()
+      registerBlueprintTransferGuard()
+      registerBlueprintTransferOwner()
       registerSessions()
       registerBlueprintDomain()
       registerBlueprintSessionState()

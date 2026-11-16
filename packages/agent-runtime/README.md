@@ -10,6 +10,8 @@ An exclusive host catalog also avoids importing the product's bundled catalog ma
 
 Register `ConfigSource` from Harness `config/source` when configuration belongs to the embedding host. Its validated JSON snapshot replaces implicit file, remote and inline discovery, and Config mutation APIs reject writes. Long tool output uses Harness truncation's native artifact storage; see the [embedded extension decision](../../docs/decisions/implemented/architecture/2026-10-05-bound-embedded-host-extension-surface.md).
 
+Register `InstructionSource` from Harness `session/instruction-source` to select instructions independently of configuration. The source receives the current Scope and Workspace and replaces all implicit instruction sources. Hosts allowing only project rules can use `InstructionFiles.project()` from `session/instruction-files`; see [prompt assembly](../../docs/architecture/llm-loop.md#prompt-assembly). Register the same selection in any prompt-preparing worker.
+
 ```ts
 import { openAgentRuntime } from "@ericsanchezok/synergy-agent-runtime"
 import { localRuntime } from "@ericsanchezok/synergy-local-runtime/component"
@@ -26,3 +28,5 @@ const session = await client.session.create({ title: "Embedded agent" })
 The component list is required. An empty list opens the Harness without a default execution Environment or plugin host. Select `localRuntime({ workers: false, environment: false })` when native file services are needed without a default execution destination. Select the Plugin Host component separately if needed. Session creation and API tools do not allocate compute. See [Environments](../../docs/architecture/environments.md) for selection and lifetime. Components are checked for duplicate identities, missing dependencies, version conflicts and cycles before opening storage. Runtime close drains execution and disposes started services in reverse dependency order.
 
 Feature candidates are resolved before registration using global opt-ins. A host with its own configuration source supplies the matching `features` plan from Util `FeatureSelection.resolve`; it must resolve the instance-wide preferences before opening the Runtime. Workers inherit that plan. See [Feature lifecycle](../../docs/architecture/feature-lifecycle.md).
+
+Worker components must select any required Home owner before sealing. Worker startup verifies the persisted marker before readiness, just as foreground Runtime startup does. Agent and policy subprocesses use their Runtime data directory and explicit environment; source launches disable automatic dotenv and Bun configuration loading.

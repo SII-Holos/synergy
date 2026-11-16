@@ -19,6 +19,8 @@ Project task defaults belong to `src/project/task-defaults.ts` and its scoped HT
 
 The managed-worktree janitor schedules per Scope and drains active sweeps during disposal. Run `bun test test/project/worktree-janitor.test.ts` for scheduler ownership changes.
 
+VCS branch observation owns each poll through its composition-registered Host and an independent Workspace access task. Preserve the captured Workspace generation, storage owner and original resource caller's admission. Verify `bun test test/project/vcs-environment.test.ts test/project/vcs-origin.test.ts test/project/vcs-branch-watcher.test.ts`.
+
 Expose composition through `./component`; keep registration side-effect free until the factory is selected. Declare required components, optional ordering, worker roles and lazy HTTP adapters explicitly. Runtime-scoped reload and lifecycle contributions must preserve isolated instances and failed-start cleanup.
 
 Keep published `synergy` component metadata aligned with the factory version, requirements and packaged entry. Component CLI contributions belong in `src/cli-adapter.ts` when this owner supplies commands; keep their handlers lazy and independent of the complete product.

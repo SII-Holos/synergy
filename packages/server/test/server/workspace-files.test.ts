@@ -11,7 +11,8 @@ import { Server } from "../../src/server/server"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
-const runtime = await testRuntime()
+import { registerHttp } from "../../src/http"
+const runtime = await testRuntime(undefined, registerHttp)
 
 async function workspaceUrl(endpoint: string, directory: string, params?: Record<string, string | number | boolean>) {
   const url = new URL(`http://synergy.test/workspace/files/${endpoint}`)

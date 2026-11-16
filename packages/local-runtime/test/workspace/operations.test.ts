@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test"
 import path from "node:path"
 import fs from "node:fs/promises"
-import { testRuntime } from "@ericsanchezok/synergy-harness/test/support/runtime"
+import { testEnvironmentRuntime as testRuntime } from "@ericsanchezok/synergy-harness/test/support/environment-origin"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { Environment } from "@ericsanchezok/synergy-harness/environment"
 import { EnvironmentControl } from "@ericsanchezok/synergy-harness/environment/control"
@@ -49,6 +49,7 @@ test("confirmed rebinding releases an obsolete directory mount after active user
     const held = await Environment.acquire(environment.id, {
       scopeID: scope.id,
       useID: "active",
+      ownership: runtime.origin("active"),
       kind: "admission",
       capabilities: ["files"],
     })
@@ -104,6 +105,7 @@ test("confirmed rebinding is not blocked by terminal execution after directory r
     let submitted = false
     try {
       let execution = await EnvironmentExecution.start({
+        origin: runtime.origin("native-execution"),
         id,
         scopeID: scope.id,
         environmentID: environment.id,

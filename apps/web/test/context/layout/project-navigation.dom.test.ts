@@ -42,7 +42,7 @@ beforeAll(async () => {
       }
       return Response.json({...empty,unreadCompletionCount:0})
     }})
-    export const useGlobalSDK=()=>({url:"http://navigation.test",client,event:{listen:callback=>{receive=callback;return ()=>{receive=undefined}}}})
+    export const useGlobalSDK=()=>({url:"http://navigation.test",cacheKey:"personal-fixture",client,event:{listen:callback=>{receive=callback;return ()=>{receive=undefined}}}})
     export const useGlobalSync=()=>({data:{scope:[],config:{}},refreshScopes:async()=>{}})
     export const usePlatform=()=>({platform:"web"})
     export const useServer=()=>({url:"http://navigation.test",scopes:{list:()=>state.scopes,close:id=>setState("scopes",items=>items.filter(item=>item.id!==id))}})

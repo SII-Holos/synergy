@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test"
-import { testRuntime } from "../support/runtime"
+import { testRuntime as localRuntime } from "../support/runtime"
+import { testEnvironmentRuntime } from "@ericsanchezok/synergy-harness/test/support/environment-origin"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
@@ -16,6 +17,8 @@ import { ScanFilesTool } from "../../src/tools/scan-files"
 import { GlobTool } from "../../src/tools/glob"
 import { GrepTool } from "../../src/tools/grep"
 import { ListTool } from "../../src/tools/ls"
+
+const testRuntime = (options: Parameters<typeof localRuntime>[0] = {}) => testEnvironmentRuntime(options, localRuntime)
 
 test("search reads selected Workspace bytes, preserves regex and ignore semantics, and needs no dormant compute", async () => {
   await using runtime = await testRuntime({
@@ -58,6 +61,7 @@ test("search reads selected Workspace bytes, preserves regex and ignore semantic
         await WorkspaceContent.mutate(selection, { kind: "mkdir", path: "empty" })
         for (const live of [false, true]) {
           await using resources = await EnvironmentResources.resolve({
+            origin: runtime.origin("selected-search-1"),
             ...selection,
             environmentID: environment.id,
             needs: live ? { execution: "exec" } : { workspace: true },

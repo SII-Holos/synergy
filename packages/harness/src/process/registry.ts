@@ -7,6 +7,7 @@ import { ObservabilityMetrics } from "../observability/metrics"
 import { ObservabilityRedaction } from "../observability/redaction"
 import { ProcessInspection as OwnedProcessInspection } from "./inspection"
 import { workMap } from "../util/queue"
+import type { ProcessAccessSource } from "./access-source"
 
 const log = Log.create({ service: "process.registry" })
 
@@ -128,6 +129,7 @@ class BoundedTextBuffer {
 }
 
 export namespace ProcessRegistry {
+  const ownership = new WeakMap<object, ProcessAccessSource.Ownership>()
   export type Status = "running" | "completed" | "failed" | "killed"
 
   export interface Stdin {
@@ -305,6 +307,22 @@ export namespace ProcessRegistry {
     return instanceState.finished.get(id)
   }
 
+  export function recordOwnership(value: ProcessAccessSource.Ownership) {
+    const fact = structuredClone(value)
+    const process = get(fact.id)
+    if (!process) throw new Error("Process evidence has no original live Registry entry")
+    const previous = ownership.get(process)
+    if (previous && JSON.stringify(previous) !== JSON.stringify(fact))
+      throw new Error("Process Registry ownership cannot replace its original native evidence")
+    ownership.set(process, fact)
+  }
+
+  export function recordedOwnership(id: string): ProcessAccessSource.Ownership | undefined {
+    const process = get(id) ?? getFinished(id)
+    const fact = process && ownership.get(process)
+    return fact && structuredClone(fact)
+  }
+
   export function setTerminator(proc: Process, terminate: (() => void | Promise<void>) | undefined) {
     const instanceState = runtimeState()
 
@@ -405,7 +423,7 @@ export namespace ProcessRegistry {
     // Always persist the completed process in the finished registry so callers
     // scanning both registries can find it even without the backgrounded flag.
     instanceState.running.delete(proc.id)
-    instanceState.finished.set(proc.id, {
+    const finished: FinishedProcess = {
       id: proc.id,
       command: proc.command,
       description: proc.description,
@@ -426,7 +444,10 @@ export namespace ProcessRegistry {
       timedOut: proc.timedOut,
       baselineRssBytes: proc.baselineRssBytes,
       peakRssBytes: proc.peakRssBytes,
-    })
+    }
+    instanceState.finished.set(proc.id, finished)
+    const original = ownership.get(proc)
+    if (original) ownership.set(finished, original)
     instanceState.lastRecovery = {
       action: "close",
       reason: "process_exit",
@@ -586,7 +607,8 @@ export namespace ProcessRegistry {
         generation === instanceState.samplingGeneration &&
         opts.settleStale &&
         proc.pid !== undefined &&
-        inspection.alive === false
+        inspection.alive === false &&
+        !instanceState.closing.has(proc)
       ) {
         markStale(proc)
         continue
@@ -761,7 +783,7 @@ export namespace ProcessRegistry {
     })
   }
 
-  function isAlive(proc: Process): boolean | undefined {
+  export function isAlive(proc: Process): boolean | undefined {
     if (proc.exited || proc.exitObservedAt !== undefined) return false
     if (proc.child?.exitCode !== null && proc.child?.exitCode !== undefined) return false
     if (proc.child?.signalCode !== null && proc.child?.signalCode !== undefined) return false

@@ -52,6 +52,8 @@ IDs describe product meaning rather than copying English text. Changing English 
 
 Product code uses Lingui runtime descriptors and Solid components, not language branches or translation macros. Runtime descriptors carry a static `id`, English `message`, and an optional translator comment. ICU MessageFormat owns variables, plural/select behavior, and rich-text placeholders. Translations are never rendered as unsanitized HTML.
 
+Local descriptor tables may select a message using enum values, object properties, signals or other index expressions. The source contract resolves every entry of the local object literal and validates each descriptor's ID and default message. Spread, getter, computed-key, runtime-constructed and unresolved table entries cannot establish a complete static table. TypeScript owns index-domain safety; a dynamic selection among static descriptors does not create a dynamic message ID.
+
 The tracked English, Simplified Chinese, and development-only pseudo PO catalogs are generated and reconciled from source descriptors. Extraction preserves existing translations, updates source locations and comments, and removes obsolete entries. The repository completeness check rejects missing or blank production translations, strict compilation rejects invalid ICU syntax, and Lingui derives pseudo messages from English at compile time.
 
 ## Formatting

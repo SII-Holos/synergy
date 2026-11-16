@@ -4,6 +4,8 @@ HTTP/WS transport, authentication, core API routes, and explicit domain route co
 
 Shared runtime routes stay here. Domain routes belong with the domain service and are mounted through server contributions; importing the full product from Server is forbidden.
 
+HTTP composition registers the native origin for Workspace-file requests. Requests inherit an existing resource frame's original provenance and reject a frame missing it. File browsing resolves stored Workspace content without starting dormant compute; Scope, generation, cancellation and write-startup barriers remain enforced. Verify `test/server/workspace-context.test.ts` and the Workspace-file, Environment, selection and startup suites.
+
 `Server.Contributions.eventClients` adds connection-local domain protocols to the existing `/global/event/ws` transport. Each contribution receives an opaque fresh `clientId` and a targeted `send(frame): boolean`, then owns validated domain payload handling, active-view notifications and disposal. Server rejects stale view-interest publication generations and disposes contributions with their stable raw socket. A true send result is not an acknowledgement, and these targeted frames do not enter Bus history or reconnect replay.
 
 The explicit `webApp({ directory })` component serves built Web assets. Known page paths negotiate HTML navigation before optional API handlers, after authentication, CORS and Scope resolution; JSON and fetch requests retain their API behavior. This allows a bookmarked Library page and its generated SDK endpoint to share a path.

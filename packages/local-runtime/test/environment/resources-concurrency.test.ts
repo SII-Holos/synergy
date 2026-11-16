@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
 import path from "node:path"
-import { testRuntime } from "@ericsanchezok/synergy-harness/test/support/runtime"
+import { testEnvironmentRuntime as testRuntime } from "@ericsanchezok/synergy-harness/test/support/environment-origin"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { EnvironmentResources } from "@ericsanchezok/synergy-harness/environment/resources"
 import { Environment } from "@ericsanchezok/synergy-harness/environment"
@@ -52,14 +52,21 @@ test.each(["execution", "files", "cancelled", "failed"] as const)(
         data: new TextEncoder().encode("authoritative bytes"),
         expectedVersion: null,
       })
+      const origin = runtime.origin(`concurrency-${mode}`)
       block = true
-      const first = EnvironmentResources.resolve({ ...selection, needs: { execution: "exec" } })
+      const first = EnvironmentResources.resolve({ ...selection, origin, needs: { execution: "exec" } })
       void first.catch(() => {})
-      await entered.promise
+      await Promise.race([
+        entered.promise,
+        first.then(() => {
+          throw new Error("The original admission finished before its materialization barrier")
+        }),
+      ])
       expect((await WorkspaceCatalog.get(workspace.id, "scope")).activeMount?.state).toBe("preparing")
       const controller = new AbortController()
       const second = EnvironmentResources.resolve({
         ...selection,
+        origin,
         signal: controller.signal,
         needs: mode === "files" ? { workspace: true } : { execution: "exec" },
       })
@@ -67,7 +74,7 @@ test.each(["execution", "files", "cancelled", "failed"] as const)(
       try {
         const other = await Environment.bind({ scopeID: "scope", ownerID: "other", provider: "native", spec: {} })
         await expect(
-          EnvironmentResources.resolve({ ...selection, environmentID: other.id, needs: { execution: "exec" } }),
+          EnvironmentResources.resolve({ ...selection, origin, environmentID: other.id, needs: { execution: "exec" } }),
         ).rejects.toMatchObject({ name: "WorkspaceUnavailable" })
         expect((await Environment.get(other.id, "scope")).allocation).toBeUndefined()
         if (mode === "cancelled") {
@@ -84,7 +91,7 @@ test.each(["execution", "files", "cancelled", "failed"] as const)(
         await expect(second).rejects.toThrow("fixture materialization failed")
         const before = reads
         await expect(
-          EnvironmentResources.resolve({ ...selection, needs: { execution: "exec" } }),
+          EnvironmentResources.resolve({ ...selection, origin, needs: { execution: "exec" } }),
         ).rejects.toMatchObject({
           name: "WorkspaceUnavailable",
         })

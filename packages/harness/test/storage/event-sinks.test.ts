@@ -325,6 +325,174 @@ for (const backend of storageTestBackends()) {
       }
     })
 
+    test("batch sinks retain ordered windows until the original bounded receiver completes", async () => {
+      const entered = Promise.withResolvers<void>()
+      const release = Promise.withResolvers<void>()
+      const batches: StorageEventSinks.Delivery[][] = []
+      const sink = {
+        id: "batch-receiver",
+        capture,
+        async deliver() {
+          throw new Error("Native receiver requires its bounded batch contract")
+        },
+        async deliverBatch(deliveries: readonly Readonly<StorageEventSinks.Delivery>[]) {
+          expect(Storage.inTransaction()).toBe(false)
+          batches.push(structuredClone([...deliveries]))
+          if (batches.length === 1) {
+            entered.resolve()
+            await release.promise
+          }
+        },
+      }
+      await using runtime = await testRuntime({
+        postgres: backend === "postgres" ? process.env.SYNERGY_TEST_POSTGRES_URL : undefined,
+        register: () => StorageEventSinks.register(sink),
+      })
+      await runtime.run(() =>
+        ScopeContext.provide({
+          scope: Scope.home(),
+          fn: async () => {
+            await Storage.transaction(async () => {
+              for (let value = 1; value <= 130; value++) await Bus.publish(Changed, { partition: "run-a", value })
+              for (let value = 1; value <= 2; value++) await Bus.publish(Changed, { partition: "run-b", value })
+            })
+            const original = await Storage.query<StorageEventSinks.Delivery>({ kind: "event_delivery", limit: 1024 })
+            const pumping = StorageEventSinks.flush({ limit: 1024 })
+            void pumping.catch(() => {})
+            try {
+              const held = await Promise.race([
+                entered.promise.then(() => true),
+                pumping.then(
+                  () => false,
+                  () => false,
+                ),
+              ])
+              if (!held) await pumping
+              expect(held).toBe(true)
+              expect(await Storage.query({ kind: "event_delivery", limit: 1024 })).toHaveLength(132)
+              release.resolve()
+              expect(await pumping).toEqual({ delivered: 132 })
+              expect(batches.flat().map((value) => value.eventID)).toEqual(original.map((row) => row.value.eventID))
+              expect(batches.every((values) => values.length <= 128)).toBe(true)
+              expect(batches.some((values) => values.length === 128)).toBe(true)
+              expect(
+                batches.every((values) =>
+                  values.every(
+                    (value) => value.sinkID === values[0]!.sinkID && value.partition === values[0]!.partition,
+                  ),
+                ),
+              ).toBe(true)
+              expect(
+                batches
+                  .flat()
+                  .filter((value) => value.partition === "run-a")
+                  .map((value) => value.sequence),
+              ).toEqual(Array.from({ length: 130 }, (_, index) => index + 1))
+              expect(await Storage.query({ kind: "event_delivery" })).toEqual([])
+            } finally {
+              release.resolve()
+              await pumping.catch(() => {})
+            }
+          },
+        }),
+      )
+    })
+
+    test("a failed batch replays stable identities after actual Runtime restart without partial acknowledgment", async () => {
+      await using directory = await tmpdir()
+      const namespace = crypto.randomUUID()
+      const attempts: StorageEventSinks.Delivery[][] = []
+      const lost = new Error("Original batch receiver acknowledgment lost")
+      let fail = true
+      const sink = {
+        id: "batch-receiver",
+        capture,
+        async deliver() {
+          throw new Error("Native receiver requires its bounded batch contract")
+        },
+        async deliverBatch(deliveries: readonly Readonly<StorageEventSinks.Delivery>[]) {
+          attempts.push(structuredClone([...deliveries]))
+          await Storage.transaction(async () => {
+            for (const value of deliveries) {
+              const receipt = ["original-batch-receipt", value.eventID]
+              const [previous] = await Storage.readMany([receipt])
+              if (previous === undefined) await Storage.write(receipt, value)
+              else expect(previous).toEqual(value)
+            }
+          })
+          if (fail) throw lost
+        },
+      }
+      const open = () =>
+        testRuntime({
+          home: directory.path,
+          namespace,
+          postgres: backend === "postgres" ? process.env.SYNERGY_TEST_POSTGRES_URL : undefined,
+          register: () => StorageEventSinks.register(sink),
+        })
+      {
+        await using runtime = await open()
+        await runtime.run(() =>
+          ScopeContext.provide({
+            scope: Scope.home(),
+            fn: async () => {
+              await Storage.transaction(async () => {
+                for (const value of [1, 2, 3]) await Bus.publish(Changed, { partition: "run-a", value })
+              })
+              await expect(StorageEventSinks.flush()).rejects.toBe(lost)
+              expect(await Storage.query({ kind: "event_delivery" })).toHaveLength(3)
+              expect(await Storage.query({ kind: "original-batch-receipt" })).toHaveLength(3)
+            },
+          }),
+        )
+      }
+      fail = false
+      await using reopened = await open()
+      await reopened.run(async () => {
+        expect(await Storage.query({ kind: "event_delivery" })).toHaveLength(3)
+        expect(await StorageEventSinks.flush()).toEqual({ delivered: 3 })
+        expect(attempts).toHaveLength(2)
+        expect(attempts[1]).toEqual(attempts[0])
+        expect(await Storage.query({ kind: "original-batch-receipt" })).toHaveLength(3)
+        expect(await Storage.query({ kind: "event_delivery" })).toEqual([])
+      })
+    })
+
+    test("batch acknowledgment preserves every original row when one actual delivery revision changes", async () => {
+      const sink = {
+        id: "batch-receiver",
+        capture,
+        async deliver() {
+          throw new Error("Native receiver requires its bounded batch contract")
+        },
+        async deliverBatch(deliveries: readonly Readonly<StorageEventSinks.Delivery>[]) {
+          expect(deliveries.map((value) => value.sequence)).toEqual([1, 2])
+          const record = (await Storage.query<StorageEventSinks.Delivery>({ kind: "event_delivery" }))[1]!
+          await Storage.write(record.key, { ...record.value, payload: { changed: true } })
+        },
+      }
+      await using runtime = await testRuntime({
+        postgres: backend === "postgres" ? process.env.SYNERGY_TEST_POSTGRES_URL : undefined,
+        register: () => StorageEventSinks.register(sink),
+      })
+      await runtime.run(() =>
+        ScopeContext.provide({
+          scope: Scope.home(),
+          fn: async () => {
+            await Storage.transaction(async () => {
+              for (const value of [1, 2]) await Bus.publish(Changed, { partition: "run-a", value })
+            })
+            await expect(StorageEventSinks.flush()).rejects.toThrow("changed while awaiting acknowledgment")
+            expect(
+              (await Storage.query<StorageEventSinks.Delivery>({ kind: "event_delivery" })).map(
+                (row) => row.value.sequence,
+              ),
+            ).toEqual([1, 2])
+          },
+        }),
+      )
+    })
+
     test("composition is sealed and absent consumers retain pending records", async () => {
       await using directory = await tmpdir()
       const namespace = crypto.randomUUID()
@@ -369,3 +537,46 @@ for (const backend of storageTestBackends()) {
     })
   })
 }
+
+test("a selected durable partition cannot consume another blocked partition or imply global drainage", async () => {
+  const accepted: string[] = []
+  await using runtime = await testRuntime({
+    register: () =>
+      StorageEventSinks.register({
+        id: "scoped-delivery",
+        capture,
+        async deliver(value) {
+          if (value.partition === "blocked") throw new Error("Original partition is frozen")
+          accepted.push(value.eventID)
+        },
+      }),
+  })
+  await runtime.run(() =>
+    ScopeContext.provide({
+      scope: Scope.home(),
+      fn: async () => {
+        await Storage.transaction(async () => {
+          await Bus.publish(Changed, { partition: "blocked", value: 1 })
+          await Bus.publish(Changed, { partition: "healthy", value: 2 })
+        })
+        const before = await Storage.query<StorageEventSinks.Delivery>({ kind: "event_delivery" })
+        const blocked = before.find((row) => row.value.partition === "blocked")!
+        const healthy = before.find((row) => row.value.partition === "healthy")!
+        expect(await StorageEventSinks.flush({ sinkID: "scoped-delivery", partition: "healthy" })).toEqual({
+          delivered: 1,
+        })
+        expect(accepted).toEqual([healthy.value.eventID])
+        expect(await Storage.query({ kind: "event_delivery" })).toEqual([blocked])
+        await expect(StorageEventSinks.flush({ sinkID: "scoped-delivery", partition: "blocked" })).rejects.toThrow(
+          "Original partition is frozen",
+        )
+        expect(await Storage.query({ kind: "event_delivery" })).toEqual([blocked])
+        expect(await StorageEventSinks.flush({ sinkID: "scoped-delivery", partition: "healthy" })).toEqual({
+          delivered: 0,
+        })
+        expect(await Storage.query({ kind: "event_delivery" })).toHaveLength(1)
+        await expect(StorageEventSinks.flush({ partition: "healthy" })).rejects.toThrow("requires its sink identity")
+      },
+    }),
+  )
+})

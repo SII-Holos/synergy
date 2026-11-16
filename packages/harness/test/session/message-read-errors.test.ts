@@ -5,6 +5,7 @@ import { Scope } from "../../src/scope"
 import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
 import { MessageV2 } from "../../src/session/message-v2"
+import { PartContent } from "../../src/session/part-content"
 import { StorageIntegrityError, StorageUnavailableError } from "../../src/storage/errors"
 import { StoragePath } from "../../src/storage/path"
 import { Storage } from "../../src/storage/storage"
@@ -117,6 +118,67 @@ for (const backend of storageTestBackends()) {
           ).rejects.toBe(fault)
         },
         0,
+      ))
+
+    test("one original Part reader hydrates stored content and preserves owner and failure semantics", () =>
+      withMessages(
+        backend,
+        async ({ scopeID, sessionID, newestIDs }) => {
+          const messageID = newestIDs[0]!
+          const original = (await MessageV2.parts({ scopeID, sessionID, messageID }))[0]
+          if (!original || original.type !== "text") throw new Error("The original native text producer is missing")
+          const delta = "Original native UTF-16 🌏 content\n".repeat(4096)
+          const text = original.text + delta
+          await Session.updatePartDelta({ ...original, text }, delta)
+          await Session.flushPartWrites(sessionID)
+          const target = { scopeID, sessionID, messageID, partID: original.id }
+          const key = StoragePath.messagePart(scopeID, sessionID, messageID, Identifier.asPartID(original.id))
+          const stored = await Storage.read<PartContent.Stored>(key)
+          expect(PartContent.checkpoint(stored)).toBeDefined()
+          {
+            using writer = spyOn(Storage.current().store, "transaction")
+            expect(await MessageV2.readPart(target)).toMatchObject({ id: original.id, type: "text", text })
+            expect(writer).not.toHaveBeenCalled()
+          }
+          const tool: MessageV2.ToolPart = {
+            id: Identifier.ascending("part"),
+            sessionID,
+            messageID,
+            type: "tool",
+            callID: "stored-pruned-part",
+            tool: "fixture",
+            state: {
+              status: "completed",
+              input: {},
+              output: "Original stored output is pruned for readers",
+              title: "Stored pruned fixture",
+              metadata: {},
+              time: { start: 1, end: 2, compacted: 3 },
+            },
+          }
+          await Session.updatePart(tool)
+          expect(await MessageV2.readPart({ ...target, partID: tool.id })).toMatchObject({
+            id: tool.id,
+            type: "tool",
+            state: { status: "completed", output: "", time: { compacted: 3 } },
+          })
+          expect(await MessageV2.readPart({ ...target, partID: Identifier.ascending("part") })).toBeUndefined()
+          expect(await MessageV2.readPart({ ...target, scopeID: "f".repeat(40) })).toBeUndefined()
+          await Storage.write(key, { ...stored, sessionID: Identifier.ascending("session") })
+          try {
+            await expect(MessageV2.readPart(target)).rejects.toBeInstanceOf(StorageIntegrityError)
+          } finally {
+            await Storage.write(key, stored)
+          }
+          const readMany = Storage.readMany
+          const fault = new StorageUnavailableError("Synthetic original Part storage failure")
+          using failedRead = spyOn(Storage, "readMany").mockImplementation(async <T>(keys: string[][]) => {
+            if (keys.some((entry) => JSON.stringify(entry) === JSON.stringify(key))) throw fault
+            return readMany<T>(keys)
+          })
+          await expect(MessageV2.readPart(target)).rejects.toBe(fault)
+        },
+        1,
       ))
 
     for (const { label, offset } of [

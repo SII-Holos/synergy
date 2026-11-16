@@ -148,6 +148,41 @@ async function inScope<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 describe("AgentWorkerPool", () => {
+  test("shutdown retains a recycled worker until its original native stop completes", async () => {
+    const fake = fakeWorkers()
+    const pool = new AgentWorkerPool({ ...options, size: 2, minIdle: 2 }, fake.spawn)
+    const warming = pool.waitForWarm(new AbortController().signal)
+    for (const worker of fake.workers) worker.ready()
+    await warming
+    const recycled = fake.workers[0]
+    const release = Promise.withResolvers<void>()
+    const originalStop = recycled.host.stop.bind(recycled.host)
+    using held = spyOn(recycled.host, "stop").mockImplementation(async (graceMs) => {
+      await release.promise
+      await originalStop(graceMs)
+    })
+    pool.resize(1)
+    let drained = false
+    const draining = pool.drainRetiring().then(() => {
+      drained = true
+    })
+    let completed = false
+    const closing = pool.stop().then(() => {
+      completed = true
+    })
+    try {
+      await new Promise<void>((resolve) => setImmediate(resolve))
+      expect(completed).toBe(false)
+      expect(drained).toBe(false)
+    } finally {
+      release.resolve()
+      await closing
+      await draining
+    }
+    expect(completed).toBe(true)
+    expect(recycled.stops).toBe(1)
+  })
+
   test("acknowledges rollout chunks only after the owner commits them", async () => {
     const fake = fakeWorkers()
     const pool = new AgentWorkerPool(options, fake.spawn)

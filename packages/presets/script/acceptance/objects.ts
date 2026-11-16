@@ -120,14 +120,14 @@ export function objects(settings: Settings): Driver {
               path.join(host.home, ".synergy/data/workspace-objects/acceptance", hash.slice(0, 2), hash)
             const uploadedBytes = new Uint8Array(await Bun.file(object(digest(newBytes))).arrayBuffer())
             const uploadedManifest = new Uint8Array(await Bun.file(object(prepared.manifest)).arrayBuffer())
-            const staged = WorkspaceTree.Manifest.parse(JSON.parse(new TextDecoder().decode(uploadedManifest)))
+            const staged = WorkspaceContent.decode(prepared.manifest, uploadedManifest)
             const before = await WorkspaceContent.read(selection, "record.txt")
             const timeline = [{ stage: "bytes-uploaded", at: Date.now(), manifest: prepared.manifest }]
             if (digest(uploadedBytes) === digest(newBytes) && digest(uploadedManifest) === prepared.manifest)
               barriers.push("bytes-uploaded")
             const aborted = await rejection(() =>
               Storage.transaction(async () => {
-                await WorkspaceCatalog.publishContent(prepared.info, prepared.manifest)
+                await prepared.publish()
                 throw new Error("Injected metadata transaction interruption")
               }),
             )
@@ -138,11 +138,11 @@ export function objects(settings: Settings): Driver {
             if (digest(before) === digest(oldBytes) && digest(afterRollback) === digest(oldBytes))
               barriers.push("read-checked")
             const lost = await rejection(async () => {
-              await WorkspaceCatalog.publishContent(prepared.info, prepared.manifest)
+              await prepared.publish()
               throw new Error("Injected loss after metadata commit")
             })
             timeline.push({ stage: "commit-response-lost", at: Date.now(), manifest: prepared.manifest })
-            const retry = await rejection(() => WorkspaceCatalog.publishContent(prepared.info, prepared.manifest))
+            const retry = await rejection(() => prepared.publish())
             const recovered = await WorkspaceCatalog.get(workspace.id, "home")
             const after = await WorkspaceContent.read(selection, "record.txt")
             const consistent =
@@ -221,8 +221,9 @@ export function objects(settings: Settings): Driver {
               const truncated = await rejection(() => WorkspaceContent.read(selection, "record.txt"))
               server.fault("none")
               const continued = await WorkspaceContent.read(selection, "record.txt")
-              const manifest = WorkspaceTree.Manifest.parse(
-                await Bun.file(path.join(directory, initial.content!.manifest!)).json(),
+              const manifest = WorkspaceContent.decode(
+                initial.content!.manifest!,
+                await Bun.file(path.join(directory, initial.content!.manifest!)).bytes(),
               )
               const check = {
                 protocol,

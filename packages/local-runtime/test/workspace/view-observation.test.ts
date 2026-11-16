@@ -5,7 +5,8 @@ import { NativeExecutor } from "../../src/environment/native-executor"
 import { ExecutionHost } from "../../src/environment/host"
 import { RemoteExecutor } from "../../src/environment/remote-executor"
 import { WorkspaceCoordinator } from "../../src/workspace/coordinator"
-import { testRuntime } from "../support/runtime"
+import { testRuntime as localRuntime } from "../support/runtime"
+import { testEnvironmentRuntime } from "@ericsanchezok/synergy-harness/test/support/environment-origin"
 import { Environment } from "@ericsanchezok/synergy-harness/environment"
 import { EnvironmentResources } from "@ericsanchezok/synergy-harness/environment/resources"
 import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
@@ -18,6 +19,8 @@ import { ScopeRuntime } from "@ericsanchezok/synergy-harness/scope/runtime"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { FileWatcher } from "../../src/file/watcher"
+
+const testRuntime = (options: Parameters<typeof localRuntime>[0] = {}) => testEnvironmentRuntime(options, localRuntime)
 
 test("Workspace observation reports nested native writes through the execution transport and fences detached views", async () => {
   await using tmp = await tmpdir()
@@ -91,7 +94,11 @@ test("logical Workspace observation starts through tools, follows live views, an
       scope,
       workspace: null,
       fn: async () => {
-        await using resources = await EnvironmentResources.resolve({ ...selection, needs: { workspace: true } })
+        await using resources = await EnvironmentResources.resolve({
+          origin: runtime.origin("view-observation-1"),
+          ...selection,
+          needs: { workspace: true },
+        })
         const unsubscribe = WorkspaceState.provide({ id: workspace.id, generation: 1, scopeID: scope.id }, () =>
           WorkspaceEvents.subscribe(FileWatcher.Event.Updated, (event) => {
             expect(event.properties.workspaceID).toBe(workspace.id)

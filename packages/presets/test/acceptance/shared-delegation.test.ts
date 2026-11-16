@@ -1,4 +1,5 @@
-import { expect, test } from "bun:test"
+import { expect, spyOn, test } from "bun:test"
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import path from "node:path"
 import fs from "node:fs/promises"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
@@ -8,6 +9,71 @@ import { execute, makePlan, report } from "../../script/acceptance/runner"
 import { fixtureSettings } from "./support"
 
 test("shared child writers preserve external edits across cancellation and rebinding, then isolate worktrees", async () => {
+  const started = performance.now()
+  const create = RuntimeContext.create
+  let sequence = 0
+  using tracked = spyOn(RuntimeContext, "create").mockImplementation((...args) => {
+    const runtime = create(...args)
+    const index = ++sequence
+    const creation = new Error("Shared-delegation Runtime creation").stack
+    let disposed = false
+    const dispose = runtime.dispose
+    runtime.dispose = () => {
+      disposed = true
+      console.error(
+        "shared-delegation-runtime-lifetime",
+        JSON.stringify({ index, stage: "dispose", elapsedMs: performance.now() - started }),
+      )
+      return dispose()
+    }
+    const closed = (error: unknown, kind: string, registration?: string, bodyEntered?: boolean) => {
+      if (!(error instanceof Error) || error.message !== "Runtime is closed") return
+      console.error(
+        "shared-delegation-runtime-closed",
+        JSON.stringify({
+          index,
+          kind,
+          disposed,
+          bodyEntered,
+          elapsedMs: performance.now() - started,
+          creation,
+          registration,
+          invocation: new Error("Original Runtime callback invocation").stack,
+        }),
+      )
+    }
+    const run = runtime.run
+    runtime.run = <T>(body: () => T): T => {
+      let bodyEntered = false
+      try {
+        return run(() => {
+          bodyEntered = true
+          return body()
+        })
+      } catch (error) {
+        closed(error, "run", undefined, bodyEntered)
+        throw error
+      }
+    }
+    const bind = runtime.bind
+    runtime.bind = <A extends unknown[], R>(body: (...args: A) => R): ((...args: A) => R) => {
+      const registration = new Error("Original Runtime callback registration").stack
+      const bound = bind(body)
+      return (...args) => {
+        try {
+          return bound(...args)
+        } catch (error) {
+          closed(error, "bind", registration)
+          throw error
+        }
+      }
+    }
+    console.error(
+      "shared-delegation-runtime-lifetime",
+      JSON.stringify({ index, stage: "create", elapsedMs: performance.now() - started }),
+    )
+    return runtime
+  })
   await using tmp = await tmpdir()
   using provider = Bun.serve({
     port: 0,

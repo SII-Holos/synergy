@@ -1,4 +1,5 @@
 import { SessionTransferState } from "./transfer-state"
+import { ActorStamp } from "@ericsanchezok/synergy-util/actor-stamp"
 import { z } from "zod"
 import { SessionSchemaRegistry } from "./schema-registry"
 import { ModelSelection } from "./model-selection-schema"
@@ -69,6 +70,9 @@ const ScopeField = ScopeRuntime.meta({ ref: "SessionScope" })
 
 const CortexDelegationInfoInner = z.object({
   taskID: z.string(),
+  rootID: z.string().optional(),
+  repairTurns: z.number().int().nonnegative().optional(),
+  pendingInput: CortexTypes.PendingInput.optional(),
   parentSessionID: z.string(),
   parentMessageID: z.string(),
   description: z.string(),
@@ -98,12 +102,19 @@ const CortexDelegationInfoInner = z.object({
   owner: CortexTypes.PluginTaskOwner.optional(),
   timeoutMs: z.number().int().positive().optional(),
   usage: CortexTypes.TaskUsage.optional(),
+  transfer: CortexTypes.TransferHold.optional(),
+  maintenance: CortexTypes.MaintenanceHold.optional(),
 })
 
 export const CortexDelegationInfo = CortexDelegationInfoInner.meta({ ref: "SessionCortexDelegation" })
 export type CortexDelegationInfo = z.infer<typeof CortexDelegationInfoInner>
 
 export const CortexDelegationSummary = CortexDelegationInfoInner.omit({
+  rootID: true,
+  repairTurns: true,
+  pendingInput: true,
+  transfer: true,
+  maintenance: true,
   prompt: true,
   error: true,
   tools: true,
@@ -159,6 +170,7 @@ export type PausedInfo = z.infer<typeof PausedInfo>
 
 export const ResumeInfo = z.object({
   requestID: z.string(),
+  actor: ActorStamp.Info.optional(),
   rootID: z.string().optional(),
   itemID: z.string(),
   messageID: z.string(),

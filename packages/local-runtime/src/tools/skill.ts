@@ -45,14 +45,14 @@ export const SkillTool = Tool.define("skill", async (ctx) => {
       }
       let entry
       try {
-        entry = await source.entry(params.name)
+        entry = await source.entry(params.name, { sessionID: ctx.sessionID })
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         throw new Error(`Skill "${params.name}" not found. Skills catalog is unavailable: ${message}`)
       }
 
       if (!entry) {
-        const diagnostics = (await source.diagnostics?.().catch(() => [])) ?? []
+        const diagnostics = (await source.diagnostics?.({ sessionID: ctx.sessionID }).catch(() => [])) ?? []
         const relevant = diagnostics.filter(
           (diagnostic) => diagnostic.name === params.name || diagnostic.path?.includes(`/${params.name}/`),
         )
@@ -75,6 +75,7 @@ export const SkillTool = Tool.define("skill", async (ctx) => {
           directory: entry.directory,
           reference: params.reference,
           sha256: new Bun.CryptoHasher("sha256").update(content).digest("hex"),
+          ...(entry.provenance ? { provenance: entry.provenance } : {}),
         })
         return {
           title: `Loaded reference: ${params.name}/${params.reference}`,
@@ -112,6 +113,7 @@ export const SkillTool = Tool.define("skill", async (ctx) => {
         directory: entry.directory,
         references,
         sha256: new Bun.CryptoHasher("sha256").update(content).digest("hex"),
+        ...(entry.provenance ? { provenance: entry.provenance } : {}),
       })
       parts.push("", content.trim())
       return {

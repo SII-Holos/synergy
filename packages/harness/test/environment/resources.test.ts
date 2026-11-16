@@ -3,7 +3,7 @@ import { EnvironmentResources } from "../../src/environment/resources"
 import { WorkspaceCatalog } from "../../src/workspace/catalog"
 import { Environment } from "../../src/environment"
 import { EnvironmentProviders } from "../../src/environment/provider"
-import { testRuntime } from "../support/runtime"
+import { testEnvironmentRuntime as testRuntime } from "../support/environment-origin"
 
 test("API and dormant object-file requirements do not allocate an Environment", async () => {
   let allocated = 0
@@ -36,6 +36,7 @@ test("API and dormant object-file requirements do not allocate an Environment", 
     })
     expect(api.kind).toBe("none")
     await using files = await EnvironmentResources.resolve({
+      origin: runtime.origin("dormant-files"),
       scopeID: "scope",
       environmentID: environment.id,
       workspaceID: workspace.id,
@@ -46,7 +47,12 @@ test("API and dormant object-file requirements do not allocate an Environment", 
     expect(allocated).toBe(0)
     expect(await Environment.uses(environment.id)).toEqual([])
     await expect(
-      EnvironmentResources.resolve({ scopeID: "scope", environmentID: null, needs: { execution: "exec" } }),
+      EnvironmentResources.resolve({
+        origin: runtime.origin("disabled-execution"),
+        scopeID: "scope",
+        environmentID: null,
+        needs: { execution: "exec" },
+      }),
     ).rejects.toMatchObject({ name: "EnvironmentUnavailable" })
     expect(allocated).toBe(0)
   })

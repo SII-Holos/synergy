@@ -65,6 +65,7 @@ export async function record<T>(action: () => Promise<T>): Promise<T> {
   try {
     return await action()
   } catch (cause) {
+    if (RolloutAdmissionError.isInstance(cause)) throw cause
     const failure = findRecordingError(cause)
     if (failure) throw failure
     if (isTransientStorageError(cause)) throw cause

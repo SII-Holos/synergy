@@ -18,19 +18,34 @@ import { WorkspaceBinding } from "@ericsanchezok/synergy-harness/workspace"
 import { ProcessEnvironment } from "../process/environment"
 import { SandboxHost } from "@ericsanchezok/synergy-harness/sandbox/host"
 import { RuntimeResources } from "@ericsanchezok/synergy-harness/resources/runtime"
+import { NativeProcessMaintenance } from "../process/maintenance"
+import { WorkspaceMounts } from "@ericsanchezok/synergy-harness/workspace/mount"
 
 const Allocation = z.object({ id: z.string(), capabilities: z.array(z.string()), target: Environment.Target })
+const Spec = z.object({}).strict()
+const capabilities = ["exec", "pty", "files"] as const
 
 export function registerNativeEnvironment(options: { coordinator?: WorkspaceCoordinator } = {}) {
   const root = path.join(RuntimeContext.current().host.root, "state", "environments")
   const executors = new Map<string, Promise<NativeExecutor>>()
   const coordinator = options.coordinator ?? new WorkspaceCoordinator()
+  NativeProcessMaintenance.register(coordinator)
   const filename = (request: EnvironmentRequest) =>
     path.join(root, createHash("sha256").update(request.environmentID).digest("hex"), "allocation.json")
   const provider: EnvironmentProvider = {
     id: "native",
     ownership: "borrowed",
-    validateSpec: (spec) => z.object({}).strict().parse(spec),
+    validateSpec: (spec) => Spec.parse(spec),
+    portableDescriptor(spec) {
+      Spec.parse(spec)
+      return {
+        version: 1,
+        kind: "native",
+        platform: process.platform,
+        architecture: process.arch,
+        capabilities: [...capabilities],
+      }
+    },
     async workspacePath(_request, workspace) {
       return (await WorkspaceBinding.validate(workspace.id, workspace.scopeID, workspace.binding.generation)).path
     },
@@ -40,7 +55,7 @@ export function registerNativeEnvironment(options: { coordinator?: WorkspaceCoor
         allocationID: request.requestID,
         generation: request.generation,
       }
-      const allocation = { id: request.requestID, capabilities: ["exec", "pty", "files"], target }
+      const allocation = { id: request.requestID, capabilities: [...capabilities], target }
       const current = await provider.inspect(request)
       if (current.state === "ready") return current.allocation
       if (current.state === "unknown") throw new Error("Native Environment has another allocation")
@@ -95,6 +110,24 @@ export function registerNativeEnvironment(options: { coordinator?: WorkspaceCoor
         void pending.catch(() => executors.delete(request.requestID))
       }
       return pending
+    },
+    async withDeallocation(info, release) {
+      const request = Environment.requestOf(info)
+      const roots: string[] = []
+      for await (const original of WorkspaceMounts.releaseMounts(info)) {
+        await provider.connect!(request, Environment.targetOf(info))
+        const executor = await executors.get(request.requestID)
+        if (!executor) throw new Error("Native Environment release has no original Executor")
+        const receipt = await executor.files.inspectRelease(original)
+        if (receipt.state === "detached") {
+          if (info.state !== "releasing") throw new Error("Native Workspace was detached before release admission")
+          continue
+        }
+        if (receipt.mount.path !== original.path) throw new Error("Native Workspace release path changed")
+        roots.push(receipt.mount.path)
+      }
+      if (!roots.length) return release()
+      return WorkspaceAccess.maintenance(() => WorkspaceAccess.retire(roots, release))
     },
     async deallocate(request) {
       const status = await provider.inspect(request)

@@ -88,6 +88,8 @@ const { Scope } = await import("@ericsanchezok/synergy-harness/scope")
 const { ScopeContext } = await import("@ericsanchezok/synergy-harness/context")
 const { Session } = await import("@ericsanchezok/synergy-harness/session")
 const { Identifier } = await import("@ericsanchezok/synergy-harness/id/id")
+const { RolloutLedger } = await import("@ericsanchezok/synergy-harness/session/rollout/ledger")
+const { RolloutTool } = await import("@ericsanchezok/synergy-harness/session/rollout/tool")
 const { ServerProcessLock } = await import("@ericsanchezok/synergy-harness/util/server-process-lock")
 const { MigrationRegistry, MigrationRegistrationLockedError } =
   await import("@ericsanchezok/synergy-harness/persistence")
@@ -224,29 +226,67 @@ try {
       scope,
       fn: async () => {
         const session = await Session.create({ title: "Installed composition", controlProfile: "full_access" })
+        const rootID = Identifier.ascending("message")
         const messageID = Identifier.ascending("message")
+        const callID = Identifier.ascending("part")
         await Session.updateMessage({
-          id: messageID,
+          id: rootID,
           sessionID: session.id,
           role: "user",
+          rootID,
+          isRoot: true,
           time: { created: Date.now() },
           agent: PrimaryAgentIdentity.names.general,
           model: { providerID: "test", modelID: "test" },
         })
+        await Session.updateMessage({
+          id: messageID,
+          sessionID: session.id,
+          role: "assistant",
+          rootID,
+          parentID: rootID,
+          time: { created: Date.now() },
+          agent: PrimaryAgentIdentity.names.general,
+          mode: "default",
+          modelID: "test",
+          providerID: "test",
+          path: { cwd: session.workspace?.path ?? null, root: session.workspace?.path ?? null },
+          cost: 0,
+          tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+        })
         const { BashTool } = await import("@ericsanchezok/synergy-local-runtime/tools/bash")
         const bash = await BashTool.init()
-        const result = await bash.execute(
-          { command: "printf composition-executed" },
-          {
-            sessionID: session.id,
-            messageID,
-            agent: PrimaryAgentIdentity.names.general,
-            abort: new AbortController().signal,
-            metadata() {},
-            async ask() {},
-          },
-        )
-        assert.match(result.output, /composition-executed/)
+        const owner = { kind: "session" as const, scopeID: session.scope.id, sessionID: session.id }
+        const args = { command: "printf composition-executed" }
+        await RolloutLedger.beginRun(owner, rootID)
+        let status: "completed" | "failed" = "failed"
+        try {
+          const result = await RolloutTool.execute(
+            { owner, runID: rootID, messageID, toolCallID: callID, tool: "bash", args },
+            () =>
+              bash.execute(args, {
+                sessionID: session.id,
+                messageID,
+                callID,
+                agent: PrimaryAgentIdentity.names.general,
+                abort: new AbortController().signal,
+                metadata() {},
+                async ask() {},
+              }),
+          )
+          assert.match(result.output, /composition-executed/)
+          status = "completed"
+        } finally {
+          await RolloutLedger.finishRun(owner, rootID, status)
+        }
+        assert.equal((await RolloutLedger.getRun(owner, rootID)).status, "completed")
+        const tools = await RolloutLedger.tools(owner, rootID)
+        assert.equal(tools.length, 1)
+        const tool = tools[0]
+        assert.ok(tool)
+        assert.equal(tool.toolCallID, callID)
+        assert.equal(tool.messageID, messageID)
+        assert.equal(tool.status, "completed")
         if (enabled("mcp")) {
           const { MCP } = await import("@ericsanchezok/synergy-mcp")
           await MCP.add("installed-fixture", {

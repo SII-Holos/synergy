@@ -1,0 +1,27 @@
+.organization-account-view {
+  display: grid;
+  gap: 32px;
+  min-width: 0;
+}
+.organization-account-view .organization-editor {
+  max-width: 720px;
+  gap: 16px;
+}
+.organization-account-view h3 {
+  color: var(--text-strong);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.organization-account-view .organization-member-identity span {
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+.organization-account-view .organization-editor > button {
+  justify-self: start;
+}
+@media (max-width: 600px) {
+  .organization-account-view button {
+    min-height: 44px;
+  }
+}

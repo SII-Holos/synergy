@@ -12,6 +12,7 @@ test("slow package partitions execute every file once without splitting an isola
     ["packages/ui", 2],
     ["packages/harness", 4],
     ["packages/local-runtime", 2],
+    ["packages/organization-runtime", 4],
   ] as const) {
     const suites = tasks.filter((task) => task.kind === "suite" && task.package === owner)
     expect(suites).toHaveLength(count)

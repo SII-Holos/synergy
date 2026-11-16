@@ -447,6 +447,7 @@ export async function catalog(root = ROOT, timingInput?: Timings): Promise<Task[
     "packages/presets": 4,
     "packages/ui": 2,
     "packages/local-runtime": 2,
+    "packages/organization-runtime": 4,
   }
   for (const directory of [...coverage].sort()) {
     const workspace = packages.find((entry) => entry.directory === directory)!
@@ -472,9 +473,17 @@ export async function catalog(root = ROOT, timingInput?: Timings): Promise<Task[
           {
             package: directory,
             partition,
+            heavy: ["packages/harness", "packages/organization-runtime"].includes(directory),
             files: group,
             assets: ["watcher", "plugin"],
-            prerequisites: browser ? ["browser"] : [],
+            prerequisites: [
+              ...(browser ? ["browser" as const] : []),
+              ...(directory === "packages/organization-runtime" ||
+              (directory === "packages/local-runtime" &&
+                group.includes("test/session/tool-resolver-saved-bash-rules.test.ts"))
+                ? ["sandbox" as const]
+                : []),
+            ],
           },
         ),
       )

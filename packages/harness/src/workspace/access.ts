@@ -6,6 +6,9 @@ import type { Workspace } from "../session/workspace-schema"
 import { WorkspaceBinding } from "./binding"
 import path from "node:path"
 import { WorkspaceBusyError } from "./claim"
+import { Storage } from "../storage/storage"
+import { RuntimeMaintenance } from "../storage/runtime-maintenance"
+import { addAbortListener } from "node:events"
 
 export namespace WorkspaceAccess {
   export const BusyError = WorkspaceBusyError
@@ -29,11 +32,13 @@ export namespace WorkspaceAccess {
     id: string
     recovery?: { id: string; token: string }
     isolated?(): Promise<boolean>
+    isReleased?(): Promise<boolean>
     release(beforeRelease?: () => Promise<void>): Promise<void>
     bindProcess(processID: number, options?: { descendants?: boolean }): Promise<void>
   }
   export interface Host {
     acquire(input: ClaimInput): Promise<Lease>
+    recoverExclusive?(reference: { id: string; token: string }): Promise<{ lease: Lease; input: ClaimInput }>
     contendedProcesses?(): Promise<string[]>
   }
   interface Task {
@@ -84,19 +89,374 @@ export namespace WorkspaceAccess {
     }
   }
   const context = RuntimeContext.createAsyncContext<Task>()
-  const mutation = RuntimeContext.createAsyncContext<{ task: Task; lease: Lease }>()
-  const retirement = RuntimeContext.createAsyncContext<{ task: Task; lease: Lease; roots: string[] }>()
-  const state = RuntimeContext.state(() => ({ host: undefined as Host | undefined }))
+  interface ClaimContext {
+    task: Task
+    lease: Lease
+    open: boolean
+  }
+  const mutation = RuntimeContext.createAsyncContext<ClaimContext>()
+  const retirement = RuntimeContext.createAsyncContext<ClaimContext & { roots: string[] }>()
+  const retainedExclusive = RuntimeContext.createAsyncContext<ClaimContext & { roots: string[] }>()
+  interface NativeClaim {
+    runtime: RuntimeContext.Instance
+    store: Storage.Handle["store"]
+    sessionID?: string
+    input: ClaimInput
+    completion: PromiseWithResolvers<void>
+    released: boolean
+    releasing: boolean
+    borrowers: number
+    finalizing: number
+    failure?: unknown
+    inspectRelease?: () => Promise<boolean>
+  }
+  const claims = new WeakMap<Lease, NativeClaim>()
+  const tail = RuntimeContext.createAsyncContext<{ claim: NativeClaim; open: boolean }>()
+  interface SessionAuthority {
+    admission(sessionID: string): Promise<void>
+    mutation(sessionID: string): Promise<void>
+  }
+  const state = RuntimeContext.state(() => ({
+    host: undefined as Host | undefined,
+    sessionAuthority: undefined as SessionAuthority | undefined,
+    active: new Set<NativeClaim>(),
+  }))
+
+  export function registerSessionAuthority(authority: SessionAuthority) {
+    RuntimeContext.assertCompositionOpen("Workspace Session authority")
+    if (state().sessionAuthority) throw new Error("Workspace Session authority is already registered")
+    state().sessionAuthority = authority
+  }
+
+  function selected(claim: NativeClaim) {
+    return (
+      claim.runtime === RuntimeContext.current() && claim.store === Storage.current().store && state().active.has(claim)
+    )
+  }
+  function settle(claim: NativeClaim) {
+    if (!claim.released || claim.finalizing || claim.failure !== undefined) return
+    state().active.delete(claim)
+    claim.completion.resolve()
+  }
+  function parentClaim(task: Task | undefined) {
+    if (!task || task.closed) return
+    for (const parent of [retirement.getStore(), mutation.getStore(), retainedExclusive.getStore()])
+      if (parent?.open && parent.task === task) return parent
+  }
+  async function withTail<T>(claim: NativeClaim, body: () => Promise<T>) {
+    const scope = { claim, open: true }
+    try {
+      return await tail.run(scope, body)
+    } finally {
+      scope.open = false
+    }
+  }
+  async function claimAdmission(sessionID?: string) {
+    const parent = parentClaim(context.getStore())
+    const inherited = parent ? claims.get(parent.lease) : undefined
+    const finalizer = tail.getStore()
+    const owner = inherited ?? (finalizer?.open ? finalizer.claim : undefined)
+    if (owner && selected(owner) && owner.sessionID === sessionID) {
+      await RuntimeMaintenance.assertMutation()
+      if (sessionID) {
+        const authority = state().sessionAuthority
+        if (!authority) throw new Error("Workspace Session mutation authority is unavailable")
+        await authority.mutation(sessionID)
+      }
+      return
+    }
+    await RuntimeMaintenance.assertAdmission()
+    if (sessionID) {
+      const authority = state().sessionAuthority
+      if (!authority) throw new Error("Workspace Session admission authority is unavailable")
+      await authority.admission(sessionID)
+    }
+  }
+  export function assertNativeAdmission() {
+    return claimAdmission(current()?.sessionID)
+  }
+  async function acquire(source: Host, input: ClaimInput): Promise<Lease> {
+    if (input.kind === "use") return source.acquire(input)
+    const task = context.getStore()
+    if (task && task.runtime !== RuntimeContext.current()) throw new Error("Workspace task belongs to another Runtime")
+    const active: NativeClaim = {
+      runtime: RuntimeContext.current(),
+      store: Storage.current().store,
+      sessionID: task?.sessionID,
+      input: {
+        ...input,
+        roots: input.roots?.slice() ?? null,
+        ancestors: input.ancestors.slice(),
+        useRoots: input.useRoots?.slice(),
+      },
+      completion: Promise.withResolvers<void>(),
+      released: false,
+      releasing: false,
+      borrowers: 0,
+      finalizing: 0,
+    }
+    state().active.add(active)
+    let owned: Lease | undefined
+    try {
+      await claimAdmission(active.sessionID)
+      if (task?.closed) throw new Error("Workspace task is closed")
+      const native = await source.acquire(active.input)
+      active.inspectRelease = native.isReleased?.bind(native)
+      let closing: Promise<void> | undefined
+      owned = {
+        ...native,
+        async bindProcess(processID, options) {
+          if (!selected(active) || active.released)
+            throw new Error("Workspace claim belongs to another Runtime or namespace, or is released")
+          await native.bindProcess(processID, options)
+        },
+        async release(beforeRelease) {
+          if (!selected(active)) {
+            if (active.released) return
+            throw new Error("Workspace claim belongs to another Runtime or namespace")
+          }
+          if (active.released) return
+          if (active.borrowers) throw new Error("Workspace native claim is borrowed by an active callback")
+          if (!closing && active.failure !== undefined) {
+            active.failure = undefined
+            active.completion = Promise.withResolvers<void>()
+          }
+          active.releasing = true
+          closing ??= withTail(active, async () => {
+            try {
+              await native.release(beforeRelease)
+              active.failure = undefined
+              active.released = native.isReleased ? await native.isReleased() : true
+              settle(active)
+            } catch (error) {
+              active.failure = error
+              active.completion.resolve()
+              throw error
+            }
+          })
+          try {
+            await closing
+          } finally {
+            if (!active.released) {
+              closing = undefined
+              active.releasing = false
+            }
+          }
+        },
+      }
+      claims.set(owned, active)
+      await claimAdmission(active.sessionID)
+      if (task?.closed) throw new Error("Workspace task is closed")
+      return owned
+    } catch (error) {
+      if (owned) await owned.release()
+      else {
+        state().active.delete(active)
+        active.completion.resolve()
+      }
+      throw error
+    }
+  }
+  async function finishClaim<T>(lease: Lease | undefined, body: () => Promise<T>): Promise<T> {
+    if (!lease) return body()
+    const claim = claims.get(lease)
+    if (!claim || !selected(claim)) throw new Error("Workspace finalizer has no current native claim")
+    if (claim.failure !== undefined) {
+      claim.failure = undefined
+      claim.completion = Promise.withResolvers<void>()
+    }
+    claim.finalizing++
+    try {
+      const value = await withTail(claim, body)
+      claim.failure = undefined
+      return value
+    } catch (error) {
+      claim.failure = error
+      claim.completion.resolve()
+      throw error
+    } finally {
+      claim.finalizing--
+      settle(claim)
+    }
+  }
+  function maintenanceRequirements(): RuntimeMaintenance.Requirement[] {
+    if ([...state().active].some((claim) => !selected(claim) || claim.failure !== undefined))
+      return [
+        {
+          owner: "workspace-access",
+          code: "workspace_claim_release_unknown",
+          label: "Reconcile the original Workspace claim and final save",
+          recoverable: true,
+        },
+      ]
+    return state().active.size
+      ? [
+          {
+            owner: "workspace-access",
+            code: "workspace_claim_active",
+            label: "Wait for accepted Workspace writers and their finalizers",
+            recoverable: true,
+          },
+        ]
+      : []
+  }
+  async function reconcileClaims(signal: AbortSignal) {
+    for (const claim of state().active) {
+      signal.throwIfAborted()
+      if (!selected(claim)) throw new Error("Workspace maintenance found a claim from another namespace")
+      if (claim.failure !== undefined || claim.finalizing || !claim.inspectRelease) continue
+      if (!(await claim.inspectRelease())) continue
+      claim.released = true
+      settle(claim)
+    }
+  }
 
   export function register(host: Host) {
     RuntimeContext.assertCompositionOpen("Workspace access")
     if (state().host) throw new Error("Workspace access is already registered")
-    state().host = host
+    state().host = {
+      acquire: (input) => acquire(host, input),
+      ...(host.recoverExclusive ? { recoverExclusive: host.recoverExclusive.bind(host) } : {}),
+      ...(host.contendedProcesses ? { contendedProcesses: () => host.contendedProcesses!() } : {}),
+    }
+    RuntimeMaintenance.register("workspace-access", {
+      version: 1,
+      order: 250,
+      async suspend(context) {
+        await RuntimeMaintenance.assertDraining(context.lease)
+      },
+      async drain(context) {
+        await RuntimeMaintenance.assertDraining(context.lease)
+        while ([...state().active].some((claim) => claim.failure === undefined)) {
+          await reconcileClaims(context.signal)
+          if (![...state().active].some((claim) => claim.failure === undefined)) break
+          context.signal.throwIfAborted()
+          const aborted = Promise.withResolvers<never>()
+          using listener = addAbortListener(context.signal, () => aborted.reject(context.signal.reason))
+          let timer: ReturnType<typeof setTimeout> | undefined
+          try {
+            await Promise.race([
+              Promise.all([...state().active].map((claim) => claim.completion.promise)),
+              aborted.promise,
+              ...(state().active.size && [...state().active].some((claim) => claim.inspectRelease)
+                ? [
+                    new Promise<void>((resolve) => {
+                      timer = setTimeout(resolve, 100)
+                    }),
+                  ]
+                : []),
+            ])
+          } finally {
+            clearTimeout(timer)
+          }
+        }
+        const requirements = maintenanceRequirements()
+        if (requirements.length)
+          throw new RuntimeMaintenance.Blocked({
+            message: "Workspace physical claims require reconciliation",
+            requirements,
+          })
+      },
+      async inspect(context) {
+        await reconcileClaims(context.signal)
+        return maintenanceRequirements()
+      },
+      async release(context) {
+        await RuntimeMaintenance.assertReleasing(context.lease)
+      },
+    })
   }
   function host() {
     const source = state().host
     if (!source) throw new Error("This Runtime has no local Workspace coordination host")
     return source
+  }
+  export async function withExclusiveClaim<T>(lease: Lease, body: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+    signal?.throwIfAborted()
+    const claim = claims.get(lease)
+    if (
+      !claim ||
+      !selected(claim) ||
+      claim.released ||
+      claim.releasing ||
+      claim.failure !== undefined ||
+      claim.input.kind !== "exclusive" ||
+      !claim.input.roots ||
+      !claim.inspectRelease
+    )
+      throw new Error("A current retained native exclusive claim is required")
+    const assertCurrent = () => {
+      if (!selected(claim) || claim.released || claim.releasing || claim.failure !== undefined)
+        throw new Error("The retained native exclusive claim is no longer available")
+    }
+    claim.borrowers++
+    try {
+      if (await claim.inspectRelease()) throw new Error("The retained native exclusive claim has been released")
+      assertCurrent()
+      return await ExecutionCapacity.detached(() =>
+        observeWrites(undefined, () =>
+          runTask(
+            { sessionID: claim.sessionID, workspace: null, signal },
+            async () => {
+              const scope = {
+                task: current()!,
+                lease,
+                roots: claim.input.roots!.map((root) => path.resolve(root)),
+                open: true,
+              }
+              try {
+                return await retainedExclusive.run(scope, async () => {
+                  await claimAdmission(claim.sessionID)
+                  assertCurrent()
+                  signal?.throwIfAborted()
+                  return body()
+                })
+              } finally {
+                scope.open = false
+              }
+            },
+            claim.input.owner,
+          ),
+        ),
+      )
+    } finally {
+      claim.borrowers--
+    }
+  }
+  export async function drainSessionClaims(includes: (sessionID: string) => boolean, signal: AbortSignal) {
+    const runtime = RuntimeContext.current()
+    const store = Storage.current().store
+    for (;;) {
+      signal.throwIfAborted()
+      if (RuntimeContext.current() !== runtime || Storage.current().store !== store)
+        throw new Error("Workspace claim drainage belongs to another Runtime or namespace")
+      const pending: NativeClaim[] = []
+      for (const claim of state().active) {
+        if (!claim.sessionID || !includes(claim.sessionID)) continue
+        if (!selected(claim) || claim.failure !== undefined)
+          throw new Error("Reconcile the original native Session claim and its final save")
+        if (!claim.finalizing && claim.inspectRelease && (await claim.inspectRelease())) {
+          claim.released = true
+          settle(claim)
+        }
+        if (state().active.has(claim)) pending.push(claim)
+      }
+      if (!pending.length) return
+      const aborted = Promise.withResolvers<never>()
+      using listener = addAbortListener(signal, () => aborted.reject(signal.reason))
+      let timer: ReturnType<typeof setTimeout> | undefined
+      try {
+        await Promise.race([
+          Promise.all(pending.map((claim) => claim.completion.promise)),
+          aborted.promise,
+          new Promise<void>((resolve) => {
+            timer = setTimeout(resolve, 100)
+          }),
+        ])
+      } finally {
+        clearTimeout(timer)
+      }
+    }
   }
   function current() {
     const task = context.getStore()
@@ -312,7 +672,7 @@ export namespace WorkspaceAccess {
       let finalize: WriteFinalizer | undefined
       try {
         await ExecutionCapacity.wait(async () => {
-          const parent = retirement.getStore() ?? mutation.getStore()
+          const parent = parentClaim(task)
           operation = await host().acquire({
             id: randomUUID(),
             owner: task.owner,
@@ -328,14 +688,21 @@ export namespace WorkspaceAccess {
         finalize = await observer()?.(observation(task, roots))
         signal?.throwIfAborted()
         await validate(task)
-        return await mutation.run({ task, lease: operation! }, fn)
-      } finally {
+        const admitted = { task, lease: operation!, open: true }
         try {
-          await finalize?.finish(operation?.isolated)
+          return await mutation.run(admitted, fn)
         } finally {
-          await operation?.release()
-          await finalize?.afterRelease?.()
+          admitted.open = false
         }
+      } finally {
+        await finishClaim(operation, async () => {
+          try {
+            await finalize?.finish(operation?.isolated)
+          } finally {
+            await operation?.release()
+            await finalize?.afterRelease?.()
+          }
+        })
       }
     }, signal)
   }
@@ -345,7 +712,7 @@ export namespace WorkspaceAccess {
       let lease: Lease | undefined
       try {
         await ExecutionCapacity.wait(async () => {
-          const parent = retirement.getStore() ?? mutation.getStore()
+          const parent = parentClaim(task)
           lease = await host().acquire({
             id: randomUUID(),
             owner: task.owner,
@@ -384,7 +751,7 @@ export namespace WorkspaceAccess {
       const observe = observer()
       try {
         await ExecutionCapacity.wait(async () => {
-          const parent = retirement.getStore() ?? mutation.getStore()
+          const parent = parentClaim(task)
           lease = await host().acquire({
             id: randomUUID(),
             owner: task.owner,
@@ -410,15 +777,26 @@ export namespace WorkspaceAccess {
         if (!finalize) return owned
         let finalized = false
         let afterRelease: Promise<void> | undefined
+        let releasing: Promise<void> | undefined
         return {
           ...owned,
           async release(beforeRelease?: () => Promise<void>) {
-            await owned.release(async () => {
-              await finalize.finish(owned.isolated)
-              await beforeRelease?.()
-              finalized = true
+            releasing ??= finishClaim(owned, async () => {
+              await owned.release(async () => {
+                await finalize.finish(owned.isolated)
+                await beforeRelease?.()
+                finalized = true
+              })
+              if (finalized) await (afterRelease ??= finalize.afterRelease?.() ?? Promise.resolve())
             })
-            if (finalized) await (afterRelease ??= finalize.afterRelease?.() ?? Promise.resolve())
+            try {
+              await releasing
+            } catch (error) {
+              releasing = undefined
+              throw error
+            } finally {
+              if (!finalized) releasing = undefined
+            }
           },
         }
       } catch (error) {
@@ -442,7 +820,7 @@ export namespace WorkspaceAccess {
       let lease: Lease | undefined
       try {
         await ExecutionCapacity.wait(async () => {
-          const parent = retirement.getStore() ?? mutation.getStore()
+          const parent = parentClaim(task)
           lease = await host().acquire({
             ...input,
             owner: task.owner,
@@ -460,6 +838,15 @@ export namespace WorkspaceAccess {
         throw error
       }
     }, input.signal)
+  }
+
+  export async function recoverExclusive(reference: { id: string; token: string }): Promise<Lease> {
+    const recover = host().recoverExclusive
+    if (!recover) throw new Error("Native exclusive claim recovery is unavailable")
+    const recovered = await recover({ ...reference })
+    if (recovered.input.kind !== "exclusive" || recovered.lease.id !== reference.id)
+      throw new Error("Native recovery did not return its original exclusive claim")
+    return maintenance(() => acquire({ acquire: async () => recovered.lease }, recovered.input))
   }
 
   export async function pin(signal?: AbortSignal): Promise<Lease> {
@@ -530,8 +917,10 @@ export namespace WorkspaceAccess {
   }
 
   export async function exclusive<T>(roots: string[], fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {
-    const parent = retirement.getStore()
-    if (parent && (!parent.task.retiring || parent.task !== current()))
+    const retiring = retirement.getStore()
+    const retained = retainedExclusive.getStore()
+    const parent = retiring?.open ? retiring : retained?.open ? retained : undefined
+    if (parent && ((parent === retiring && !parent.task.retiring) || parent.task !== current()))
       throw new BusyError("Workspace retirement is no longer active")
     if (
       parent &&
@@ -551,7 +940,7 @@ export namespace WorkspaceAccess {
       await ExecutionCapacity.wait(async () => {
         lease = await host().acquire({
           id: randomUUID(),
-          owner: parent?.task.owner ?? randomUUID(),
+          owner: parent?.task.owner ?? JSON.stringify([RuntimeContext.current().host.root, randomUUID()]),
           ancestors: parent?.task.ancestors ?? [],
           parentClaim: parent?.lease.id,
           kind: "exclusive",
@@ -617,7 +1006,12 @@ export namespace WorkspaceAccess {
         })
         await validate(task)
         signal.throwIfAborted()
-        return await retirement.run({ task, lease: lease!, roots: roots.map((root) => path.resolve(root)) }, fn)
+        const admitted = { task, lease: lease!, roots: roots.map((root) => path.resolve(root)), open: true }
+        try {
+          return await retirement.run(admitted, fn)
+        } finally {
+          admitted.open = false
+        }
       } finally {
         try {
           try {

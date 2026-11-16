@@ -8,14 +8,17 @@ import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
 import { WorkspaceBlobs, WorkspaceContent } from "@ericsanchezok/synergy-harness/workspace/content"
 import { Environment } from "@ericsanchezok/synergy-harness/environment"
 import { EnvironmentResources } from "@ericsanchezok/synergy-harness/environment/resources"
+import { EnvironmentOrigin } from "@ericsanchezok/synergy-harness/environment/origin"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { ViewFileTool } from "../../src/tools/view-file"
 import { EditTool } from "../../src/tools/edit"
 import { SaveFileTool } from "../../src/tools/save-file"
 
 test("file tools share dormant object and live execution views without a local Scope directory", async () => {
+  let origin: ReturnType<typeof EnvironmentOrigin.registerHost>
   await using runtime = await testRuntime({
     register() {
+      origin = EnvironmentOrigin.registerHost("file-tool-fixture")
       WorkspaceBlobs.register("fixture", {
         put: (hash, bytes) => Storage.writeBinary(["fixture", hash], bytes),
         get: (hash) => Storage.readBinary(["fixture", hash]),
@@ -37,7 +40,12 @@ test("file tools share dormant object and live execution views without a local S
           provider: "native",
           spec: {},
         })
-        const selection = { scopeID: workspace.scopeID, workspaceID: workspace.id, environmentID: environment.id }
+        const selection = {
+          scopeID: workspace.scopeID,
+          workspaceID: workspace.id,
+          environmentID: environment.id,
+          origin: origin!.capture("file-tools"),
+        }
         const context = {
           sessionID: "fixture",
           messageID: "message",

@@ -10,6 +10,7 @@ This private package owns deterministic test environments, the pinned model cata
 - Keep Bun's inherited no-orphans watchdog out of test batches: process ownership, detachment and crash recovery must be performed by the implementation being tested. Fixtures remain responsible for draining their owned processes.
 - Suites that own Runtime startup use the shared preload without harness initialization. Register them in the batch planner so test and coverage commands keep the same isolated composition and write reports under the source package.
 - `resources` owns reverse-order fixture cleanup with named failures; register resources immediately and keep domain-specific draining in the owner fixture.
+- `organization-tls` exports synthetic localhost certificate bytes for organization transport fixtures; never use that test key outside isolated tests.
 - Fixtures stay under `SYNERGY_TEST_ROOT` until owned asynchronous work settles. Dispose child processes, timers, and runtimes before deleting the process fixture root.
 - The shared `script/run.ts` executor owns stable batches, per-batch isolation, JUnit/lcov/timing reports and diagnostic file selection. `test-ci.ts` and `coverage-run.ts` preserve the package command entry points.
 - Keep the pinned model catalog deterministic; source and release builds may resolve its exported JSON path without initializing test code.

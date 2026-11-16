@@ -32,6 +32,11 @@
       "bun": "./src/runtime-ready.ts",
       "types": "./src/runtime-ready.ts",
       "import": "./dist/runtime-ready.js"
+    },
+    "./organization": {
+      "bun": "./src/organization.ts",
+      "types": "./src/organization.ts",
+      "import": "./dist/organization.js"
     }
   },
   "files": [

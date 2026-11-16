@@ -1,3 +1,4 @@
+import { SessionPartCommit } from "./part-commit"
 import { z } from "zod"
 import { MARKDOWN_ASSET_REFERENCE_CHARS, markdownAssetReferences } from "@ericsanchezok/synergy-util/markdown-assets"
 import { reasoningItemKey } from "@ericsanchezok/synergy-util/reasoning-item"
@@ -6,8 +7,12 @@ import { StoragePath } from "../storage/path"
 import { StorageCommitUnknownError, StorageConflictError, StorageIntegrityError } from "../storage/errors"
 import type { StoreTransaction } from "../storage/transactional-store"
 import { MessageV2 } from "./message-v2"
+import { SessionAttachmentIndex } from "./attachment-index"
+import { SessionPartFieldSource } from "./part-field-source"
 
 export namespace PartContent {
+  export const RecordCommitted = SessionPartCommit.RecordCommitted
+
   export type Streaming = MessageV2.TextPart | MessageV2.ReasoningPart
   export type Header = Omit<MessageV2.TextPart, "text"> | Omit<MessageV2.ReasoningPart, "text">
   // Provenance: ../../test/session/streaming-persistence.test.ts, short-checkpoint work bound.
@@ -19,7 +24,7 @@ export namespace PartContent {
     jsonBytes: z.number().int().nonnegative(),
     references: z.string().max(256).array().max(32),
   })
-  const Checkpoint = Facts.extend({
+  export const Checkpoint = Facts.extend({
     version: z.literal(1),
     generation: z.string().uuid(),
     chunks: z.number().int().nonnegative(),
@@ -186,7 +191,7 @@ export namespace PartContent {
     })
   }
 
-  async function* textBlocks(key: string[], value: Stored, signal?: AbortSignal) {
+  export async function* textBlocks(key: string[], value: Stored, signal?: AbortSignal) {
     const content = checkpoint(value)
     if (!content) {
       if (value.type === "text" || value.type === "reasoning") yield (value as Streaming).text
@@ -265,6 +270,36 @@ export namespace PartContent {
     await tx.assertNotDeleted(key)
   }
 
+  async function committed(tx: StoreTransaction, key: string[], value: Stored, removedRevision?: bigint) {
+    if (
+      key.length !== 7 ||
+      key[0] !== "sessions" ||
+      key[3] !== "messages" ||
+      key[5] !== "parts" ||
+      value.sessionID !== key[2] ||
+      value.messageID !== key[4] ||
+      value.id !== key[6]
+    )
+      throw new StorageIntegrityError("Committed Part belongs to another native record")
+    const revision = removedRevision ?? (await tx.revisions([key]))[0]
+    if (revision === undefined) throw new StorageIntegrityError("Committed Part has no native revision")
+    await Storage.capture({
+      id: crypto.randomUUID(),
+      scopeID: key[1]!,
+      type: RecordCommitted.type,
+      payload: {
+        properties: RecordCommitted.properties.parse({
+          scopeID: key[1],
+          sessionID: key[2],
+          messageID: key[4],
+          partID: key[6],
+          revision: String(revision),
+          removed: removedRevision !== undefined,
+        }),
+      },
+    })
+  }
+
   export async function append(
     key: string[],
     batch: Batch,
@@ -324,7 +359,9 @@ export namespace PartContent {
             await tx.removeTree(StoragePath.partContent(key))
           for (const token of prepared) await Storage.publishPreparedBinary(token)
           await tx.write(key, value)
+          await SessionPartFieldSource.capture(tx, key, value)
           await written(value)
+          await committed(tx, key, value)
         },
         { commitGuard },
       )
@@ -345,11 +382,23 @@ export namespace PartContent {
       const [previous] = await tx.readMany<Stored>([key])
       if (previous && checkpoint(previous)) await tx.removeTree(StoragePath.partContent(key))
       await tx.write(key, value)
+      await SessionAttachmentIndex.capture(tx, key, value)
+      await SessionPartFieldSource.capture(tx, key, value)
+      await committed(tx, key, value)
     })
   }
 
   export function remove(key: string[]) {
-    return Storage.removeTree(key)
+    return Storage.transaction(async (tx) => {
+      const record = await tx.versioned<Stored>(key).catch((error) => {
+        if (error instanceof Storage.NotFoundError) return
+        throw error
+      })
+      await SessionAttachmentIndex.remove(tx, key)
+      await SessionPartFieldSource.remove(tx, key)
+      await tx.removeTree(key)
+      if (record) await committed(tx, key, record.value, record.revision)
+    })
   }
 
   export class Stream {

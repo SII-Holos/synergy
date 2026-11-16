@@ -1,0 +1,113 @@
+import { z } from "zod"
+import { ActorStamp } from "@ericsanchezok/synergy-util/actor-stamp"
+import { HomeOwnershipFile } from "../lifecycle/home-ownership-file"
+import { NativeNamespaceIdentity } from "../lifecycle/namespace-identity"
+
+export namespace RuntimeMaintenanceSchema {
+  const ID = z.string().min(1).max(128)
+  const Count = z.number().int().nonnegative().safe()
+  const Hash = z.string().regex(/^[a-f0-9]{64}$/)
+  export const Operator = ActorStamp.Info.refine(
+    (actor) => actor.kind !== "account",
+    "Maintenance requires trusted Host authority",
+  )
+  const legacyPurpose = z.enum(["organization-backup", "organization-restore"])
+  export const Purpose = z.enum([...legacyPurpose.options, "organization-home-upgrade"])
+  const selection = z.strictObject({
+    version: z.union([z.literal(1), z.literal(2)]),
+    source: z.discriminatedUnion("schemaVersion", [HomeOwnershipFile.FencedInfo, HomeOwnershipFile.RestorationInfo]),
+    target: z.discriminatedUnion("schemaVersion", [HomeOwnershipFile.FencedInfo, HomeOwnershipFile.RestorationInfo]),
+    namespace: NativeNamespaceIdentity.Descriptor,
+    signingHash: Hash,
+  })
+  const namespaceField = z.string().min(1).max(4096)
+  const ServiceNamespace = z.strictObject({
+    kind: z.literal("service"),
+    orgID: namespaceField,
+    deploymentIncarnation: namespaceField,
+  })
+  const HostedNamespace = ServiceNamespace.extend({
+    kind: z.literal("hosted"),
+    runtimeID: namespaceField,
+    publicKey: namespaceField,
+  })
+  function restoredNamespace(source: HomeOwnershipFile.RestorationInfo, namespace: NativeNamespaceIdentity.Descriptor) {
+    if (source.owner === "organization") {
+      const service = ServiceNamespace.safeParse(namespace.identity)
+      return service.success && source.incarnation === service.data.deploymentIncarnation
+    }
+    if (source.owner === "organization-runtime") return HostedNamespace.safeParse(namespace.identity).success
+    return false
+  }
+  const sameOwner = (value: z.infer<typeof selection>) =>
+    value.namespace.owner === value.source.owner &&
+    (value.version === 1
+      ? value.source.schemaVersion === 2 && value.target.schemaVersion === 2
+      : value.source.schemaVersion === 3 &&
+        value.target.schemaVersion === 3 &&
+        restoredNamespace(value.source, value.namespace)) &&
+    JSON.stringify({ ...value.source, readerContract: value.target.readerContract }) === JSON.stringify(value.target)
+  export const HomeUpgradeSelection = selection.refine(sameOwner, "Home upgrade must retain its original native owner")
+  export const HomeUpgradeNative = selection
+    .extend({
+      ownerID: ID,
+      ownerVersion: Count.positive(),
+      physicalHash: Hash,
+      primaryConfigHash: Hash,
+      artifactDirectory: z.string().min(1),
+    })
+    .refine(sameOwner, "Home upgrade must retain its original native owner")
+  export const SourcePreparationSelection = z
+    .strictObject({
+      version: z.union([z.literal(1), z.literal(2)]),
+      source: z.discriminatedUnion("schemaVersion", [HomeOwnershipFile.FencedInfo, HomeOwnershipFile.RestorationInfo]),
+      namespace: NativeNamespaceIdentity.Descriptor,
+      signingHash: Hash,
+      selectionHash: Hash,
+    })
+    .refine(
+      (value) =>
+        value.source.owner === value.namespace.owner &&
+        (value.version !== 1 || value.source.schemaVersion === 2) &&
+        (value.source.schemaVersion !== 3 ||
+          value.source.incarnation === value.namespace.identity.deploymentIncarnation),
+      "Source preparation requires its original namespace owner",
+    )
+  export const SourcePreparationNative = SourcePreparationSelection.safeExtend({
+    ownerID: ID,
+    ownerVersion: Count.positive(),
+    physicalHash: Hash,
+    primaryConfigHash: Hash,
+    artifactDirectory: z.string().min(1),
+  })
+  const fields = {
+    maintenanceID: ID,
+    requestID: ID,
+    requestHash: Hash,
+    purpose: Purpose,
+    sourceRuntimeID: ID,
+    cohortHash: Hash,
+    phase: z.enum(["draining", "frozen", "releasing", "released", "recovery-held"]),
+    revision: Count.positive(),
+    tailRevision: Count,
+    actor: Operator,
+    createdAt: Count,
+    updatedAt: Count,
+  }
+  const legacy = z.strictObject({ version: z.literal(1), ...fields, purpose: legacyPurpose })
+  export const HomeUpgradeInfo = z.strictObject({
+    version: z.literal(2),
+    ...fields,
+    purpose: z.literal("organization-home-upgrade"),
+    phase: z.enum(["draining", "frozen", "releasing", "released"]),
+    native: HomeUpgradeNative,
+  })
+  export const SourcePreparationInfo = z.strictObject({
+    version: z.literal(3),
+    ...fields,
+    purpose: z.literal("organization-backup"),
+    phase: z.enum(["draining", "frozen", "releasing", "released"]),
+    native: SourcePreparationNative,
+  })
+  export const Info = z.discriminatedUnion("version", [legacy, HomeUpgradeInfo, SourcePreparationInfo])
+}

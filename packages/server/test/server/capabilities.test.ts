@@ -2,6 +2,8 @@ import { expect, test } from "bun:test"
 import { RuntimeComponents } from "@ericsanchezok/synergy-harness/lifecycle"
 import { registerLocalRuntime } from "@ericsanchezok/synergy-local-runtime/register"
 import { testRuntime } from "@ericsanchezok/synergy-harness/test/support/runtime"
+import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { Server } from "../../src/server/server"
 
 test("capabilities are unavailable until runtime service initialization completes", async () => {
@@ -41,6 +43,37 @@ test("capabilities are global and report only the components selected for that r
   const selected = await extended.run(async () => (await Server.App().request("/global/capabilities")).json())
   expect(selected.components.map((item: { id: string }) => item.id).sort()).toEqual(["local-runtime", "lsp", "mcp"])
   expect(selected.features).toEqual([])
+})
+
+test("capabilities identify the persisted Home across reconnects without creating a host pairing", async () => {
+  await using home = await tmpdir()
+  const open = () => testRuntime({ home: home.path, composition: { register: registerLocalRuntime } })
+  let runtime = await open()
+  const read = () => runtime.run(async () => (await Server.App().request("/global/capabilities")).json())
+  try {
+    const [first, concurrent] = await Promise.all([read(), read()])
+    expect(first.runtimeID).toMatch(/^[a-f0-9-]{36}$/)
+    expect(concurrent.runtimeID).toBe(first.runtimeID)
+    expect(await runtime.run(() => Storage.read(["session_transfer_host", "identity"]))).toEqual({
+      version: 1,
+      id: first.runtimeID,
+    })
+    expect(await runtime.run(() => Storage.list(["host_connection"]))).toEqual([])
+    await runtime.close()
+    runtime = await open()
+    expect((await read()).runtimeID).toBe(first.runtimeID)
+    await using another = await testRuntime({ composition: { register: registerLocalRuntime } })
+    const different = await another.run(async () => (await Server.App().request("/global/capabilities")).json())
+    expect(different.runtimeID).not.toBe(first.runtimeID)
+    await runtime.run(() => Storage.write(["session_transfer_host", "identity"], { version: 2, id: first.runtimeID }))
+    expect((await runtime.run(() => Server.App().request("/global/capabilities"))).status).toBe(500)
+    expect(await runtime.run(() => Storage.read(["session_transfer_host", "identity"]))).toEqual({
+      version: 2,
+      id: first.runtimeID,
+    })
+  } finally {
+    await runtime.close()
+  }
 })
 
 test("features require a selected service and its HTTP contribution in the same Runtime", async () => {

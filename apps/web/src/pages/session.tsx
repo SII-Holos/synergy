@@ -184,7 +184,7 @@ export default function Page() {
     <TerminalProvider>
       <SessionRenderProvider>
         <ResourceOpenProvider>
-          <PromptProvider connection={sdk.url} drafts={sdk.drafts}>
+          <PromptProvider connection={sdk.cacheKey} drafts={sdk.drafts}>
             <BuiltinWorkbenchPanelsProvider>
               <SessionPreparation>
                 <SessionPageData />

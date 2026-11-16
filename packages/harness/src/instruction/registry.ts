@@ -13,6 +13,9 @@ const log = Log.create({ service: "instruction.registry" })
  * importing the owning domain.
  */
 export namespace InstructionRegistry {
+  export interface Query {
+    sessionID?: string
+  }
   export interface Diagnostic {
     name: string
     code: string
@@ -32,6 +35,7 @@ export namespace InstructionRegistry {
     model: boolean
     warnings: string[]
     unsupported: string[]
+    provenance?: { itemID: string; version: number; manifestHash: string }
     content(): Promise<string>
     references(): Promise<string[]>
     reference(name: string): Promise<string | undefined>
@@ -46,9 +50,9 @@ export namespace InstructionRegistry {
     /** List instruction identifiers for discovery surfaces. */
     list?(): Promise<string[]>
     /** Catalog entries for generic instruction consumers. */
-    entries?(): Promise<Entry[]>
-    entry?(name: string): Promise<Entry | undefined>
-    diagnostics?(): Promise<Diagnostic[]>
+    entries?(query?: Query): Promise<Entry[]>
+    entry?(name: string, query?: Query): Promise<Entry | undefined>
+    diagnostics?(query?: Query): Promise<Diagnostic[]>
   }
 
   const runtimeState = RuntimeContext.state(() => ({

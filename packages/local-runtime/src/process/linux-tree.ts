@@ -218,7 +218,7 @@ export namespace LinuxTree {
     if (!value.complete || status(value.owner.pid)?.start === value.owner.start) return
     fs.rmSync(validateDirectory(reference.receipt), { recursive: true, force: true })
   }
-  export async function start(command: string[], directory: string) {
+  export async function start(command: string[], directory: string, environment: Record<string, string> = {}) {
     runtime()
     try {
       signal(process.pid, () => true, 0)
@@ -227,6 +227,7 @@ export namespace LinuxTree {
     }
     const child = spawn(command[0]!, command.slice(1), {
       cwd: directory,
+      env: environment,
       detached: true,
       stdio: ["ignore", "ignore", "pipe"],
     })

@@ -44,25 +44,31 @@ export function ConfirmDialog(props: ConfirmOptions & { close?: () => void; clas
   let cancelButton: HTMLButtonElement | undefined
   const [failure, setFailure] = createSignal<string>()
   let settled = false
+  let disposed = false
+  onCleanup(() => {
+    disposed = true
+  })
   const close = () => (props.close ?? dialogContext.close)()
 
   function dismiss() {
-    if (pending() || settled) return
+    if (disposed || pending() || settled) return
     settled = true
     close()
     props.onDismiss?.()
   }
 
   async function confirm() {
-    if (pending() || settled) return
+    if (disposed || pending() || settled) return
     setPending(true)
     setFailure(undefined)
     try {
       await props.onConfirm()
+      if (disposed) return
       settled = true
       close()
       props.onConfirmed?.()
     } catch (error) {
+      if (disposed) return
       setFailure(errorDescription(error, _))
       showToast({
         type: "error",
@@ -147,10 +153,13 @@ export function useConfirm(presentation?: { class?: string }) {
   const dialogContext = useDialog()
   const owned = new Set<string>()
   let disposed = false
+  function closeOwned() {
+    for (const id of [...owned]) dialogContext.close(id)
+    owned.clear()
+  }
   onCleanup(() => {
     disposed = true
-    for (const id of owned) dialogContext.close(id)
-    owned.clear()
+    closeOwned()
   })
 
   function show(options: ConfirmOptions) {
@@ -174,8 +183,12 @@ export function useConfirm(presentation?: { class?: string }) {
           class={presentation?.class}
           close={() => dialogContext.close(id)}
           onConfirm={async () => {
+            if (disposed || dismissed || confirmed) return
             await options.onConfirm()
-            confirmed = true
+            if (!disposed && !dismissed) confirmed = true
+          }}
+          onConfirmed={() => {
+            if (!disposed && !dismissed && confirmed) options.onConfirmed?.()
           }}
           onDismiss={dismiss}
         />
@@ -189,6 +202,7 @@ export function useConfirm(presentation?: { class?: string }) {
 
   return {
     show,
+    closeOwned,
     ask(options: Omit<ConfirmOptions, "onConfirm" | "onConfirmed" | "onDismiss">): Promise<boolean> {
       return new Promise((resolve) =>
         show({ ...options, onConfirm() {}, onConfirmed: () => resolve(true), onDismiss: () => resolve(false) }),

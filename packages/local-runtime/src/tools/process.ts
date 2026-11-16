@@ -1,9 +1,10 @@
-import z from "zod"
+import { z } from "zod"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import DESCRIPTION from "./process.txt"
 import { LocalProcessBackend } from "./process/local"
 import type { ProcessMetadata, ProcessParams } from "./process/shared"
 import { ToolTimeout } from "@ericsanchezok/synergy-harness/tool/timeout"
+import { ProcessAccessSource } from "@ericsanchezok/synergy-harness/process/access-source"
 
 const parameters = z
   .object({
@@ -30,9 +31,14 @@ export const ProcessTool = Tool.define<typeof parameters, ProcessMetadata>(
   {
     description: DESCRIPTION,
     parameters,
+    resourceNeeds() {
+      return { workspace: !ProcessAccessSource.has() }
+    },
     async execute(params, ctx) {
+      if (!ProcessAccessSource.has() && !ctx.resources?.workspace)
+        return Tool.withWorkspace(true, ctx, () => LocalProcessBackend.execute(params as ProcessParams, ctx))
       return LocalProcessBackend.execute(params as ProcessParams, ctx)
     },
   },
-  { requiresWorkspace: true },
+  { requiresWorkspace: false },
 )

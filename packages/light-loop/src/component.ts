@@ -1,3 +1,4 @@
+import { registerLightLoopTransferOwner } from "./transfer"
 import { componentFeatures } from "./features"
 import { registerSessionMigrations } from "./session-migration"
 import type { RuntimeComponent } from "@ericsanchezok/synergy-harness/lifecycle"
@@ -19,6 +20,7 @@ export function lightLoop(): RuntimeComponent {
       registerSessionSchema()
       registerSessions()
       registerLightLoopDomain()
+      registerLightLoopTransferOwner()
     },
   }
 }

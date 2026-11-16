@@ -460,6 +460,7 @@ function createGlobalSync() {
   function createScopedClient(scopeKey: string) {
     return createSynergyClient({
       baseUrl: globalSDK.url,
+      fetch: globalSDK.fetch,
       scopeID: scopeKey,
       throwOnError: true,
     })
@@ -469,7 +470,7 @@ function createGlobalSync() {
   onCleanup(() => scopeRequestLifetime.abort())
   function coreSnapshot(scopeKey: string) {
     return sharedRequests.request(
-      JSON.stringify([globalSDK.url, "bootstrap-core", scopeKey]),
+      JSON.stringify([globalSDK.requestKey, "bootstrap-core", scopeKey]),
       (signal) =>
         createScopedClient(scopeKey).scope.bootstrapCore({ scopeID: scopeKey }, { signal, throwOnError: true }),
       { signal: scopeLifetimes.get(scopeKey)?.signal ?? scopeRequestLifetime.signal, ttlMs: 0 },
@@ -526,7 +527,7 @@ function createGlobalSync() {
     if (!missing.length) return
     for (let offset = 0; offset < missing.length; offset += 100) {
       const batch = missing.slice(offset, offset + 100)
-      const key = JSON.stringify([globalSDK.url, "models", scopeKey, current.version, batch])
+      const key = JSON.stringify([globalSDK.requestKey, "models", scopeKey, current.version, batch])
       const result = await sharedRequests.request(
         key,
         (signal) =>
@@ -962,7 +963,7 @@ function createGlobalSync() {
     const [_, setStore] = ensureScopeState(scopeKey)
     const sdk = createScopedClient(scopeKey)
 
-    sharedRequests.invalidate(JSON.stringify([globalSDK.url, "bootstrap-core", scopeKey]))
+    sharedRequests.invalidate(JSON.stringify([globalSDK.requestKey, "bootstrap-core", scopeKey]))
     return coreSnapshot(scopeKey).then((result) => {
       if (!result.data) throw new Error("Scope bootstrap returned no data")
       applyScopeBootstrapSnapshot(scopeKey, children[scopeKey][0], setStore, result.data, result.response?.headers)
@@ -2281,7 +2282,7 @@ function createGlobalSync() {
         const summaries = store.partSummary[summary.messageID] ?? []
         const index = summaries.findIndex((part) => part.id === summary.id)
         if (discovery && index >= 0) break
-        partArrival.add([globalSDK.url, scopeKey, summary.sessionID], summary.id, {
+        partArrival.add([globalSDK.cacheKey, scopeKey, summary.sessionID], summary.id, {
           source: discovery ? "discovery" : source,
           render: summary.render !== false,
           previous: index >= 0 ? summaries[index].render !== false : undefined,

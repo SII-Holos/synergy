@@ -2,6 +2,8 @@ import { expect, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
 import os from "node:os"
+import { batchInvocation, collectTests, shardMainFiles } from "../../packages/testing/script/batches"
+import { executionBatches } from "../../packages/testing/script/run"
 
 test("a browser-only isolated suite runs once with browser conditions and separate coverage shards", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "synergy-browser-test-runner-"))
@@ -66,3 +68,28 @@ test("a browser-only isolated suite runs once with browser conditions and separa
     await rm(root, { recursive: true, force: true })
   }
 }, 30000)
+
+test("capacity measurement owns one process without changing its inventory or hash partition", async () => {
+  const root = path.resolve(import.meta.dirname, "../../packages/organization-runtime")
+  const capacity = "test/capacity-sync.test.ts"
+  const files = (await collectTests("test", root)).toSorted()
+  const original = shardMainFiles(
+    files.filter((file) => file !== "test/runtime.test.ts"),
+    4,
+  ).find((batch) => batch.includes(capacity))!
+  const batches = executionBatches(original, root, 4)
+  const selected = batches.filter((batch) => batch.files.includes(capacity))
+  expect(selected.map((batch) => batch.files)).toEqual([[capacity]])
+  const partition = shardMainFiles([capacity], 4).findIndex((batch) => batch.length > 0)
+  expect(selected[0]?.partition).toBe(partition)
+  const siblings = original.filter((file) => file !== capacity)
+  expect(batches.filter((batch) => !batch.files.includes(capacity))).toEqual(executionBatches(siblings, root, 4))
+  const observed = batches.flatMap((batch) => batch.files)
+  expect(observed.toSorted()).toEqual(original.toSorted())
+  expect(new Set(observed).size).toBe(original.length)
+  const complete = executionBatches(files, root, 4).flatMap((batch) => batch.files)
+  expect(complete.toSorted()).toEqual(files)
+  expect(new Set(complete).size).toBe(files.length)
+  const args = ["test", "--coverage", capacity]
+  expect(batchInvocation(args, root)).toEqual({ args, cwd: root })
+})

@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test"
+import { expect, spyOn, test } from "bun:test"
 import path from "node:path"
 import fs from "node:fs/promises"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
@@ -189,9 +189,7 @@ test.skipIf(process.platform === "win32")(
       materializationRoot: path.join(tmp.path, "views"),
       coordinator: new WorkspaceCoordinator({ directory: path.join(tmp.path, "claims") }),
       owner: {
-        get uid(): number {
-          throw new Error("write interrupted before publication")
-        },
+        uid: process.getuid!(),
         gid: process.getgid!(),
       },
     }
@@ -207,6 +205,15 @@ test.skipIf(process.platform === "win32")(
     const host = new NativeWorkspaceFiles(options)
     try {
       await host.mount({ ...mount, readOnly: false, source: { kind: "directory", path: root } })
+      const open = fs.open
+      using interrupted = spyOn(fs, "open").mockImplementation(async (...args) => {
+        const file = await open(...args)
+        if (String(args[0]).startsWith(path.join(root, ".file.synergy-write-")))
+          file.chown = async () => {
+            throw new Error("write interrupted before publication")
+          }
+        return file
+      })
       await expect(host.write(input)).rejects.toThrow("write interrupted before publication")
       expect((await host.checkpointStatus(input.id))?.state).toBe("pending")
     } finally {

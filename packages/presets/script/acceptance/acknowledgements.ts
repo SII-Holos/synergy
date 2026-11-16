@@ -78,6 +78,7 @@ export function acknowledgements(input: unknown): Driver {
             try {
               try {
                 const unexpected = await Environment.acquire(environmentID, {
+                  ownership: host.origin(context.scenario.id),
                   scopeID: "home",
                   useID: "acceptance",
                   capabilities: ["exec"],
@@ -92,6 +93,7 @@ export function acknowledgements(input: unknown): Driver {
               await atomicJSON(path.join(context.directory, "allocation-uncertain.json"), uncertain)
               await context.checkpoint("reply-lost", [{ path: "allocation-uncertain.json", kind: "product" }])
               const use = await Environment.acquire(environmentID, {
+                ownership: host.origin(context.scenario.id),
                 scopeID: "home",
                 useID: "acceptance",
                 capabilities: ["exec"],
@@ -116,11 +118,13 @@ export function acknowledgements(input: unknown): Driver {
             workspaceID = workspace.id
             const identity = { scopeID: "home", environmentID, workspaceID }
             await using resources = await EnvironmentResources.resolve({
+              origin: host.origin(context.scenario.id),
               ...identity,
               needs: { workspace: true, execution: "exec" },
             })
             operationID = `acceptance_${crypto.randomUUID()}`
             await EnvironmentExecution.start({
+              origin: host.origin(context.scenario.id),
               id: operationID,
               scopeID: "home",
               environmentID,
@@ -155,21 +159,32 @@ export function acknowledgements(input: unknown): Driver {
               const manifestBytes = new Uint8Array(await Bun.file(objectPath(manifest)).arrayBuffer())
               if (digest(manifestBytes) !== manifest)
                 throw new Error("Durable manifest bytes disagree with the published head")
-              const tree = WorkspaceTree.Manifest.parse(JSON.parse(new TextDecoder().decode(manifestBytes)))
-              const entry = tree.entries.find((entry) => entry.path === "effects.txt")
-              if (entry?.kind !== "file") throw new Error("Saved file missing from published manifest")
-              const bytes = Buffer.concat(
-                await Promise.all(
-                  entry.chunks.map(async (chunk) => {
-                    const bytes = new Uint8Array(await Bun.file(objectPath(chunk.hash)).arrayBuffer())
-                    if (digest(bytes) !== chunk.hash || bytes.length !== chunk.size)
-                      throw new Error("Saved chunk integrity mismatch")
-                    return bytes
-                  }),
-                ),
+              await WorkspaceContent.withTree(
+                current,
+                {
+                  async put() {
+                    throw new Error("Saved release evidence is read-only")
+                  },
+                  get: (hash) => Bun.file(objectPath(hash)).bytes(),
+                },
+                async (tree) => {
+                  const entry = await tree.get("effects.txt")
+                  if (entry?.kind !== "file") throw new Error("Saved file missing from published manifest")
+                  if (entry.size !== 5) throw new Error("Saved effect length changed before release")
+                  const bytes = new Uint8Array(entry.size)
+                  let offset = 0
+                  for await (const chunk of tree.read("effects.txt")) {
+                    bytes.set(chunk, offset)
+                    offset += chunk.byteLength
+                  }
+                  if (
+                    offset !== bytes.length ||
+                    new TextDecoder().decode(bytes) !== "once\n" ||
+                    digest(bytes) !== entry.hash
+                  )
+                    throw new Error("Saved bytes missing before release")
+                },
               )
-              if (bytes.toString() !== "once\n" || digest(bytes) !== entry.hash)
-                throw new Error("Saved bytes missing before release")
               await atomicJSON(path.join(context.directory, "saved.json"), saved)
               await context.checkpoint("save-committed", [{ path: "saved.json", kind: "product" }])
               await release(id)

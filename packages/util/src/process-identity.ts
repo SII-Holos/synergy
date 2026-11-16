@@ -116,7 +116,7 @@ export function wmicCreationDateToEpochMs(value: string): number | undefined {
       Number(hour),
       Number(minute),
       Number(second),
-      Number(micros.slice(0, 3)),
+      Number(micros!.slice(0, 3)),
     ) -
     offsetMinutes * 60_000
   )

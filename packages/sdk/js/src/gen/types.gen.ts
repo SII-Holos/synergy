@@ -43,6 +43,7 @@ export type RuntimeShuttingDownError = {
 
 export type RuntimeCapabilities = {
   apiVersion: 1
+  runtimeID: string
   hostVersion: string
   components: Array<RuntimeComponentInfo>
   features: Array<string>
@@ -3134,6 +3135,800 @@ export type AgendaItem = {
   }
 }
 
+export type OrgLocalProjectSummary = {
+  projectID: string
+  revision: string
+  binding: {
+    label: string
+    workspaceID: string
+    generation: number
+  } | null
+}
+
+export type OrgError = {
+  code:
+    | "INVALID_REQUEST"
+    | "AUTHENTICATION_REQUIRED"
+    | "PERMISSION_DENIED"
+    | "NOT_FOUND"
+    | "RUNTIME_OFFLINE"
+    | "COMMAND_OUTCOME_UNKNOWN"
+    | "REVISION_CONFLICT"
+    | "STALE_BINDING"
+    | "STALE_CONNECTION"
+    | "SHARE_REVOKED"
+    | "HANDOFF_BLOCKED"
+    | "RESOURCE_UNAVAILABLE"
+    | "BLOB_INCOMPLETE"
+    | "PROTOCOL_MISMATCH"
+    | "SERVICE_UNAVAILABLE"
+    | "ALREADY_INITIALIZED"
+    | "LAST_OWNER"
+    | "TOKEN_CONSUMED"
+    | "LOGIN_NAME_TAKEN"
+  message: string
+  requestID?: string
+  retryable: boolean
+  outcome: "not_dispatched" | "rejected" | "unknown"
+  currentRevision?: number
+  currentConnectionEpoch?: number
+  missingRequirements?: Array<string>
+  retryAfter?: number
+}
+
+export type OrgLocalProjectBind = {
+  requestID: string
+  expectedRevision: string
+  directory: string
+}
+
+export type OrgCloudFileReference = {
+  orgID: string
+  projectID: string
+  resourceID: string
+  workspaceID: string
+  generation: number
+  revision: number
+  rootPath?: string
+}
+
+export type OrgCloudFileResult = {
+  reference: OrgCloudFileReference
+  result:
+    | {
+        action: "describe"
+      }
+    | {
+        action: "canonical"
+        path: string | ""
+      }
+    | {
+        action: "stat"
+        item?: {
+          path: string | ""
+          entryVersion: string
+          identity?: string
+          ctime: number
+          mtime: number
+          kind: "file" | "directory" | "symlink" | "unknown"
+          size: number
+          mode: number
+        }
+      }
+    | {
+        action: "list"
+        items: Array<{
+          path: string | ""
+          entryVersion: string
+          identity?: string
+          ctime: number
+          mtime: number
+          kind: "file" | "directory" | "symlink" | "unknown"
+          size: number
+          mode: number
+        }>
+        cursor?: string
+        revision: number
+      }
+    | {
+        action: "read"
+        data: string
+        version: string
+        size: number
+        mode: number
+      }
+    | {
+        action: "write"
+        checkpoint: {
+          id: string
+          mount: {
+            id: string
+            workspaceID: string
+            generation: number
+          }
+          manifest: string | null
+          beforeManifest?: string
+          isolated?: boolean
+        }
+      }
+    | {
+        action: "mutate"
+        checkpoint: {
+          id: string
+          mount: {
+            id: string
+            workspaceID: string
+            generation: number
+          }
+          manifest: string | null
+          beforeManifest?: string
+          isolated?: boolean
+        }
+      }
+    | {
+        action: "receipt"
+        status?: {
+          id: string
+          mount: {
+            id: string
+            workspaceID: string
+            generation: number
+          }
+          state: "pending" | "failed" | "saved" | "released"
+          checkpoint?: {
+            id: string
+            mount: {
+              id: string
+              workspaceID: string
+              generation: number
+            }
+            manifest: string | null
+            beforeManifest?: string
+            isolated?: boolean
+          }
+          error?: string
+        }
+      }
+    | {
+        action: "acknowledge"
+        id: string
+      }
+}
+
+export type OrgCloudLocalFileRequest = {
+  reference?: OrgCloudFileReference
+  operation:
+    | {
+        action: "describe"
+      }
+    | {
+        action: "canonical"
+        path: string | ""
+        follow: boolean
+      }
+    | {
+        action: "stat"
+        path: string | ""
+        follow?: boolean
+      }
+    | {
+        action: "list"
+        path: string | ""
+        cursor?: string
+        revision?: number
+        limit?: number
+      }
+    | {
+        action: "read"
+        path: string
+        offset?: number
+        maximumBytes?: number
+        expectedVersion?: string
+      }
+    | {
+        action: "write"
+        id: string
+        path: string
+        data: string
+        expectedVersion: string | null
+        expectedEntryVersion?: string | null
+        protectSensitive?: boolean
+        mode?: number
+      }
+    | {
+        action: "mutate"
+        id: string
+        change:
+          | {
+              kind: "replace"
+              path: string
+              data: string
+              mode: "100644" | "100755" | "120000"
+              expectedVersion: string | null
+              expectedContentVersion?: string
+            }
+          | {
+              kind: "mkdir"
+              path: string
+              createParents?: boolean
+              mode?: number
+            }
+          | {
+              kind: "remove"
+              path: string
+              expectedVersion: string
+              recursive?: boolean
+            }
+          | {
+              kind: "move"
+              from: string
+              to: string
+              expectedVersion: string
+            }
+          | {
+              kind: "copy"
+              from: string
+              to: string
+              expectedVersion: string
+            }
+        protectSensitive?: boolean
+      }
+    | {
+        action: "receipt"
+        id: string
+      }
+    | {
+        action: "acknowledge"
+        id: string
+      }
+}
+
+export type OrgSessionBinding = {
+  schemaVersion: 1
+  orgID: string
+  projectID: string
+  creatorID: string
+  driverRuntimeID: string
+  bindingEpoch: number
+}
+
+export type OrgTaskSummary = {
+  taskID: string
+  parentSessionID: string
+  parentMessageID: string
+  status: "queued" | "running" | "completed" | "error" | "cancelled" | "interrupted"
+  description: string
+  startedAt: number
+  completedAt?: number
+  notifyParentOnComplete?: boolean
+  sessionID: string
+  deliveryNotifiedAt?: number
+  agent?: string
+  model?: {
+    providerID: string
+    modelID: string
+  }
+  category?: string
+}
+
+export type ActorStamp =
+  | {
+      subjectID: string
+      displayName: string
+      clientKind: "web" | "desktop" | "cli" | "api" | "runtime" | "system"
+      requestID: string
+      kind: "account"
+      orgID: string
+      tokenID?: string
+    }
+  | {
+      subjectID: string
+      displayName: string
+      clientKind: "web" | "desktop" | "cli" | "api" | "runtime" | "system"
+      requestID: string
+      kind: "local"
+    }
+  | {
+      subjectID: string
+      displayName: string
+      clientKind: "web" | "desktop" | "cli" | "api" | "runtime" | "system"
+      requestID: string
+      kind: "system"
+      orgID?: string
+      causedBy?: Array<
+        | {
+            subjectID: string
+            displayName: string
+            clientKind: "web" | "desktop" | "cli" | "api" | "runtime" | "system"
+            requestID: string
+            kind: "account"
+            orgID: string
+            tokenID?: string
+          }
+        | {
+            subjectID: string
+            displayName: string
+            clientKind: "web" | "desktop" | "cli" | "api" | "runtime" | "system"
+            requestID: string
+            kind: "local"
+          }
+        | {
+            subjectID: string
+            displayName: string
+            clientKind: "web" | "desktop" | "cli" | "api" | "runtime" | "system"
+            requestID: string
+            kind: "system"
+            orgID?: string
+          }
+      >
+    }
+
+export type OrgPrivateAttachmentMetadata = {
+  filename: string
+  mediaType: string
+  ordinal: number
+  bytes?: number
+}
+
+export type OrgPrivateAttachmentReference = {
+  kind: "attachment"
+  version: string
+  filename: string
+  mediaType: string
+  bytes: number
+  sha256: string
+}
+
+export type OrgPrivateAttachmentChunk = {
+  offset: number
+  nextOffset: number
+  totalBytes: number
+  sha256: string
+  data: string
+  complete: boolean
+}
+
+export type OrgPrivateReadResult =
+  | {
+      rootSessionID: string
+      sourceSessionID: string
+      binding: OrgSessionBinding
+      operation: "tasks"
+      items: Array<OrgTaskSummary>
+      total: number
+      cursor?: string
+    }
+  | {
+      rootSessionID: string
+      sourceSessionID: string
+      binding: OrgSessionBinding
+      operation: "session"
+      session: {
+        sessionID: string
+        parentSessionID?: string
+        title: string
+        createdAt: number
+        updatedAt: number
+      }
+    }
+  | {
+      rootSessionID: string
+      sourceSessionID: string
+      binding: OrgSessionBinding
+      operation: "timeline"
+      items: Array<{
+        messageID: string
+        role: "user" | "assistant"
+        createdAt: number
+        summary: string
+        actor?: ActorStamp
+        agent?: string
+        parentID?: string
+        rootID?: string
+        completedAt?: number
+        finish?: string
+        model?: {
+          providerID: string
+          modelID: string
+        }
+        mode?: string
+        cost?: number
+        tokens?: {
+          input: number
+          output: number
+          reasoning: number
+          cache: {
+            read: number
+            write: number
+          }
+        }
+        error?: {
+          code: string
+          message: string
+        }
+        version: string
+        order: string
+      }>
+      referencedRoots: Array<{
+        messageID: string
+        role: "user" | "assistant"
+        createdAt: number
+        summary: string
+        actor?: ActorStamp
+        agent?: string
+        parentID?: string
+        rootID?: string
+        completedAt?: number
+        finish?: string
+        model?: {
+          providerID: string
+          modelID: string
+        }
+        mode?: string
+        cost?: number
+        tokens?: {
+          input: number
+          output: number
+          reasoning: number
+          cache: {
+            read: number
+            write: number
+          }
+        }
+        error?: {
+          code: string
+          message: string
+        }
+        version: string
+        order: string
+      }>
+      cursor?: string
+      hasMore: boolean
+      total: number
+      generation: number
+    }
+  | {
+      rootSessionID: string
+      sourceSessionID: string
+      binding: OrgSessionBinding
+      operation: "parts"
+      messageID: string
+      items: Array<{
+        partID: string
+        messageID: string
+        type: string
+        preview: string
+        render?: boolean
+        status?: string
+        tool?: string
+        attachmentCount?: number
+        content: {
+          version: string
+          bytes: number
+        }
+      }>
+      cursor?: string
+      hasMore: boolean
+      generation?: number
+    }
+  | {
+      rootSessionID: string
+      sourceSessionID: string
+      binding: OrgSessionBinding
+      operation: "partContent"
+      state?: "ready"
+      value: {
+        partID: string
+        messageID: string
+        version: string
+        part:
+          | {
+              type: "text"
+              content:
+                | {
+                    kind: "inline"
+                    text: string
+                  }
+                | {
+                    kind: "native"
+                    version: string
+                    field: "text" | "input" | "output" | "error"
+                    bytes: number
+                    sha256: string
+                    original: "complete" | "partial"
+                  }
+              origin?: "user" | "system"
+            }
+          | {
+              type: "reasoning"
+              content:
+                | {
+                    kind: "inline"
+                    text: string
+                  }
+                | {
+                    kind: "native"
+                    version: string
+                    field: "text" | "input" | "output" | "error"
+                    bytes: number
+                    sha256: string
+                    original: "complete" | "partial"
+                  }
+              time?: {
+                start: number
+                end?: number
+              }
+            }
+          | {
+              type: "tool"
+              callID: string
+              tool: string
+              status: "pending" | "generating" | "running" | "completed" | "error"
+              input:
+                | {
+                    kind: "inline"
+                    text: string
+                  }
+                | {
+                    kind: "native"
+                    version: string
+                    field: "text" | "input" | "output" | "error"
+                    bytes: number
+                    sha256: string
+                    original: "complete" | "partial"
+                  }
+              output?:
+                | {
+                    kind: "inline"
+                    text: string
+                  }
+                | {
+                    kind: "native"
+                    version: string
+                    field: "text" | "input" | "output" | "error"
+                    bytes: number
+                    sha256: string
+                    original: "complete" | "partial"
+                  }
+              error?:
+                | {
+                    kind: "inline"
+                    text: string
+                  }
+                | {
+                    kind: "native"
+                    version: string
+                    field: "text" | "input" | "output" | "error"
+                    bytes: number
+                    sha256: string
+                    original: "complete" | "partial"
+                  }
+              title?: string
+              startedAt?: number
+              completedAt?: number
+              metadata?: {
+                operation?: "list" | "files" | "read" | "search"
+                itemID?: string
+                version?: number
+                manifestHash?: string
+                fileID?: string
+                path?: string
+                title?: string
+                offset?: number
+                bytes?: number
+                truncated?: boolean
+                cursor?: string
+              }
+            }
+          | {
+              type: "attachment"
+              filename: string
+              mediaType: string
+              hash?: string
+              bytes?: number
+            }
+          | {
+              type: "step-start"
+            }
+          | {
+              type: "step-finish"
+              reason: string
+              cost: number
+              tokens?: {
+                input: number
+                output: number
+                reasoning: number
+                cache: {
+                  read: number
+                  write: number
+                }
+              }
+            }
+          | {
+              type: "compaction"
+              auto: boolean
+            }
+          | {
+              type: "notice"
+              kind: string
+              content:
+                | {
+                    kind: "inline"
+                    text: string
+                  }
+                | {
+                    kind: "native"
+                    version: string
+                    field: "text" | "input" | "output" | "error"
+                    bytes: number
+                    sha256: string
+                    original: "complete" | "partial"
+                  }
+            }
+      }
+      chunk?: {
+        field: "text" | "input" | "output" | "error"
+        offset: number
+        nextOffset: number
+        totalBytes: number
+        sha256: string
+        original: "complete" | "partial"
+        data: string
+        complete: boolean
+      }
+    }
+  | {
+      rootSessionID: string
+      sourceSessionID: string
+      binding: OrgSessionBinding
+      operation: "partContent"
+      state: "preparing"
+      messageID: string
+      partID: string
+      version: string
+      progress: {
+        phase: "queued" | "materializing" | "busy"
+        bytes: number
+        totalBytes?: number
+      }
+    }
+  | {
+      rootSessionID: string
+      sourceSessionID: string
+      binding: OrgSessionBinding
+      operation: "status"
+      status:
+        | {
+            observedAt: number
+            controlVersion: number
+            runID?: string
+            type: "idle"
+          }
+        | {
+            observedAt: number
+            controlVersion: number
+            runID?: string
+            type: "busy"
+          }
+        | {
+            observedAt: number
+            controlVersion: number
+            runID?: string
+            type: "paused"
+            since: number
+            reason: "aborted" | "failed" | "interrupted" | "workflow"
+          }
+        | {
+            observedAt: number
+            controlVersion: number
+            runID?: string
+            type: "retry"
+            attempt: number
+            next?: number
+          }
+    }
+  | {
+      rootSessionID: string
+      sourceSessionID: string
+      binding: OrgSessionBinding
+      operation: "attachments"
+      messageID: string
+      partID: string
+      version: string
+      items: Array<OrgPrivateAttachmentMetadata>
+      total: number
+      cursor?: string
+    }
+  | {
+      rootSessionID: string
+      sourceSessionID: string
+      binding: OrgSessionBinding
+      operation: "attachmentContent"
+      messageID: string
+      partID: string
+      ordinal?: number
+      state: "ready"
+      reference: OrgPrivateAttachmentReference
+      chunk: OrgPrivateAttachmentChunk
+    }
+  | {
+      rootSessionID: string
+      sourceSessionID: string
+      binding: OrgSessionBinding
+      operation: "attachmentContent"
+      messageID: string
+      partID: string
+      ordinal?: number
+      state: "unavailable"
+      version: string
+      reason: "not_retained" | "partial"
+    }
+
+export type OrgPrivateReadQuery =
+  | {
+      rootSessionID: string
+      sourceSessionID?: string
+      operation: "session"
+    }
+  | {
+      rootSessionID: string
+      sourceSessionID?: string
+      operation: "tasks"
+      cursor?: string
+      limit?: number
+    }
+  | {
+      rootSessionID: string
+      sourceSessionID?: string
+      operation: "timeline"
+      cursor?: string
+      limit?: number
+    }
+  | {
+      rootSessionID: string
+      sourceSessionID?: string
+      operation: "parts"
+      messageID: string
+      cursor?: string
+      limit?: number
+    }
+  | {
+      rootSessionID: string
+      sourceSessionID?: string
+      operation: "partContent"
+      messageID: string
+      partID: string
+      field?: "text" | "input" | "output" | "error"
+      version?: string
+      offset?: number
+      length?: number
+    }
+  | {
+      rootSessionID: string
+      sourceSessionID?: string
+      operation: "status"
+    }
+  | {
+      rootSessionID: string
+      sourceSessionID?: string
+      operation: "attachments"
+      messageID: string
+      partID: string
+      cursor?: string
+      limit?: number
+    }
+  | {
+      rootSessionID: string
+      sourceSessionID?: string
+      operation: "attachmentContent"
+      messageID: string
+      partID: string
+      ordinal?: number
+      version: string
+      offset?: number
+      length?: number
+    }
+
 export type PushVapidKey = {
   publicKey: string
 }
@@ -3491,6 +4286,16 @@ export type SessionRollbackAck = {
 
 export type SessionCortexDelegation = {
   taskID: string
+  rootID?: string
+  repairTurns?: number
+  pendingInput?:
+    | {
+        kind: "initial"
+      }
+    | {
+        kind: "repair"
+        text: string
+      }
   parentSessionID: string
   parentMessageID: string
   description: string
@@ -3557,6 +4362,33 @@ export type SessionCortexDelegation = {
     cacheWriteTokens: number
     cost: number
     accounting?: RolloutAccountingSummary
+  }
+  transfer?: {
+    version: 1
+    handoffID: string
+    rootSessionID: string
+    frozenAt: number
+    priorStatus: "queued" | "running"
+    resumeIntentID?: string
+    rootID?: string
+    admitted: boolean
+    maxOutputTokens?: number
+    maxCost?: number
+    deadlineAt?: number
+  }
+  maintenance?: {
+    version: 1
+    maintenanceID: string
+    purpose: "organization-backup" | "organization-restore"
+    heldAt: number
+    releasedAt?: number
+    priorStatus: "queued" | "running"
+    resumeIntentID?: string
+    rootID?: string
+    admitted: boolean
+    maxOutputTokens?: number
+    maxCost?: number
+    deadlineAt?: number
   }
 }
 
@@ -3736,6 +4568,7 @@ export type Session = {
   paused?: SessionPaused
   resume?: {
     requestID: string
+    actor?: ActorStamp
     rootID?: string
     itemID: string
     messageID: string
@@ -3770,6 +4603,7 @@ export type Session = {
     loopRole?: "execution" | "audit"
     phase?: "running" | "auditing"
   }
+  organization?: OrgSessionBinding
 }
 
 export type WorkflowInternalServerError = {
@@ -4450,6 +5284,10 @@ export type ServerConfig = {
    * Additional origins allowed for CORS and Browser viewer WebSockets
    */
   cors?: Array<string>
+  /**
+   * Trusted HTTPS service origins allowed by the Web app connection policy; read only from global config
+   */
+  webConnectOrigins?: Array<string>
 }
 
 export type PermissionActionConfig = "ask" | "allow" | "deny"
@@ -6327,6 +7165,18 @@ export type VoiceConfig = {
   tts?: VoiceTtsConfig
 }
 
+export type OrgAuthClient =
+  | {
+      clientID: string
+      kind: "web"
+      redirectUri: string
+    }
+  | {
+      clientID: string
+      kind: "desktop"
+      redirectUri: "synergy://organization-auth/callback"
+    }
+
 /**
  * Custom keybind configurations
  */
@@ -7210,6 +8060,88 @@ export type Config = {
   mcpDefaults?: McpDefaultsConfig
   voice?: VoiceConfig
   /**
+   * Dedicated organization service authentication, registered clients, machine connections and explicit infrastructure; restart after changes.
+   */
+  organization?: {
+    infrastructure?: {
+      version: 1
+      database?: {
+        backend: "postgres"
+        urlFile: string
+        namespace: string
+        maxConnections?: number
+      }
+      stores?: {
+        [key: string]: {
+          provider: "s3" | "oss"
+          bucket: string
+          region: string
+          endpoint?: string
+          prefix?: string
+          credentialsFile: string
+        }
+      }
+      environments?: {
+        [key: string]: {
+          provider: "docker"
+          spec: {
+            image: string
+            memoryBytes?: number
+            cpus?: number
+            pids?: number
+            mounts?: Array<{
+              type: "bind" | "volume"
+              source: string
+              target: string
+              /**
+               * External mounts are read-only; writable files use a coordinated Workspace
+               */
+              readOnly?: true
+            }>
+          }
+          host: {
+            endpoint: string
+            engineTLS?: {
+              certFile: string
+              keyFile: string
+              caFile?: string
+            }
+            executionTLS?: {
+              certFile: string
+              keyFile: string
+              caFile?: string
+            }
+            executionHostname?: string
+            publishHostIP?: string
+          }
+          idleTimeoutMs?: number
+        }
+      }
+    }
+    authentication?: {
+      bootstrapMs?: number
+      inviteMs?: number
+      resetMs?: number
+      loginMs?: number
+      hashConcurrency?: number
+    }
+    clientAuthentication?: {
+      clients?: Array<OrgAuthClient>
+      codeMs?: number
+      accessMs?: number
+      refreshMs?: number
+    }
+    registration?: {
+      ticketMs?: number
+    }
+    connections?: {
+      authenticateMs?: number
+      heartbeatMs?: number
+      offlineMs?: number
+      proofAgeMs?: number
+    }
+  }
+  /**
    * UI locale (system = follow OS, default: system)
    */
   locale?: "system" | "en" | "zh-CN"
@@ -7497,6 +8429,7 @@ export type ConfigDomainSummary = {
     | "plugins"
     | "mcp"
     | "voice"
+    | "organization"
   filename: string
   label: string
   path: string
@@ -7558,6 +8491,7 @@ export type ConfigExportResult = {
     | "plugins"
     | "mcp"
     | "voice"
+    | "organization"
   >
   warnings: Array<string>
   config: Config
@@ -7619,6 +8553,7 @@ export type ConfigDomainImportDomainPlan = {
     | "plugins"
     | "mcp"
     | "voice"
+    | "organization"
   filename: string
   path: string
   mode: "merge" | "replace-domain" | "append"
@@ -7677,6 +8612,7 @@ export type ConfigDomainImportPlanInput = {
     | "plugins"
     | "mcp"
     | "voice"
+    | "organization"
   >
   mode?: "merge" | "replace-domain" | "append"
   scope?: ConfigImportScope
@@ -7764,6 +8700,7 @@ export type ConfigImportRevisionConflictError = {
       | "plugins"
       | "mcp"
       | "voice"
+      | "organization"
     >
   }
 }
@@ -7800,6 +8737,7 @@ export type ConfigDomainImportApplyInput = {
     | "plugins"
     | "mcp"
     | "voice"
+    | "organization"
   >
   mode?: "merge" | "replace-domain" | "append"
   scope?: ConfigImportScope
@@ -9940,6 +10878,7 @@ export type SessionContinueResult = {
   outcome: "accepted" | "already_accepted" | "running" | "idle" | "stale" | "blocked"
   receipt?: {
     requestID: string
+    actor?: ActorStamp
     rootID?: string
     itemID: string
     messageID: string
@@ -10024,6 +10963,7 @@ export type SessionInboxItem = {
   deliveryKey?: string
   message?: {
     role?: "user" | "assistant"
+    actor?: ActorStamp
     referenceContext?:
       | {
           state: "bound"
@@ -10391,6 +11331,7 @@ export type RootExecution = {
 
 export type UserMessage = {
   id: string
+  actor?: ActorStamp
   sessionID: string
   visible?: boolean
   includeInContext?: boolean
@@ -10565,6 +11506,7 @@ export type ProviderModelVariantUnavailableError = {
 
 export type AssistantMessage = {
   id: string
+  actor?: ActorStamp
   sessionID: string
   visible?: boolean
   includeInContext?: boolean
@@ -12078,6 +13020,32 @@ export type EnvironmentExecutionInfo = {
   outputCursor: number
   createdAt: number
   updatedAt: number
+  origin:
+    | {
+        kind: "session"
+        scopeID: string
+        sessionID: string
+        rootID: string
+        runID: string
+        messageID: string
+        callID: string
+        tool: string
+      }
+    | {
+        kind: "host"
+        owner: string
+        invocationID: string
+      }
+    | {
+        kind: "legacy-unknown"
+      }
+  source?: {
+    version: 1
+    provider: string
+    target: EnvironmentTarget
+    binding: unknown
+  }
+  sourceObservation?: unknown
 }
 
 export type EnvironmentActivity = {
@@ -12086,8 +13054,77 @@ export type EnvironmentActivity = {
     id: string
     target: EnvironmentTarget
     createdAt: number
-    kind?: "operation" | "admission"
+    kind: "operation" | "admission"
     ownerEpoch?: string
+    ownership:
+      | {
+          kind: "admission"
+          origin:
+            | {
+                kind: "session"
+                scopeID: string
+                sessionID: string
+                rootID: string
+                runID: string
+                messageID: string
+                callID: string
+                tool: string
+              }
+            | {
+                kind: "host"
+                owner: string
+                invocationID: string
+              }
+        }
+      | {
+          kind: "execution-preparation"
+          scopeID: string
+          operationID: string
+          origin:
+            | {
+                kind: "session"
+                scopeID: string
+                sessionID: string
+                rootID: string
+                runID: string
+                messageID: string
+                callID: string
+                tool: string
+              }
+            | {
+                kind: "host"
+                owner: string
+                invocationID: string
+              }
+        }
+      | {
+          kind: "execution"
+          scopeID: string
+          operationID: string
+        }
+      | {
+          kind: "workspace-attachment"
+          scopeID: string
+          workspaceID: string
+          bindingGeneration: number
+        }
+      | {
+          kind: "workspace-mount"
+          scopeID: string
+          workspaceID: string
+          bindingGeneration: number
+          mountID: string
+          mountGeneration: number
+        }
+      | {
+          kind: "workspace-operation"
+          scopeID: string
+          workspaceID: string
+          operationID: string
+        }
+      | {
+          kind: "legacy-unknown"
+        }
   }>
   executions: Array<EnvironmentExecutionInfo>
   files: Array<WorkspaceOperationSummary>
@@ -14359,11 +15396,26 @@ export type EventSessionDiff = {
   }
 }
 
+export type SessionNotificationSource = {
+  scopeID: string
+  sessionID: string
+  parentID?: string
+  references: {
+    [key: string]: {
+      version: number
+      fields: {
+        [key: string]: string | number | boolean | null
+      }
+    }
+  }
+}
+
 export type EventSessionError = {
   type: "session.error"
   properties: {
     sessionID?: string
     error?: unknown
+    source?: SessionNotificationSource
   }
 }
 
@@ -14380,6 +15432,7 @@ export type EventSessionCompletion = {
   properties: {
     sessionID: string
     unreadCount: number
+    source?: SessionNotificationSource
   }
 }
 
@@ -14622,6 +15675,7 @@ export type EventPermissionReplied = {
     sessionID: string
     requestID: string
     reply: "once" | "session" | "always" | "reject"
+    actor?: ActorStamp
   }
 }
 
@@ -14826,6 +15880,7 @@ export type EventQuestionReplied = {
     sessionID: string
     requestID: string
     answers: Array<QuestionAnswer>
+    actor?: ActorStamp
   }
 }
 
@@ -14834,6 +15889,7 @@ export type EventQuestionRejected = {
   properties: {
     sessionID: string
     requestID: string
+    actor?: ActorStamp
   }
 }
 
@@ -17137,6 +18193,138 @@ export type GlobalAgendaListResponses = {
 
 export type GlobalAgendaListResponse = GlobalAgendaListResponses[keyof GlobalAgendaListResponses]
 
+export type OrgLocalProjectGetData = {
+  body?: never
+  path: {
+    projectID: string
+  }
+  query?: never
+  url: "/organization-local-project/{projectID}"
+}
+
+export type OrgLocalProjectGetErrors = {
+  /**
+   * Member Runtime required
+   */
+  403: OrgError
+  /**
+   * Binding unavailable
+   */
+  503: OrgError | RuntimeShuttingDownError
+}
+
+export type OrgLocalProjectGetError = OrgLocalProjectGetErrors[keyof OrgLocalProjectGetErrors]
+
+export type OrgLocalProjectGetResponses = {
+  /**
+   * Safe local Workspace summary
+   */
+  200: OrgLocalProjectSummary
+}
+
+export type OrgLocalProjectGetResponse = OrgLocalProjectGetResponses[keyof OrgLocalProjectGetResponses]
+
+export type OrgLocalProjectBindData = {
+  body?: OrgLocalProjectBind
+  path: {
+    projectID: string
+  }
+  query?: never
+  url: "/organization-local-project/{projectID}"
+}
+
+export type OrgLocalProjectBindErrors = {
+  /**
+   * Member Runtime required
+   */
+  403: OrgError
+  /**
+   * Binding or request changed
+   */
+  409: OrgError
+  /**
+   * Directory unavailable
+   */
+  503: OrgError | RuntimeShuttingDownError
+}
+
+export type OrgLocalProjectBindError = OrgLocalProjectBindErrors[keyof OrgLocalProjectBindErrors]
+
+export type OrgLocalProjectBindResponses = {
+  /**
+   * Safe committed local Workspace summary
+   */
+  200: OrgLocalProjectSummary
+}
+
+export type OrgLocalProjectBindResponse = OrgLocalProjectBindResponses[keyof OrgLocalProjectBindResponses]
+
+export type OrgLocalWorkspaceFilesRequestData = {
+  body: OrgCloudLocalFileRequest
+  path: {
+    sessionID: string
+  }
+  query?: never
+  url: "/organization/sessions/{sessionID}/workspace-files"
+}
+
+export type OrgLocalWorkspaceFilesRequestErrors = {
+  /**
+   * Workspace version conflict
+   */
+  409: OrgError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type OrgLocalWorkspaceFilesRequestError =
+  OrgLocalWorkspaceFilesRequestErrors[keyof OrgLocalWorkspaceFilesRequestErrors]
+
+export type OrgLocalWorkspaceFilesRequestResponses = {
+  /**
+   * Original Workspace file result
+   */
+  200: OrgCloudFileResult
+}
+
+export type OrgLocalWorkspaceFilesRequestResponse =
+  OrgLocalWorkspaceFilesRequestResponses[keyof OrgLocalWorkspaceFilesRequestResponses]
+
+export type OrgLocalSessionReadData = {
+  body: OrgPrivateReadQuery
+  path?: never
+  query?: never
+  url: "/organization/session/read"
+}
+
+export type OrgLocalSessionReadErrors = {
+  /**
+   * Creator access required
+   */
+  403: OrgError
+  /**
+   * Native content changed
+   */
+  409: OrgError
+  /**
+   * Native content unavailable
+   */
+  503: OrgError | RuntimeShuttingDownError
+}
+
+export type OrgLocalSessionReadError = OrgLocalSessionReadErrors[keyof OrgLocalSessionReadErrors]
+
+export type OrgLocalSessionReadResponses = {
+  /**
+   * Safe bounded native content
+   */
+  200: OrgPrivateReadResult
+}
+
+export type OrgLocalSessionReadResponse = OrgLocalSessionReadResponses[keyof OrgLocalSessionReadResponses]
+
 export type PushGetVapidKeyData = {
   body?: never
   path?: never
@@ -18471,6 +19659,7 @@ export type ConfigDomainGetData = {
       | "plugins"
       | "mcp"
       | "voice"
+      | "organization"
   }
   query?: {
     directory?: string
@@ -18526,6 +19715,7 @@ export type ConfigDomainUpdateData = {
       | "plugins"
       | "mcp"
       | "voice"
+      | "organization"
   }
   query?: {
     directory?: string
@@ -18581,6 +19771,7 @@ export type ConfigDomainOpenData = {
       | "plugins"
       | "mcp"
       | "voice"
+      | "organization"
   }
   query?: {
     directory?: string
@@ -18644,6 +19835,7 @@ export type ConfigExportData = {
       | "plugins"
       | "mcp"
       | "voice"
+      | "organization"
       | Array<
           | "features"
           | "general"
@@ -18666,6 +19858,7 @@ export type ConfigExportData = {
           | "plugins"
           | "mcp"
           | "voice"
+          | "organization"
         >
     includeSecrets?: string
   }

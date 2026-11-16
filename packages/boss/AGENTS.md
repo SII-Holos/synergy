@@ -9,3 +9,5 @@ Expose selection through `./component`; imports are inert. Keep factory requirem
 Boss is a default-off restart experiment declared in `./features`. `boss.enabled` controls business behavior only after assembly; it cannot opt into the module. Preserve dormant configuration and history. Follow [feature lifecycle](../../docs/architecture/feature-lifecycle.md).
 
 Tests under `test/` select this owner and its real requirements. Run `bun run typecheck` and focused `bun test test/<file>.test.ts` with the package preload; then run the root dependency and installed-composition checks.
+
+`./maintenance` registers only stored Session schema and the native tree/Inbox transfer proof owner. It must not register workflow execution, agents, overview delivery, private Library or Agenda behavior. Continue requires a real selected Boss capability. Keep published maintenance metadata aligned with the factory and verify `test/maintenance.test.ts`.

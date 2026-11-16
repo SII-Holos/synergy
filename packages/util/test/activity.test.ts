@@ -6,7 +6,19 @@ import {
   isActivityReceiptTool,
   toolDisplayPolicy,
   semanticCategoryForKnownTool,
+  classifySemanticCategory,
 } from "../src/activity"
+
+test("organization publications remain read and search observations", () => {
+  expect(semanticCategoryForKnownTool("organization_knowledge")).toBe("file-read")
+  for (const operation of ["list", "files", "read"]) {
+    expect(classifySemanticCategory("organization_knowledge", { input: { operation } })).toBe("file-read")
+    expect(activityFamilyForTool("organization_knowledge", { input: { operation } })).toBe("inspect-local")
+  }
+  expect(classifySemanticCategory("organization_knowledge", { input: { operation: "search", q: "protocol" } })).toBe(
+    "search",
+  )
+})
 
 test("image and document inspection is reported as inspection rather than production", () => {
   for (const tool of ["look_at", "view_image", "scan_document"])

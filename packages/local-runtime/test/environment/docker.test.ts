@@ -6,7 +6,7 @@ import { ViewFileTool } from "../../src/tools/view-file"
 import { EditTool } from "../../src/tools/edit"
 import { FileAttachment } from "../../src/file/attachment"
 import { expect, test } from "bun:test"
-import { testRuntime } from "@ericsanchezok/synergy-harness/test/support/runtime"
+import { testEnvironmentRuntime as testRuntime } from "@ericsanchezok/synergy-harness/test/support/environment-origin"
 import { Environment } from "@ericsanchezok/synergy-harness/environment"
 import { EnvironmentExecution } from "@ericsanchezok/synergy-harness/environment/execution"
 import { EnvironmentProviders } from "@ericsanchezok/synergy-harness/environment/provider"
@@ -183,6 +183,7 @@ test.skipIf(!image)(
       expect(environment.state).toBe("idle")
       try {
         let operation = await EnvironmentExecution.start({
+          origin: runtime.origin("native-execution"),
           id: "operation",
           environmentID: environment.id,
           scopeID: "scope",
@@ -259,6 +260,7 @@ print(Path("allowed").read_text(), end="")
         })
         expect(wrapper.sandboxed).toBe(true)
         let sandboxed = await EnvironmentExecution.start({
+          origin: runtime.origin("native-execution"),
           id: "sandboxed",
           scopeID: "scope",
           environmentID: environment.id,
@@ -363,6 +365,7 @@ test.skipIf(!image)(
       })
       try {
         const resolved = await EnvironmentResources.resolve({
+          origin: runtime.origin("resource-preparation"),
           ...selection,
           environmentID: environment.id,
           needs: { execution: "exec" },
@@ -376,6 +379,7 @@ test.skipIf(!image)(
         const before = await observed.observe!(WorkspaceMounts.reference(mounted))
         const target = mounted.activeMount!.path
         let operation = await EnvironmentExecution.start({
+          origin: runtime.origin("native-execution"),
           id: "transform",
           scopeID: "scope",
           environmentID: environment.id,
@@ -443,15 +447,18 @@ test.skipIf(!image)(
       id: "fixture-docker",
       endpoint: process.env.SYNERGY_TEST_DOCKER_HOST ?? "unix:///var/run/docker.sock",
     })
-    await using runtime = await localRuntime({
-      register() {
-        EnvironmentProviders.register(provider)
-        WorkspaceBlobs.register("fixture", {
-          put: (hash, bytes) => Storage.writeBinary(["test_workspace_blob", hash], bytes),
-          get: (hash) => Storage.readBinary(["test_workspace_blob", hash]),
-        })
+    await using runtime = await testRuntime(
+      {
+        register() {
+          EnvironmentProviders.register(provider)
+          WorkspaceBlobs.register("fixture", {
+            put: (hash, bytes) => Storage.writeBinary(["test_workspace_blob", hash], bytes),
+            get: (hash) => Storage.readBinary(["test_workspace_blob", hash]),
+          })
+        },
       },
-    })
+      localRuntime,
+    )
     await runtime.run(async () => {
       await using tmp = await tmpdir()
       await ScopeContext.provide({
@@ -522,6 +529,7 @@ test.skipIf(!image)(
             ).toBe(true)
             {
               await using resources = await EnvironmentResources.resolve({
+                origin: runtime.origin("resource-preparation"),
                 ...selection,
                 environmentID: environment.id,
                 needs: { workspace: true },
@@ -641,12 +649,14 @@ test.skipIf(!image)(
           })
         ).id
         await using resources = await EnvironmentResources.resolve({
+          origin: first.origin("resource-preparation"),
           scopeID: "scope",
           environmentID,
           workspaceID,
           needs: { execution: "exec" },
         })
         let execution = await EnvironmentExecution.start({
+          origin: first.origin("native-execution"),
           id: "recover-result",
           scopeID: "scope",
           environmentID,

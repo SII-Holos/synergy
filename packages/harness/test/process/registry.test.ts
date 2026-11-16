@@ -1,6 +1,6 @@
 import { describe, expect, test, beforeEach } from "bun:test"
 import { spawn } from "node:child_process"
-import { EventEmitter } from "node:events"
+import { EventEmitter, once } from "node:events"
 import { mkdtemp, chmod, rm } from "node:fs/promises"
 import { createServer } from "node:net"
 import { tmpdir } from "node:os"
@@ -243,6 +243,57 @@ describe("ProcessRegistry lifecycle", () => {
       expect(ProcessRegistry.get(proc.id)).toBeUndefined()
       expect(ProcessRegistry.getFinished(proc.id)?.status).toBe("failed")
     }))
+
+  test("sampling retains a physically exited child until its tracked close owner records completion", () =>
+    runtime.run(async () => {
+      const child = spawn(process.execPath, ["-e", 'process.stdout.write("original closing owner")'], {
+        stdio: ["ignore", "pipe", "pipe"],
+      })
+      child.stdout.resume()
+      child.stderr.resume()
+      const physicalClose = once(child, "close")
+      const proc = ProcessRegistry.create({ command: "tracked real child", child })
+      ProcessRegistry.markBackgrounded(proc)
+      child.once(
+        "exit",
+        runtime.bind(() => ProcessRegistry.markExitObserved(proc, { drainGraceMs: 1000, timedOut: false })),
+      )
+      const release = Promise.withResolvers<void>()
+      const closing = physicalClose.then(
+        runtime.bind(async () => {
+          await release.promise
+          ProcessRegistry.markStdioClosed(proc, { drainTimedOut: false })
+          ProcessRegistry.markExited(proc, child.exitCode, child.signalCode)
+        }),
+      )
+      ProcessRegistry.trackClosure(proc, closing)
+      try {
+        await physicalClose
+        expect(child.exitCode).toBe(0)
+        expect(proc.stdioState).toBe("draining")
+        await ProcessRegistry.settleStaleProcesses()
+        expect(ProcessRegistry.get(proc.id) === proc).toBe(true)
+        expect(ProcessRegistry.getFinished(proc.id)).toBeUndefined()
+        expect(proc.exited).toBe(false)
+        release.resolve()
+        await closing
+        expect(ProcessRegistry.get(proc.id)).toBeUndefined()
+        expect(ProcessRegistry.getFinished(proc.id)).toMatchObject({
+          status: "completed",
+          exitCode: 0,
+          stdioState: "closed",
+        })
+      } finally {
+        release.resolve()
+        await closing
+        if (child.exitCode === null && child.signalCode === null) {
+          child.kill("SIGKILL")
+          await physicalClose
+        }
+        ProcessRegistry.remove(proc.id)
+      }
+    }))
+
   test("preserves unknown owned child liveness and its terminator instead of probing the PID", () =>
     runtime.run(async () => {
       const restore = ProcessRegistry.setProcessInspector(() => ({}))

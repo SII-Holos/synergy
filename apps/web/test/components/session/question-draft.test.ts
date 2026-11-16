@@ -58,7 +58,7 @@ test("restoring a draft validates the step and labels against the live request",
 
 test("decision identity isolates servers, Scopes and request kinds", () => {
   const identity = {
-    serverURL: "http://a",
+    connectionKey: "http://a",
     scopeID: "scope",
     sessionID: "s1",
     requestID: "q1",
@@ -66,7 +66,7 @@ test("decision identity isolates servers, Scopes and request kinds", () => {
   }
   const keys = [
     decisionIdentity(identity),
-    decisionIdentity({ ...identity, serverURL: "http://b" }),
+    decisionIdentity({ ...identity, connectionKey: "http://b" }),
     decisionIdentity({ ...identity, scopeID: "other" }),
     decisionIdentity({ ...identity, kind: "permission" }),
   ]

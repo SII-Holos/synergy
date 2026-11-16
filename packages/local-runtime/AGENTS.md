@@ -1,42 +1,44 @@
 # local-runtime Package
 
-Own native execution and adapters.
+- Own domain tools, routes, config and migrations.
+- Own config schemas, normalization, references and secrets in `src/config-schema.ts`; use its typed reader and host-composed registration.
+- Import declared public exports; preserve cancellation, permissions and persisted data.
+- Tests use test/ and isolated testing-support Homes.
+- `Skill.snapshot` reuses canonical parsing/collision rules for host-authorized roots without resetting Scope caches; test `test/skill/snapshot.test.ts`.
+- Question owns pending windows and answers; decide/reconcile uses native Session receipts. Restore Scope for deferred settlement and redact private answers. Verify question decision-receipt/pending-window suites.
 
-- Tools, routes, config and migrations stay with implementation.
-- Own config schemas, normalization, references and secrets in `src/config-schema.ts`; consumers use its typed reader and the host composes registration.
-- Import other packages only through declared public exports; preserve cancellation, permissions and persisted data.
-- Tests live under test/; use isolated homes from testing support.
+Typecheck; verify tests and dependencies.
 
-Run typecheck, affected tests and root package/dependency checks.
-
-Harness owns lifecycle. Local Host snapshots home and environment. `createLocalClient` requires a Runtime Handle and Scope. Workers start at selected entrypoints. HTTP and in-process clients share `session-api.ts`; preserve Scope ownership, Inbox scheduling and cancellation. Do not import CLI, server or product implementations.
+Harness owns lifecycle. Local Host snapshots Home/environment. `createLocalClient` requires Runtime Handle/Scope. Workers use selected entrypoints. HTTP/in-process clients share `session-api.ts`; preserve Scope, Inbox scheduling and cancellation. Never import CLI, server or product implementations.
 
 `resources` owns telemetry-independent sampling. Register `ResourceHost` before startup; verify `test/resources` and both JIT modes.
 
-- Own bundled model SDK factories and custom SDK loading in `src/provider/sdk-registry.ts`; register them through `registerLocalRuntime()` in host and agent workers.
+- Own model SDK factories/loading in `src/provider/sdk-registry.ts`; `registerLocalRuntime()` registers host and worker sources.
 - Image decoding uses `AttachmentImageInput`; verify `test/attachment/image-input.test.ts` and Media's attachment suite.
-- Own native/Docker Environment providers, Executor transport and receipts. Reuse `OwnedProcess` and Workspace coordination; release durable claims only after saved output and files. Validate `bun test test/environment test/workspace/coordinator.test.ts` and the Docker integration described in the package README.
-- Own native PTY, Linux process ownership, filesystem watchers, OS sandbox backends, helper Rust sources and packaging assets. Published modules resolve native resources through platform optional dependencies. Build the native library with `bun script/build-pty.ts`; validate byte drainage and ownership with `bun test test/process/native-pty.test.ts test/process/pty.test.ts test/process/owned-process-linux.test.ts`. Register `SandboxHost` and the `file-watcher` Scope startup contribution explicitly; keep permission policy and generic wrapper types in harness.
-- Linux watcher preparation and release assets use `script/build-watcher.ts` and its pinned source patch. Validate the compiled binding and signal recovery; an unused C++ source edit does not fix the installed watcher.
+- Own native/Docker providers, Executor transport and receipts. Require Session/Host origins and owned Uses. Retain `OwnedProcess`/Workspace claims through final saving and publication. Verify `bun test test/environment test/workspace/coordinator.test.ts` and README's Docker integration.
+- Own PTYs, process maintenance, Linux ownership, watchers, sandboxes, Rust helpers and packaging. Use platform optional dependencies. Build: `bun script/build-pty.ts`; test process/maintenance, native-pty/pty/owned-process-linux. Require origins; drain completion; retain uncertain starts without killing/replaying. Register `SandboxHost` and `file-watcher` Scope startup; Harness owns policy/wrappers.
+- Linux watcher assets use `script/build-watcher.ts` and its pinned source patch. Validate the compiled binding and signal recovery; an unused C++ source edit does not fix the installed watcher.
 
 Workspace removal and reclamation share the lifecycle gate and native retirement claim. Git/setup commands use the Workspace process owner; short metadata mutations cannot reserve read-only turns as writers. Preserve active users, on-disk locks and unverified commits. Run `bun test test/workspace` and Presets worktree suites.
 
-Workspace coordination owns physical overlap and process identity across Runtimes. Bind claims before commands; retain ownership through actual exit. Windows Job Objects, macOS coalitions and Linux subreaper receipts provide liveness; native workers drain streams independently. Validate `bun test test/process/owned-process.test.ts test/workspace/bash-footprint.test.ts` and Windows-owned suites on Windows.
+Cooperating Runtimes coordinate physical overlap/process identity. Bind before commands; retain through saving. Tokens prove release; exclusive recovery requires unchanged roots; `workspace/cleanup` only releases. Move/adoption claims guard publication; release outside SQL. Never undo published data. Verify `test/process/owned-process.test.ts`, `test/workspace/{move,access-maintenance,bash-footprint}.test.ts` and Windows suites.
 
-Workspace file indexes, native subscriptions and edit evidence follow the resolved Workspace generation. Configuration subscriptions remain Scope-owned. File events carry Workspace identity and the committed content version; test sibling directories with `bun test test/workspace-file/isolation.test.ts`.
+Workspace file indexes, native subscriptions and edit evidence follow the resolved Workspace generation. Configuration subscriptions are Scope-owned. File events carry Workspace identity and the committed content version; test sibling directories with `bun test test/workspace-file/isolation.test.ts`.
 
 Use public `process/owned-process`, `file/mutation`, `file/link` and `file/rename` exports. Preserve byte versions, native link kinds and exclusive publication. Snapshots use Harness link encoding. Acquire resource pins before activation; Sandbox grants never imply writer exclusion. Versioned Executor inputs separate resource use, capture and concrete mutations.
 
-Use `native/ffi` internally; verify both JIT modes with `test/process/native-bindings.test.ts`.
+`native/ffi`/`file/atomic-write`: preserve parents/operations. Preflight retirement; create only approved `controlledTempRoot` children. Verify `test/{process/native-bindings,file/atomic-write,environment/preparation}.test.ts` (JIT=0/1).
 
 Expose composition through `./component`; registration remains side-effect free until selection. Declare component dependencies, optional ordering, worker roles and lazy HTTP adapters. Reload and lifecycle contributions preserve instance isolation and failed-start cleanup.
 
 Native release preparation uploads each built PTY target with its verified receipt. Build identity includes builder, native sources and libc target; CI transfers full PTY output and watcher assets.
 
-Use `file/view` for selected paths/reads; only Formatter advances write observations.
+Use `file/view`; Formatter advances observations. SessionReadSource/ProcessAccessSource gate reads before lookup.
 
 Trusted transfers use `workspace-file/service`: imports accept stable operation IDs; `serveFile` accepts byte limits. Streams retain Runtime/resources after request return until read completion, cancellation or Workspace disposal. Run SQLite/PG `managed-transfer.test.ts` and native lifetime verification.
 
 `environment/profiles` owns global profiles and local/S3/OSS factories. Snapshot settings, fail closed, and keep external mounts read-only. Test `test/environment/profiles.test.ts`; `SYNERGY_TEST_DOCKER_ENVIRONMENT_IMAGE` enables Docker integration.
 
-Session transfer directories use `session/transfer-workspace`; verify `test/session/transfer.test.ts`.
+Explicit `environment: "native"` selects the native provider/default without personal profiles. Hosted compositions supply providers. Descriptor portability requires explicit composition; verify `test/session-transfer-environment*.test.ts`.
+
+Transfers: `session-transfer-workspaces`, `session-transfer-workspace-target`, `workspace/{native-adoption,native-download,cleanup,portable-target}`; trees: `workspace/{file-host,portable-tree,portable-git,portable-target}`; claims: `session-transfer-physical`. Paged checkpoints/imports preserve identity/policy. Verify source/target/physical/session-workspaces-transfer/native-download, file-host-paged, mount-paged, tree/Git.

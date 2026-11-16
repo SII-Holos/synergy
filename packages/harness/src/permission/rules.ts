@@ -1,5 +1,4 @@
 import { filePermissionNames } from "./file-permission"
-import { Lock } from "../util/lock"
 import { RuntimeContext } from "../lifecycle/context"
 import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
@@ -152,7 +151,6 @@ export namespace PermissionRules {
   }
 
   export async function addUserRules(rules: Omit<Rule, "scope">[]) {
-    using lock = await Lock.write("permission-user-rules")
     await Storage.transaction(async () => {
       const current = await Storage.read<Ruleset>(StoragePath.permissionRules()).catch((error) => {
         if (error instanceof Storage.NotFoundError) return []
@@ -174,7 +172,6 @@ export namespace PermissionRules {
   }
 
   export async function removeUserRule(permission: string, pattern: string) {
-    using lock = await Lock.write("permission-user-rules")
     await Storage.transaction(async () => {
       const current = await Storage.read<Ruleset>(StoragePath.permissionRules()).catch((error) => {
         if (error instanceof Storage.NotFoundError) return []
@@ -186,6 +183,10 @@ export namespace PermissionRules {
 
   export async function userRuleset(): Promise<Ruleset> {
     return loadUserRules()
+  }
+
+  export function invalidateUserRules() {
+    runtimeState().userRulesCache = undefined
   }
 
   export async function listAllRules(): Promise<Ruleset> {

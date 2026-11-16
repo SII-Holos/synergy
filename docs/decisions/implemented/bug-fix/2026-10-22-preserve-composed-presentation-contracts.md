@@ -16,6 +16,8 @@ Attachment toolbars wrap actions before squeezing their heading below its readab
 
 The optional prediction route documents both its domain failure and the Server shutdown response for HTTP 503. Its generated contracts and configuration defaults are checked from the registered composition. Skipping empty model-body writes does not skip the existing first-delta timing observation; meaningful-content timing remains separate.
 
+Organization member directory and private-history routes preserve the same composed HTTP 503 variants. Their custom unavailable responses include both the original organization error and the public Server shutdown schema; the global assembler does not replace an existing response. The mounted integration and full-product OpenAPI regression verify these variants without changing admission or handler behavior.
+
 On reactivation, conversation windows following the latest content keep their last active, open activity group mounted until the existing hydration owner settles. A large background backlog could otherwise place the scroll position at the end before the latest activity row mounted, leaving a short visible gap on slower renderers. Initial mounting, history mode, detached reading, an inner reading owner and explicit navigation do not use this retention. Ordinary body rows retain their existing virtualization and release behavior. The existing active-view body lease remains the only content reader; hidden sessions do not fetch bodies. Slow-CPU background-return tests retain first-frame disclosure, geometry and bounded-read assertions, alongside manual expansion and history-pagination regressions.
 
 ## Alternatives considered

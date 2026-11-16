@@ -4,6 +4,7 @@ export type { CommandModule } from "yargs"
 export interface CommandEntry {
   command: string | string[]
   describe: string
+  initialization?: "owner"
   storage?: "maintenance" | ((positionals: readonly (string | number)[]) => "maintenance" | undefined)
   load(): Promise<CommandModule>
 }

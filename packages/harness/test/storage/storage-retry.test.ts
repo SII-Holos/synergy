@@ -66,14 +66,13 @@ describe("Storage atomic write transient-failure retry", () => {
   test("retries a transient EPERM on the temp-file write", () =>
     runtime.run(async () => {
       const root = keyRoot()
-      const realWrite: typeof Bun.write = Bun.write.bind(Bun)
+      const realWrite = fs.writeFile.bind(fs)
       let calls = 0
-      const impl = (async (destination: unknown, data: unknown) => {
+      using _write = spyOn(fs, "writeFile").mockImplementation(async (...args) => {
         calls += 1
         if (calls === 1) throw errnoError("EPERM")
-        return realWrite(destination as never, data as never)
-      }) as unknown as typeof Bun.write
-      using _write = spyOn(Bun, "write").mockImplementation(impl)
+        return realWrite(...args)
+      })
 
       await FileRecords.write([...root, "item"], { value: 2 })
 

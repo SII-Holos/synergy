@@ -85,6 +85,10 @@ export const TOOL_TITLE_DESC: Record<string, MessageDescriptor> = {
 
   // Knowledge / memory / notes
   memory_search: d("tool.title.memory-search", "Search memories"),
+  organization_knowledge_list: d("tool.title.organization-knowledge-list", "Organization knowledge"),
+  organization_knowledge_files: d("tool.title.organization-knowledge-files", "View publication files"),
+  organization_knowledge_read: d("tool.title.organization-knowledge-read", "Read organization knowledge"),
+  organization_knowledge_search: d("tool.title.organization-knowledge-search", "Search organization knowledge"),
   memory_get: d("tool.title.memory-get", "Read memory"),
   memory_write: d("tool.title.memory-write", "Write memory"),
   memory_edit: d("tool.title.memory-edit", "Edit memory"),

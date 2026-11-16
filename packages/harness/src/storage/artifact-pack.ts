@@ -4,7 +4,7 @@ import path from "node:path"
 import { pipeline } from "node:stream/promises"
 import { createReadStream, createWriteStream } from "node:fs"
 import { randomUUID, createHash } from "node:crypto"
-import { gzipSync, gunzipSync } from "node:zlib"
+import { gzipSync, gunzipSync, createGunzip } from "node:zlib"
 import { ArtifactLocation, MAX_COMPRESSED_ARTIFACT_BYTES } from "./artifact-location"
 import { StorageConflictError, StorageIntegrityError } from "./errors"
 import { isRetryableIOError } from "@ericsanchezok/synergy-util/io-retry"
@@ -65,6 +65,50 @@ export class ArtifactPack {
           if (!isRetryableIOError(error) || attempt >= 4) throw error
           await Bun.sleep(Math.min(200, 50 * 2 ** (attempt - 1)))
         }
+      }
+    })
+  }
+
+  appendStream(content: AsyncIterable<Uint8Array>, signal?: AbortSignal): Promise<ArtifactLocation> {
+    return this.queue.run(async () => {
+      signal?.throwIfAborted()
+      await this.prepareDirectory()
+      const temporary = path.join(this.root, ".stream-" + randomUUID())
+      const file = await fs.open(temporary, "wx", 0o600)
+      const checksum = createHash("sha256")
+      let size = 0
+      let closed = false
+      try {
+        for await (const chunk of content) {
+          signal?.throwIfAborted()
+          checksum.update(chunk)
+          let offset = 0
+          while (offset < chunk.length) {
+            const written = await file.write(chunk, offset, chunk.length - offset, size + offset)
+            if (!written.bytesWritten) throw new StorageIntegrityError("Artifact stream write made no progress")
+            offset += written.bytesWritten
+          }
+          size += chunk.length
+          if (!Number.isSafeInteger(size)) throw new StorageIntegrityError("Artifact stream byte count is invalid")
+        }
+        await file.sync()
+        await file.close()
+        closed = true
+        const sha256 = checksum.digest("hex")
+        const pack = await this.adopt({ filename: temporary, sha256 }, signal)
+        return ArtifactLocation.parse({
+          pack,
+          blockOffset: 0,
+          blockBytes: size,
+          decodedBytes: size,
+          offset: 0,
+          size,
+          codec: "raw",
+          sha256,
+        })
+      } finally {
+        if (!closed) await file.close()
+        await fs.rm(temporary, { force: true })
       }
     })
   }
@@ -238,6 +282,66 @@ export class ArtifactPack {
       return new Uint8Array(value)
     } finally {
       await file.close()
+    }
+  }
+
+  async *stream(input: ArtifactLocation, signal?: AbortSignal): AsyncGenerator<Uint8Array> {
+    const location = ArtifactLocation.parse(input)
+    signal?.throwIfAborted()
+    const raw = location.codec === "raw"
+    const bytes = raw ? location.size : location.blockBytes
+    const checksum = createHash("sha256")
+    if (!bytes) {
+      const file = await fs.open(path.join(this.root, location.pack), "r")
+      try {
+        if (location.blockOffset + location.blockBytes > (await file.stat()).size)
+          throw new StorageIntegrityError("Artifact stream byte count is invalid")
+      } finally {
+        await file.close()
+      }
+      if (location.size || checksum.digest("hex") !== location.sha256)
+        throw new StorageIntegrityError("Artifact stream byte count or checksum mismatch")
+      return
+    }
+    const start = location.blockOffset + (raw ? location.offset : 0)
+    const source = createReadStream(path.join(this.root, location.pack), {
+      start,
+      end: start + bytes - 1,
+      highWaterMark: 4 * 1024 * 1024,
+      signal,
+    })
+    const decoded = raw ? source : source.pipe(createGunzip())
+    const propagate = (error: Error) => decoded.destroy(error)
+    if (!raw) source.on("error", propagate)
+    const selectionStart = raw ? 0 : location.offset
+    const selectionEnd = selectionStart + location.size
+    let size = 0
+    let selected = 0
+    try {
+      for await (const data of decoded) {
+        signal?.throwIfAborted()
+        const chunk = Buffer.from(data)
+        const end = size + chunk.length
+        if (end > (raw ? location.size : location.decodedBytes))
+          throw new StorageIntegrityError("Artifact stream byte count is invalid")
+        const from = Math.max(size, selectionStart)
+        const to = Math.min(end, selectionEnd)
+        if (to > from) {
+          const value = chunk.subarray(from - size, to - size)
+          checksum.update(value)
+          selected += value.length
+          yield value
+        }
+        size = end
+      }
+      if (size !== (raw ? location.size : location.decodedBytes) || selected !== location.size)
+        throw new StorageIntegrityError("Artifact stream byte count is invalid")
+      if (checksum.digest("hex") !== location.sha256)
+        throw new StorageIntegrityError("Artifact stream checksum mismatch")
+    } finally {
+      if (!raw) source.off("error", propagate)
+      decoded.destroy()
+      source.destroy()
     }
   }
 

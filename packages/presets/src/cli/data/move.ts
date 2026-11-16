@@ -14,6 +14,12 @@ import { cmd } from "@ericsanchezok/synergy-util/cli-command"
 import { UI } from "@ericsanchezok/synergy-util/terminal"
 import { Global } from "@ericsanchezok/synergy-harness/global"
 import {
+  ObservabilityMetrics,
+  ObservabilityStore,
+  ObservabilityWriter,
+} from "@ericsanchezok/synergy-harness/observability"
+import { Log } from "@ericsanchezok/synergy-harness/util/log"
+import {
   archiveExclusions,
   CATEGORIES,
   scanCategories,
@@ -210,7 +216,14 @@ export async function executeMove(opts: MoveOptions) {
     // If target has no library.db, the file copy will handle it
   }
 
-  return DataTransfer.withFiles([sourceRoot, targetPath], async () => {
+  if (opts.removeOriginal) {
+    await ObservabilityWriter.stop()
+    ObservabilityMetrics.stop()
+    await ObservabilityStore.stop()
+    await Log.close()
+  }
+
+  return await DataTransfer.withTargetFiles(sourceRoot, targetPath, async () => {
     // Step 6: Execute move
     UI.empty()
     const errors: string[] = []

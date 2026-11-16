@@ -57,6 +57,14 @@ test("Note hides documents whose kind owner is absent without changing their sto
         expect(searched.output).not.toContain(hidden.id)
         await expect(NoteStore.get("home", hidden.id)).rejects.toBeInstanceOf(Storage.NotFoundError)
         await expect(NoteStore.getAny("home", hidden.id)).rejects.toBeInstanceOf(Storage.NotFoundError)
+        let inspected = false
+        await expect(
+          NoteStore.inspectMetadataAny("home", hidden.id, () => {
+            inspected = true
+            return true
+          }),
+        ).rejects.toBeInstanceOf(Storage.NotFoundError)
+        expect(inspected).toBe(false)
         for (const route of [`/${hidden.id}`, `/export/${hidden.id}`])
           expect((await NoteRoute().request(route)).status).toBe(404)
         await expect(NoteStore.update("home", hidden.id, { title: "Changed" })).rejects.toBeInstanceOf(
@@ -92,7 +100,9 @@ test("ordinary mutations preserve unloaded extension fields and metadata", async
         const note = await NoteStore.create({ title: "Retained" })
         const key = ["notes", "home", note.id]
         const extension = { futureOwner: { version: 7, payload: ["keep", { nested: true }] } }
-        await Storage.write(key, { ...note, ...extension })
+        await NoteStore.mutateMetadata("home", note.id, (draft) => {
+          Object.assign(draft, extension)
+        })
         await NoteStore.update("home", note.id, { title: "Updated" })
         expect((await Storage.read<Record<string, unknown>>(key)).futureOwner).toEqual(extension.futureOwner)
       },
@@ -250,7 +260,9 @@ test("Note owner projections only change a copy of their public fields", async (
         const note = await NoteStore.create({ title: "Retained title", kind: "fixture-document" })
         const key = ["notes", "home", note.id]
         const fixture = { visible: "available", hidden: "dormant", future: { retained: true } }
-        await Storage.write(key, { ...note, fixture })
+        await NoteStore.mutateMetadata("home", note.id, (draft) => {
+          Object.assign(draft, { fixture })
+        })
         await Storage.remove(["notes", "home", "_index"])
         for (const projected of [await NoteStore.get("home", note.id), (await NoteStore.listMeta("home"))[0]]) {
           expect(projected.title).toBe(note.title)

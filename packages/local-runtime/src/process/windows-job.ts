@@ -156,7 +156,22 @@ export namespace WindowsJob {
     if (!runtime().FreeConsole()) throw error("FreeConsole")
   }
 
-  export async function start(command: string[], directory: string) {
+  // Provenance: https://learn.microsoft.com/en-us/windows/win32/procthread/changing-environment-variables
+  // An explicit Unicode block replaces inheritance; names have a case-insensitive, locale-independent order.
+  export function environmentBlock(environment: Record<string, string>) {
+    const entries = Object.entries(environment)
+      .map(([name, value]) => {
+        if (!name || /[=\0]/.test(name) || value.includes("\0")) throw new Error("Invalid Windows worker environment")
+        return { name, value, order: name.toUpperCase() }
+      })
+      .sort((a, b) => (a.order < b.order ? -1 : a.order > b.order ? 1 : 0))
+    for (let index = 1; index < entries.length; index++)
+      if (entries[index]!.order === entries[index - 1]!.order)
+        throw new Error("Duplicate Windows worker environment name")
+    return Buffer.from(`${entries.map(({ name, value }) => `${name}=${value}`).join("\0")}\0\0`, "utf16le")
+  }
+
+  export async function start(command: string[], directory: string, environment: Record<string, string> = {}) {
     if (!command.length || command.some((value) => value.includes("\0")) || directory.includes("\0"))
       throw new Error("Invalid Windows worker command")
     const host = runtime()
@@ -164,6 +179,7 @@ export namespace WindowsJob {
     const line = wide(command.map(quoteArgument).join(" "))
     if (line.length / 2 > 32767) throw new Error("Windows worker command exceeds the native limit")
     const cwd = wide(directory)
+    const variables = environmentBlock(environment)
     const startup = Buffer.alloc(104)
     startup.writeUInt32LE(startup.length, 0)
     const information = Buffer.alloc(24)
@@ -176,8 +192,8 @@ export namespace WindowsJob {
         null,
         null,
         false,
-        0x4 | 0x8,
-        null,
+        0x4 | 0x8 | 0x400,
+        ptr(variables),
         ptr(cwd),
         ptr(startup),
         ptr(information),

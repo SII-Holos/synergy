@@ -1,0 +1,81 @@
+services:
+  organization:
+    volumes:
+      - ${SYNERGY_ORGANIZATION_CONFIG:?Set the dedicated organization JSONC file}:/var/lib/synergy/.synergy/config/synergy.d/150-organization.jsonc:ro
+      - ${SYNERGY_ORGANIZATION_CREDENTIALS:?Set the private credential directory}:/run/organization-credentials:ro
+  initialize:
+    volumes:
+      - ${SYNERGY_ORGANIZATION_CONFIG:?Set the dedicated organization JSONC file}:/var/lib/synergy/.synergy/config/synergy.d/150-organization.jsonc:ro
+      - ${SYNERGY_ORGANIZATION_CREDENTIALS:?Set the private credential directory}:/run/organization-credentials:ro
+  postgres:
+    profiles: ["postgres"]
+    image: postgres:18
+    environment:
+      POSTGRES_DB: organization
+      POSTGRES_USER: organization
+      POSTGRES_PASSWORD_FILE: /run/credentials/postgres-password
+    volumes:
+      - postgres-data:/var/lib/postgresql
+      - ${SYNERGY_ORGANIZATION_CREDENTIALS:?Set the private credential directory}:/run/credentials:ro
+    ports:
+      - "127.0.0.1:${SYNERGY_ORGANIZATION_POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U organization -d organization"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+  objects:
+    profiles: ["objects"]
+    image: synergy-organization-minio:RELEASE.2025-09-07T16-13-09Z
+    pull_policy: build
+    build:
+      context: .
+      dockerfile: Dockerfile.objects
+      target: minio
+    user: "0:0"
+    command: ["server", "/data", "--address", ":9000", "--console-address", "127.0.0.1:9001"]
+    environment:
+      MINIO_ROOT_USER_FILE: /run/credentials/object-user
+      MINIO_ROOT_PASSWORD_FILE: /run/credentials/object-password
+    volumes:
+      - object-data:/data
+      - ${SYNERGY_ORGANIZATION_CREDENTIALS:?Set the private credential directory}:/run/credentials:ro
+    ports:
+      - "127.0.0.1:${SYNERGY_ORGANIZATION_OBJECT_PORT:-9000}:9000"
+  object-initialize:
+    profiles: ["objects"]
+    image: synergy-organization-mc:RELEASE.2025-08-13T08-35-41Z
+    pull_policy: build
+    build:
+      context: .
+      dockerfile: Dockerfile.objects
+      target: mc
+    user: "${SYNERGY_ORGANIZATION_OPERATOR_UID:-1000}:${SYNERGY_ORGANIZATION_OPERATOR_GID:-1000}"
+    command: ["--config-dir", "/configuration", "mb", "--ignore-existing", "deployment/organization"]
+    volumes:
+      - ${SYNERGY_ORGANIZATION_OBJECT_CLIENT:?Set the private MinIO client configuration directory}:/configuration
+  hosted:
+    profiles: ["hosted"]
+    image: ${SYNERGY_ORGANIZATION_HOSTED_IMAGE:?Set the matching image containing the organization Runtime}
+    init: true
+    read_only: true
+    tmpfs: ["/tmp:mode=1777"]
+    environment:
+      SYNERGY_HOME: /var/lib/synergy-hosted
+    entrypoint:
+      [
+        "/bin/sh",
+        "-c",
+        "exec bun --no-install /opt/synergy/node_modules/.bin/synergy-org-runtime hosted-runtime < /run/hosted-request.json",
+      ]
+    command: []
+    volumes:
+      - ${SYNERGY_ORGANIZATION_HOSTED_HOME:?Set the prepared hosted Home}:/var/lib/synergy-hosted
+      - ${SYNERGY_ORGANIZATION_HOSTED_REQUEST:?Set the private hosted supervisor request file}:/run/hosted-request.json:ro
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    stop_grace_period: 30s
+
+volumes:
+  postgres-data:
+  object-data:

@@ -7,9 +7,52 @@ import { AttachmentDiscovery } from "../attachment-discovery"
 import type { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import type { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { ToolTimeout } from "@ericsanchezok/synergy-harness/tool/timeout"
+import { ProcessAccessSource } from "@ericsanchezok/synergy-harness/process/access-source"
 
 export namespace LocalProcessBackend {
-  export async function execute(params: ProcessParams, ctx?: Tool.Context): Promise<ProcessResult> {
+  export async function execute(value: ProcessParams, context?: Tool.Context): Promise<ProcessResult> {
+    const params = { ...value, ...(value.keys && { keys: [...value.keys] }) }
+    const ctx = context && { ...context }
+    let dispatched = false
+    let restricted = false
+    try {
+      return await ProcessAccessSource.withAccess(
+        {
+          sessionID: ctx?.sessionID,
+          messageID: ctx?.messageID,
+          callID: ctx?.callID,
+          signal: ctx?.abort,
+        },
+        async (access) => {
+          restricted = access.restricted
+          return executeOwned(params, ctx, access, () => {
+            access.assert()
+            dispatched = true
+          })
+        },
+      )
+    } catch (error) {
+      if (!restricted || !dispatched) throw error
+      throw new ProcessAccessSource.Unknown(
+        {
+          outcome: "unknown",
+          retryable: false,
+          action: params.action,
+          ...(params.processId && { processID: params.processId }),
+          message:
+            "The original process control outcome is unknown; inspect the existing process before deciding whether to continue",
+        },
+        { cause: error },
+      )
+    }
+  }
+
+  async function executeOwned(
+    params: ProcessParams,
+    ctx: Tool.Context | undefined,
+    access: ProcessAccessSource.Scope,
+    dispatch: () => void,
+  ): Promise<ProcessResult> {
     const { action, processId } = params
     const withAttachments = async (
       result: ProcessResult,
@@ -18,6 +61,7 @@ export namespace LocalProcessBackend {
       command?: string,
     ): Promise<ProcessResult> => {
       if (!ctx || (action !== "poll" && action !== "log")) return result
+      if (access.restricted && !ctx.resources) return result
       if (AttachmentDiscovery.shouldSkip(command)) return result
       const attachments = await AttachmentDiscovery.discover({
         output,
@@ -35,7 +79,14 @@ export namespace LocalProcessBackend {
 
     if (action === "list") {
       await ProcessRegistry.settleStaleProcesses()
-      const all = ProcessRegistry.listAll()
+      const all = (
+        await Promise.all(
+          ProcessRegistry.listAll().map(async (process) =>
+            (await access.allows(ProcessRegistry.recordedOwnership(process.id))) ? process : undefined,
+          ),
+        )
+      ).filter((process) => process !== undefined)
+      await access.recheck()
       const processes = all.map((p) => ({
         processId: p.id,
         status: "exited" in p ? (p.exited ? toFinishedStatus(p.exitCode, p.exitSignal) : "running") : p.status,
@@ -63,6 +114,9 @@ export namespace LocalProcessBackend {
 
     const proc = ProcessRegistry.get(processId)
     const finished = ProcessRegistry.getFinished(processId)
+    if (!(await access.allows(ProcessRegistry.recordedOwnership(processId))))
+      throw new Error("Process is unavailable to this caller")
+    await access.recheck()
     const target = proc || finished
     const procInfo = target ? { command: target.command, description: target.description } : {}
 
@@ -72,6 +126,7 @@ export namespace LocalProcessBackend {
         if (proc && !proc.exited && params.block) {
           await waitForExit(processId, (params.timeoutSeconds ?? ToolTimeout.DEFAULTS.processPollWaitMs / 1_000) * 1000)
         }
+        await access.recheck()
 
         const current = ProcessRegistry.get(processId)
         const currentFinished = ProcessRegistry.getFinished(processId)
@@ -201,7 +256,9 @@ export namespace LocalProcessBackend {
           }
         }
 
+        await access.recheck()
         await new Promise<void>((resolve, reject) => {
+          dispatch()
           stdin.write(params.data ?? "", (err) => {
             if (err) reject(err)
             else resolve()
@@ -259,7 +316,9 @@ export namespace LocalProcessBackend {
           }
         }
 
+        await access.recheck()
         await new Promise<void>((resolve, reject) => {
+          dispatch()
           stdin.write(data, (err) => {
             if (err) reject(err)
             else resolve()
@@ -291,6 +350,8 @@ export namespace LocalProcessBackend {
           }
         }
 
+        await access.recheck()
+        dispatch()
         await ProcessRegistry.terminate(proc)
         ProcessRegistry.markExited(proc, null, "SIGKILL")
 
@@ -317,6 +378,8 @@ export namespace LocalProcessBackend {
           }
         }
 
+        await access.recheck()
+        dispatch()
         ProcessRegistry.remove(processId)
         return {
           title: `Cleared ${processId}`,
@@ -326,6 +389,8 @@ export namespace LocalProcessBackend {
       }
 
       case "remove": {
+        await access.recheck()
+        dispatch()
         if (proc) {
           if (proc.backgrounded) await ProcessRegistry.terminate(proc)
           ProcessRegistry.markExited(proc, null, "SIGKILL")

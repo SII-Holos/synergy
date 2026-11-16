@@ -1,18 +1,18 @@
 import { Persist } from "@/utils/persist"
 
-export type DigitalTwinOwner = { url: string; scopeKey: string; sessionID: string }
+export type DigitalTwinOwner = { connectionKey: string; scopeKey: string; sessionID: string }
 export type DigitalTwinSuggestion = { rootID: string; assistantID: string; proposalID: string; text: string }
 
 const composers = new Map<string, Set<(suggestion: DigitalTwinSuggestion) => void>>()
 const claimed = new Set<string>()
 
 function ownerKey(owner: DigitalTwinOwner) {
-  return JSON.stringify([owner.url, owner.scopeKey, owner.sessionID])
+  return JSON.stringify([owner.connectionKey, owner.scopeKey, owner.sessionID])
 }
 
 /** The storage entry this Session's saved suggestion lives in. */
 function storageKey(owner: DigitalTwinOwner) {
-  const target = Persist.scoped(Persist.scopeKey(owner.url, owner.scopeKey), owner.sessionID, "digital-twin")
+  const target = Persist.scoped(Persist.scopeKey(owner.connectionKey, owner.scopeKey), owner.sessionID, "digital-twin")
   return `${target.storage}:${target.key}`
 }
 

@@ -6,6 +6,7 @@ import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
 import { WorkspaceBlobs } from "@ericsanchezok/synergy-harness/workspace/content"
 import { WorkspaceState } from "@ericsanchezok/synergy-harness/workspace/state"
 import { Environment } from "@ericsanchezok/synergy-harness/environment"
+import { EnvironmentOrigin } from "@ericsanchezok/synergy-harness/environment/origin"
 import { EnvironmentResources } from "@ericsanchezok/synergy-harness/environment/resources"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { WorkspaceFileService as Files } from "../../src/workspace-file/service"
@@ -16,8 +17,10 @@ import fs from "node:fs/promises"
 import path from "node:path"
 
 test("file workbench edits and browses dormant and live views without a controller directory", async () => {
+  let host: ReturnType<typeof EnvironmentOrigin.registerHost> | undefined
   await using runtime = await testRuntime({
     register() {
+      host = EnvironmentOrigin.registerHost("selected-view-fixture")
       WorkspaceBlobs.register("fixture", {
         put: (hash, bytes) => Storage.writeBinary(["fixture", hash], bytes),
         get: (hash) => Storage.readBinary(["fixture", hash]),
@@ -47,6 +50,7 @@ test("file workbench edits and browses dormant and live views without a controll
         })
         for (const live of [false, true]) {
           await using resources = await EnvironmentResources.resolve({
+            origin: host!.capture("selected-view"),
             scopeID: workspace.scopeID,
             workspaceID: workspace.id,
             environmentID: environment.id,
@@ -138,8 +142,10 @@ for (const live of [false, true])
   test.skipIf(live && process.platform === "win32")(
     `file mutations retain explicit and omitted modes in ${live ? "live" : "object"} views`,
     async () => {
+      let host: ReturnType<typeof EnvironmentOrigin.registerHost> | undefined
       await using runtime = await testRuntime({
         register() {
+          host = EnvironmentOrigin.registerHost("selected-view-fixture")
           WorkspaceBlobs.register("fixture", {
             put: (hash, bytes) => Storage.writeBinary(["fixture", hash], bytes),
             get: (hash) => Storage.readBinary(["fixture", hash]),
@@ -164,6 +170,7 @@ for (const live of [false, true])
             const selection = { scopeID: workspace.scopeID, workspaceID: workspace.id, environmentID: environment.id }
             {
               await using resources = await EnvironmentResources.resolve({
+                origin: host!.capture("selected-view"),
                 ...selection,
                 needs: live ? { execution: "exec" } : { workspace: true },
               })

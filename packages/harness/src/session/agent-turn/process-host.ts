@@ -43,15 +43,23 @@ export function resolveAgentWorkerCommand(): string[] {
   if (installed) return installed
 
   if (instanceState.runtimeEntrypoint && fs.existsSync(instanceState.runtimeEntrypoint))
-    return [process.execPath, "run", instanceState.runtimeEntrypoint]
+    return [
+      process.execPath,
+      "run",
+      "--no-env-file",
+      `--config=${process.platform === "win32" ? "NUL" : "/dev/null"}`,
+      instanceState.runtimeEntrypoint,
+    ]
   if (!instanceState.runtimeEntrypoint) throw new Error("No agent worker host is registered")
   return [process.execPath, "__agent-turn-runner"]
 }
 
 export function spawnAgentWorkerProcess(options: SpawnAgentWorkerProcessOptions): AgentWorkerProcess {
   const owner = RuntimeContext.current()
+  const exitCallback = Promise.withResolvers<void>()
   const processHandle = Bun.spawn({
     cmd: resolveAgentWorkerCommand(),
+    cwd: owner.host.root,
     env: {
       ...owner.host.env,
       ...runtimeState().environment,
@@ -72,7 +80,14 @@ export function spawnAgentWorkerProcess(options: SpawnAgentWorkerProcessOptions)
     stdout: "ignore",
     stderr: "ignore",
     onExit(_process, exitCode, signalCode) {
-      owner.run(() => options.onExit(exitCode, signalCode?.toString() ?? null))
+      try {
+        Promise.resolve(owner.run(() => options.onExit(exitCode, signalCode?.toString() ?? null))).then(
+          exitCallback.resolve,
+          exitCallback.reject,
+        )
+      } catch (error) {
+        exitCallback.reject(error)
+      }
     },
   })
 
@@ -83,12 +98,17 @@ export function spawnAgentWorkerProcess(options: SpawnAgentWorkerProcessOptions)
       processHandle.send(message)
     },
     async stop(graceMs) {
-      if (processHandle.exitCode !== null) return
+      void exitCallback.promise.catch(() => {})
+      if (processHandle.exitCode !== null) {
+        await exitCallback.promise
+        return
+      }
       try {
         processHandle.send({ type: "shutdown" } satisfies AgentTurnProtocol.HostToWorker)
       } catch {
         processHandle.kill()
         await processHandle.exited.catch(() => undefined)
+        await exitCallback.promise
         return
       }
       let timer: ReturnType<typeof setTimeout> | undefined
@@ -102,6 +122,7 @@ export function spawnAgentWorkerProcess(options: SpawnAgentWorkerProcessOptions)
         processHandle.kill()
         await processHandle.exited.catch(() => undefined)
       }
+      await exitCallback.promise
     },
   }
 }

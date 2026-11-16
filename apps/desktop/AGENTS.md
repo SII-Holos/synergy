@@ -1,34 +1,39 @@
 # Desktop Package Rules
 
-Root `AGENTS.md` and Web/runtime rules also apply to code reached through this Electron shell.
-
-Load `change-browser-runtime` for native Browser pages, profiles or popup work and `develop-synergy` for manual Desktop verification. Read [Desktop release](../../docs/operations/desktop-release.md) before packaging, signing, updating, or changing release assets.
+Load `change-browser-runtime` for native Browser pages/profiles/popups and `develop-synergy` for Desktop verification. Read [Desktop release](../../docs/operations/desktop-release.md) before packaging, signing, updates or release changes.
 
 ## Keep Desktop a Host
 
-- Desktop owns Electron lifecycle, the managed/local server process, preload IPC, native dialogs/clipboard/shell, window state/chrome, updates, native Browser presentation, and the private native Computer driver. It does not own a parallel session, permission, or Browser page model.
-- Keep `contextIsolation: true`, `nodeIntegration: false`, and renderer sandboxing. Expose narrow typed preload methods; validate every IPC payload in the main process and keep privileged Electron objects out of the renderer.
-- Preserve production URL/navigation, permission, external-link, download, and window-creation policy. Do not replace blocked navigation with a permissive fallback.
+- Desktop owns Electron/server lifecycle, preload IPC, native dialogs/clipboard/shell, chrome, updates, Browser presentation and Computer driver; never duplicate Session, permission or page models.
+- Keep `contextIsolation: true`, `nodeIntegration: false` and renderer sandboxing. Expose narrow typed preload methods; validate IPC in Main; exclude privileged Electron objects from renderers.
+- Preserve URL/navigation, permission, external-link, download and window-creation policy. Never bypass blocked navigation.
 - HTML fullscreen requires the current trusted App main-frame document.
-- Keep external-server development mode and packaged managed-server mode distinct. Never stop or reuse the runtime carrying the current task.
-- Native Browser creates one real `WebContentsView` per page and adopts native popups with their opener. Profile resources are shared by reference count; page commands never change human tab selection. The broker requires a local server.
+- Keep external-server and packaged managed modes distinct.
+- Member profiles reuse `DesktopServerManager`; main owns device/Home, credentials and supervisors. Verify member-supervisor, member-registry and member-browsers tests.
+- Main selects folders and rechecks project execution/member identity after selection. Return strict summaries and opaque revisions; verify project-binding/organization-ipc.
+- Private reads reuse the typed Runtime dispatcher. Recheck creator, member and binding around replies; verify member-read, content-download, attachment-download and IPC tests. Native saves retain idle deadlines, integrity and atomic publication.
+- Typed command streams preserve canonical input/reply schemas/byte limits, offsets, digest, cancellation and generated dispatch. Bind streams to document/account/connection; notifications require revisions, bounded decoding and preload ACK. Human IPC excludes machine proof/object/recovery; verify IPC/notifications.
+- Native Browser creates one `WebContentsView` per page and adopts popups with their opener. Reference-count profile resources; page commands never change human selection. The broker requires a local server.
+- Member brokers use main-owned Runtime keys and independent data contexts; keep protocol identities canonical.
 - Browser content sessions may grant Chromium local-network and loopback-network permissions, but unrelated media, device, location, and filesystem permissions remain denied. Do not duplicate Chromium network policy in Electron or the server gateway.
 - Keep update channel, checksum, release asset, bundled runtime, and server shutdown behavior aligned. Test packaging inputs rather than assuming source files are included.
-- Desktop owns the operating-system keep-awake assertion while Synergy is working. `src/power-save.ts` holds the only `powerSaveBlocker` assertion and the endpoint watcher; whether work is running is decided by the server's `/global/activity`, never by the renderer. The renderer may only ask the shell to re-check. Release the assertion on every quit path and keep the setting opt-in.
+- `src/power-save.ts` aggregates personal/member activity into the only `powerSaveBlocker` assertion. Read each server's `/global/activity`; renderer requests only re-checks. Release on every quit path and keep the setting opt-in.
 
 ## Verify
 
-Run `bun run typecheck` and the focused test under `test/`, then `bun run desktop:test`. For Browser changes, run `test:runtime` and the relevant core/Web tests. Exercise the affected external or managed mode through an isolated home, and finish with root `bun run quality:quick`.
+Verify Main-owned credentials and revision-bound logout in account/IPC suites and isolated `SYNERGY_DESKTOP_RUNTIME_TEST=1 bun test test/organization-native.test.ts`.
 
-For background-only Browser checks use `SYNERGY_DESKTOP_RUNTIME_TEST=1 SYNERGY_DESKTOP_BACKGROUND_TEST=1 bun test test/browser-runtime-smoke.test.ts`; visible-window and focus-dependent fixtures are explicitly skipped and remain unverified.
+Run `bun run desktop:test`, affected `test/` suites, and root `bun run quality:quick`. Verify affected modes in an isolated home; Browser changes additionally require `test:runtime` and core/Web tests.
 
-For startup progress changes, also run `SYNERGY_DESKTOP_RUNTIME_TEST=1 bun test test/startup-progress-runtime.test.ts` and verify an isolated managed upgrade longer than the ordinary health deadline. Add `SYNERGY_DESKTOP_BACKGROUND_TEST=1` to keep this fixture hidden and disable native focus requests.
+Background Browser: `SYNERGY_DESKTOP_RUNTIME_TEST=1 SYNERGY_DESKTOP_BACKGROUND_TEST=1 bun test test/browser-runtime-smoke.test.ts`; visible/focus fixtures skip and remain unverified.
+
+Startup changes require `SYNERGY_DESKTOP_RUNTIME_TEST=1 bun test test/startup-progress-runtime.test.ts` and an isolated managed upgrade exceeding the health deadline. Use `SYNERGY_DESKTOP_BACKGROUND_TEST=1` for hidden fixtures without focus requests.
 
 Update the Browser architecture, Web product contract, or Desktop release runbook when their durable behavior changes.
 
 For native Computer changes, load `change-computer-runtime` and read [Native Computer Use](../../docs/architecture/computer-use.md); run `bun test test/computer/*.test.ts`, `test:computer-native` and `test:computer-acceptance` in an isolated Desktop. `bun run test:coverage` includes both top-level and Computer suites and is the root coverage manifest entry point.
 
-For keep-awake changes, run `bun test test/power-save.test.ts` and verify in an isolated Desktop that the assertion appears while a task runs, survives closing the window, and leaves nothing behind after quitting (macOS: `pmset -g assertions`).
+For keep-awake changes, run `bun test test/power-save.test.ts` and macOS `SYNERGY_DESKTOP_RUNTIME_TEST=1 bun test test/power-save-native.test.ts`. Also verify an isolated Desktop's assertion while a task runs, after window close and after quitting (`pmset -g assertions`).
 
 Packaging consumes the shared release `runtime-layout.cjs` contract and copies the sealed module seed as a unit. Preserve its complete inventory and reject unlisted payloads before copying.
 

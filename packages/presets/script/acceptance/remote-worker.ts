@@ -21,6 +21,7 @@ import { until } from "./runtime"
 import { Settings } from "./settings"
 import { RemoteLab, Identity, Request, type Snapshot, type Command } from "./remote-protocol"
 import { cycleHistory } from "./cycle-history"
+import { acceptanceOrigins } from "./origin"
 
 const directory = process.argv[2]!
 const settings = Settings.parse(await Bun.file(path.join(directory, "settings.json")).json())
@@ -43,9 +44,15 @@ const host = createLocalHost({
   },
 })
 const cycling = await Bun.file(path.join(directory, "cycles-enabled")).exists()
+const origins = acceptanceOrigins()
 const runtime = cycling
-  ? await PresetRuntimeHandle.open({ host, mode: "oneshot", network: { hostname: "127.0.0.1", port: 0 } })
-  : await PresetRuntimeHandle.openTask({ host, mode: "oneshot" })
+  ? await PresetRuntimeHandle.open({
+      host,
+      mode: "oneshot",
+      network: { hostname: "127.0.0.1", port: 0 },
+      additionalComponents: [origins.component],
+    })
+  : await PresetRuntimeHandle.openTask({ host, mode: "oneshot", additionalComponents: [origins.component] })
 let identity: Identity | undefined
 const identityFile = Bun.file(path.join(directory, "identity.json"))
 if (await identityFile.exists()) identity = Identity.parse(await identityFile.json())
@@ -137,11 +144,13 @@ async function initialize() {
       `Remember this acceptance record identifier: ${identity.marker}. Echo it exactly. A separate controlled execution will now be interrupted; wait for my next input. No tools are needed for this input.`,
     )
   await using resources = await EnvironmentResources.resolve({
+    origin: origins.capture("remote-worker"),
     ...identity,
     needs: { workspace: true, execution: "exec" },
   })
   const cwd = resources.directory!
   await EnvironmentExecution.start({
+    origin: origins.capture("remote-worker"),
     id: identity.operationID,
     ...identity,
     command: {
@@ -198,7 +207,14 @@ async function perform(command: Command): Promise<Snapshot | undefined> {
         const current = identity!
         if (command === "history" || command === "compact" || command === "recall") {
           if (!runtime.server) throw new Error("Resource cycling requires its isolated HTTP Runtime")
-          await cycleHistory(command, directory, current, settings, `http://127.0.0.1:${runtime.server.port}`)
+          await cycleHistory(
+            command,
+            directory,
+            current,
+            settings,
+            `http://127.0.0.1:${runtime.server.port}`,
+            origins.capture("cycle-history"),
+          )
         }
         if (command === "block-save") {
           await fs.rename(store, store + ".retained")
@@ -224,6 +240,7 @@ async function perform(command: Command): Promise<Snapshot | undefined> {
         if (command === "replace") {
           await Environment.deallocate(current.environmentID, { scopeID: current.scopeID })
           await using resources = await EnvironmentResources.resolve({
+            origin: origins.capture("remote-worker"),
             ...current,
             needs: { workspace: true, execution: "exec" },
           })

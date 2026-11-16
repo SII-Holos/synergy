@@ -9,6 +9,7 @@ import { Hono } from "hono"
 import { describeRoute } from "hono-openapi"
 import { Server } from "../../src/server/server"
 import { webApp } from "../../src/web-app"
+import { Config } from "@ericsanchezok/synergy-harness/config/config"
 
 const navigationHeaders = { accept: "text/html", "sec-fetch-mode": "navigate", "sec-fetch-dest": "document" }
 
@@ -39,6 +40,50 @@ async function appRuntime(directory: string, token?: string) {
 }
 
 describe("Web app static routing", () => {
+  test("publishes only configured HTTPS connection origins in every application document", async () => {
+    await using tmp = await tmpdir()
+    await Bun.write(path.join(tmp.path, "index.html"), "<html><head></head><body>Web shell</body></html>")
+    await using runtime = await appRuntime(tmp.path)
+    await runtime.run(async () => {
+      const origins = ["https://team.example", "https://second.example:8443"]
+      await Config.domainUpdate("runtime", { server: { webConnectOrigins: origins } })
+      Server.mountApp()
+      const app = Server.App()
+      for (const route of ["/", "/index.html", "/org/team/project", "/library"]) {
+        const response = await app.request(route, { headers: navigationHeaders })
+        expect(response.status).toBe(200)
+        expect(response.headers.get("cache-control")).toBe("no-cache")
+        const policy = response.headers.get("content-security-policy")!
+        const connect = policy.split(";").find((part) => part.trim().startsWith("connect-src"))!
+        for (const origin of origins) expect(connect).toContain(origin)
+        expect(connect).not.toMatch(/(?:^|\s)https?:[\s;]/)
+        expect(await response.text()).toContain(`window.__SYNERGY_WEB_CONNECT_ORIGINS__=${JSON.stringify(origins)}`)
+      }
+      await Bun.write(
+        path.join(tmp.path, ".synergy/synergy.d/120-runtime.jsonc"),
+        JSON.stringify({ server: { webConnectOrigins: ["https://project.example"] } }),
+      )
+      const scope = await tmp.scope()
+      const project = await app.request(`/library?scopeID=${scope.id}`, { headers: navigationHeaders })
+      expect(project.headers.get("content-security-policy")).not.toContain("https://project.example")
+      expect(await project.text()).not.toContain("https://project.example")
+      await Config.domainUpdate("runtime", { server: { webConnectOrigins: [] } })
+      const response = await app.request("/", { headers: navigationHeaders })
+      expect(response.headers.get("content-security-policy")).toBe(Server.spaCsp())
+      expect(await response.text()).toContain("window.__SYNERGY_WEB_CONNECT_ORIGINS__=[]")
+      for (const origin of [
+        "https:",
+        "https://*.example",
+        "http://team.example",
+        "https://team.example/",
+        "https://team.example; script-src *",
+        "https://user:pass@team.example",
+      ]) {
+        expect(Config.Server.safeParse({ webConnectOrigins: [origin] }).success).toBe(false)
+      }
+    })
+  })
+
   test("serves existing deep-route assets but never falls missing assets through to the SPA", async () => {
     await using tmp = await tmpdir()
     const asset = path.join(tmp.path, "assets", "panel.js")

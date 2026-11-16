@@ -1,6 +1,8 @@
 import { expect, test } from "bun:test"
 import { z } from "zod"
 import { testRuntime } from "../support/runtime"
+import { withRun } from "../support/rollout"
+import { MessageV2 } from "../../src/session/message-v2"
 import { Tool } from "../../src/tool/tool"
 import { ToolRegistry } from "../../src/tool/registry"
 import { ToolResolver } from "../../src/session/tool-resolver"
@@ -77,46 +79,40 @@ test.each([
           permission: PermissionNext.fromConfig({ "*": "allow" }),
           options: {},
         })
-        await SessionManager.run(session.id, async () => {
-          const assistantMessage = {
-            id: "msg_fixture",
-            sessionID: session.id,
-            role: "assistant" as const,
-            parentID: "msg_user",
-            modelID: model.id,
-            providerID: model.providerID,
-            mode: "build",
-            agent: agent.name,
-            path: { cwd: null, root: null },
-            cost: 0,
-            tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
-            time: { created: Date.now() },
-          }
-          await Session.updateMessage(assistantMessage)
-          const processor = SessionProcessor.create({
-            assistantMessage,
-            sessionID: session.id,
-            model,
-            abort: new AbortController().signal,
-          })
-          try {
-            const resolved = await ToolResolver.resolveWithAvailability({
-              agent,
-              model,
+        await SessionManager.run(session.id, () =>
+          withRun({ session }, async (frame) => {
+            const assistantMessage = MessageV2.Assistant.parse(
+              await MessageV2.readInfo({
+                scopeID: session.scope.id,
+                sessionID: session.id,
+                messageID: frame.messageID,
+              }),
+            )
+            const processor = SessionProcessor.create({
+              assistantMessage,
               sessionID: session.id,
-              session,
-              processor,
-              userTools: { [tool]: true },
-              includeMCP: false,
+              model,
+              abort: new AbortController().signal,
             })
-            const execute = resolved.executionTools[tool].execute!
-            expect(await execute({ filePath }, { context: {}, toolCallId: "call_api", messages: [] })).toMatchObject({
-              output: "API result",
-            })
-          } finally {
-            processor.dispose("fixture")
-          }
-        })
+            try {
+              const resolved = await ToolResolver.resolveWithAvailability({
+                agent,
+                model,
+                sessionID: session.id,
+                session,
+                processor,
+                userTools: { [tool]: true },
+                includeMCP: false,
+              })
+              const execute = resolved.executionTools[tool].execute!
+              expect(await execute({ filePath }, { context: {}, toolCallId: "call_api", messages: [] })).toMatchObject({
+                output: "API result",
+              })
+            } finally {
+              processor.dispose("fixture")
+            }
+          }),
+        )
         expect(calls).toBe(1)
       },
     }),

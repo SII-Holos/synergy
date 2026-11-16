@@ -1,0 +1,65 @@
+name: Organization Service Deployment
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [dev, main]
+    paths:
+      - ".github/workflows/organization-deployment.yml"
+      - "packages/organization/**"
+      - "packages/organization-protocol/**"
+      - "packages/organization-runtime/**"
+      - "packages/cli/src/main.ts"
+      - "script/organization-*.ts"
+      - "script/pack-workspace.ts"
+      - "script/package-install-check.ts"
+      - "test/package/fixture/organization-deployment.ts"
+      - "test/package/fixture/package-boundary.ts"
+
+permissions:
+  contents: read
+
+jobs:
+  deployment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      MODELS_DEV_API_JSON: ${{ github.workspace }}/packages/testing/fixtures/models-api.json
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: "1.4.3"
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - run: bun install --frozen-lockfile
+      - name: Stage native sandbox asset
+        run: |
+          bun packages/local-runtime/script/build-helper.ts linux --target x86_64-unknown-linux-gnu
+          mkdir -p packages/local-runtime/sandbox-assets/linux-x64
+          cp packages/local-runtime/src/sandbox/helper-linux/target/x86_64-unknown-linux-gnu/release/synergy-sandbox-linux packages/local-runtime/sandbox-assets/linux-x64/
+      - name: Pack the independent service and shared CLI
+        run: bun -e 'import {packWorkspace} from "./script/pack-workspace"; await packWorkspace(["packages/organization","packages/cli","packages/organization-runtime"], ".artifacts/organization-packages")'
+      - name: Verify actual installation outside the checkout
+        run: bun script/organization-install-check.ts .artifacts/organization-packages
+      - name: Verify installed hosted Runtime enrollment and shutdown
+        run: bun script/organization-runtime-install-check.ts .artifacts/organization-packages
+      - name: Verify installed Service and Hosted backup recovery
+        run: bun script/organization-deployment-install-check.ts .artifacts/organization-packages
+      - name: Stage the image from the same archives
+        run: bun script/organization-image.ts .artifacts/organization-packages .artifacts/organization-image x64
+      - name: Build the service image without publishing
+        run: docker build -t synergy-organization:acceptance .artifacts/organization-image
+      - name: Verify Compose initialization, health and persisted restart
+        run: bun script/organization-compose-check.ts synergy-organization:acceptance
+      - name: Stage and build the hosted-capable image
+        run: |
+          bun script/organization-image.ts .artifacts/organization-packages .artifacts/organization-hosted-image x64 --hosted
+          docker build -t synergy-organization-hosted:acceptance .artifacts/organization-hosted-image
+      - name: Build the existing Execution Host image
+        run: |
+          sudo apparmor_parser -r packages/local-runtime/src/environment/vendor/synergy-execution.apparmor
+          bun packages/local-runtime/script/build-execution-host.ts --image synergy-execution-host:organization-acceptance
+      - name: Verify actual PostgreSQL, MinIO and Docker execution
+        run: bun script/organization-infrastructure-check.ts synergy-execution-host:organization-acceptance

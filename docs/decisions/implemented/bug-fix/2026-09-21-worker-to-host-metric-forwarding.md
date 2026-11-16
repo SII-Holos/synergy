@@ -10,7 +10,7 @@ Provider fetch metrics are emitted inside Agent workers, where local observabili
 
 Agent workers forward metrics over the existing versioned turn IPC channel. The host records them through the normal sampling, redaction and storage pipeline.
 
-`ObservabilityMetrics.withForwarder()` installs a Runtime-owned asynchronous context for one turn. The runner creates the queue when the turn starts, closes and drains it after stream disposal, and sends terminal frames afterward. An asynchronous callback from a completed turn retains that closed queue and cannot emit into its successor. Worker-local storage remains disabled.
+`ObservabilityMetrics.withForwarder()` installs a Runtime-owned asynchronous context for one turn. The runner creates the queue when the turn starts, closes and drains it after stream disposal, and sends terminal frames afterward. An asynchronous callback from a completed turn retains that closed queue and cannot emit into its successor. Aggregate timer callbacks also check for a live Runtime before touching Runtime-owned state, so disposal cannot turn a late best-effort flush into a storage error. Worker-local storage remains disabled.
 
 Each `metrics` frame carries its `requestId` and at most 64 validated rows. A queue holds at most four frames and flushes on the next microtask. Names, correlation fields and scalar labels have protocol-owned bounds, and every frame passes the existing IPC byte limit. Invalid rows, queue overflow and failed sends increment a turn-local drop count without failing inference. Protocol version 11 requires both peers to understand turn-owned metric frames and the current Runtime bootstrap.
 

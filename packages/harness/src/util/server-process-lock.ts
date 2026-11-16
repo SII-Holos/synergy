@@ -5,11 +5,79 @@ import { DaemonPaths } from "./daemon-paths"
 import { execFile } from "child_process"
 import { randomUUID } from "crypto"
 import { promisify } from "util"
+import { Storage } from "../storage/storage"
 import { processStartIdentity } from "@ericsanchezok/synergy-util/process-identity"
 
 const execFileAsync = promisify(execFile)
 
 export namespace ServerProcessLock {
+  export interface Ownership {
+    readonly kind: "runtime-writer"
+  }
+  interface NativeOwnership {
+    runtime: RuntimeContext.Instance
+    lockPath: string
+    payload: LockInfo
+    active: boolean
+  }
+  const ownership = RuntimeContext.state(() => ({ native: undefined as NativeOwnership | undefined }))
+  const proofs = new WeakMap<Ownership, { native: NativeOwnership; store: Storage.Handle["store"] }>()
+
+  function primaryStore() {
+    const runtime = RuntimeContext.current()
+    const current = Storage.current().store
+    if (!runtime.storage || runtime.storage.store !== current)
+      throw new Error("Installed writer ownership requires the Runtime's primary namespace")
+    return current
+  }
+
+  export function assertLive(proof: Ownership) {
+    const entry = proofs.get(proof)
+    if (
+      !entry ||
+      !entry.native.active ||
+      entry.native.runtime.storage?.store !== entry.store ||
+      !entry.store.readiness.readerReady
+    )
+      throw new Error("Installed writer native ownership has been released")
+  }
+  export function assertCurrent(proof: Ownership) {
+    assertLive(proof)
+    const entry = proofs.get(proof)
+    if (!entry) throw new Error("Installed writer evidence has no native ownership")
+    if (entry.native.runtime !== RuntimeContext.current())
+      throw new Error("Installed writer belongs to another Runtime")
+    if (entry.store !== primaryStore()) throw new Error("Installed writer belongs to another namespace")
+    if (!entry.native.active || ownership().native !== entry.native)
+      throw new Error("Installed writer native ownership has been released")
+  }
+
+  export async function verifyOwnership(proof: Ownership) {
+    assertCurrent(proof)
+    const native = proofs.get(proof)!.native
+    const actual = parseLockInfo(await fs.readFile(native.lockPath, "utf8"))
+    const expected = native.payload
+    if (
+      !actual ||
+      actual.pid !== expected.pid ||
+      actual.ownerToken !== expected.ownerToken ||
+      actual.processStartIdentity !== expected.processStartIdentity ||
+      !expected.processStartIdentity ||
+      expected.processStartIdentity.startsWith("unknown:") ||
+      (await processStartIdentity(process.pid)) !== expected.processStartIdentity
+    )
+      throw new Error("Installed writer native lock ownership changed or cannot be verified")
+    assertCurrent(proof)
+  }
+
+  export async function currentOwnership(): Promise<Ownership> {
+    const native = ownership().native
+    if (!native?.active) throw new Error("This Runtime has no installed native writer ownership")
+    const proof = Object.freeze({ kind: "runtime-writer" as const })
+    proofs.set(proof, { native, store: primaryStore() })
+    await verifyOwnership(proof)
+    return proof
+  }
   export interface LockInfo {
     pid: number
     startedAt: number
@@ -88,9 +156,14 @@ export namespace ServerProcessLock {
     }
 
     let released = false
+    const runtime = RuntimeContext.tryCurrent()
+    const native: NativeOwnership | undefined = runtime ? { runtime, lockPath, payload, active: true } : undefined
+    if (native && nodePath.resolve(lockPath) === nodePath.resolve(DaemonPaths.runtimeLock()))
+      ownership().native = native
     const release = async () => {
       if (released) return
       released = true
+      if (native) native.active = false
       await removeOwnedLock(lockPath, { pid: process.pid, ownerToken, processStartIdentity: identity })
     }
 

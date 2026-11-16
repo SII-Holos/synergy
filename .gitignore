@@ -104,6 +104,7 @@ apps/desktop/build/computer/
 # Disposable DOM test hosts created next to their owning tests
 apps/web/test/**/.*-fixture-*/
 packages/ui/test/**/.*-fixture-*/
+apps/web/test/context/.sdk-content-*/
 
 # Isolated Browser Host packaging input
 apps/desktop/build/browser-host-app/

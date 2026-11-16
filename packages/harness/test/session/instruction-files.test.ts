@@ -182,6 +182,24 @@ describe("instruction files", () => {
       expect(joined).not.toContain("outer doc")
     }))
 
+  test("ignores a workspace that disappears before instruction loading", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({
+        git: true,
+        init: async (dir) => {
+          await Bun.write(path.join(dir, "AGENTS.md"), "project instructions")
+        },
+      })
+      const workspace = path.join(tmp.path, "workspace")
+      await fs.mkdir(workspace)
+      const scope = await tmp.scope()
+      await customPromptFor(scope, workspace)
+      await fs.rm(workspace, { recursive: true })
+
+      const parts = await loadPromptFor(scope, workspace)
+      expect(parts.join("\n")).not.toContain("project instructions")
+    }))
+
   test("truncates automatically discovered instruction files", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({

@@ -30,13 +30,28 @@ export async function migrateCompactionCoverage(
   progress: (current: number, total: number) => void,
 ) {
   let done = 0
+  let pending: string[][] = []
+  async function flush() {
+    if (!pending.length) return
+    const keys = pending
+    pending = []
+    await Storage.transaction(async (tx) => {
+      const values = await tx.readMany<Record<string, unknown>>(keys)
+      const changed: Array<{ key: string[]; value: Record<string, unknown> }> = []
+      for (const [index, key] of keys.entries()) {
+        const value = values[index]
+        if (value === undefined) throw new Storage.NotFoundError({ message: "Storage record does not exist" })
+        if (upgradeCompactionCoverage(key, value)) changed.push({ key, value })
+      }
+      if (changed.length) await tx.writeMany(changed)
+    })
+    for (let index = 0; index < keys.length; index++) progress(++done, 0)
+  }
   for await (const entry of Storage.records<Record<string, unknown>>({ kind: "message", ...owner })) {
     await UpgradeWork.checkpoint()
-    await Storage.transaction(async () => {
-      const value = await Storage.read<Record<string, unknown>>(entry.key)
-      if (upgradeCompactionCoverage(entry.key, value)) await Storage.write(entry.key, value)
-    })
-    progress(++done, 0)
+    pending.push(entry.key)
+    if (pending.length >= 128) await flush()
   }
+  await flush()
   progress(done, done)
 }

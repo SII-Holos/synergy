@@ -11,6 +11,7 @@ import {
   Show,
   useContext,
   type ParentProps,
+  type Accessor,
 } from "solid-js"
 import { Portal } from "solid-js/web"
 import { useLingui } from "@lingui/solid"
@@ -18,6 +19,7 @@ import type { MessageDescriptor } from "@lingui/core"
 import type { PermissionRequest, QuestionRequest } from "@ericsanchezok/synergy-sdk/client"
 import { PortalStyleOwner, UIStyleProvider } from "@ericsanchezok/synergy-ui/context/ui-style"
 import { useData } from "@ericsanchezok/synergy-ui/context"
+import type { SessionDataView } from "@ericsanchezok/synergy-ui/context/session-data-view"
 import { Popover } from "@ericsanchezok/synergy-ui/popover"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
@@ -46,13 +48,18 @@ type DecisionItem =
   | { kind: "question"; key: string; request: QuestionRequest; origin?: undefined }
   | { kind: "permission"; key: string; request: PermissionRequest; origin?: string }
 
-export function SessionDecisionSurface(props: { sessionId?: string }) {
-  const view = useSessionDataView()
+export function SessionDecisionSurface(props: {
+  sessionId?: string
+  view?: Accessor<SessionDataView>
+  persistentScope?: MessageDescriptor
+  defaultCollapsed?: boolean
+}) {
+  const view = props.view ?? useSessionDataView()
   const data = useData()
   const returnFocus = useSessionSurfaceFocus()
   const decisions = useSessionDecision()
   const { _ } = useLingui()
-  const [collapsed, setCollapsed] = createSignal(false)
+  const [collapsed, setCollapsed] = createSignal(props.defaultCollapsed ?? false)
   const [queueOpen, setQueueOpen] = createSignal(false)
   const [moreOpen, setMoreOpen] = createSignal(false)
   const titleID = createUniqueId()
@@ -89,7 +96,10 @@ export function SessionDecisionSurface(props: { sessionId?: string }) {
   const toolTitle = (title: string | MessageDescriptor) => (typeof title === "string" ? title : _(title))
   const title = (item: DecisionItem, heading = false) => {
     if (item.kind === "question") {
-      const question = item.request.questions[decisions.draft(item.request).step]
+      const question =
+        item.request.questions[
+          item.key === active()?.key ? decisions.draft(item.request).step : decisions.draftStep(item.request)
+        ]
       return (heading ? question?.header : question?.question) || _(copy.question)
     }
     return toolTitle(permissionInfo(item.request, view()).title)
@@ -103,7 +113,7 @@ export function SessionDecisionSurface(props: { sessionId?: string }) {
     on(
       () => props.sessionId,
       () => {
-        setCollapsed(false)
+        setCollapsed(props.defaultCollapsed ?? false)
         setQueueOpen(false)
         setMoreOpen(false)
       },
@@ -248,7 +258,13 @@ export function SessionDecisionSurface(props: { sessionId?: string }) {
             <Show when={!collapsed()}>
               <Show
                 when={question()}
-                fallback={<Show when={permission()}>{(request) => <PermissionDock request={request()} />}</Show>}
+                fallback={
+                  <Show when={permission()}>
+                    {(request) => (
+                      <PermissionDock request={request()} view={view} persistentScope={props.persistentScope} />
+                    )}
+                  </Show>
+                }
               >
                 {(request) => <QuestionPrompt request={request()} />}
               </Show>

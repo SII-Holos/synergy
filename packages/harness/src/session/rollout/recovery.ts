@@ -10,8 +10,42 @@ import { RolloutPending } from "./pending"
 import { SnapshotEvidence } from "../snapshot-evidence"
 import { RuntimeContext } from "../../lifecycle/context"
 import { UpgradeWork } from "../../storage/upgrade-work"
+import { RuntimeMaintenance } from "../../storage/runtime-maintenance"
 
 export namespace RolloutRecovery {
+  export function registerMaintenanceOwner() {
+    RuntimeMaintenance.register("rollout-recovery", {
+      version: 1,
+      order: 1000,
+      async suspend(context) {
+        await RuntimeMaintenance.assertDraining(context.lease)
+      },
+      async drain(context) {
+        await RuntimeMaintenance.assertDraining(context.lease)
+        context.signal.throwIfAborted()
+        await settle()
+        context.signal.throwIfAborted()
+      },
+      async inspect(context) {
+        context.signal.throwIfAborted()
+        const pending = await RolloutPending.tracked()
+        const touched = new Set(RolloutPending.touched().map(identityKey))
+        if (!pending || pending.owners.some((owner) => touched.has(identityKey(owner))))
+          return [
+            {
+              owner: "rollout-recovery",
+              code: "rollout_settlement_pending",
+              label: "Settle original native rollout writers before freezing",
+              recoverable: true,
+            },
+          ]
+        return []
+      },
+      async release(context) {
+        await RuntimeMaintenance.assertReleasing(context.lease)
+      },
+    })
+  }
   const admission = Storage.state(() => ({
     enabled: false,
     ready: new Set<string>(),
@@ -23,6 +57,12 @@ export namespace RolloutRecovery {
     key: string
   }>()
   const identityKey = (identity: RolloutSchema.Owner) => JSON.stringify(RolloutArtifact.root(identity))
+
+  async function frozen(identity: RolloutSchema.Owner) {
+    if (identity.kind !== "session") return false
+    const { SessionTransferGate } = await import("../transfer-gate")
+    return SessionTransferGate.isFrozen(identity.sessionID)
+  }
 
   export async function ensure(identity: RolloutSchema.Owner) {
     const state = admission()
@@ -36,6 +76,7 @@ export namespace RolloutRecovery {
         context.key === key)
     )
       return
+    if (await frozen(identity)) return
     if (Storage.inTransaction()) throw new Error("Recover historical owners before opening a transaction")
     const pending = state.pending.get(key)
     if (pending) return pending
@@ -173,6 +214,7 @@ export namespace RolloutRecovery {
       const touched = new Set(RolloutPending.touched().map(identityKey))
       for (const identity of pending.owners) {
         if (!touched.has(identityKey(identity))) continue
+        if (await frozen(identity)) continue
         await owner(identity)
         await RolloutPending.recovered(identity)
       }

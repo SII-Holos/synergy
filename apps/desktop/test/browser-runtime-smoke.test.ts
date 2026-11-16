@@ -2,13 +2,24 @@ import { afterEach, describe, expect, test } from "bun:test"
 import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
+import { captureOutput } from "./fixture/process-output"
 
 const runtimeTest = process.env.SYNERGY_DESKTOP_RUNTIME_TEST === "1" ? test : test.skip
 const temporaryDirectories: string[] = []
 
 afterEach(async () => {
   await Promise.all(
-    temporaryDirectories.splice(0).map((directory) => fs.rm(directory, { recursive: true, force: true })),
+    temporaryDirectories.splice(0).map(async (directory) => {
+      if (process.platform === "darwin") {
+        const name = path.basename(directory)
+        const cleanup = Bun.spawn(
+          ["/usr/bin/security", "delete-generic-password", "-s", `${name} Safe Storage`, "-a", name],
+          { stdout: "ignore", stderr: "ignore" },
+        )
+        expect([0, 44]).toContain(await cleanup.exited)
+      }
+      await fs.rm(directory, { recursive: true, force: true })
+    }),
   )
 })
 
@@ -22,6 +33,8 @@ describe("Electron Browser Host broker contract", () => {
     "browser-multi-page",
     "browser-native-import",
     "browser-profile-data",
+    "browser-member-isolation",
+    "browser-member-broker",
   ])
     (process.env.SYNERGY_DESKTOP_BACKGROUND_TEST === "1" &&
       ![
@@ -29,6 +42,8 @@ describe("Electron Browser Host broker contract", () => {
         "browser-network",
         "browser-initialization",
         "browser-profile-data",
+        "browser-member-isolation",
+        "browser-member-broker",
         "browser-multi-page",
         "browser-presentation",
       ].includes(fixture)
@@ -86,7 +101,10 @@ describe("Electron Browser Host broker contract", () => {
         } catch (error) {
           child.kill("SIGTERM")
           await Promise.race([child.exited, new Promise((resolve) => setTimeout(resolve, 2_000))])
-          if (child.exitCode === null) child.kill("SIGKILL")
+          if (child.exitCode === null) {
+            child.kill("SIGKILL")
+            await child.exited
+          }
           stdout.cancel()
           stderr.cancel()
           throw new Error(
@@ -101,24 +119,6 @@ describe("Electron Browser Host broker contract", () => {
       45_000,
     )
 })
-
-function captureOutput(stream: ReadableStream<Uint8Array>) {
-  const reader = stream.getReader()
-  const decoder = new TextDecoder()
-  let output = ""
-  const done = (async () => {
-    try {
-      while (true) {
-        const chunk = await reader.read()
-        if (chunk.done) break
-        output = (output + decoder.decode(chunk.value, { stream: true })).slice(-100_000)
-      }
-    } finally {
-      reader.releaseLock()
-    }
-  })().catch(() => undefined)
-  return { done, text: () => output, cancel: () => void reader.cancel().catch(() => undefined) }
-}
 
 test("keeps Electron failure output available while a descendant holds the pipe open", async () => {
   let cancelled = false
@@ -174,6 +174,7 @@ async function isolatedElectronEntry(directory: string, entry: string): Promise<
       'import { app } from "electron";',
       'import { pathToFileURL } from "node:url";',
       'import { configureDesktopChromium } from "./chromium.js";',
+      `app.setName(${JSON.stringify(path.basename(directory))});`,
       "configureDesktopChromium(app);",
       ...(process.env.SYNERGY_DESKTOP_BACKGROUND_TEST === "1"
         ? ['app.once("ready", () => app.setActivationPolicy?.("accessory"));']

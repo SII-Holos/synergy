@@ -95,6 +95,7 @@ export function resourceCycles(input: unknown): Driver {
           })
           const session = await Session.create({ environmentID: environment.id, controlProfile: "full_access" })
           const resources = await EnvironmentResources.resolve({
+            origin: peer.origin(context.scenario.id),
             scopeID: scope.id,
             environmentID: environment.id,
             workspaceID: session.workspaceID,

@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test"
 import { BlueprintLoopStore } from "@ericsanchezok/synergy-blueprint/blueprint/loop-store"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
 import { LatticeStore } from "@ericsanchezok/synergy-lattice/lattice/store"
-import { NoteStore } from "@ericsanchezok/synergy-note"
+import { NoteStore, NoteVersions } from "@ericsanchezok/synergy-note"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
@@ -195,16 +197,35 @@ describe("SessionRecovery.reconcileRuntimeState", () => {
             blueprint: { activeLoopID: loop.id },
           })
 
-          await SessionRecovery.reconcileRuntimeState({
-            scopeID: ScopeContext.current.scope.id,
-            apply: true,
-          })
+          const scopeID = ScopeContext.current.scope.id
+          const original = await NoteStore.snapshotForTransfer(scopeID, note.id)
+          expect(original).toHaveProperty("blueprint.activeLoopID", loop.id)
+          expect(original).not.toHaveProperty("blueprint.activeLoopSource")
+          expect((await NoteStore.get(scopeID, note.id)).blueprint?.activeLoopID).toBeUndefined()
+          const sessionKey = StoragePath.sessionInfo(Identifier.asScopeID(scopeID), Identifier.asSessionID(session.id))
+          const originalSession = await Storage.read(sessionKey)
+          const preview = await SessionRecovery.reconcileRuntimeState({ scopeID })
+          const expectedNoteChanges = [{ scopeID, loopID: loop.id, action: "note_terminal_loop_cleared" }]
+          expect(preview.entries.filter((entry) => entry.action === "note_terminal_loop_cleared")).toEqual(
+            expectedNoteChanges,
+          )
+          expect(await NoteStore.snapshotForTransfer(scopeID, note.id)).toEqual(original)
+          expect(await Storage.read(sessionKey)).toEqual(originalSession)
+
+          const applied = await SessionRecovery.reconcileRuntimeState({ scopeID, apply: true })
+          expect(applied.entries.filter((entry) => entry.action === "note_terminal_loop_cleared")).toEqual(
+            expectedNoteChanges,
+          )
 
           const refreshedSession = await Session.get(session.id)
           const refreshedNote = await NoteStore.get(ScopeContext.current.scope.id, note.id)
           expect(refreshedSession.blueprint?.loopID).toBeUndefined()
           expect(refreshedSession.blueprint?.loopRole).toBeUndefined()
           expect(refreshedNote.blueprint?.activeLoopID).toBeUndefined()
+          const current = await NoteStore.snapshotForTransfer(ScopeContext.current.scope.id, note.id)
+          expect(current).not.toHaveProperty("blueprint.activeLoopID")
+          expect(current.version).toBeGreaterThan(original.version)
+          expect(await NoteVersions.read(ScopeContext.current.scope.id, note.id, original.version)).toEqual(original)
         },
       })
     }))

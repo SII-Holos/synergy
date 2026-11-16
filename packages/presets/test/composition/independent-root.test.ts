@@ -1,5 +1,5 @@
 import { composeWithExperiments } from "../support/selected-components"
-import { expect, test } from "bun:test"
+import { expect, spyOn, test } from "bun:test"
 import type { Provider as SDK } from "ai"
 import { RuntimeComponents } from "@ericsanchezok/synergy-harness/lifecycle"
 import { testRuntime } from "@ericsanchezok/synergy-harness/test/support/runtime"
@@ -9,6 +9,8 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
 import { SessionInvoke } from "@ericsanchezok/synergy-harness/session/invoke"
+import { SessionResume } from "@ericsanchezok/synergy-harness/session/resume"
+import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { SessionAbort } from "@ericsanchezok/synergy-harness/session/abort"
 import { SessionLifecycle } from "@ericsanchezok/synergy-harness/session/lifecycle"
 import { SessionExecutionOwners } from "@ericsanchezok/synergy-harness/session/execution-owners"
@@ -58,6 +60,12 @@ function provider() {
   const prompts: string[] = []
   const roots: string[] = []
   let interrupt = false
+  let nextModel:
+    | {
+        entered: ReturnType<typeof Promise.withResolvers<void>>
+        release: ReturnType<typeof Promise.withResolvers<void>>
+      }
+    | undefined
   const catalog = Provider.fromModelsDevProvider({
     id: "fixture",
     name: "Fixture",
@@ -93,6 +101,12 @@ function provider() {
         },
         async doStream(input: { prompt: unknown; abortSignal?: AbortSignal }) {
           if (modelID === "chat") prompts.push(JSON.stringify(input.prompt))
+          if (modelID === "chat" && nextModel) {
+            const held = nextModel
+            nextModel = undefined
+            held.entered.resolve()
+            await held.release.promise
+          }
           return {
             stream: new ReadableStream({
               start(output) {
@@ -127,6 +141,11 @@ function provider() {
     roots,
     interruptNext() {
       interrupt = true
+    },
+    holdNext() {
+      const held = { entered: Promise.withResolvers<void>(), release: Promise.withResolvers<void>() }
+      nextModel = held
+      return held
     },
     register() {
       ProviderCatalogSource.register({ providers: async () => ({ fixture: catalog }) })
@@ -318,7 +337,51 @@ for (const materializeBeforeReinstall of [true, false]) {
         within(async () => {
           const session = await Session.get(sessionID)
           expect(await SessionExecutionOwners.allowsResume(session)).toBe(true)
-          expect(await continueSession(sessionID)).toBe(true)
+          if (materializeBeforeReinstall) expect(await continueSession(sessionID)).toBe(true)
+          else {
+            const held = modelFixture.holdNext()
+            const joinedWake = Promise.withResolvers<{ operation: Promise<void> }>()
+            const wake = SessionManager.wake
+            using waking = spyOn(SessionManager, "wake").mockImplementation((...args) => {
+              const owned = args[0] === sessionID && SessionManager.isRunning(sessionID)
+              const operation = wake(...args)
+              if (owned) joinedWake.resolve({ operation })
+              return operation
+            })
+            const request = SessionResume.request
+            using admitted = spyOn(SessionResume, "request").mockImplementation(async (...args) => {
+              const receipt = await request(...args)
+              if (receipt.outcome === "accepted") await held.entered.promise
+              return receipt
+            })
+            let settled = false
+            const continued = continueSession(sessionID).finally(() => {
+              settled = true
+            })
+            const outcome = continued.then(
+              (value) => ({ kind: "completed" as const, value }),
+              (error: unknown) => ({ kind: "failed" as const, error }),
+            )
+            try {
+              const observed = await Promise.race([
+                joinedWake.promise.then((job) => ({ kind: "wake" as const, ...job })),
+                outcome,
+              ])
+              if (observed.kind === "failed") throw observed.error
+              if (observed.kind !== "wake")
+                throw new Error("Continue returned without observing the original background owner")
+              await observed.operation.then(() => undefined)
+              expect(SessionManager.isRunning(sessionID)).toBe(true)
+              expect(await continueSession(sessionID)).toBe(true)
+              expect(SessionManager.isRunning(sessionID)).toBe(true)
+              expect(settled).toBe(false)
+            } finally {
+              held.release.resolve()
+              await outcome
+              await SessionManager.waitForIdle(sessionID)
+            }
+            expect(await continued).toBe(true)
+          }
           expect(await SessionInbox.latestRootID(sessionID)).toBe(newRootID)
           expect(await ContinuationKernel.propose(sessionID)).toBeUndefined()
           expect(modelFixture.roots.length).toBeGreaterThanOrEqual(2)

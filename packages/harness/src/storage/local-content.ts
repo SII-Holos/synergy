@@ -15,6 +15,7 @@ import { SnapshotStore } from "../session/snapshot-store"
 import { SnapshotRecords } from "../session/snapshot-records"
 import { SnapshotGit } from "../session/snapshot-git"
 import { storedSnapshots } from "../session/stored-snapshots"
+import { StoredSnapshotContent } from "../session/stored-snapshot-content"
 
 const sha256 = (bytes: Uint8Array | string) => createHash("sha256").update(bytes).digest("hex")
 const Source = z.union([
@@ -213,7 +214,11 @@ export async function convertLocalContent(input: {
       if (!roots.length) {
         if (owner?.backend === "legacy")
           await target(() =>
-            Storage.write(StoragePath.snapshotOwner(scopeID, sessionID), { version: 2, backend: "shared" }),
+            Storage.write(StoragePath.snapshotOwner(scopeID, sessionID), {
+              version: 3,
+              backend: "shared",
+              retentionID: sessionID,
+            }),
           )
         continue
       }
@@ -230,18 +235,9 @@ export async function convertLocalContent(input: {
       for (const root of roots) {
         await target(async () => {
           await snapshots.retain(scopeID, sessionID, root, repository, input.signal)
-          const manifest = await Storage.read<{ packs: Array<{ chunks: Array<{ bytes: number }> }> }>([
-            "sessions",
-            scopeID,
-            sessionID,
-            "snapshot_content",
-            root,
-            "manifest",
-          ])
-          budget(
-            manifest.packs.reduce((n, pack) => n + pack.chunks.reduce((m, chunk) => m + chunk.bytes, 0), 0),
-            true,
-          )
+          const manifest = await StoredSnapshotContent.read(scopeID, sessionID, root)
+          if (!manifest) throw new StorageIntegrityError("Converted Snapshot manifest is missing")
+          budget(StoredSnapshotContent.size(manifest), true)
           const parent = path.join(input.target.artifactDirectory, "conversion-check")
           await fs.mkdir(parent, { recursive: true, mode: 0o700 })
           const directory = await fs.mkdtemp(path.join(parent, "snapshot-"))
@@ -257,7 +253,11 @@ export async function convertLocalContent(input: {
         result.snapshots++
       }
       await target(() =>
-        Storage.write(StoragePath.snapshotOwner(scopeID, sessionID), { version: 2, backend: "shared" }),
+        Storage.write(StoragePath.snapshotOwner(scopeID, sessionID), {
+          version: 3,
+          backend: "shared",
+          retentionID: sessionID,
+        }),
       )
     }
     await target(() =>

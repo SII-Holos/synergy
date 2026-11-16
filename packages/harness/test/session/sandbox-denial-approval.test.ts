@@ -11,6 +11,10 @@ import { EnforcementError } from "../../src/enforcement/errors"
 import { tmpdir } from "../support/fixture"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
+import { withRun } from "../support/rollout"
+import { Session } from "../../src/session"
+import { SessionManager } from "../../src/session/manager"
+import { MessageV2 } from "../../src/session/message-v2"
 const runtime = await testRuntime({ register: () => SandboxHost.register(sandboxHost({ sandboxed: true })) })
 
 // ---------------------------------------------------------------------------
@@ -95,10 +99,29 @@ function bashRegistryTool(prepare: { mock: { calls: any[][] } }) {
   }
 }
 
-function minimalProcessor(executions: Map<string, Promise<any>>) {
+async function withBashSession(
+  controlProfile: NonNullable<Session.Info["controlProfile"]>,
+  action: (session: Session.Info, message: MessageV2.Assistant) => Promise<void>,
+) {
+  const session = await Session.create({ controlProfile })
+  await SessionManager.run(session.id, () =>
+    withRun({ session }, async (frame) => {
+      const message = MessageV2.Assistant.parse(
+        await MessageV2.readInfo({
+          scopeID: session.scope.id,
+          sessionID: session.id,
+          messageID: frame.messageID,
+        }),
+      )
+      await action(session, message)
+    }),
+  )
+}
+
+function minimalProcessor(executions: Map<string, Promise<any>>, message: MessageV2.Assistant) {
   const callbacks = new Map<string, Promise<unknown>>()
   return {
-    message: { id: "msg_p1_sandbox", rootID: "msg_p1_sandbox_root", parentID: "msg_p1_sandbox_root" },
+    message,
     partFromToolCall: () => undefined,
     modelInputFromToolCall: () => undefined,
     updateToolCallState: async () => {},
@@ -154,6 +177,8 @@ async function waitForPermission(sessionID: string, timeoutMs = 3_000) {
 async function resolveBash(input: {
   controlProfile: string
   sessionID: string
+  session: Session.Info
+  processorMessage: MessageV2.Assistant
   prepare: { mock: { calls: any[][] } }
 }) {
   const executions = new Map<string, Promise<any>>()
@@ -173,7 +198,8 @@ async function resolveBash(input: {
       agent: agentFor(input.controlProfile),
       model,
       sessionID: input.sessionID,
-      processor: minimalProcessor(executions),
+      session: input.session,
+      processor: minimalProcessor(executions, input.processorMessage),
       userTools: { bash: true },
       includeMCP: false,
     })
@@ -224,40 +250,43 @@ describe("sandbox denial is actionable for the model", () => {
       await using tmp = await tmpdir({ git: true })
       await ScopeContext.provide({
         scope: await tmp.scope(),
-        fn: async () => {
-          const prepare = spyOn(SandboxHost, "prepareWrapper")
-          const { bash, executions, restore } = await resolveBash({
-            controlProfile: "guarded",
-            sessionID: "ses_p1_guarded_text",
-            prepare,
-          })
-          try {
-            const pending = waitForPermission("ses_p1_guarded_text")
-            const execution = bash
-              .execute(
-                { command: `out=${DENIED_PATH}; { echo hi; } > "$out"` },
-                { ...{ toolCallId: "call_p1_guarded_text" }, workBrief: "denied write" },
-              )
-              .catch((error: unknown) => error)
-            const request = await pending
-            if (request) await PermissionNext.reply({ requestID: request.id, reply: "once" })
-            await execution
+        fn: () =>
+          withBashSession("guarded", async (session, processorMessage) => {
+            const prepare = spyOn(SandboxHost, "prepareWrapper")
+            const { bash, executions, restore } = await resolveBash({
+              controlProfile: "guarded",
+              sessionID: session.id,
+              session,
+              processorMessage,
+              prepare,
+            })
+            try {
+              const pending = waitForPermission(session.id)
+              const execution = bash
+                .execute(
+                  { command: `out=${DENIED_PATH}; { echo hi; } > "$out"` },
+                  { ...{ toolCallId: "call_p1_guarded_text" }, workBrief: "denied write" },
+                )
+                .catch((error: unknown) => error)
+              const request = await pending
+              if (request) await PermissionNext.reply({ requestID: request.id, reply: "once" })
+              await execution
 
-            const outcome = await executions.get("call_p1_guarded_text")
-            expect(outcome.status).toBe("error")
-            const text: string = outcome.error
-            expect(text).toContain(DENIED_PATH)
-            expect(text).toMatch(/execution-time boundary/i)
-            expect(text).toMatch(/partial side effects/i)
-            expect(text).toContain("workspace_write")
-            expect(text).toContain(`deny(1) file-write-data ${DENIED_PATH}`)
-            // The structured explanation is not a policy refusal.
-            expect(text).not.toContain("Do not retry the same approach.")
-          } finally {
-            restore()
-            prepare.mockRestore()
-          }
-        },
+              const outcome = await executions.get("call_p1_guarded_text")
+              expect(outcome.status).toBe("error")
+              const text: string = outcome.error
+              expect(text).toContain(DENIED_PATH)
+              expect(text).toMatch(/execution-time boundary/i)
+              expect(text).toMatch(/partial side effects/i)
+              expect(text).toContain("workspace_write")
+              expect(text).toContain(`deny(1) file-write-data ${DENIED_PATH}`)
+              // The structured explanation is not a policy refusal.
+              expect(text).not.toContain("Do not retry the same approach.")
+            } finally {
+              restore()
+              prepare.mockRestore()
+            }
+          }),
       })
     }))
 
@@ -266,45 +295,48 @@ describe("sandbox denial is actionable for the model", () => {
       await using tmp = await tmpdir({ git: true })
       await ScopeContext.provide({
         scope: await tmp.scope(),
-        fn: async () => {
-          const prepare = spyOn(SandboxHost, "prepareWrapper")
-          const { bash, executions, restore } = await resolveBash({
-            controlProfile: "guarded",
-            sessionID: "ses_p1_guarded_approve",
-            prepare,
-          })
-          try {
-            const command = `out=${DENIED_PATH}; { echo hi; } > "$out"`
+        fn: () =>
+          withBashSession("guarded", async (session, processorMessage) => {
+            const prepare = spyOn(SandboxHost, "prepareWrapper")
+            const { bash, executions, restore } = await resolveBash({
+              controlProfile: "guarded",
+              sessionID: session.id,
+              session,
+              processorMessage,
+              prepare,
+            })
+            try {
+              const command = `out=${DENIED_PATH}; { echo hi; } > "$out"`
 
-            const pending = waitForPermission("ses_p1_guarded_approve")
-            const first = bash
-              .execute({ command, description: "denied write" }, { toolCallId: "call_p1_retry_first" })
-              .catch((error: unknown) => error)
-            const request = await pending
-            expect(request).toBeDefined()
-            // The ask is scoped to exactly the denied path, not a wildcard.
-            expect(request!.permission).toBe("external_directory")
-            expect(request!.patterns).toEqual([DENIED_PATH])
-            await PermissionNext.reply({ requestID: request!.id, reply: "once" })
-            await first
+              const pending = waitForPermission(session.id)
+              const first = bash
+                .execute({ command, description: "denied write" }, { toolCallId: "call_p1_retry_first" })
+                .catch((error: unknown) => error)
+              const request = await pending
+              expect(request).toBeDefined()
+              // The ask is scoped to exactly the denied path, not a wildcard.
+              expect(request!.permission).toBe("external_directory")
+              expect(request!.patterns).toEqual([DENIED_PATH])
+              await PermissionNext.reply({ requestID: request!.id, reply: "once" })
+              await first
 
-            const failed = await executions.get("call_p1_retry_first")
-            expect(failed.status).toBe("error")
+              const failed = await executions.get("call_p1_retry_first")
+              expect(failed.status).toBe("error")
 
-            // Retry of the same command: the approved path is now a sandbox write root.
-            const second = await bash.execute(
-              { command, description: "retry after approval" },
-              { toolCallId: "call_p1_retry_second" },
-            )
-            expect(second.output).toContain("retry-succeeded")
-            const retryInput = prepare.mock.calls[prepare.mock.calls.length - 1][0]
-            expect(retryInput.extraWritableRoots).toContain(DENIED_PATH)
-            expect(retryInput.extraReadRoots).toContain(DENIED_PATH)
-          } finally {
-            restore()
-            prepare.mockRestore()
-          }
-        },
+              // Retry of the same command: the approved path is now a sandbox write root.
+              const second = await bash.execute(
+                { command, description: "retry after approval" },
+                { toolCallId: "call_p1_retry_second" },
+              )
+              expect(second.output).toContain("retry-succeeded")
+              const retryInput = prepare.mock.calls[prepare.mock.calls.length - 1][0]
+              expect(retryInput.extraWritableRoots).toContain(DENIED_PATH)
+              expect(retryInput.extraReadRoots).toContain(DENIED_PATH)
+            } finally {
+              restore()
+              prepare.mockRestore()
+            }
+          }),
       })
     }))
 
@@ -313,34 +345,37 @@ describe("sandbox denial is actionable for the model", () => {
       await using tmp = await tmpdir({ git: true })
       await ScopeContext.provide({
         scope: await tmp.scope(),
-        fn: async () => {
-          const prepare = spyOn(SandboxHost, "prepareWrapper")
-          const { bash, executions, restore } = await resolveBash({
-            controlProfile: "guarded",
-            sessionID: "ses_p1_guarded_metadata",
-            prepare,
-          })
-          try {
-            const pending = waitForPermission("ses_p1_guarded_metadata")
-            const execution = bash
-              .execute(
-                { command: `out=${DENIED_PATH}; { echo hi; } > "$out"` },
-                { ...{ toolCallId: "call_p1_guarded_metadata" }, workBrief: "denied write" },
-              )
-              .catch((error: unknown) => error)
-            const request = await pending
-            if (request) await PermissionNext.reply({ requestID: request.id, reply: "once" })
-            await execution
+        fn: () =>
+          withBashSession("guarded", async (session, processorMessage) => {
+            const prepare = spyOn(SandboxHost, "prepareWrapper")
+            const { bash, executions, restore } = await resolveBash({
+              controlProfile: "guarded",
+              sessionID: session.id,
+              session,
+              processorMessage,
+              prepare,
+            })
+            try {
+              const pending = waitForPermission(session.id)
+              const execution = bash
+                .execute(
+                  { command: `out=${DENIED_PATH}; { echo hi; } > "$out"` },
+                  { ...{ toolCallId: "call_p1_guarded_metadata" }, workBrief: "denied write" },
+                )
+                .catch((error: unknown) => error)
+              const request = await pending
+              if (request) await PermissionNext.reply({ requestID: request.id, reply: "once" })
+              await execution
 
-            const outcome = await executions.get("call_p1_guarded_metadata")
-            expect(outcome.status).toBe("error")
-            expect(outcome.metadata?.approval?.status).toBe("sandbox_blocked")
-            expect(outcome.metadata?.approval?.source).toBe("sandbox")
-          } finally {
-            restore()
-            prepare.mockRestore()
-          }
-        },
+              const outcome = await executions.get("call_p1_guarded_metadata")
+              expect(outcome.status).toBe("error")
+              expect(outcome.metadata?.approval?.status).toBe("sandbox_blocked")
+              expect(outcome.metadata?.approval?.source).toBe("sandbox")
+            } finally {
+              restore()
+              prepare.mockRestore()
+            }
+          }),
       })
     }))
 
@@ -349,33 +384,36 @@ describe("sandbox denial is actionable for the model", () => {
       await using tmp = await tmpdir({ git: true })
       await ScopeContext.provide({
         scope: await tmp.scope(),
-        fn: async () => {
-          const prepare = spyOn(SandboxHost, "prepareWrapper")
-          const { bash, executions, restore } = await resolveBash({
-            controlProfile: "autonomous",
-            sessionID: "ses_p1_autonomous",
-            prepare,
-          })
-          try {
-            await bash
-              .execute(
-                { command: `out=${DENIED_PATH}; { echo hi; } > "$out"` },
-                { ...{ toolCallId: "call_p1_autonomous" }, workBrief: "denied write" },
-              )
-              .catch((error: unknown) => error)
+        fn: () =>
+          withBashSession("autonomous", async (session, processorMessage) => {
+            const prepare = spyOn(SandboxHost, "prepareWrapper")
+            const { bash, executions, restore } = await resolveBash({
+              controlProfile: "autonomous",
+              sessionID: session.id,
+              session,
+              processorMessage,
+              prepare,
+            })
+            try {
+              await bash
+                .execute(
+                  { command: `out=${DENIED_PATH}; { echo hi; } > "$out"` },
+                  { ...{ toolCallId: "call_p1_autonomous" }, workBrief: "denied write" },
+                )
+                .catch((error: unknown) => error)
 
-            const pending = await PermissionNext.list()
-            expect(pending.filter((item) => item.sessionID === "ses_p1_autonomous")).toHaveLength(0)
+              const pending = await PermissionNext.list()
+              expect(pending.filter((item) => item.sessionID === session.id)).toHaveLength(0)
 
-            const outcome = await executions.get("call_p1_autonomous")
-            expect(outcome.status).toBe("error")
-            expect(outcome.error).toMatch(/no approval is possible/i)
-            expect(outcome.error).toMatch(/cannot be retried as-is/i)
-          } finally {
-            restore()
-            prepare.mockRestore()
-          }
-        },
+              const outcome = await executions.get("call_p1_autonomous")
+              expect(outcome.status).toBe("error")
+              expect(outcome.error).toMatch(/no approval is possible/i)
+              expect(outcome.error).toMatch(/cannot be retried as-is/i)
+            } finally {
+              restore()
+              prepare.mockRestore()
+            }
+          }),
       })
     }))
 
@@ -384,32 +422,35 @@ describe("sandbox denial is actionable for the model", () => {
       await using tmp = await tmpdir({ git: true })
       await ScopeContext.provide({
         scope: await tmp.scope(),
-        fn: async () => {
-          const prepare = spyOn(SandboxHost, "prepareWrapper")
-          const { bash, executions, restore } = await resolveBash({
-            controlProfile: "full_access",
-            sessionID: "ses_p1_full_access",
-            prepare,
-          })
-          try {
-            await bash
-              .execute(
-                { command: `out=${DENIED_PATH}; { echo hi; } > "$out"` },
-                { ...{ toolCallId: "call_p1_full_access" }, workBrief: "denied write" },
-              )
-              .catch((error: unknown) => error)
+        fn: () =>
+          withBashSession("full_access", async (session, processorMessage) => {
+            const prepare = spyOn(SandboxHost, "prepareWrapper")
+            const { bash, executions, restore } = await resolveBash({
+              controlProfile: "full_access",
+              sessionID: session.id,
+              session,
+              processorMessage,
+              prepare,
+            })
+            try {
+              await bash
+                .execute(
+                  { command: `out=${DENIED_PATH}; { echo hi; } > "$out"` },
+                  { ...{ toolCallId: "call_p1_full_access" }, workBrief: "denied write" },
+                )
+                .catch((error: unknown) => error)
 
-            const pending = await PermissionNext.list()
-            expect(pending.filter((item) => item.sessionID === "ses_p1_full_access")).toHaveLength(0)
+              const pending = await PermissionNext.list()
+              expect(pending.filter((item) => item.sessionID === session.id)).toHaveLength(0)
 
-            const outcome = await executions.get("call_p1_full_access")
-            expect(outcome.status).toBe("error")
-            expect(outcome.error).toContain(DENIED_PATH)
-          } finally {
-            restore()
-            prepare.mockRestore()
-          }
-        },
+              const outcome = await executions.get("call_p1_full_access")
+              expect(outcome.status).toBe("error")
+              expect(outcome.error).toContain(DENIED_PATH)
+            } finally {
+              restore()
+              prepare.mockRestore()
+            }
+          }),
       })
     }))
 
@@ -418,62 +459,64 @@ describe("sandbox denial is actionable for the model", () => {
       await using tmp = await tmpdir({ git: true })
       await ScopeContext.provide({
         scope: await tmp.scope(),
-        fn: async () => {
-          const prepare = spyOn(SandboxHost, "prepareWrapper")
-          const originalRegistryTools = ToolRegistry.catalog
-          const executions = new Map<string, Promise<any>>()
-          ;(ToolRegistry.catalog as any) = mock(async () => [
-            {
-              id: "bash",
-              description: "Bash tool",
-              parameters: z.object({ command: z.string(), description: z.string().optional() }),
-              async execute() {
-                const explanation = buildExplanation({
-                  kind: "unknown",
-                  platform: "linux",
-                  backend: "bwrap",
-                  command: "/bin/sh -c opaque",
-                  denialSource: "os",
-                  rawMessage: "Operation not permitted",
-                  profileMode: "workspace_write",
-                  networkMode: "restricted",
-                  allowedWriteRoots: [WORKSPACE],
-                })
-                throw new EnforcementError.SandboxBlocked(
-                  "Command blocked by linux sandbox (bwrap).",
-                  1,
-                  "seccomp_eperm",
-                  "raw output",
-                  explanation,
-                )
+        fn: () =>
+          withBashSession("guarded", async (session, processorMessage) => {
+            const prepare = spyOn(SandboxHost, "prepareWrapper")
+            const originalRegistryTools = ToolRegistry.catalog
+            const executions = new Map<string, Promise<any>>()
+            ;(ToolRegistry.catalog as any) = mock(async () => [
+              {
+                id: "bash",
+                description: "Bash tool",
+                parameters: z.object({ command: z.string(), description: z.string().optional() }),
+                async execute() {
+                  const explanation = buildExplanation({
+                    kind: "unknown",
+                    platform: "linux",
+                    backend: "bwrap",
+                    command: "/bin/sh -c opaque",
+                    denialSource: "os",
+                    rawMessage: "Operation not permitted",
+                    profileMode: "workspace_write",
+                    networkMode: "restricted",
+                    allowedWriteRoots: [WORKSPACE],
+                  })
+                  throw new EnforcementError.SandboxBlocked(
+                    "Command blocked by linux sandbox (bwrap).",
+                    1,
+                    "seccomp_eperm",
+                    "raw output",
+                    explanation,
+                  )
+                },
               },
-            },
-          ])
-          try {
-            const resolved = await ToolResolver.resolveWithAvailability({
-              agent: agentFor("guarded"),
-              model,
-              sessionID: "ses_p1_no_path",
-              processor: minimalProcessor(executions),
-              userTools: { bash: true },
-              includeMCP: false,
-            })
-            await (resolved.executionTools.bash as any)
-              .execute({ command: "opaque" }, { ...{ toolCallId: "call_p1_no_path" }, workBrief: "opaque" })
-              .catch((error: unknown) => error)
+            ])
+            try {
+              const resolved = await ToolResolver.resolveWithAvailability({
+                agent: agentFor("guarded"),
+                model,
+                sessionID: session.id,
+                session,
+                processor: minimalProcessor(executions, processorMessage),
+                userTools: { bash: true },
+                includeMCP: false,
+              })
+              await (resolved.executionTools.bash as any)
+                .execute({ command: "opaque" }, { ...{ toolCallId: "call_p1_no_path" }, workBrief: "opaque" })
+                .catch((error: unknown) => error)
 
-            const pending = await PermissionNext.list()
-            expect(pending.filter((item) => item.sessionID === "ses_p1_no_path")).toHaveLength(0)
+              const pending = await PermissionNext.list()
+              expect(pending.filter((item) => item.sessionID === session.id)).toHaveLength(0)
 
-            const outcome = await executions.get("call_p1_no_path")
-            expect(outcome.status).toBe("error")
-            expect(outcome.error).toMatch(/partial side effects/i)
-            expect(outcome.error).toMatch(/no specific path could be identified/i)
-          } finally {
-            ;(ToolRegistry.catalog as any) = originalRegistryTools
-            prepare.mockRestore()
-          }
-        },
+              const outcome = await executions.get("call_p1_no_path")
+              expect(outcome.status).toBe("error")
+              expect(outcome.error).toMatch(/partial side effects/i)
+              expect(outcome.error).toMatch(/no specific path could be identified/i)
+            } finally {
+              ;(ToolRegistry.catalog as any) = originalRegistryTools
+              prepare.mockRestore()
+            }
+          }),
       })
     }))
 })

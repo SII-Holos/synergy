@@ -4,6 +4,7 @@ import path from "node:path"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { WorkspaceCoordinator } from "@ericsanchezok/synergy-local-runtime/workspace/coordinator"
 import { registerConfig } from "../../src/config-schema"
+import { FormatterProcess } from "../../src/process"
 
 export function testRuntime() {
   return harnessRuntime({
@@ -15,6 +16,7 @@ export function testRuntime() {
           }),
         })
         registerConfig()
+        FormatterProcess.register()
       },
     },
   })

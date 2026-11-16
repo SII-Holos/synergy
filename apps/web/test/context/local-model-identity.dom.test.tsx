@@ -27,7 +27,7 @@ beforeAll(async () => {
         { id: "a:b", name: "Third", models: { c: model("c") } },
       ]
       export const useParams = () => ({})
-      export const useSDK = () => ({ url: "http://fixture.test", scopeKey: "home", client: {} })
+      export const useSDK = () => ({ url: "http://fixture.test", cacheKey: new URLSearchParams(location.search).get("owner") || "personal-fixture", scopeKey: "home", client: {} })
       export const useSync = () => ({ data: {
         agent: [{ name: "fixture", mode: "primary" }],
         config: { quick_switcher: { models: [{ providerID: "a", modelID: "b:c", state: "add" }] } },
@@ -102,6 +102,9 @@ test("recent model writes preserve distinct provider/model pairs rather than con
       { providerID: "a:b", modelID: "c" },
       { providerID: "ab", modelID: "c" },
     ])
+    await page.goto(server.url + "?owner=another-personal-fixture")
+    expect(JSON.parse(await page.getByLabel("Recent models").innerText())).toEqual([])
+    await page.goto(server.url)
     await page.reload()
     expect(JSON.parse(await page.getByLabel("Recent models").innerText())).toEqual([
       { providerID: "a", modelID: "bc" },

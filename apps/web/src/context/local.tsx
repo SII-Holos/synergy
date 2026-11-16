@@ -178,7 +178,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
 
       const [store, setStore, _, modelReady] = persisted(
         {
-          ...Persist.global("model", ["model.v1"]),
+          ...Persist.connection(sdk.cacheKey, "model"),
           migrate: migrateModelStore,
         },
         createStore<{
@@ -231,7 +231,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         }
 
         const entry = createRoot((dispose) => ({
-          value: createModelVariantSession(Persist.scopeKey(sdk.url, dir), id),
+          value: createModelVariantSession(Persist.scopeKey(sdk.cacheKey, dir), id),
           dispose,
         }))
 

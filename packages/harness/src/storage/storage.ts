@@ -1,9 +1,10 @@
 import { StorageMutationGuard } from "./mutation-guard"
 import { RuntimeContext } from "../lifecycle/context"
 import path from "node:path"
+import fs from "node:fs/promises"
 import { createHash } from "node:crypto"
 import { withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
-import { StorageQueue } from "./queue"
+import { StorageQueue, storageQueueSignal } from "./queue"
 import { AsyncLocalStorage } from "node:async_hooks"
 import { ArtifactPack } from "./artifact-pack"
 import { ObjectArtifacts, type ObjectArtifactOptions } from "./object-artifacts"
@@ -15,6 +16,7 @@ import {
   StorageClosedError,
   StorageCommitUnknownError,
   StorageConflictError,
+  StorageIntegrityError,
   StorageUnavailableError as UnavailableStorage,
 } from "./errors"
 import {
@@ -30,11 +32,15 @@ import { ObservabilityIssues } from "../observability/issues"
 import { ObservabilityResources } from "../observability/resources"
 import { StorageEventSinks } from "./event-sinks"
 import { observeStorageProgress } from "./progress"
+import { StoragePortable } from "./portable"
+import { Global } from "../global"
+import { ArtifactStreamProducers } from "./stream-producers"
 
 export namespace Storage {
   export const NotFoundError = MissingRecord
   export const BusyError = BusyStorage
   export const UnavailableError = UnavailableStorage
+  export const CommitUnknownError = StorageCommitUnknownError
   export const writeJsonAtomic = AtomicFile.writeJsonAtomic
   export interface Handle {
     store: TransactionalStore
@@ -47,6 +53,7 @@ export namespace Storage {
     transaction?: StoreTransaction
     effects?: Array<() => Promise<unknown> | void>
     settled?: Array<(outcome: "committed" | "aborted" | "unknown") => void>
+    failures?: Array<(error: unknown) => undefined>
     pending?: Promise<unknown>[]
     commitGuards?: Array<() => void>
     eventCapture?: Promise<void>
@@ -121,6 +128,9 @@ export namespace Storage {
     const settled: NonNullable<Context["settled"]> = []
     let commitGuards = options?.commitGuard ? [options.commitGuard] : []
     let outcome: "committed" | "aborted" | "unknown" = "aborted"
+    let failures: Array<(error: unknown) => undefined> = []
+    let failed = false
+    let failure: unknown
     try {
       const result = await parent.store.transaction(
         async (tx) => {
@@ -130,6 +140,7 @@ export namespace Storage {
           }
           effects = []
           acknowledgements = []
+          failures = []
           commitGuards = options?.commitGuard ? [options.commitGuard] : []
           const pending: Promise<unknown>[] = []
           return RuntimeContext.transaction(() =>
@@ -141,6 +152,7 @@ export namespace Storage {
                 effects,
                 pending,
                 settled,
+                failures,
                 commitGuards,
                 acknowledgements,
                 eventCapture: undefined,
@@ -195,10 +207,29 @@ export namespace Storage {
       }
       return result
     } catch (error) {
-      if (error instanceof StorageCommitUnknownError) outcome = "unknown"
+      failed = true
+      failure = error
+      if (outcome !== "committed" && error instanceof StorageCommitUnknownError) outcome = "unknown"
       throw error
     } finally {
       for (const release of settled) release(outcome)
+      if (failed && outcome !== "committed")
+        for (const observe of failures) {
+          try {
+            observe(failure)
+          } catch (error) {
+            try {
+              ObservabilityIssues.raise({
+                code: "STORAGE_FAILURE_OBSERVER_FAILED",
+                severity: "error",
+                module: "storage",
+                title: "A storage failure observer could not finish",
+                message: "The original transaction failure remains the operation outcome.",
+                evidence: { errorName: error instanceof Error ? error.name : "unknown" },
+              })
+            } catch {}
+          }
+        }
     }
   }
 
@@ -230,6 +261,15 @@ export namespace Storage {
   export function inWriteTransaction() {
     const active = context.getStore()
     return active?.owner === RuntimeContext.tryCurrent() && Boolean(active?.transaction && active.effects)
+  }
+
+  /** Registers synchronous in-memory diagnostics for the original write outcome, never recovery effects. */
+  export function afterFailure(observe: (originalError: unknown) => undefined): void {
+    const active = context.getStore()
+    if (active?.owner !== RuntimeContext.tryCurrent() || !active?.transaction || !active.failures || !active.effects)
+      throw new StorageConflictError("Failure observation requires the original live write transaction")
+    active.store.assertWriteTransaction(active.transaction)
+    active.failures.push(observe)
   }
 
   export function afterCommit(effect: () => Promise<unknown> | void): void {
@@ -352,7 +392,7 @@ export namespace Storage {
     if (!pack) {
       pack = {
         pack: new ArtifactPack(path.join(handle.artifactDirectory, "agent-artifacts")),
-        objects: handle.artifactObjects ? new ObjectArtifacts(handle.store, handle.artifactObjects) : undefined,
+        objects: handle.artifactObjects ? new ObjectArtifacts(handle.store, { ...handle.artifactObjects }) : undefined,
         gate: new StorageQueue("artifact.gate"),
         prepared: new Map(),
       }
@@ -392,38 +432,183 @@ export namespace Storage {
       const owner = JSON.stringify(key.slice(0, ["sessions", "operations"].includes(key[0]) ? 3 : 1))
       const object = await state.objects?.prepare(bytes)
       const location = object?.location ?? (existing ? previous : await state.pack.append(bytes, owner))
-      const held = {
-        store: current().store,
-        runtime: RuntimeContext.current(),
-        key: [...key],
-        location,
-        released: false,
-        publishing: false,
-        outcome: "aborted" as "committed" | "aborted" | "unknown",
-      }
-      state.prepared.set(location.pack, (state.prepared.get(location.pack) ?? 0) + 1)
-      const token: PreparedBinary = {
-        [preparedBinaryBrand]: true,
-        [Symbol.dispose]() {
-          if (held.released || held.publishing) return
-          held.released = true
-          if (object) state.objects!.release(object, held.outcome)
-          const count = (state.prepared.get(location.pack) ?? 1) - 1
-          if (count) state.prepared.set(location.pack, count)
-          else state.prepared.delete(location.pack)
-        },
-      }
-      preparedBinaries.set(token, held)
-      if (object) preparedObjects.set(token, { backend: state.objects!, object })
-      ObservabilityResources.addWrite(content.byteLength)
-      return token
+      return retainPreparedBinary(key, state, location, object)
     })
   }
+
+  function retainPreparedBinary(
+    key: string[],
+    state: ReturnType<typeof artifactPack>,
+    location: ArtifactLocation,
+    object?: Awaited<ReturnType<ObjectArtifacts["prepare"]>>,
+  ): PreparedBinary {
+    const held = {
+      store: current().store,
+      runtime: RuntimeContext.current(),
+      key: [...key],
+      location,
+      released: false,
+      publishing: false,
+      outcome: "aborted" as "committed" | "aborted" | "unknown",
+    }
+    state.prepared.set(location.pack, (state.prepared.get(location.pack) ?? 0) + 1)
+    const token: PreparedBinary = {
+      [preparedBinaryBrand]: true,
+      [Symbol.dispose]() {
+        if (held.released || held.publishing || (held.outcome === "unknown" && !object)) return
+        held.released = true
+        if (object) state.objects!.release(object, held.outcome)
+        const count = (state.prepared.get(location.pack) ?? 1) - 1
+        if (count) state.prepared.set(location.pack, count)
+        else state.prepared.delete(location.pack)
+      },
+    }
+    preparedBinaries.set(token, held)
+    if (object) preparedObjects.set(token, { backend: state.objects!, object })
+    ObservabilityResources.addWrite(location.size)
+    return token
+  }
+
+  export async function prepareBinaryStream(
+    key: string[],
+    content: AsyncIterable<Uint8Array>,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<PreparedBinary> {
+    if (current().transaction)
+      throw new StorageConflictError("Artifact bytes must be flushed before the business transaction")
+    const runtime = RuntimeContext.current()
+    const handle = current()
+    const store = handle.store
+    const artifactDirectory = handle.artifactDirectory
+    const artifactObjects = handle.artifactObjects
+    const blobs = artifactObjects?.blobs
+    const writerID = artifactObjects?.writerID
+    const now = artifactObjects?.now
+    const stableKey = [...key]
+    const state = artifactPack(stableKey)
+    const inherited = storageQueueSignal()
+    const signal =
+      inherited && options.signal ? AbortSignal.any([inherited, options.signal]) : (inherited ?? options.signal)
+    return ArtifactStreamProducers.run(async () => {
+      const assertOwner = () => {
+        const active = current()
+        if (
+          RuntimeContext.current() !== runtime ||
+          active.store !== store ||
+          active.transaction ||
+          active.artifactDirectory !== artifactDirectory ||
+          active.artifactObjects !== artifactObjects ||
+          active.artifactObjects?.blobs !== blobs ||
+          active.artifactObjects?.writerID !== writerID ||
+          active.artifactObjects?.now !== now
+        )
+          throw new StorageConflictError("Artifact preparation belongs to another storage owner")
+      }
+      assertOwner()
+      const parent = path.join(Global.Path.cache, "artifact-stream-preparations")
+      await fs.mkdir(parent, { recursive: true, mode: 0o700 })
+      const directory = await fs.mkdtemp(path.join(parent, "prepare-"))
+      let file: Awaited<ReturnType<typeof fs.open>> | undefined
+      let prepared: PreparedBinary | undefined
+      try {
+        file = await fs.open(path.join(directory, "content"), "wx+", 0o600)
+        const checksum = createHash("sha256")
+        let size = 0
+        for await (const chunk of content) {
+          assertOwner()
+          signal?.throwIfAborted()
+          if (!(chunk instanceof Uint8Array))
+            throw new StorageIntegrityError("Artifact stream must contain byte chunks")
+          if (!Number.isSafeInteger(size + chunk.length))
+            throw new StorageIntegrityError("Artifact stream byte count is not representable")
+          let offset = 0
+          while (offset < chunk.length) {
+            const result = await file.write(chunk, offset, chunk.length - offset, size + offset)
+            if (!result.bytesWritten) throw new StorageIntegrityError("Artifact stream write made no progress")
+            offset += result.bytesWritten
+          }
+          checksum.update(chunk)
+          size += chunk.length
+        }
+        signal?.throwIfAborted()
+        assertOwner()
+        await file.sync()
+        const sha256 = checksum.digest("hex")
+        const spool = file
+        const read = async function* () {
+          let offset = 0
+          while (offset < size) {
+            assertOwner()
+            signal?.throwIfAborted()
+            const bytes = new Uint8Array(Math.min(4 * 1024 * 1024, size - offset))
+            const result = await spool.read(bytes, 0, bytes.length, offset)
+            assertOwner()
+            if (!result.bytesRead) throw new StorageIntegrityError("Artifact preparation spool is incomplete")
+            offset += result.bytesRead
+            yield bytes.subarray(0, result.bytesRead)
+          }
+          if ((await spool.stat()).size !== size)
+            throw new StorageIntegrityError("Artifact preparation spool size changed")
+        }
+        prepared = await state.gate.run(
+          async () => {
+            signal?.throwIfAborted()
+            assertOwner()
+            const object = await state.objects?.prepareStream(read(), signal)
+            const location = object?.location ?? (await state.pack.appendStream(read(), signal))
+            try {
+              assertOwner()
+            } catch (error) {
+              if (object) state.objects!.release(object, "aborted")
+              throw error
+            }
+            if (location.sha256 !== sha256 || location.size !== size) {
+              if (object) state.objects!.release(object, "aborted")
+              throw new StorageIntegrityError("Artifact preparation spool checksum changed")
+            }
+            return retainPreparedBinary(stableKey, state, location, object)
+          },
+          { signal },
+        )
+        return prepared
+      } finally {
+        try {
+          try {
+            await file?.close()
+          } finally {
+            await fs.rm(directory, { recursive: true, force: true })
+          }
+        } catch (error) {
+          prepared?.[Symbol.dispose]()
+          throw error
+        }
+      }
+    }, signal)
+  }
+
+  export const closeArtifactAdmission = ArtifactStreamProducers.closeAdmission
+  export const drainArtifactPreparations = ArtifactStreamProducers.drain
 
   const preparedObjects = new WeakMap<
     PreparedBinary,
     { backend: ObjectArtifacts; object: Awaited<ReturnType<ObjectArtifacts["prepare"]>> }
   >()
+
+  export async function preparedBinaryReceipt(token: PreparedBinary) {
+    const prepared = preparedBinaries.get(token)
+    function assertOwner() {
+      if (!prepared || prepared.released || prepared.publishing)
+        throw new StorageConflictError("The prepared artifact is not available")
+      if (prepared.store !== current().store || prepared.runtime !== RuntimeContext.current())
+        throw new StorageConflictError("The prepared artifact belongs to another owner")
+    }
+    assertOwner()
+    const object = preparedObjects.get(token)
+    if (!object) return undefined
+    const receipt = await object.backend.preparationReceipt(object.object)
+    assertOwner()
+    return Object.freeze({ ...receipt })
+  }
 
   export async function publishPreparedBinary(token: PreparedBinary) {
     const prepared = preparedBinaries.get(token)
@@ -454,6 +639,28 @@ export namespace Storage {
     await transaction(() => publishPreparedBinary(prepared))
   }
 
+  export function artifactReferences(input: { prefix: string[]; after?: string[]; limit?: number }) {
+    return snapshot((transaction) => transaction.artifactPage(input))
+  }
+
+  export async function publishBinaryReference(
+    source: string[],
+    target: string[],
+    options: { replace?: boolean } = {},
+  ) {
+    const transaction = current().transaction
+    if (!transaction || !inWriteTransaction())
+      throw new StorageConflictError("Binary reference publication requires a write transaction")
+    const location = await transaction.artifact(source)
+    const previous = await transaction.artifact(target).catch((error: unknown) => {
+      if (error instanceof NotFoundError) return undefined
+      throw error
+    })
+    if (previous && (previous.sha256 !== location.sha256 || previous.size !== location.size) && !options.replace)
+      throw new StorageConflictError("Binary reference conflicts with destination data")
+    await transaction.writeArtifacts([{ key: target, location }])
+  }
+
   export async function readBinary(key: string[], options?: { maxBytes?: number }): Promise<Uint8Array> {
     const state = artifactPack(key)
     const handle = current()
@@ -466,6 +673,198 @@ export namespace Storage {
       return content
     }
     return handle.transaction ? read() : state.gate.run(read)
+  }
+
+  export function readBinaryStream(key: string[], options: { signal?: AbortSignal } = {}): AsyncGenerator<Uint8Array> {
+    const runtime = RuntimeContext.current()
+    const handle = current()
+    if (handle.transaction)
+      throw new StorageConflictError("Artifact streams must be opened outside a business transaction")
+    const stableKey = [...key]
+    const state = artifactPack(stableKey)
+    function assertOwner() {
+      if (RuntimeContext.current() !== runtime || current().store !== handle.store)
+        throw new StorageConflictError("Artifact stream belongs to another storage owner")
+    }
+    return (async function* () {
+      assertOwner()
+      const location = await state.gate.run(
+        async () => {
+          const retained = await snapshot((tx) => tx.artifact(stableKey))
+          state.prepared.set(retained.pack, (state.prepared.get(retained.pack) ?? 0) + 1)
+          return retained
+        },
+        { signal: options.signal },
+      )
+      try {
+        for await (const chunk of (state.objects ?? state.pack).stream(location, options.signal)) {
+          assertOwner()
+          ObservabilityResources.addRead(chunk.length)
+          yield chunk
+        }
+      } finally {
+        runtime.run(() =>
+          provide(handle, () => {
+            const remaining = (state.prepared.get(location.pack) ?? 1) - 1
+            if (remaining) state.prepared.set(location.pack, remaining)
+            else state.prepared.delete(location.pack)
+          }),
+        )
+      }
+    })()
+  }
+
+  export interface ArtifactCheckpoint {
+    exportPortable(
+      filename: string,
+      options?: StoragePortable.ExportOptions,
+    ): Promise<{ count: number; sha256: string }>
+    stream(location: ArtifactLocation): AsyncGenerator<Uint8Array>
+  }
+  const checkpointPins = new WeakMap<
+    ArtifactCheckpoint,
+    {
+      assert(): void
+      retain(tx: StoreTransaction, location: ArtifactLocation, settled: NonNullable<Context["settled"]>): void
+    }
+  >()
+  export async function retainCheckpointArtifact(checkpoint: ArtifactCheckpoint, key: string[]) {
+    const pin = checkpointPins.get(checkpoint)
+    const handle = current()
+    const transaction = handle.transaction
+    const settled = handle.settled
+    const guards = handle.commitGuards
+    if (!pin || !transaction || !settled || !guards || !inWriteTransaction())
+      throw new StorageConflictError(
+        "Checkpoint retention requires its original native checkpoint and write transaction",
+      )
+    pin.assert()
+    const location = await transaction.artifact([...key])
+    pin.assert()
+    pin.retain(transaction, location, settled)
+    guards.push(pin.assert)
+    return location
+  }
+
+  export async function withArtifactCheckpoint<T>(
+    body: (checkpoint: ArtifactCheckpoint) => Promise<T>,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<T> {
+    const runtime = RuntimeContext.current()
+    const handle = current()
+    if (handle.transaction) throw new StorageConflictError("An artifact checkpoint requires committed storage")
+    const store = handle.store
+    const directory = handle.artifactDirectory
+    const objects = handle.artifactObjects
+    const configuration = JSON.stringify(store.options)
+    const ports = objects && { blobs: objects.blobs, writerID: objects.writerID, now: objects.now }
+    const state = artifactPack(["storage"])
+    const scope = new AbortController()
+    const signal = options.signal ? AbortSignal.any([scope.signal, options.signal]) : scope.signal
+    let active = true
+    function assertCurrent() {
+      const selected = current()
+      if (
+        !active ||
+        RuntimeContext.current() !== runtime ||
+        selected.store !== store ||
+        handle.store !== store ||
+        JSON.stringify(store.options) !== configuration ||
+        handle.artifactDirectory !== directory ||
+        selected.artifactDirectory !== directory ||
+        handle.artifactObjects !== objects ||
+        selected.artifactObjects !== objects ||
+        objects?.blobs !== ports?.blobs ||
+        objects?.writerID !== ports?.writerID ||
+        objects?.now !== ports?.now
+      )
+        throw new StorageConflictError("The artifact checkpoint is no longer active")
+      signal.throwIfAborted()
+    }
+    const read = () =>
+      state.gate.run(
+        async () => {
+          assertCurrent()
+          const readers = new Set<{ close?: () => Promise<void> }>()
+          const exports = new Set<Promise<unknown>>()
+          const checkpoint: ArtifactCheckpoint = {
+            exportPortable(filename, options) {
+              assertCurrent()
+              const pending = StoragePortable.exportFile(handle.store, filename, options).then((result) => {
+                assertCurrent()
+                return result
+              })
+              exports.add(pending)
+              void pending.then(
+                () => exports.delete(pending),
+                () => exports.delete(pending),
+              )
+              return pending
+            },
+            stream(location) {
+              const held: { close?: () => Promise<void> } = {}
+              const reader = (async function* () {
+                assertCurrent()
+                readers.add(held)
+                try {
+                  for await (const chunk of (state.objects ?? state.pack).stream(location, signal)) {
+                    assertCurrent()
+                    yield chunk
+                  }
+                  assertCurrent()
+                } finally {
+                  readers.delete(held)
+                }
+              })()
+              held.close = async () => {
+                await reader.return(undefined)
+              }
+              return reader
+            },
+          }
+          const retained = new WeakMap<StoreTransaction, Set<string>>()
+          checkpointPins.set(checkpoint, {
+            assert() {
+              assertCurrent()
+              if (state.objects)
+                throw new StorageConflictError("Object checkpoint retention requires its owning object permit")
+            },
+            retain(tx, location, settled) {
+              let packs = retained.get(tx)
+              if (!packs) {
+                packs = new Set()
+                retained.set(tx, packs)
+              }
+              if (packs.has(location.pack)) return
+              packs.add(location.pack)
+              state.prepared.set(location.pack, (state.prepared.get(location.pack) ?? 0) + 1)
+              settled.push((outcome) => {
+                if (outcome === "unknown") return
+                const count = (state.prepared.get(location.pack) ?? 1) - 1
+                if (count) state.prepared.set(location.pack, count)
+                else state.prepared.delete(location.pack)
+              })
+            },
+          })
+          try {
+            const result = await body(checkpoint)
+            if (readers.size || exports.size)
+              throw new StorageConflictError("The artifact checkpoint has unfinished operations")
+            return result
+          } finally {
+            active = false
+            scope.abort(new StorageConflictError("The artifact checkpoint is closed"))
+            await Promise.allSettled([...readers].map((reader) => reader.close?.()))
+            await Promise.allSettled(exports)
+          }
+        },
+        { signal },
+      )
+    if (state.objects) return read()
+    return withFileLock(
+      { directory: path.join(handle.artifactDirectory, "storage", ".locks"), key: "artifact-packs", signal },
+      read,
+    )
   }
 
   export async function validateArtifacts(

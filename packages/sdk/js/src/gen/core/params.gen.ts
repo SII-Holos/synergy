@@ -74,6 +74,8 @@ const buildKeyMap = (fields: FieldsConfig, map?: KeyMap): KeyMap => {
           in: config.in,
           map: config.map,
         })
+      } else if (config.in === "body") {
+        map.set("body", { map: "body" })
       }
     } else if ("key" in config) {
       map.set(config.key, {
@@ -96,7 +98,12 @@ interface Params {
 
 const stripEmptySlots = (params: Params) => {
   for (const [slot, value] of Object.entries(params)) {
-    if (value && typeof value === "object" && !Object.keys(value).length) {
+    if (
+      value &&
+      typeof value === "object" &&
+      (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null) &&
+      !Object.keys(value).length
+    ) {
       delete params[slot as Slot]
     }
   }

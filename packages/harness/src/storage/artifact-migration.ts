@@ -25,10 +25,11 @@ export namespace StorageArtifactMigration {
       ["storage_import", "info"],
     ])
     let state = previous as State | undefined
-    if (state?.phase === "complete") return
+    if (state?.phase === "complete") return state
     if (imported?.version === 2) {
-      await store.write(stateKey, { version: 2, phase: "complete", cursor: 0 })
-      return
+      const complete: State = { version: 2, phase: "complete", cursor: 0 }
+      await store.write(stateKey, complete)
+      return complete
     }
     if (!state) {
       const source = await fs.lstat(dataRoot).catch((error: NodeJS.ErrnoException) => {
@@ -36,8 +37,9 @@ export namespace StorageArtifactMigration {
         throw error
       })
       if (!source) {
-        await store.write(stateKey, { version: 2, phase: "complete", cursor: 0 })
-        return
+        const complete: State = { version: 2, phase: "complete", cursor: 0 }
+        await store.write(stateKey, complete)
+        return complete
       }
     }
     state ??= { version: 2, phase: "backup", cursor: 0 }
@@ -177,6 +179,8 @@ export namespace StorageArtifactMigration {
       if (position - committed >= 256) await checkpoint()
     }
     if (position !== committed) await checkpoint()
-    await store.write(stateKey, { version: 2, phase: "complete", cursor: position })
+    const complete: State = { version: 2, phase: "complete", cursor: position }
+    await store.write(stateKey, complete)
+    return complete
   }
 }

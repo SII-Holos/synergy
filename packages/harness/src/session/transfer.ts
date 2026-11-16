@@ -1,4 +1,15 @@
 import { SnapshotEvidence } from "./snapshot-evidence"
+export { SessionTransferEpochs } from "./transfer-epochs"
+export { SessionTransferStream } from "./transfer-stream"
+export { SessionTransferOwners } from "./transfer-owners"
+export { SessionTransferStaging } from "./transfer-staging"
+export { SessionTransferGate } from "./transfer-gate"
+export { SessionTransferCore } from "./transfer-core"
+export { SessionTransferWorkspaces } from "./transfer-workspaces"
+export { SessionTransferEnvironments } from "./transfer-environments"
+export { SessionTransferEvidence } from "./transfer-evidence"
+export { SessionTransferSnapshots } from "./transfer-snapshots"
+export { SessionTransferSource } from "./transfer-source"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { randomBytes } from "node:crypto"
@@ -41,6 +52,7 @@ export namespace SessionTransfer {
   export const Activation = S.Activation
   export const State = S.State
   export const Host = S.Host
+  export const isFrozen = Gate.isFrozen
   const Source = S.State.extend({ version: z.literal(1), secret: S.Hash, cancellationSecret: S.Hash }).strict()
   const sourceKey = (sessionID: string) => ["session_transfer_out", sessionID]
   const snapshotOwner = (id: string) => `transfer_${S.ID.parse(id).replaceAll("-", "")}`

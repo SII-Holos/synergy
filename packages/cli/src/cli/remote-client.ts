@@ -18,7 +18,7 @@ function parsed<T>(schema: z.ZodType<T>, value: { data: unknown; response: Respo
 
 export function createRemoteClient(sdk: SynergyClient): RuntimeClient {
   return {
-    scope: { current: async () => parsed(Scope.Info, await sdk.scope.current({}, { throwOnError: true })) },
+    scope: { current: async () => parsed(Scope.Runtime, await sdk.scope.current({}, { throwOnError: true })) },
     controlProfile: { effective: async () => result(await sdk.controlProfile.effective({}, { throwOnError: true })) },
     app: { agents: async () => result(await sdk.app.agents({}, { throwOnError: true })) },
     event: {

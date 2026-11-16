@@ -1,3 +1,6 @@
+import { registerLatticeTransferOwner } from "./transfer"
+import { registerLatticeTransferMigrations } from "./transfer-index"
+import { registerLatticeTransferGuard } from "./transfer-guard"
 import { componentFeatures } from "./features"
 import { registerMaintenance } from "./maintenance"
 import type { RuntimeComponent } from "@ericsanchezok/synergy-harness/lifecycle"
@@ -23,6 +26,9 @@ export function lattice(): RuntimeComponent {
     register() {
       BlueprintLoopSources.register("lattice")
       registerMaintenance()
+      registerLatticeTransferMigrations()
+      registerLatticeTransferGuard()
+      registerLatticeTransferOwner()
       registerSessions()
       registerLatticeDomain()
       registerLatticeStartup()

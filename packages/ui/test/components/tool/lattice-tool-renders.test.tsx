@@ -58,6 +58,7 @@ describe("Lattice tool renderers", () => {
       "boss_status",
       "channel_push",
       "lattice_submit",
+      "organization_knowledge",
       "pathway_read",
       "pathway_write",
     ])

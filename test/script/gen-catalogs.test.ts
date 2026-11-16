@@ -124,7 +124,7 @@ describe("generated catalog completeness", () => {
     // surface them as option tables rather than an empty options column.
     expect(body).toContain("| Option | Description |")
     expect(body).toContain("| `--cwd`")
-    expect(body).toContain("## build [path]")
+    expect(body).toContain("## plugin build [path]")
     expect(body).toContain("build a plugin definition into an installable package")
   })
 
@@ -145,12 +145,14 @@ describe("generated catalog completeness", () => {
       "email",
       "runtime",
       "skills",
+      "organization",
     ]) {
       expect(body).toContain(`| \`${domain}\` |`)
     }
     expect(body).toContain("| `00-general.jsonc` |")
     expect(body).toContain("| `55-skills.jsonc` |")
     expect(body).toContain("| `35-anima.jsonc` |")
+    expect(body).toContain("| `150-organization.jsonc` |")
     for (const key of ["embedding", "library", "channel", "plugin", "voice", "mcp", "theme", "skills", "boss"]) {
       expect(body).toContain(`| \`${key}\` |`)
       expect(body).not.toContain(`| \`${key}\` | - |`)
@@ -197,11 +199,33 @@ describe("parser behavior", () => {
     const output = await generateCli()
     expect(output).toContain("| `data` | manage synergy data location and storage |")
     expect(output).toContain("| `migrate` | move synergy data to a new location (alias for 'data move') |")
-    expect(output).toContain("## snapshots")
-    expect(output).toContain("## pack [output]")
-    expect(output).toContain("## merge <source>")
-    expect(output).toContain("## move <target>")
-    expect(output).toContain("## lsp")
+    expect(output).toContain("## data snapshots")
+    expect(output).toContain("## data pack [output]")
+    expect(output).toContain("## data merge <source>")
+    expect(output).toContain("## data move <target>")
+    expect(output).toContain("## debug lsp")
+  })
+
+  test("CLI details retain each registered command path and its own options", async () => {
+    const output = await generateCli()
+    function section(title: string) {
+      const marker = `## ${title}\n`
+      const start = output.indexOf(marker)
+      expect(start, title).toBeGreaterThanOrEqual(0)
+      const next = output.indexOf("\n## ", start + marker.length)
+      return output.slice(start, next < 0 ? undefined : next)
+    }
+    const service = section("org serve")
+    const runtime = section("org-runtime serve")
+    expect(service).toContain("`--origin`")
+    expect(service).toContain("`--web`")
+    expect(service).not.toContain("`--kind`")
+    expect(runtime).toContain("`--kind`")
+    expect(runtime).not.toContain("`--web`")
+    expect(section("org-runtime register")).toContain("`--base-directory`")
+    expect(section("org invite")).toContain("`--password-file`")
+    section("environment select <sessionID> <environmentID>")
+    section("workspace select <sessionID> <workspaceID>")
   })
 
   test("parseCommandBlocks extracts describe and options from cmd blocks", () => {

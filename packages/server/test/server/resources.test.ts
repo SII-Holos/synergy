@@ -6,6 +6,7 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { Server } from "../../src/server/server"
 import { testRuntime } from "../support/runtime"
+import { testEnvironmentRuntime } from "@ericsanchezok/synergy-harness/test/support/environment-origin"
 import { WorkspaceBlobs, WorkspaceContent } from "@ericsanchezok/synergy-harness/workspace/content"
 import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
@@ -154,14 +155,18 @@ test("resource APIs select logical files and execution independently without sta
 
 test("recovery APIs retain unfinished ownership, enforce Scope and retry saving without executing again", async () => {
   let fail = false
-  await using runtime = await testRuntime(undefined, () =>
-    WorkspaceBlobs.register("fixture", {
-      async put(hash, bytes) {
-        if (fail) throw new Error("save unavailable")
-        await Storage.writeBinary(["test_blobs", hash], bytes)
-      },
-      get: (hash) => Storage.readBinary(["test_blobs", hash]),
-    }),
+  await using runtime = await testEnvironmentRuntime(
+    {
+      register: () =>
+        WorkspaceBlobs.register("fixture", {
+          async put(hash, bytes) {
+            if (fail) throw new Error("save unavailable")
+            await Storage.writeBinary(["test_blobs", hash], bytes)
+          },
+          get: (hash) => Storage.readBinary(["test_blobs", hash]),
+        }),
+    },
+    (options) => testRuntime(options?.env, options?.register),
   )
   await runtime.run(async () => {
     const workspace = await WorkspaceCatalog.create({
@@ -171,7 +176,11 @@ test("recovery APIs retain unfinished ownership, enforce Scope and retry saving 
     const environment = await Environment.bind({ scopeID: "home", ownerID: "test", provider: "native", spec: {} })
     const other = await Environment.bind({ scopeID: "home", ownerID: "other", provider: "native", spec: {} })
     const selection = { scopeID: "home", workspaceID: workspace.id, environmentID: environment.id }
-    const resources = await EnvironmentResources.resolve({ ...selection, needs: { execution: "exec" } })
+    const resources = await EnvironmentResources.resolve({
+      origin: runtime.origin("resources-1"),
+      ...selection,
+      needs: { execution: "exec" },
+    })
     const session = await ScopeContext.provide({
       scope: Scope.home(),
       workspace: null,

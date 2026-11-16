@@ -53,6 +53,10 @@ export namespace Scope {
     "WorkspaceUnavailable",
     z.object({ message: z.string(), path: z.string() }),
   )
+  export const LocalBindingChanged = NamedError.create(
+    "ScopeLocalBindingChanged",
+    z.object({ message: z.string(), scopeID: z.string() }),
+  )
 
   export function requireLocal(scope: Scope): Local {
     if (!scope.local)
@@ -377,6 +381,28 @@ export namespace Scope {
       await writePersisted(parsed)
       await publish(Event.Updated, parsed, parsed.id)
       return parsed
+    })
+  }
+
+  export async function bindLocal(input: {
+    scopeID: string
+    expectedLocal: Local | null
+    local: Local | null
+  }): Promise<Project> {
+    const scopeID = input.scopeID
+    const expected = Local.nullable().parse(input.expectedLocal)
+    const selected = Local.nullable().parse(input.local)
+    if (selected && (!path.isAbsolute(selected.directory) || !path.isAbsolute(selected.worktree)))
+      throw new RequiredError({ message: "A local project binding requires explicit absolute roots" })
+    return Storage.transaction(async () => {
+      const current = await readPersisted(scopeID)
+      if (!current || scopeID === "home") throw new NotFoundError({ message: "Project Scope not found", scopeID })
+      if (JSON.stringify(Local.nullable().parse(current.local)) !== JSON.stringify(expected))
+        throw new LocalBindingChanged({ message: "The project local binding changed", scopeID })
+      const next = Info.parse({ ...current, local: selected, time: { ...current.time, updated: Date.now() } })
+      await writePersisted(next)
+      await publish(Event.Updated, next, next.id)
+      return next
     })
   }
 

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { testRuntime } from "@ericsanchezok/synergy-harness/test/support/runtime"
+import { testEnvironmentRuntime as testRuntime } from "@ericsanchezok/synergy-harness/test/support/environment-origin"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
@@ -29,6 +29,7 @@ test("an explicit object Workspace root resolves absolute file references withou
           backend: { provider: "objects", spec: { blobStore: "fixture", virtualRoot: "/workspace" } },
         })
         await using resources = await EnvironmentResources.resolve({
+          origin: runtime.origin("virtual-workspace-paths-1"),
           scopeID: "home",
           workspaceID: workspace.id,
           needs: { workspace: true },
@@ -68,6 +69,7 @@ test("invalid object roots fail before file or execution admission", async () =>
       })
       await expect(
         EnvironmentResources.resolve({
+          origin: runtime.origin("virtual-workspace-paths-2"),
           scopeID: "home",
           workspaceID: workspace.id,
           needs: { workspace: true },

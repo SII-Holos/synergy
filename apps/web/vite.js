@@ -52,6 +52,7 @@ function sdkAliases() {
   if (!sdkGenSourceExists) return []
   return [
     { find: /^@ericsanchezok\/synergy-sdk\/client$/, replacement: path.join(sdkRoot, "src/client.ts") },
+    { find: /^@ericsanchezok\/synergy-sdk\/organization$/, replacement: path.join(sdkRoot, "src/organization.ts") },
     { find: /^@ericsanchezok\/synergy-sdk\/server$/, replacement: path.join(sdkRoot, "src/server.ts") },
     { find: /^@ericsanchezok\/synergy-sdk$/, replacement: path.join(sdkRoot, "src/index.ts") },
   ]

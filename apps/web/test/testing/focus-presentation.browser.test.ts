@@ -43,6 +43,8 @@ beforeAll(async () => {
     import ${JSON.stringify(path.join(root, "apps/web/src/index.css"))}
     import ${JSON.stringify(path.join(root, "apps/web/src/components/sidebar/sidebar.css"))}
     import ${JSON.stringify(path.join(root, "apps/web/src/components/workspace/workbench-surface.css"))}
+    import ${JSON.stringify(path.join(root, "apps/web/src/organization/space-page.css"))}
+    import ${JSON.stringify(path.join(root, "apps/web/src/organization/publication.css"))}
     const i18n=setupI18n({locale:"en",messages:{en:{}}})
     function App(){
       const [choice,setChoice]=createSignal("one")
@@ -70,6 +72,12 @@ beforeAll(async () => {
         <div data-case="library" class="library-search-field"><input aria-label="Library search"/></div>
         <div data-case="choices"><Checkbox>Checkbox</Checkbox><Switch>Switch</Switch><RadioGroup options={["First","Second"]} defaultValue="First"/></div>
         <div data-case="menu"><MenuField ariaLabel="Options" value={choice()} onChange={setChoice} options={[{value:"one",label:"One"},{value:"two",label:"Two"}]}/></div>
+        <div data-case="organization-focus">
+          <details class="organization-connect-advanced"><summary data-focus-action data-organization-focus>Advanced organization connection</summary>Connection options</details>
+          <button class="organization-publication-entry" data-focus-action data-organization-focus><span><strong>Published knowledge</strong><span>Version 1</span></span></button>
+          <button class="organization-publication-entry" data-selected="true" data-focus-action data-organization-focus><span><strong>Selected Artifact</strong><span>Version 2</span></span></button>
+          <button class="organization-publication-entry" data-focus-hover data-focus-action data-organization-focus><span><strong>Hovered publication</strong><span>Version 3</span></span></button>
+        </div>
         <div data-case="surfaces">
           <div role="dialog" tabIndex={-1} data-focus-surface>Dialog surface</div>
           <div role="tabpanel" tabIndex={0} data-focus-surface>Workspace panel</div>
@@ -248,20 +256,40 @@ for (const engine of [chromium]) {
           )
           expect(await appearance(page, "surfaces", true)).toEqual(before)
         }
+        const system =
+          forcedColors === "active"
+            ? await page.evaluate(() => {
+                const probe = document.createElement("span")
+                probe.style.backgroundColor = "Highlight"
+                probe.style.color = "HighlightText"
+                document.body.append(probe)
+                const style = getComputedStyle(probe)
+                const result = { background: style.backgroundColor, foreground: style.color }
+                probe.remove()
+                return result
+              })
+            : undefined
         for (const action of await page.locator("[data-focus-action]").all()) {
           await page.locator("#start").focus()
+          if ((await action.getAttribute("data-focus-hover")) !== null) await action.hover()
           const resting = await action.evaluate((el) => ({
             image: getComputedStyle(el).backgroundImage,
             color: getComputedStyle(el).backgroundColor,
           }))
           await action.focus()
           expect(await action.evaluate((el) => el.matches(":focus-visible"))).toBe(true)
-          expect(
-            await action.evaluate((el) => ({
-              image: getComputedStyle(el).backgroundImage,
-              color: getComputedStyle(el).backgroundColor,
-            })),
-          ).not.toEqual(resting)
+          const focused = await action.evaluate((el) => ({
+            image: getComputedStyle(el).backgroundImage,
+            color: getComputedStyle(el).backgroundColor,
+          }))
+          expect(focused).not.toEqual(resting)
+          if (system && (await action.getAttribute("data-organization-focus")) !== null) {
+            expect(focused.color).toBe(system.background)
+            const foregrounds = await action.evaluate((el) =>
+              [el, ...el.querySelectorAll("strong, span")].map((node) => getComputedStyle(node).color),
+            )
+            expect(foregrounds).toEqual(foregrounds.map(() => system.foreground))
+          }
         }
       }
       await page.close()
@@ -277,7 +305,16 @@ for (const engine of [chromium]) {
       await page.addStyleTag({
         content: "*, *::before, *::after { transition: none !important; animation: none !important; }",
       })
-      for (const group of ["native", "buttons", "text", "agenda", "composer", "choices", "menu"]) {
+      for (const group of [
+        "native",
+        "buttons",
+        "text",
+        "agenda",
+        "composer",
+        "choices",
+        "menu",
+        "organization-focus",
+      ]) {
         const controls = page
           .locator(`[data-case="${group}"]`)
           .locator("button, a, input, select, textarea, summary, [contenteditable]")

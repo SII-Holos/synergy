@@ -101,12 +101,13 @@ import {
   ACTIVITY_FAILURE_GRACE_MS,
   ACTIVITY_POLL_MS,
   RELEASE_DEBOUNCE_MS,
-  createDesktopActivityWatcher,
+  createDesktopActivityGroup,
   createDesktopPowerGuard,
+  fetchDesktopActivity,
   loadDesktopPower,
   parseDesktopPowerUpdate,
   saveDesktopPower,
-  type DesktopActivityWatcher,
+  type DesktopActivityGroup,
   type DesktopPowerGuard,
   type DesktopPowerSnapshot,
 } from "./power-save.js"
@@ -121,6 +122,13 @@ import {
   desktopWindowState,
 } from "./window-chrome.js"
 import { applyDesktopUnreadUpdate, desktopUnreadAssetPaths, desktopUnreadPresentation } from "./unread-indicator.js"
+import { DesktopOrganizationAccounts } from "./organization/accounts.js"
+import { DesktopOrganizationAuthorization } from "./organization/authorization.js"
+import { DesktopOrganizationIPC, registerOrganizationIPC } from "./organization/ipc.js"
+import { DesktopMemberRuntimes } from "./organization/member-runtimes.js"
+import { DesktopMemberBrowsers } from "./organization/member-browsers.js"
+import { saveOrganizationDownload } from "./organization/download.js"
+import { organizationEncryption } from "./organization/encryption.js"
 
 installDesktopStdioHandlers()
 configureDesktopChromium(app)
@@ -135,6 +143,7 @@ let mainRendererDelivery: DesktopRendererDelivery | null = null
 let startupOverlay: DesktopStartupOverlay | null = null
 let nativeViews: BrowserNativeViewManager | null = null
 let nativePagePool: BrowserNativePagePool | null = null
+let memberBrowsers: DesktopMemberBrowsers | undefined
 let browserData: BrowserDataStore | undefined
 let browserDataActions: BrowserDataActions | undefined
 const browserDataContexts = new BrowserDataContexts({ session: (partition) => session.fromPartition(partition) })
@@ -160,6 +169,9 @@ let desktopTray: Tray | null = null
 let currentAppURL: string | null = null
 let recoveryURL: string | null = null
 let serverDocumentGeneration = 0
+let organizationAuthorization: DesktopOrganizationAuthorization | undefined
+let organizationIPC: DesktopOrganizationIPC<Parameters<typeof trustedServerFrame>[0]> | undefined
+let memberRuntimes: DesktopMemberRuntimes | undefined
 let cancellingMaintenance = false
 const serverActions = new DesktopServerActions()
 let shouldStart = true
@@ -176,7 +188,7 @@ let currentDesktopZoomFactor = DEFAULT_DESKTOP_ZOOM_FACTOR
 let zoomWriteQueue: Promise<void> = Promise.resolve()
 let keepAwakeWhileRunning = false
 let desktopPowerGuard: DesktopPowerGuard | null = null
-let desktopActivityWatcher: DesktopActivityWatcher | null = null
+let desktopActivityWatcher: DesktopActivityGroup | null = null
 let desktopPowerWriteQueue: Promise<void> = Promise.resolve()
 
 const updateQuitApp = app as typeof app & {
@@ -214,7 +226,7 @@ async function loadStartupIconDataURL(iconPath: string): Promise<string | undefi
   }
 }
 
-runtimeLog("mainLoaded", { argv: process.argv })
+runtimeLog("mainLoaded", { argumentCount: process.argv.length })
 
 function loadDesktopUnreadImage(assetPath: string | undefined, asset: string) {
   if (!assetPath) return null
@@ -281,6 +293,7 @@ async function createWindow() {
       currentVersion: app.getVersion(),
       userDataDir: app.getPath("userData"),
       stopServer: async () => {
+        await memberRuntimes?.stopAll()
         await stopLocalBrowserBroker()
         await stopLocalComputerBroker()
         await serverManager?.stop()
@@ -339,8 +352,12 @@ async function createWindow() {
 
   mainWindow = new BrowserWindow(windowOptions)
   mainWindow.webContents.on("did-start-navigation", (event) => {
-    if (event.isMainFrame && !event.isSameDocument) serverDocumentGeneration++
+    if (event.isMainFrame && !event.isSameDocument) {
+      serverDocumentGeneration++
+      organizationIPC?.invalidate()
+    }
   })
+  mainWindow.webContents.on("render-process-gone", () => organizationIPC?.invalidate())
   applyDesktopZoom()
   mainWindow.webContents.on("did-finish-load", () => applyDesktopZoom())
   applyDesktopUnreadState()
@@ -354,6 +371,11 @@ async function createWindow() {
     captureWindow: () => mainWindow,
     backgroundColor: () => desktopThemeBackground(getDesktopThemeSnapshot()),
     onVisit: (partition, url, title) => localBrowserData().visit(partition, url, title),
+  })
+  memberBrowsers ??= new DesktopMemberBrowsers({
+    nativePool: nativePagePool,
+    theme: getDesktopThemeSnapshot,
+    clearSavedData: (partition) => localBrowserData().clear(partition),
   })
   nativeViews = new BrowserNativeViewManager(mainWindow, nativePagePool, (event) => {
     rendererDelivery.send("browser-native:event", event)
@@ -383,6 +405,7 @@ async function createWindow() {
   }
 
   mainWindow.on("closed", () => {
+    organizationIPC?.invalidate()
     windowStateEvents?.dispose()
     if (emitDesktopWindowState === windowStateEvents?.emit) emitDesktopWindowState = null
     rendererDelivery.dispose()
@@ -476,21 +499,13 @@ function resolveDesktopPowerBaseUrl(): string | null {
   return status.state === "running" ? status.url : null
 }
 
-async function fetchDesktopActivity(url: string, signal: AbortSignal): Promise<unknown> {
-  const response = await fetch(url, { signal, cache: "no-store" })
-  if (!response.ok) throw new Error(`activity responded ${response.status}`)
-  return await response.json()
-}
-
 async function initializeDesktopPower(): Promise<void> {
   keepAwakeWhileRunning = (await loadDesktopPower(app.getPath("userData"))).keepAwakeWhileRunning
   desktopPowerGuard = createDesktopPowerGuard(powerSaveBlocker)
-  desktopActivityWatcher = createDesktopActivityWatcher({
+  desktopActivityWatcher = createDesktopActivityGroup({
     intervalMs: ACTIVITY_POLL_MS,
     failureGraceMs: ACTIVITY_FAILURE_GRACE_MS,
     releaseDebounceMs: RELEASE_DEBOUNCE_MS,
-    resolveBaseUrl: resolveDesktopPowerBaseUrl,
-    fetchActivity: fetchDesktopActivity,
     onDesiredChange: (desired) => setDesktopPowerActive(desired),
     onError: (error) => {
       runtimeLog("activityProbeFailed", {
@@ -498,6 +513,7 @@ async function initializeDesktopPower(): Promise<void> {
       })
     },
   })
+  desktopActivityWatcher.add({ resolveBaseUrl: resolveDesktopPowerBaseUrl, fetchActivity: fetchDesktopActivity })
   if (keepAwakeWhileRunning) desktopActivityWatcher.start()
   powerMonitor.on("resume", () => desktopActivityWatcher?.recheck())
 }
@@ -1223,7 +1239,18 @@ function findDeepLinks(argv: string[]): string[] {
 function handleDeepLinks(urls: string[]) {
   if (!urls.length) return
   focusMainWindow()
-  for (const url of urls) mainRendererDelivery?.enqueue("desktop.deepLink", url)
+  for (const url of urls) {
+    try {
+      const address = new URL(url)
+      if (address.protocol === "synergy:" && address.hostname === "organization-auth") {
+        void organizationAuthorization?.callback(url)
+        continue
+      }
+    } catch {
+      continue
+    }
+    mainRendererDelivery?.enqueue("desktop.deepLink", url)
+  }
 }
 
 app.on("second-instance", (_event, argv) => {
@@ -1253,10 +1280,12 @@ updateQuitApp.on("before-quit-for-update", () => {
 })
 
 app.on("will-quit", () => {
+  organizationIPC?.dispose()
   releaseDesktopPower()
 })
 
 app.on("before-quit", (event) => {
+  organizationIPC?.dispose()
   setDesktopUnreadCount(0)
   releaseDesktopPower()
   if (isUpdateQuit) return
@@ -1265,6 +1294,8 @@ app.on("before-quit", (event) => {
   isQuitting = true
   void (async () => {
     const results = await Promise.allSettled([
+      organizationIPC?.settle() ?? Promise.resolve(),
+      memberRuntimes?.close() ?? Promise.resolve(),
       browserBroker?.close() ?? Promise.resolve(),
       stopLocalComputerBroker(),
       serverManager?.stop() ?? Promise.resolve(),
@@ -1315,6 +1346,71 @@ async function start() {
   })
   installDesktopTray(channel)
   registerProtocolHandler()
+  const organizationAccounts = new DesktopOrganizationAccounts({
+    root: path.join(app.getPath("userData"), "organization-accounts"),
+    encryption: organizationEncryption(safeStorage),
+  })
+  organizationAuthorization = new DesktopOrganizationAuthorization({
+    accounts: organizationAccounts,
+    openExternal: (url) => shell.openExternal(url),
+  })
+  memberRuntimes = new DesktopMemberRuntimes({
+    root: path.join(app.getPath("userData"), "organization-runtimes"),
+    accounts: organizationAccounts,
+    server: { channel, resourcesPath: process.resourcesPath },
+    services: async (member) => {
+      if (!memberBrowsers || !desktopActivityWatcher) throw new Error("Member Desktop services are unavailable.")
+      const removeActivity = desktopActivityWatcher.add({
+        resolveBaseUrl: () => member.browser.url,
+        fetchActivity: (url, signal) => fetchDesktopActivity(url, signal, member.browser.headers),
+      })
+      try {
+        const browser = await memberBrowsers.start(member)
+        return {
+          close() {
+            removeActivity()
+            return browser.close()
+          },
+        }
+      } catch (error) {
+        removeActivity()
+        throw error
+      }
+    },
+  })
+  organizationIPC = new DesktopOrganizationIPC({
+    accounts: organizationAccounts,
+    authorization: organizationAuthorization,
+    members: memberRuntimes,
+    emitNotification: (event, value) => {
+      if (!trustedServerFrame(event, mainWindow?.webContents, currentAppURL, null)) return
+      event.senderFrame?.send("desktop.organization.notification", value)
+    },
+    chooseDirectory: async () => {
+      const options = { properties: ["openDirectory", "createDirectory"] as Array<"openDirectory" | "createDirectory"> }
+      const selected =
+        mainWindow && !mainWindow.isDestroyed()
+          ? await dialog.showOpenDialog(mainWindow, options)
+          : await dialog.showOpenDialog(options)
+      return selected.canceled ? undefined : selected.filePaths[0]
+    },
+    saveFile: (fileName, write, signal) =>
+      saveOrganizationDownload({
+        fileName,
+        write,
+        signal,
+        choose: async (defaultPath) => {
+          const options = { defaultPath }
+          const result =
+            mainWindow && !mainWindow.isDestroyed()
+              ? await dialog.showSaveDialog(mainWindow, options)
+              : await dialog.showSaveDialog(options)
+          return result.canceled ? undefined : result.filePath
+        },
+      }),
+    trusted: (event) => trustedServerFrame(event, mainWindow?.webContents, currentAppURL, null),
+  })
+  registerOrganizationIPC(ipcMain, organizationIPC)
   registerIpcHandlers()
   await ensureMainWindow()
 }

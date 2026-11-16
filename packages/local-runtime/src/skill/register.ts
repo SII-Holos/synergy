@@ -3,7 +3,7 @@ import { Skill } from "./skill"
 import { SkillRenderer } from "./renderer"
 import { SkillReferences } from "./references"
 
-function toEntry(skill: Skill.Info): InstructionRegistry.Entry {
+export function skillEntry(skill: Skill.Info): InstructionRegistry.Entry {
   const sourceScope =
     skill.origin.kind === "filesystem"
       ? { source: skill.origin.source, scope: skill.origin.scope }
@@ -39,10 +39,10 @@ export function registerSkillDomain() {
     render: (input) => Promise.resolve(SkillRenderer.render(input)),
     hints: () => SkillRenderer.hints(),
     list: async () => (await Skill.all()).map((skill) => skill.name),
-    entries: async () => (await Skill.all()).map(toEntry),
+    entries: async () => (await Skill.all()).map(skillEntry),
     entry: async (name) => {
       const skill = await Skill.get(name)
-      return skill ? toEntry(skill) : undefined
+      return skill ? skillEntry(skill) : undefined
     },
     diagnostics: () => Skill.diagnostics(),
   })

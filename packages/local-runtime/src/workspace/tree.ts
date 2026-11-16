@@ -4,6 +4,7 @@ import path from "node:path"
 import { createHash } from "node:crypto"
 import { WorkspaceTree } from "@ericsanchezok/synergy-harness/workspace/tree"
 import type { BlobStore } from "@ericsanchezok/synergy-harness/workspace/content"
+import { FileRename } from "../file/rename"
 
 export namespace NativeWorkspaceTree {
   function identity(stat: BigIntStats) {
@@ -97,18 +98,25 @@ export namespace NativeWorkspaceTree {
   export async function materialize(
     root: string,
     raw: WorkspaceTree.Manifest,
-    store: BlobStore,
-    options: { signal?: AbortSignal; owner?: { uid: number; gid: number } } = {},
+    provider: BlobStore,
+    options: {
+      signal?: AbortSignal
+      owner?: { uid: number; gid: number }
+      beforePublish?(staged: string): Promise<void>
+    } = {},
   ) {
+    const { signal, beforePublish } = options
+    const owner = options.owner && { ...options.owner }
+    const store = Object.freeze({ put: provider.put.bind(provider), get: provider.get.bind(provider) })
     const tree = WorkspaceTree.Manifest.parse(raw)
+    signal?.throwIfAborted()
     const destination = path.resolve(root)
     const parent = await fs.realpath(path.dirname(destination))
     if (parent !== path.dirname(destination)) throw new Error("Workspace destination must have a canonical parent")
     const previous = await fs.lstat(destination, { bigint: true }).catch((error: NodeJS.ErrnoException) => {
       if (error.code !== "ENOENT") throw error
     })
-    if (previous && (!previous.isDirectory() || (await fs.readdir(destination)).length))
-      throw new Error("Workspace destination must be empty")
+    if (previous) throw new Error("Workspace destination must be absent; an existing empty directory is not retired")
     const temporary = await fs.mkdtemp(path.join(parent, ".synergy-materialize-"))
     let published = false
     try {
@@ -117,26 +125,26 @@ export namespace NativeWorkspaceTree {
         .sort((a, b) => a.path.split("/").length - b.path.split("/").length)
       for (const entry of directories) await fs.mkdir(filename(temporary, entry.path), { mode: 0o700 })
       for (const entry of tree.entries) {
-        options.signal?.throwIfAborted()
+        signal?.throwIfAborted()
         const target = filename(temporary, entry.path)
         if (entry.kind === "directory") continue
         if (entry.kind === "symlink") {
           await fs.symlink(entry.target, target)
-          if (options.owner) await fs.lchown(target, options.owner.uid, options.owner.gid)
+          if (owner) await fs.lchown(target, owner.uid, owner.gid)
           continue
         }
         const handle = await fs.open(target, "wx", 0o600)
         try {
           const hash = createHash("sha256")
           for (const chunk of entry.chunks) {
-            options.signal?.throwIfAborted()
+            signal?.throwIfAborted()
             const bytes = WorkspaceTree.verify(chunk.hash, await store.get(chunk.hash, chunk.size), chunk.size)
             if (bytes.length !== chunk.size) throw new Error("Workspace chunk integrity check failed")
             hash.update(bytes)
             await handle.writeFile(bytes)
           }
           if (hash.digest("hex") !== entry.hash) throw new Error("Workspace file integrity check failed")
-          if (options.owner) await handle.chown(options.owner.uid, options.owner.gid)
+          if (owner) await handle.chown(owner.uid, owner.gid)
           await handle.chmod(entry.mode)
           await handle.sync()
         } finally {
@@ -145,21 +153,22 @@ export namespace NativeWorkspaceTree {
       }
       for (const entry of directories.reverse()) {
         const target = filename(temporary, entry.path)
-        if (options.owner) await fs.chown(target, options.owner.uid, options.owner.gid)
+        if (owner) await fs.chown(target, owner.uid, owner.gid)
         await fs.chmod(target, entry.mode)
         await flushDirectory(target)
       }
-      if (options.owner) await fs.chown(temporary, options.owner.uid, options.owner.gid)
+      if (owner) await fs.chown(temporary, owner.uid, owner.gid)
       await fs.chmod(temporary, 0o755)
       await flushDirectory(temporary)
-      options.signal?.throwIfAborted()
+      signal?.throwIfAborted()
+      await beforePublish?.(temporary)
+      signal?.throwIfAborted()
       const current = await fs.lstat(destination, { bigint: true }).catch((error: NodeJS.ErrnoException) => {
         if (error.code !== "ENOENT") throw error
       })
-      if ((current ? identity(current) : null) !== (previous ? identity(previous) : null))
-        throw new Error("Workspace destination changed during materialization")
-      if (current) await fs.rmdir(destination)
-      await fs.rename(temporary, destination)
+      if (current) throw new Error("Workspace destination changed during materialization")
+      signal?.throwIfAborted()
+      FileRename.exclusive(temporary, destination)
       published = true
       await flushDirectory(parent)
     } finally {

@@ -301,6 +301,7 @@ class FrameStream {
 export class AgentWorkerPool {
   private readonly log = Log.create({ service: "agent.worker.pool" })
   private readonly workers = new Map<string, PoolWorker>()
+  private readonly retiring = new Set<Promise<void>>()
   private readonly dispatchQueue: PoolTask[] = []
   private pressure = false
   private warming = false
@@ -513,8 +514,25 @@ export class AgentWorkerPool {
       }
       worker.stopping = true
     }
-    await Promise.allSettled([...this.workers.values()].map((worker) => worker.host.stop(this.options.cancelGraceMs)))
+    const outcomes = await Promise.allSettled([
+      ...this.retiring,
+      ...[...this.workers.values()].map((worker) => worker.host.stop(this.options.cancelGraceMs)),
+    ])
     this.workers.clear()
+    const errors = outcomes.flatMap((outcome) => (outcome.status === "rejected" ? [outcome.reason] : []))
+    if (errors.length) throw new AggregateError(errors, "Agent worker shutdown did not complete")
+  }
+
+  async drainRetiring(signal?: AbortSignal): Promise<void> {
+    signal?.throwIfAborted()
+    while (this.retiring.size) {
+      await Promise.all(this.retiring)
+      signal?.throwIfAborted()
+    }
+  }
+
+  hasRetiringWorkers(): boolean {
+    return this.retiring.size > 0
   }
 
   setPressure(constrained: boolean): void {
@@ -1149,11 +1167,13 @@ export class AgentWorkerPool {
         idleBaselineExternalBytes: worker.idleBaselineExternalBytes,
       },
     })
-    void worker.host.stop(this.options.cancelGraceMs).then(
-      () => {
-        recovery.afterBytes = 0
-        recovery.reclaimedBytes = recovery.beforeBytes
-      },
+    const retirement = worker.host.stop(this.options.cancelGraceMs).then(() => {
+      recovery.afterBytes = 0
+      recovery.reclaimedBytes = recovery.beforeBytes
+    })
+    this.retiring.add(retirement)
+    void retirement.then(
+      () => this.retiring.delete(retirement),
       () => undefined,
     )
     this.ensureWorkers()

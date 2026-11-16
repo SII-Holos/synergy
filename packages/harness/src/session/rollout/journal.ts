@@ -13,6 +13,7 @@ import { ScopeContext } from "../../scope/context"
 import { Scope } from "../../scope"
 import { Log } from "../../util/log"
 import { RolloutJournalCodec } from "./journal-codec"
+import { RolloutToolPartIndex } from "./tool-part-index"
 
 export namespace RolloutJournal {
   const log = Log.create({ service: "rollout.journal" })
@@ -72,6 +73,7 @@ export namespace RolloutJournal {
         if (event.seq !== seq) throw new Error("Rollout journal sequence mismatch")
         if (event.kind === "record") {
           await Storage.write([...RolloutArtifact.root(owner), ...event.key], event.value)
+          await RolloutToolPartIndex.capture(owner, [...RolloutArtifact.root(owner), ...event.key], event.value)
           await UsageLedger.capture(owner, seq, event.key, event.value)
           await UsageLedger.committed(owner, seq)
           await capture(owner, event)
@@ -126,6 +128,7 @@ export namespace RolloutJournal {
         if (encoded.context) await RolloutJournalCodec.publishContext(owner, encoded.context)
         await Storage.write(eventKey(owner, seq), encoded.event)
         await Storage.write(key, event.value)
+        await RolloutToolPartIndex.capture(owner, key, event.value)
         await UsageLedger.capture(owner, seq, event.key, event.value)
         await UsageLedger.committed(owner, seq)
         await Storage.write([...root(owner), "head"], { allocated: seq, committed: seq })

@@ -1,9 +1,47 @@
 import { expect, test } from "bun:test"
+import { SQL } from "bun"
 import { PostgresDriver } from "../../src/storage/postgres-driver"
 import { storageTestBackends } from "../support/storage-backends"
 import { TransactionalStore } from "../../src/storage/transactional-store"
 
 const postgresTest = test.skipIf(!storageTestBackends().includes("postgres"))
+
+postgresTest(
+  "existing-only PostgreSQL attachment requires its original namespace and retains its writer fence",
+  async () => {
+    const url = process.env.SYNERGY_TEST_POSTGRES_URL!
+    await TransactionalStore.preparePostgres({ url })
+    const options = { backend: "postgres" as const, namespace: crypto.randomUUID(), url, schema: "verify" as const }
+    const admin = new SQL(url)
+    try {
+      await expect(TransactionalStore.openExisting(options)).rejects.toThrow("namespace is missing")
+      expect(await admin`SELECT namespace FROM storage_namespaces WHERE namespace = ${options.namespace}`).toEqual([])
+      const original = await TransactionalStore.open(options)
+      try {
+        await original.write(["retained"], { value: "original" })
+        await expect(TransactionalStore.openExisting(options)).rejects.toMatchObject({ name: "StorageOwnershipError" })
+      } finally {
+        await original.close()
+      }
+      const attached = await TransactionalStore.openExisting(options)
+      try {
+        expect(await attached.read(["retained"])).toEqual({ value: "original" })
+        await attached.write(["cleanup"], { completed: true })
+      } finally {
+        await attached.close()
+      }
+      const inspection = await TransactionalStore.open({ ...options, readonly: true })
+      try {
+        expect(await inspection.read(["cleanup"])).toEqual({ completed: true })
+        expect(await inspection.read(["retained"])).toEqual({ value: "original" })
+      } finally {
+        await inspection.close()
+      }
+    } finally {
+      await admin.close()
+    }
+  },
+)
 
 postgresTest("managed PostgreSQL admission never repairs missing objects", async () => {
   const name = "schema_test_" + crypto.randomUUID().replaceAll("-", "")

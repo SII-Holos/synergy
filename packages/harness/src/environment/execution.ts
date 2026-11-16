@@ -1,5 +1,7 @@
 import { z } from "zod"
+import { createHash } from "node:crypto"
 import { RuntimeContext } from "../lifecycle/context"
+import { RuntimeMaintenance } from "../storage/runtime-maintenance"
 import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
 import { Environment } from "."
@@ -8,41 +10,606 @@ import { ExecutionProtocol, type Executor } from "./executor"
 import { WorkspaceProtocol } from "../workspace/protocol"
 import { WorkspaceCatalog } from "../workspace/catalog"
 import { WorkspaceMounts } from "../workspace/mount"
-import { JsonValue } from "../util/json-value"
 import { StorageRecovery } from "../storage/recovery"
 import { Log } from "../util/log"
 import { WorkspaceEvidence } from "../workspace/evidence"
+import { EnvironmentExecutionSchema } from "./execution-schema"
+import { EnvironmentOrigin } from "./origin"
+import { upgradeAccessRecord } from "../migration/import"
+import { EnvironmentExecutionOriginIndex } from "./execution-origin-index"
+import { EnvironmentUseOwnership } from "./use-ownership"
+import { EnvironmentExecutionSource as Sources } from "./execution-source"
+import { ProcessAccessSource } from "../process/access-source"
 
 export namespace EnvironmentExecution {
-  export const Info = z
-    .object({
-      id: ExecutionProtocol.ID,
-      scopeID: z.string(),
-      target: Environment.Target,
-      workspaces: z.array(WorkspaceProtocol.Reference.extend({ readOnly: z.boolean().optional() })).optional(),
-      evidence: z.array(z.object({ workspaceID: z.string(), reference: WorkspaceEvidence.Reference })).optional(),
-      digest: z.string(),
-      intentDigest: z.string().length(64).optional(),
-      state: z.enum(["submitted", "running", "cancel_requested", "unknown", "exited", "unsaved", "saved", "completed"]),
-      status: ExecutionProtocol.Status.optional(),
-      saved: z.record(z.string(), JsonValue).optional(),
-      checkpointFailures: z.array(WorkspaceProtocol.CheckpointFailure).optional(),
-      outputCursor: z.number().int().nonnegative(),
-      createdAt: z.number(),
-      updatedAt: z.number(),
-    })
-    .meta({ ref: "EnvironmentExecutionInfo" })
+  export const Info = EnvironmentExecutionSchema.Info
   export type Info = z.infer<typeof Info>
   export type Checkpoint = (info: Info) => Promise<{
     saved: NonNullable<Info["saved"]>
     checkpointFailures?: Info["checkpointFailures"]
   }>
-  const pending = RuntimeContext.state(() => new Map<string, Promise<Info>>())
-  const finishing = RuntimeContext.state(() => new Map<string, Promise<Info>>())
-  const connections = RuntimeContext.state(() => new Map<string, Promise<Executor>>())
+  interface Pending {
+    scopeID: string
+    operationID: string
+    store: ReturnType<typeof Storage.current>["store"]
+    artifactDirectory: string
+    artifactObjects: ReturnType<typeof Storage.current>["artifactObjects"]
+    origin: EnvironmentOrigin.Captured
+    promise: Promise<Info>
+  }
+  const pending = RuntimeContext.state(() => new Set<Pending>())
+  const finishing = Storage.state(() => new Map<string, Promise<Info>>())
+  const connections = Storage.state(() => new Map<string, Promise<Executor>>())
+  const sourceOperations = Storage.state(
+    () => new Map<string, { record: Sources.Record; operations: Sources.OriginalOperation }>(),
+  )
+  interface UseInput {
+    id: string
+    scopeID: string
+    environmentID: string
+    origin?: EnvironmentOrigin.Captured
+    digest?: string
+    intentDigest?: string
+    workspaces?: WorkspaceProtocol.Reference[]
+    preparation?: {
+      ownership: Extract<EnvironmentUseOwnership.Info, { kind: "execution-preparation" }>
+      verify(phase: EnvironmentUseOwnership.Phase, target?: Readonly<Environment.Target>): Promise<void>
+    }
+  }
+  const useOwner = RuntimeContext.state(() => ({
+    port: undefined as ReturnType<typeof EnvironmentUseOwnership.register<UseInput>> | undefined,
+  }))
+
+  export function hasPendingRequests() {
+    return pending().size > 0 || finishing().size > 0 || EnvironmentOrigin.hasRequests() || Sources.hasPendingRequests()
+  }
+
+  function currentPending() {
+    const current = Storage.current()
+    return [...pending()].filter(
+      (entry) =>
+        entry.store === current.store &&
+        entry.artifactDirectory === current.artifactDirectory &&
+        entry.artifactObjects === current.artifactObjects,
+    )
+  }
+
+  export function hasSessionPending(scopeID: string, sessionID: string) {
+    if (Sources.hasSessionPending(scopeID, sessionID)) return true
+    return (
+      EnvironmentOrigin.sessionRequests(scopeID, sessionID).length > 0 ||
+      currentPending().some(
+        (entry) =>
+          entry.origin.value.kind === "session" &&
+          entry.origin.value.scopeID === scopeID &&
+          entry.origin.value.sessionID === sessionID,
+      )
+    )
+  }
+
+  export const sessionEntries = EnvironmentExecutionOriginIndex.sessionEntries
+  export const environmentEntries = EnvironmentExecutionOriginIndex.environmentEntries
+
+  export async function assertSessionDrained(
+    scopeID: string,
+    sessionID: string,
+    environmentID?: string | null,
+    workspaceID?: string | null,
+  ) {
+    if (hasSessionPending(scopeID, sessionID))
+      throw new Environment.Busy({ environmentID: "", message: "Environment Session admission is still pending" })
+    for await (const info of sessionEntries({ scopeID, sessionID }))
+      if (info.state !== "completed")
+        throw new Environment.Busy({
+          environmentID: info.target.environmentID,
+          message: "Environment Session operation requires native receipt and output drainage",
+        })
+    await Environment.assertSessionUsesDrained({ scopeID, sessionID, environmentID, workspaceID })
+    if (environmentID) {
+      for await (const info of environmentEntries(environmentID))
+        if (info.origin.kind === "legacy-unknown")
+          throw new Environment.Busy({
+            environmentID,
+            message: "Environment has an active legacy operation with unknown Session ownership",
+          })
+      const selected = await Environment.get(environmentID, scopeID)
+      if (!["idle", "ready"].includes(selected.state))
+        throw new Environment.Busy({
+          environmentID,
+          message: "Environment allocation requires its original provider reconciliation",
+        })
+    }
+  }
+
+  export async function drainSession(input: { scopeID: string; sessionID: string; signal: AbortSignal }) {
+    const { scopeID, sessionID, signal } = input
+    const runtime = RuntimeContext.current()
+    const { store, artifactDirectory, artifactObjects } = Storage.current()
+    const assertOwner = () => {
+      const current = Storage.current()
+      if (
+        RuntimeContext.current() !== runtime ||
+        current.store !== store ||
+        current.artifactDirectory !== artifactDirectory ||
+        current.artifactObjects !== artifactObjects
+      )
+        throw new Error("Environment Session drainage belongs to another Runtime or Storage handle")
+      signal.throwIfAborted()
+    }
+    assertOwner()
+    const active = currentPending().filter(
+      (entry) =>
+        entry.origin.value.kind === "session" &&
+        entry.origin.value.scopeID === scopeID &&
+        entry.origin.value.sessionID === sessionID,
+    )
+    const cancelled = Promise.withResolvers<never>()
+    const abort = () => cancelled.reject(signal.reason)
+    signal.addEventListener("abort", abort, { once: true })
+    try {
+      await Promise.race([
+        Promise.allSettled([
+          ...active.map((entry) => entry.promise),
+          ...EnvironmentOrigin.sessionRequests(scopeID, sessionID),
+        ]),
+        cancelled.promise,
+      ])
+      assertOwner()
+      for await (const previous of sessionEntries({ scopeID, sessionID }, signal)) {
+        if (previous.state === "completed") continue
+        const info = await reconcile(previous.id, previous.scopeID)
+        assertOwner()
+        if (["exited", "unsaved", "saved"].includes(info.state)) await complete(info.id, info.scopeID)
+        assertOwner()
+      }
+      await assertSessionDrained(scopeID, sessionID)
+      assertOwner()
+    } finally {
+      signal.removeEventListener("abort", abort)
+    }
+  }
 
   export function registerRecovery() {
+    useOwner().port = EnvironmentUseOwnership.register<UseInput>("execution", {
+      capture(value, phase) {
+        const input = {
+          ...value,
+          workspaces: value.workspaces?.map((reference) => WorkspaceProtocol.Reference.parse(reference)),
+        }
+        input.id = ExecutionProtocol.ID.parse(input.id)
+        const origin = input.origin && EnvironmentOrigin.selected(input.origin)
+        if (phase === "admission" && (!origin || (!input.digest && !input.preparation)))
+          throw new Error("Execution Use admission requires its original native input")
+        const ownership =
+          input.preparation?.ownership ??
+          (phase === "admission" && origin
+            ? {
+                kind: "execution-preparation" as const,
+                scopeID: input.scopeID,
+                operationID: input.id,
+                origin: origin.value,
+              }
+            : { kind: "execution" as const, scopeID: input.scopeID, operationID: input.id })
+        return {
+          selector: {
+            scopeID: input.scopeID,
+            environmentID: input.environmentID,
+            useID: useID(input.scopeID, input.id),
+          },
+          ownership,
+          async verify(target) {
+            if (input.preparation) return input.preparation.verify(phase, target)
+            if (phase === "admission") {
+              if (!origin || !input.digest) throw new Error("Execution Use lost its original admission")
+              await EnvironmentOrigin.assertAdmission(origin, input)
+              return
+            }
+            if (!target) throw new Error("Execution Use requires its actual allocation target")
+            const current = await stored(input.id, input.scopeID)
+            if (current.target.environmentID !== input.environmentID || !Environment.sameTarget(current.target, target))
+              throw new Error("Execution Use differs from its canonical operation target")
+            if (
+              (origin && JSON.stringify(current.origin) !== JSON.stringify(origin.value)) ||
+              (input.digest !== undefined && current.digest !== input.digest) ||
+              (input.intentDigest !== undefined && current.intentDigest !== input.intentDigest) ||
+              (input.workspaces !== undefined &&
+                JSON.stringify(current.workspaces) !== JSON.stringify(input.workspaces))
+            )
+              throw new Error("Execution Use differs from its original canonical input")
+            if (phase === "release" && !["saved", "completed"].includes(current.state))
+              throw new Error("Execution Use requires its original saved native retirement")
+          },
+        }
+      },
+      async inspect(ownership, selector, target) {
+        if (ownership.kind !== "execution" && ownership.kind !== "execution-preparation")
+          throw new Error("Execution Use has another owner")
+        if (ownership.kind === "execution-preparation") {
+          if (
+            ownership.scopeID !== selector.scopeID ||
+            useID(ownership.scopeID, ownership.operationID) !== selector.useID ||
+            (ownership.origin.kind === "session" && ownership.origin.scopeID !== selector.scopeID)
+          )
+            throw new Error("Execution Use differs from its original admission")
+          return { origin: ownership.origin }
+        }
+        const info = await stored(ownership.operationID, ownership.scopeID)
+        if (
+          info.scopeID !== selector.scopeID ||
+          useID(info.scopeID, info.id) !== selector.useID ||
+          !Environment.sameTarget(info.target, target)
+        )
+          throw new Error("Execution Use differs from its canonical receipt")
+        return { origin: info.origin }
+      },
+    })
     StorageRecovery.register("environment-execution", recover)
+  }
+
+  function uses() {
+    const port = useOwner().port
+    if (!port) throw new Error("Execution Use owner is unavailable")
+    return port
+  }
+
+  export function operationID(
+    value: Pick<EnvironmentOrigin.Session, "scopeID" | "sessionID" | "messageID" | "callID">,
+  ) {
+    const origin = EnvironmentOrigin.Session.pick({
+      scopeID: true,
+      sessionID: true,
+      messageID: true,
+      callID: true,
+    }).parse({ scopeID: value.scopeID, sessionID: value.sessionID, messageID: value.messageID, callID: value.callID })
+    return createHash("sha256")
+      .update(JSON.stringify([origin.scopeID, origin.sessionID, origin.messageID, origin.callID]))
+      .digest("hex")
+  }
+
+  const preparationBrand: unique symbol = Symbol("original Environment preparation")
+  export interface RetainedPreparation {
+    readonly [preparationBrand]: true
+    readonly id: string
+    readonly target: Readonly<Environment.Target>
+    readonly origin: Readonly<EnvironmentOrigin.Info>
+    inspect(): Promise<ExecutionProtocol.Preparation>
+    releaseSandbox(id: string): Promise<void>
+    discardInputs(): Promise<void>
+    release(): Promise<void>
+  }
+  export interface Preparation extends RetainedPreparation {
+    prepareInputs(input: ExecutionProtocol.Inputs): Promise<ExecutionProtocol.PreparedInputs>
+    prepareSandbox(input: ExecutionProtocol.SandboxInput): Promise<ExecutionProtocol.Sandbox>
+  }
+  interface PreparationFrame {
+    use: Environment.Use
+    scopeID: string
+    owner(): void
+    origin?: EnvironmentOrigin.Captured
+    executor: Executor
+    signal?: AbortSignal
+  }
+  const preparationCall = RuntimeContext.createAsyncContext<object>()
+
+  function preparationOwner() {
+    const current = EnvironmentUseOwnership.captureStorage()
+    const runtime = RuntimeContext.current(),
+      primary = runtime.storage
+    return () => {
+      current()
+      const storage = Storage.current()
+      if (
+        !primary ||
+        runtime.storage !== primary ||
+        storage.store !== primary.store ||
+        storage.artifactDirectory !== primary.artifactDirectory ||
+        storage.artifactObjects !== primary.artifactObjects
+      )
+        throw new Error("Environment preparation requires its actual Runtime primary and artifacts")
+    }
+  }
+
+  async function preparationExecutor(target: Environment.Target, scopeID: string, owner: () => void) {
+    owner()
+    if (Storage.inTransaction()) throw new Error("Environment preparation I/O must run outside native transactions")
+    const environment = await Environment.assertTarget(target, scopeID)
+    const executor = await EnvironmentProviders.get(environment.provider).connect?.(
+      Environment.requestOf(environment),
+      target,
+    )
+    owner()
+    const description = await executor?.describe?.()
+    owner()
+    if (
+      !executor?.inspectPreparation ||
+      !executor.releasePreparation ||
+      description?.preparationVersion !== 1 ||
+      !Environment.sameTarget(description.target, target)
+    )
+      throw new Environment.Unavailable({
+        environmentID: target.environmentID,
+        message: "Executor does not support durable preparation version 1",
+      })
+    return executor
+  }
+
+  async function preparationExecution(frame: PreparationFrame) {
+    const [raw] = await Storage.readMany([
+      StoragePath.environmentExecution(
+        frame.scopeID,
+        frame.use.ownership.kind === "execution-preparation" ? frame.use.ownership.operationID : "",
+      ),
+    ])
+    frame.owner()
+    if (raw === undefined) return
+    const info = EnvironmentExecutionSchema.upgrade(raw).execution
+    const ownership = frame.use.ownership
+    if (
+      ownership.kind !== "execution-preparation" ||
+      info.id !== ownership.operationID ||
+      info.scopeID !== frame.scopeID ||
+      !Environment.sameTarget(info.target, frame.use.target) ||
+      JSON.stringify(info.origin) !== JSON.stringify(ownership.origin)
+    )
+      throw new Error("Preparation has another original execution receipt")
+    return info
+  }
+
+  function preparationFacet(frame: PreparationFrame): Preparation {
+    const ownership = frame.use.ownership
+    if (ownership.kind !== "execution-preparation") throw new Error("Preparation requires its canonical native Use")
+    const id = ownership.operationID,
+      target = frame.use.target
+    const calls = new Set<Promise<unknown>>()
+    let closing = false,
+      released = false,
+      physicalReleased = false,
+      sealAttempted = false
+    let release: Promise<void> | undefined
+    const current = () => {
+      frame.owner()
+      if (Storage.inTransaction()) throw new Error("Environment preparation I/O must run outside native transactions")
+    }
+    const inspect = async () => {
+      current()
+      const observation = ExecutionProtocol.Preparation.parse(await frame.executor.inspectPreparation!(id))
+      current()
+      if (observation.id !== id || !Environment.sameTarget(observation.target, target))
+        throw new Error("Preparation inspection returned another original native operation")
+      return observation
+    }
+    const mutation = () =>
+      Storage.transaction(
+        async () => {
+          frame.owner()
+          await EnvironmentOrigin.assertMutation(ownership.origin)
+          const info = await preparationExecution(frame)
+          if (info && info.state !== "completed")
+            throw new Error("Original execution retains its preparation through completion")
+        },
+        { commitGuard: frame.owner },
+      )
+    const active = async () => {
+      current()
+      if (closing || released || !frame.origin) throw new Error("Preparation is not a live dispatch capability")
+      frame.signal?.throwIfAborted()
+      if (Storage.current().store.options.readonly) throw new Error("Preparation effects require a writable primary")
+      await EnvironmentOrigin.assertAdmission(frame.origin, {
+        scopeID: frame.scopeID,
+        environmentID: target.environmentID,
+      })
+      await Environment.inspectUse(frame.use)
+      current()
+      frame.signal?.throwIfAborted()
+      if (closing || released) throw new Error("Original preparation is closing")
+    }
+    const tracked = <T>(body: () => Promise<T>) => {
+      current()
+      if (closing || released) throw new Error("Original preparation is closing")
+      const work = preparationCall.run(frame, body)
+      calls.add(work)
+      void work.finally(() => calls.delete(work)).catch(() => {})
+      return work
+    }
+    return Object.freeze({
+      [preparationBrand]: true as const,
+      id,
+      target: Object.freeze({ ...target }),
+      origin: Object.freeze({ ...ownership.origin }),
+      inspect,
+      prepareInputs(value: ExecutionProtocol.Inputs) {
+        const input = ExecutionProtocol.Inputs.parse(value)
+        if (input.id !== id) throw new Error("Preparation inputs changed their original operation")
+        return tracked(async () => {
+          await active()
+          if (!frame.executor.prepareInputs) throw new Error("Executor input preparation is unavailable")
+          const result = await frame.executor.prepareInputs(input)
+          frame.owner()
+          return ExecutionProtocol.PreparedInputs.parse(result)
+        })
+      },
+      prepareSandbox(value: ExecutionProtocol.SandboxInput) {
+        const input = ExecutionProtocol.SandboxInput.parse({ ...value, operationID: id })
+        if (value.operationID !== undefined && value.operationID !== id)
+          throw new Error("Sandbox preparation changed its original operation")
+        return tracked(async () => {
+          await active()
+          if (!frame.executor.prepareSandbox) throw new Error("Executor sandbox preparation is unavailable")
+          const result = await frame.executor.prepareSandbox(input)
+          frame.owner()
+          return ExecutionProtocol.Sandbox.parse(result)
+        })
+      },
+      releaseSandbox(sandboxID: string) {
+        return tracked(async () => {
+          await mutation()
+          const observation = await inspect()
+          if (!observation.sandboxes.some((sandbox) => sandbox.id === sandboxID))
+            throw new Error("Sandbox is not part of the original preparation")
+          if (!frame.executor.releaseSandbox) throw new Error("Executor sandbox cleanup is unavailable")
+          await frame.executor.releaseSandbox(sandboxID, id)
+          frame.owner()
+        })
+      },
+      discardInputs() {
+        return tracked(async () => {
+          await mutation()
+          if (!frame.executor.discardInputs) throw new Error("Executor input cleanup is unavailable")
+          await frame.executor.discardInputs(id)
+          frame.owner()
+        })
+      },
+      release() {
+        current()
+        if (preparationCall.getStore() === frame)
+          throw new Error("A preparation callback cannot release its own accepted work")
+        if (released) return Promise.resolve()
+        if (release) return release
+        closing = true
+        const pending = (async () => {
+          await Promise.allSettled([...calls])
+          await mutation()
+          let observation = await inspect()
+          if (!physicalReleased && observation.state !== "released") {
+            for (const sandbox of observation.sandboxes) {
+              if (sandbox.released) continue
+              if (!frame.executor.releaseSandbox) throw new Error("Executor sandbox cleanup is unavailable")
+              await frame.executor.releaseSandbox(sandbox.id, id)
+            }
+            if (!frame.executor.discardInputs) throw new Error("Executor input cleanup is unavailable")
+            await frame.executor.discardInputs(id)
+            observation = await inspect()
+            if (observation.state === "preparing") throw new Error("Original native preparation remains unknown")
+            if (!sealAttempted) {
+              sealAttempted = true
+              try {
+                await frame.executor.releasePreparation!(id)
+              } catch (error) {
+                if ((await inspect()).state !== "released") throw error
+              }
+            }
+            observation = await inspect()
+          }
+          if (observation.state !== "released") throw new Error("Original preparation release has no native tombstone")
+          physicalReleased = true
+          await Environment.releaseUse(
+            target,
+            frame.scopeID,
+            useID(frame.scopeID, id),
+            uses().retirement({
+              id,
+              scopeID: frame.scopeID,
+              environmentID: target.environmentID,
+              preparation: {
+                ownership,
+                async verify() {
+                  frame.owner()
+                  if (!physicalReleased) throw new Error("Preparation has no original native release evidence")
+                  await EnvironmentOrigin.assertMutation(ownership.origin)
+                },
+              },
+            }),
+          )
+          frame.owner()
+          released = true
+        })()
+        release = pending
+        void pending
+          .finally(() => {
+            if (release === pending) release = undefined
+          })
+          .catch(() => {})
+        return pending
+      },
+    })
+  }
+
+  export async function prepareResources(input: {
+    id: string
+    scopeID: string
+    target: Environment.Target
+    origin: EnvironmentOrigin.Input
+    workspaces?: WorkspaceProtocol.Reference[]
+    signal?: AbortSignal
+  }): Promise<Preparation> {
+    const id = ExecutionProtocol.ID.parse(input.id),
+      target = Environment.Target.parse(input.target)
+    const origin = EnvironmentOrigin.selected(input.origin),
+      owner = preparationOwner()
+    const scopeID = z.string().min(1).parse(input.scopeID),
+      signal = input.signal
+    owner()
+    if (Storage.current().store.options.readonly) throw new Error("Preparation requires a writable primary Store")
+    signal?.throwIfAborted()
+    const executor = await preparationExecutor(target, scopeID, owner)
+    owner()
+    const ownership = { kind: "execution-preparation" as const, scopeID, operationID: id, origin: origin.value }
+    const original: UseInput = {
+      id,
+      scopeID,
+      environmentID: target.environmentID,
+      origin,
+      preparation: {
+        ownership,
+        async verify() {
+          owner()
+          signal?.throwIfAborted()
+          await EnvironmentOrigin.assertAdmission(origin, { scopeID, environmentID: target.environmentID })
+          await Environment.assertTarget(target, scopeID)
+        },
+      },
+    }
+    const admission = await Environment.acquire(target.environmentID, {
+      scopeID,
+      useID: useID(scopeID, id),
+      ownership: uses().admission(original),
+      capabilities: [],
+      expectedTarget: target,
+      signal,
+    })
+    try {
+      await Environment.retainUse(target, scopeID, useID(scopeID, id), uses().retention(original))
+    } catch (error) {
+      try {
+        await admission.release()
+      } catch (cleanup) {
+        throw new AggregateError([error, cleanup], "Preparation retention and cleanup failed")
+      }
+      throw error
+    }
+    return preparationFacet({
+      scopeID,
+      owner,
+      origin,
+      executor,
+      signal,
+      use: { ...admission.use, kind: "operation", ownership, ownerEpoch: undefined },
+    })
+  }
+
+  export async function retainedPreparation(value: Environment.Use): Promise<RetainedPreparation> {
+    const use = Environment.Use.parse(value),
+      owner = preparationOwner()
+    owner()
+    if (Storage.current().store.options.readonly)
+      throw new Error("Retained preparation cleanup requires a writable primary Store")
+    if (use.kind !== "operation" || use.ownership.kind !== "execution-preparation")
+      throw new Error("Retained preparation requires its actual canonical operation Use")
+    await Environment.inspectUse(use)
+    owner()
+    const scopeID = use.ownership.scopeID
+    const executor = await preparationExecutor(use.target, scopeID, owner)
+    const facet = preparationFacet({ scopeID, use, owner, executor })
+    return Object.freeze({
+      [preparationBrand]: true as const,
+      id: facet.id,
+      target: facet.target,
+      origin: facet.origin,
+      inspect: facet.inspect,
+      releaseSandbox: facet.releaseSandbox,
+      discardInputs: facet.discardInputs,
+      release: facet.release,
+    })
   }
 
   export async function recover(progress?: () => void) {
@@ -60,12 +627,63 @@ export namespace EnvironmentExecution {
     }
   }
 
+  async function stored(id: string, scopeID: string) {
+    const key = StoragePath.environmentExecution(scopeID, ExecutionProtocol.ID.parse(id))
+    const [record] = await Storage.readMany<unknown>([key])
+    if (record === undefined) throw new Storage.NotFoundError({ message: "Environment execution not found" })
+    const value = EnvironmentExecutionSchema.Record.parse(upgradeAccessRecord(key, record)).execution
+    if (value.id !== id || value.scopeID !== scopeID) throw new Error("Environment execution belongs to another owner")
+    return value
+  }
+
   export async function get(id: string, scopeID: string): Promise<Info> {
-    const [record] = await Storage.readMany<unknown>([
-      StoragePath.environmentExecution(scopeID, ExecutionProtocol.ID.parse(id)),
-    ])
-    if (!record) throw new Storage.NotFoundError({ message: "Environment execution not found" })
-    return Info.parse(record)
+    return Info.parse(await stored(id, scopeID))
+  }
+
+  export function entries(): AsyncIterable<Info> {
+    const current = EnvironmentUseOwnership.captureStorage()
+    return (async function* () {
+      current()
+      for await (const row of Storage.records({ prefix: ["environment_execution"], limit: 128 })) {
+        current()
+        const record = EnvironmentExecutionSchema.Record.parse(upgradeAccessRecord(row.key, row.value))
+        const info = record.execution
+        if (row.key.length !== 3 || row.key[1] !== info.scopeID || row.key[2] !== info.id)
+          throw new Error("Environment execution metadata belongs to another canonical address")
+        yield Info.parse(info)
+      }
+      current()
+    })()
+  }
+
+  export function activeEntries(): AsyncIterable<Info> {
+    const current = EnvironmentUseOwnership.captureStorage()
+    return (async function* () {
+      current()
+      for await (const row of Storage.records({ prefix: StoragePath.environmentExecutionActive(), limit: 128 })) {
+        current()
+        if (row.key.length !== 3 || row.value !== true)
+          throw new Error("Active Environment execution has another canonical address")
+        const info = await get(row.key[2], row.key[1])
+        current()
+        if (info.state === "completed") throw new Error("Completed Environment execution retains an active index")
+        yield info
+      }
+      current()
+    })()
+  }
+
+  export async function retireRetainedSource(id: string, scopeID: string, signal?: AbortSignal) {
+    if (Storage.inTransaction()) throw new Error("Original Environment cleanup must run outside a native transaction")
+    const info = await get(id, scopeID)
+    if (!info.source) throw new Error("Original Environment cleanup requires its retained native source")
+    Sources.assertRegisteredOwner(info.source.provider)
+    if (info.state === "completed") return info
+    if (originalSource(info)) throw new Error("Live Environment operations retain their original completion owner")
+    const observed = await Sources.retireOriginal(info.id, info.scopeID, signal)
+    if (observed.state !== "completed") throw new Error("Original Environment cleanup has no complete native receipt")
+    const accepted = await acceptSource(info, observed)
+    return complete(accepted.id, accepted.scopeID)
   }
 
   export async function listActive(scopeID: string): Promise<Info[]> {
@@ -78,26 +696,44 @@ export namespace EnvironmentExecution {
     scopeID: string
     environmentID: string
     command: ExecutionProtocol.Command
+    origin: EnvironmentOrigin.Input
     intentDigest?: string
     workspaces?: WorkspaceProtocol.Reference[]
     signal?: AbortSignal
+    source?: Sources.Lease
   }): Promise<Info> {
     const id = ExecutionProtocol.ID.parse(input.id)
-    input = { ...input, command: { ...input.command, capture: input.workspaces ?? [] } }
+    const origin = EnvironmentOrigin.selected(input.origin)
+    const workspaces =
+      input.workspaces === undefined ? undefined : z.array(WorkspaceProtocol.Reference).parse(input.workspaces)
+    input = {
+      ...input,
+      workspaces,
+      command: ExecutionProtocol.Command.parse({ ...input.command, capture: workspaces ?? [] }),
+    }
     const digest = ExecutionProtocol.digest(input.command)
-    const key = JSON.stringify([input.scopeID, id])
-    const previous = pending().get(key)
+    const previous = currentPending().find((entry) => entry.scopeID === input.scopeID && entry.operationID === id)
     if (previous) {
-      const info = await previous
-      verifyInput(info, input.environmentID, digest, input.workspaces, input.intentDigest)
+      const info = await previous.promise
+      verifyInput(info, input.environmentID, digest, input.workspaces, input.intentDigest, origin.value)
       return info
     }
-    const promise = submit({ ...input, id, digest })
-    pending().set(key, promise)
+    const promise = submit({ ...input, id, digest, origin })
+    const { store, artifactDirectory, artifactObjects } = Storage.current()
+    const entry = {
+      scopeID: input.scopeID,
+      operationID: id,
+      store,
+      artifactDirectory,
+      artifactObjects,
+      origin,
+      promise,
+    }
+    pending().add(entry)
     try {
       return await promise
     } finally {
-      pending().delete(key)
+      pending().delete(entry)
     }
   }
 
@@ -106,73 +742,123 @@ export namespace EnvironmentExecution {
     scopeID: string
     environmentID: string
     command: ExecutionProtocol.Command
+    origin: EnvironmentOrigin.Captured
     intentDigest?: string
     workspaces?: WorkspaceProtocol.Reference[]
     digest: string
     signal?: AbortSignal
+    source?: Sources.Lease
   }) {
-    const [existing] = await Storage.readMany<Info>([StoragePath.environmentExecution(input.scopeID, input.id)])
+    input.origin.assertCurrent()
+    const existing = await stored(input.id, input.scopeID).catch((error: unknown) => {
+      if (error instanceof Storage.NotFoundError) return
+      throw error
+    })
+    input.origin.assertCurrent()
     if (existing) {
-      verifyInput(existing, input.environmentID, input.digest, input.workspaces, input.intentDigest)
+      verifyInput(existing, input.environmentID, input.digest, input.workspaces, input.intentDigest, input.origin.value)
       return ["completed", "saved", "unsaved", "exited"].includes(existing.state)
-        ? existing
+        ? Info.parse(existing)
         : reconcile(input.id, input.scopeID)
     }
     input.signal?.throwIfAborted()
+    if (input.source) await Sources.assertAdmission(input.source, input.origin)
+    else await EnvironmentOrigin.assertAdmission(input.origin, input)
+    await RuntimeMaintenance.assertAdmission()
+    input.origin.assertCurrent()
+    if (input.source) return submitSource({ ...input, source: input.source })
     const use = await Environment.acquire(input.environmentID, {
       scopeID: input.scopeID,
       useID: useID(input.scopeID, input.id),
       kind: "admission",
+      ownership: uses().admission(input),
       capabilities: [input.command.pty ? "pty" : "exec"],
       signal: input.signal,
     })
     let recorded = false
     try {
-      const info = await Storage.transaction(async () => {
-        await Environment.assertTarget(use.target, input.scopeID)
-        const evidence: NonNullable<Info["evidence"]> = []
-        for (const workspace of input.workspaces ?? []) {
-          const info = await WorkspaceCatalog.get(workspace.workspaceID, input.scopeID)
-          const mount = info.activeMount
-          if (
-            !mount ||
-            mount.id !== workspace.id ||
-            mount.generation !== workspace.generation ||
-            mount.state !== "active" ||
-            !Environment.sameTarget(mount.target, use.target)
+      const info = await Storage.transaction(
+        async () => {
+          await RuntimeMaintenance.assertAdmission()
+          await EnvironmentOrigin.assertAdmission(input.origin, input)
+          await Environment.assertTarget(use.target, input.scopeID)
+          const evidence: NonNullable<Info["evidence"]> = []
+          for (const workspace of input.workspaces ?? []) {
+            const info = await WorkspaceCatalog.get(workspace.workspaceID, input.scopeID)
+            const mount = info.activeMount
+            if (
+              !mount ||
+              mount.id !== workspace.id ||
+              mount.generation !== workspace.generation ||
+              mount.state !== "active" ||
+              !Environment.sameTarget(mount.target, use.target)
+            )
+              throw new WorkspaceCatalog.BindingChanged({
+                workspaceID: info.id,
+                message: "Execution requires the selected active Workspace mount",
+              })
+            if (!input.command.useRoots.includes(mount.path))
+              throw new Error("Execution must retain its selected Workspace through checkpoint publication")
+            const reference = await WorkspaceEvidence.begin(info)
+            if (reference) evidence.push({ workspaceID: info.id, reference })
+          }
+          const now = Date.now()
+          const info = Info.parse({
+            id: input.id,
+            scopeID: input.scopeID,
+            origin: input.origin.value,
+            target: use.target,
+            evidence,
+            workspaces: input.workspaces,
+            digest: input.digest,
+            intentDigest: input.intentDigest,
+            state: "submitted",
+            outputCursor: 0,
+            createdAt: now,
+            updatedAt: now,
+          })
+          await write(info)
+          await Environment.retainUse(
+            use.target,
+            input.scopeID,
+            useID(input.scopeID, input.id),
+            uses().retention(input),
           )
-            throw new WorkspaceCatalog.BindingChanged({
-              workspaceID: info.id,
-              message: "Execution requires the selected active Workspace mount",
-            })
-          if (!input.command.useRoots.includes(mount.path))
-            throw new Error("Execution must retain its selected Workspace through checkpoint publication")
-          const reference = await WorkspaceEvidence.begin(info)
-          if (reference) evidence.push({ workspaceID: info.id, reference })
-        }
-        const now = Date.now()
-        const info = Info.parse({
-          id: input.id,
-          scopeID: input.scopeID,
-          target: use.target,
-          evidence,
-          workspaces: input.workspaces,
-          digest: input.digest,
-          intentDigest: input.intentDigest,
-          state: "submitted",
-          outputCursor: 0,
-          createdAt: now,
-          updatedAt: now,
-        })
-        await Environment.retainUse(use.target, input.scopeID, useID(input.scopeID, input.id))
-        await write(info)
-        return info
-      })
+          return info
+        },
+        {
+          commitGuard() {
+            input.origin.assertCurrent()
+            input.signal?.throwIfAborted()
+          },
+        },
+      )
       recorded = true
       const executor = await connect(info)
       if (input.signal?.aborted) {
         await cancel(input.id, input.scopeID)
         return get(input.id, input.scopeID)
+      }
+      try {
+        await EnvironmentOrigin.assertAdmission(input.origin, input)
+        input.signal?.throwIfAborted()
+      } catch (reason) {
+        try {
+          await cancel(input.id, input.scopeID)
+          const cancelled = await get(input.id, input.scopeID)
+          if (
+            cancelled.status?.state === "cancelled" &&
+            cancelled.status.effectsStarted === false &&
+            ExecutionProtocol.terminal(cancelled.status)
+          )
+            await complete(input.id, input.scopeID)
+        } catch (error) {
+          throw new AggregateError(
+            [reason, error],
+            "Execution admission closed before dispatch and its native cancellation requires reconciliation",
+          )
+        }
+        throw reason
       }
       const status = await executor.start({
         id: input.id,
@@ -189,9 +875,18 @@ export namespace EnvironmentExecution {
 
   export async function reconcile(id: string, scopeID: string): Promise<Info> {
     const info = await get(id, scopeID)
-    if (["completed", "saved", "unsaved", "exited"].includes(info.state)) return info
+    if (info.state === "completed") return info
+    if (info.source) {
+      const live = originalSource(info)
+      const observed = live ? await live.inspect(id) : (await inspectSource(info)).info
+      return observed ? acceptSource(info, observed) : update(info, { state: "unknown" })
+    }
+    if (["saved", "unsaved", "exited"].includes(info.state)) return info
     const executor = await connect(info)
-    if (info.state === "cancel_requested") await executor.cancel(id, info.digest)
+    if (info.state === "cancel_requested") {
+      await assertControl(info)
+      await executor.cancel(id, info.digest)
+    }
     const status = await executor.status(id)
     if (!status) return update(info, { state: "unknown" })
     return accept(info, status)
@@ -201,7 +896,20 @@ export namespace EnvironmentExecution {
     const info = await get(id, scopeID)
     if (["completed", "saved", "unsaved", "exited"].includes(info.state)) return
     await update(info, { state: "cancel_requested" })
-    await (await connect(info)).cancel(id, info.digest)
+    if (info.source) {
+      const live = originalSource(info)
+      if (!live)
+        throw new Environment.Unavailable({
+          environmentID: info.target.environmentID,
+          message: "Retained remote execution permits only original receipt inspection",
+        })
+      await live.cancel(id, info.digest)
+      await reconcile(id, scopeID)
+      return
+    }
+    const executor = await connect(info)
+    await assertControl(info)
+    await executor.cancel(id, info.digest)
     await reconcile(id, scopeID)
   }
 
@@ -223,8 +931,15 @@ export namespace EnvironmentExecution {
   }
 
   async function finish(id: string, scopeID: string, checkpoint: Checkpoint) {
-    let info = await get(id, scopeID)
-    if (info.state === "completed") return info
+    let info = await stored(id, scopeID)
+    if (info.state === "completed") {
+      const original = originalSource(info)
+      if (original) {
+        await original.close()
+        sourceOperations().delete(JSON.stringify([info.scopeID, info.id]))
+      }
+      return Info.parse(info)
+    }
     if (
       !["exited", "unsaved", "saved"].includes(info.state) ||
       !info.status ||
@@ -234,6 +949,7 @@ export namespace EnvironmentExecution {
         environmentID: info.target.environmentID,
         message: "Physical process and stream completion must be confirmed before saving",
       })
+    if (info.source) return finishSource(info)
     const executor = await connect(info)
     if (info.state !== "saved") {
       try {
@@ -247,10 +963,15 @@ export namespace EnvironmentExecution {
     }
     await executor.release(id)
     return Storage.transaction(async () => {
-      const latest = await get(id, scopeID)
-      if (latest.state === "completed") return latest
+      const latest = await stored(id, scopeID)
+      if (latest.state === "completed") return Info.parse(latest)
       await Environment.assertTarget(info.target, scopeID)
-      await Environment.releaseUse(info.target, scopeID, useID(scopeID, id))
+      await Environment.releaseUse(
+        info.target,
+        scopeID,
+        useID(scopeID, id),
+        uses().retirement({ id, scopeID, environmentID: info.target.environmentID }),
+      )
       return write({ ...latest, state: "completed" })
     })
   }
@@ -264,7 +985,11 @@ export namespace EnvironmentExecution {
     const info = await get(id, scopeID)
     if (!Number.isSafeInteger(after) || after < 0 || !Number.isSafeInteger(limit) || limit < 1 || limit > 128)
       throw new Error("Invalid output cursor or limit")
-    if (info.state !== "completed" && info.state !== "saved") return (await connect(info)).output(id, after, limit)
+    if (info.state !== "completed" && info.state !== "saved") {
+      if (info.source)
+        return originalSource(info)?.output(id, after, limit) ?? (await inspectSource(info, after, limit)).output
+      return (await connect(info)).output(id, after, limit)
+    }
     const keys = Array.from({ length: Math.min(limit, Math.max(0, info.outputCursor - after)) }, (_, index) =>
       StoragePath.environmentOutput(scopeID, id, after + index + 1),
     )
@@ -276,16 +1001,53 @@ export namespace EnvironmentExecution {
 
   export async function stdin(id: string, scopeID: string, data: Uint8Array, end = false) {
     if (data.byteLength > 65_536) throw new Error("Input frame exceeds 64 KiB")
+    data = Uint8Array.from(data)
     const info = await get(id, scopeID)
-    await (await connect(info)).stdin(id, data, end)
+    if (info.source) {
+      const live = originalSource(info)
+      if (!live)
+        throw new Environment.Unavailable({
+          environmentID: info.target.environmentID,
+          message: "Retained remote execution cannot send new process input",
+        })
+      await live.stdin(id, data, end)
+      return
+    }
+    const executor = await connect(info)
+    await assertControl(info)
+    await executor.stdin(id, data, end)
   }
 
   export async function resize(id: string, scopeID: string, cols: number, rows: number) {
     const size = ExecutionProtocol.Command.shape.pty.unwrap().parse({ cols, rows })
-    await (await connect(await get(id, scopeID))).resize(id, size.cols, size.rows)
+    const info = await get(id, scopeID)
+    if (info.source) {
+      const live = originalSource(info)
+      if (!live)
+        throw new Environment.Unavailable({
+          environmentID: info.target.environmentID,
+          message: "Retained remote execution cannot resize a process",
+        })
+      await live.resize(id, size.cols, size.rows)
+      return
+    }
+    const executor = await connect(info)
+    await assertControl(info)
+    await executor.resize(id, size.cols, size.rows)
   }
 
-  export async function connect(info: Pick<Info, "scopeID" | "target">): Promise<Executor> {
+  async function assertControl(info: Info) {
+    if (Storage.inTransaction()) throw new Error("Process control must run outside a Storage transaction")
+    await ProcessAccessSource.recheckCurrent()
+    if (info.origin.kind === "host") await EnvironmentOrigin.assertMutation(info.origin)
+  }
+
+  export async function connect(info: Pick<Info, "scopeID" | "target" | "source">): Promise<Executor> {
+    if (info.source)
+      throw new Environment.Unavailable({
+        environmentID: info.target.environmentID,
+        message: "Remote execution has no controller-local Executor",
+      })
     const environment = await Environment.assertTarget(info.target, info.scopeID)
     const provider = EnvironmentProviders.get(environment.provider)
     if (!provider.connect)
@@ -310,7 +1072,167 @@ export namespace EnvironmentExecution {
     return connection
   }
 
-  async function captureOutput(info: Info, executor: Executor) {
+  function originalSource(info: Info) {
+    const entry = sourceOperations().get(JSON.stringify([info.scopeID, info.id]))
+    if (!entry) return
+    if (JSON.stringify(entry.record) !== JSON.stringify(info.source))
+      throw new Error("Execution changed its original live source")
+    return entry.operations
+  }
+
+  async function inspectSource(info: Info, after = 0, limit = 128) {
+    if (!info.source) throw new Error("Execution has no retained remote source")
+    return Sources.inspect(info.source, {
+      scopeID: info.scopeID,
+      operationID: info.id,
+      digest: info.digest,
+      origin: info.origin,
+      after,
+      limit,
+    })
+  }
+
+  async function submitSource(input: {
+    id: string
+    scopeID: string
+    environmentID: string
+    command: ExecutionProtocol.Command
+    origin: EnvironmentOrigin.Captured
+    source: Sources.Lease
+    digest: string
+    intentDigest?: string
+    workspaces?: WorkspaceProtocol.Reference[]
+    signal?: AbortSignal
+  }) {
+    const source = Sources.capture(input.source, input.origin),
+      owner = Sources.captureOwner(source)
+    if (source.target.environmentID !== input.environmentID)
+      throw new Environment.Stale({
+        environmentID: input.environmentID,
+        message: "Execution selected another remote Environment",
+      })
+    const operations = Sources.operations(input.source)
+    const assert = () => {
+      owner()
+      input.source.assert()
+      input.origin.assertCurrent()
+      input.signal?.throwIfAborted()
+    }
+    assert()
+    const info = await Storage.transaction(
+      async () => {
+        await RuntimeMaintenance.assertAdmission()
+        await Sources.assertAdmission(input.source, input.origin)
+        assert()
+        const now = Date.now()
+        return write(
+          Info.parse({
+            id: input.id,
+            scopeID: input.scopeID,
+            target: source.target,
+            origin: input.origin.value,
+            workspaces: input.workspaces,
+            digest: input.digest,
+            intentDigest: input.intentDigest,
+            state: "submitted",
+            outputCursor: 0,
+            createdAt: now,
+            updatedAt: now,
+            source,
+          }),
+        )
+      },
+      { commitGuard: assert },
+    )
+    const retained = await Sources.retainOperation(input.source, {
+      id: info.id,
+      scopeID: info.scopeID,
+      digest: info.digest,
+      origin: input.origin,
+    })
+    sourceOperations().set(JSON.stringify([info.scopeID, info.id]), { record: source, operations: retained })
+    try {
+      const observed = await operations.start(input)
+      return acceptSource(info, observed)
+    } catch (error) {
+      await update(info, { state: "unknown" }).catch(() => {})
+      throw error
+    }
+  }
+
+  async function acceptSource(info: Info, observed: Info) {
+    if (
+      observed.id !== info.id ||
+      observed.scopeID !== info.scopeID ||
+      observed.digest !== info.digest ||
+      !Environment.sameTarget(observed.target, info.target) ||
+      JSON.stringify(observed.origin) !== JSON.stringify(info.origin) ||
+      observed.sourceObservation === undefined
+    )
+      throw new Environment.Stale({
+        environmentID: info.target.environmentID,
+        message: "Remote execution returned another original native operation",
+      })
+    const status = observed.status && ExecutionProtocol.Status.parse(observed.status)
+    if (
+      status &&
+      (status.id !== info.id || status.digest !== info.digest || !Environment.sameTarget(status.target, info.target))
+    )
+      throw new Environment.Stale({
+        environmentID: info.target.environmentID,
+        message: "Remote execution returned another physical receipt",
+      })
+    const state = ["completed", "saved", "unsaved", "exited"].includes(info.state)
+      ? undefined
+      : ["completed", "saved", "unsaved", "exited"].includes(observed.state)
+        ? "exited"
+        : observed.state
+    return update(info, { ...(state && { state }), status, sourceObservation: observed.sourceObservation })
+  }
+
+  async function finishSource(input: Info) {
+    let info = input
+    const native = async () => {
+      const observation = EnvironmentExecutionSchema.Info.parse(info.sourceObservation)
+      if (observation.state === "completed") return observation
+      const live = originalSource(info)
+      if (!live)
+        throw new Environment.Unavailable({
+          environmentID: info.target.environmentID,
+          message: "Retained remote execution cannot perform a new physical save",
+        })
+      const observed = await live.complete(info.id)
+      info = await acceptSource(info, observed)
+      const completed = EnvironmentExecutionSchema.Info.parse(info.sourceObservation)
+      if (completed.state !== "completed")
+        throw new Environment.Busy({
+          environmentID: info.target.environmentID,
+          message: "Original remote save and release are not confirmed",
+        })
+      return completed
+    }
+    try {
+      await captureOutput(info, {
+        output: (id, after, limit) =>
+          originalSource(info)?.output(id, after, limit) ??
+          inspectSource(info, after, limit).then((value) => value.output),
+      })
+      const completed = await native()
+      const result = await update(info, {
+        state: "completed",
+        saved: completed.saved,
+        checkpointFailures: completed.checkpointFailures,
+      })
+      await originalSource(result)?.close()
+      sourceOperations().delete(JSON.stringify([info.scopeID, info.id]))
+      return result
+    } catch (error) {
+      await update(info, { state: "unsaved" }).catch(() => {})
+      throw error
+    }
+  }
+
+  async function captureOutput(info: Info, executor: Pick<Executor, "output">) {
     let after = (await get(info.id, info.scopeID)).outputCursor
     const end = info.status!.cursor
     while (after < end) {
@@ -347,10 +1269,12 @@ export namespace EnvironmentExecution {
     info: Info,
     environmentID: string,
     digest: string,
-    workspaces?: WorkspaceProtocol.Reference[],
-    intentDigest?: string,
+    workspaces: WorkspaceProtocol.Reference[] | undefined,
+    intentDigest: string | undefined,
+    origin: EnvironmentOrigin.Info,
   ) {
     if (
+      JSON.stringify(info.origin) !== JSON.stringify(origin) ||
       info.target.environmentID !== environmentID ||
       (info.intentDigest ? info.intentDigest !== intentDigest : Boolean(intentDigest) || info.digest !== digest) ||
       JSON.stringify((info.workspaces ?? []).map((reference) => WorkspaceProtocol.Reference.parse(reference))) !==
@@ -360,41 +1284,51 @@ export namespace EnvironmentExecution {
   }
 
   async function update(info: Info, changes: Partial<Info>): Promise<Info> {
-    return Storage.transaction(async () => {
-      await Environment.assertTarget(info.target, info.scopeID)
-      const latest = await get(info.id, info.scopeID)
-      if (!Environment.sameTarget(latest.target, info.target) || latest.digest !== info.digest)
-        throw new Environment.Stale({
-          environmentID: info.target.environmentID,
-          message: "Operation changed during execution",
-        })
-      if (latest.state === "completed") return latest
-      if (latest.state === "saved" && changes.state && changes.state !== "completed") return latest
-      if (
-        ["saved", "unsaved", "exited"].includes(latest.state) &&
-        changes.state &&
-        ["running", "unknown", "cancel_requested", "exited"].includes(changes.state)
-      )
-        return latest
-      if (latest.state === "cancel_requested" && changes.state === "running")
-        changes = { ...changes, state: "cancel_requested" }
-      if (
-        Object.entries(changes).every(
-          ([key, value]) => JSON.stringify(latest[key as keyof Info]) === JSON.stringify(value),
+    const sourceOwner = info.source && Sources.captureOwner(info.source)
+    return Storage.transaction(
+      async () => {
+        if (sourceOwner) sourceOwner()
+        else await Environment.assertTarget(info.target, info.scopeID)
+        const latest = await stored(info.id, info.scopeID)
+        if (!Environment.sameTarget(latest.target, info.target) || latest.digest !== info.digest)
+          throw new Environment.Stale({
+            environmentID: info.target.environmentID,
+            message: "Operation changed during execution",
+          })
+        if (latest.state === "completed") return Info.parse(latest)
+        if (latest.state === "saved" && changes.state && changes.state !== "completed") return Info.parse(latest)
+        if (
+          ["saved", "unsaved", "exited"].includes(latest.state) &&
+          changes.state &&
+          ["running", "unknown", "cancel_requested", "exited"].includes(changes.state)
         )
-      )
-        return latest
-      return write({ ...latest, ...changes })
-    })
+          return Info.parse(latest)
+        if (latest.state === "cancel_requested" && changes.state === "running")
+          changes = { ...changes, state: "cancel_requested" }
+        if (JSON.stringify(latest.source) !== JSON.stringify(info.source))
+          throw new Error("Execution changed its retained source")
+        if (
+          Object.entries(changes).every(
+            ([key, value]) => JSON.stringify(latest[key as keyof Info]) === JSON.stringify(value),
+          )
+        )
+          return Info.parse(latest)
+        return write({ ...latest, ...changes })
+      },
+      { commitGuard: sourceOwner },
+    )
   }
 
   async function write(info: Info) {
-    const next = Info.parse({ ...info, updatedAt: Date.now() })
-    await Storage.write(StoragePath.environmentExecution(info.scopeID, info.id), next)
+    const next = EnvironmentExecutionSchema.PersistedInfo.parse({ ...info, updatedAt: Date.now() })
+    await EnvironmentOrigin.assertMutation(next.origin)
+    const record = EnvironmentExecutionSchema.Record.parse({ schemaVersion: next.source ? 3 : 2, execution: next })
+    await Storage.write(StoragePath.environmentExecution(info.scopeID, info.id), record)
+    await EnvironmentExecutionOriginIndex.update(next)
     const active = StoragePath.environmentExecutionActive(info.scopeID, info.id)
     if (next.state === "completed") await Storage.remove(active)
     else await Storage.write(active, true)
-    return next
+    return Info.parse(next)
   }
 
   function useID(scopeID: string, id: string) {

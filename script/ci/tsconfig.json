@@ -8,7 +8,10 @@
     "typeRoots": ["../../packages/testing/node_modules/@types"],
     "paths": {
       "@typescript/typescript6": ["../../packages/testing/node_modules/@typescript/typescript6"],
-      "@ericsanchezok/synergy-util/runtime-startup": ["../../packages/util/src/runtime-startup.ts"]
+      "@ericsanchezok/synergy-util/runtime-startup": ["../../packages/util/src/runtime-startup.ts"],
+      "@ericsanchezok/synergy-plugin/package": ["../../packages/plugin/src/package.ts"],
+      "@ericsanchezok/synergy-util/features": ["../../packages/util/src/features.ts"],
+      "zod": ["../../packages/util/node_modules/zod"]
     }
   },
   "include": ["../ci.ts", "../verify.ts", "./*.ts"]

@@ -5,6 +5,8 @@ import type { useGlobalSDK as GlobalSDK } from "../../../src/context/global-sdk"
 import type { useWorkbenchPanels as Workbench } from "../../../src/context/workbench"
 import { BROWSER_PROTOCOL_VERSION } from "@ericsanchezok/synergy-browser-core"
 
+const runtimeID = "94497ff6-b2b3-478e-a3aa-ce77665f0626"
+const cacheKey = JSON.stringify(["personal", runtimeID])
 export const endpoint = new URLSearchParams(location.search).get("backend")!
 export const [session, setSession] = createSignal("session-a")
 export const [active, setActive] = createSignal(true)
@@ -112,6 +114,7 @@ export const usePlatform = () => ({
     if (pathname === "/global/capabilities")
       return Response.json({
         apiVersion: 1,
+        runtimeID,
         features: ["workbench", "note", "browser"],
         transports: { projection: "projection-v2" },
       })
@@ -145,9 +148,10 @@ export const usePlatform = () => ({
     throw new Error(`Unexpected fixture request: ${pathname}`)
   },
 })
-export const useServer = () => ({ url: endpoint, scopes: { prepare() {} } })
+export const useServer = () => ({ url: endpoint, runtimeID, cacheKey, acceptIdentity() {}, scopes: { prepare() {} } })
 export const useSDK = () => ({
   url: endpoint,
+  cacheKey,
   scopeKey: "scope",
   scopeID: "scope",
   directory: "/fixture",

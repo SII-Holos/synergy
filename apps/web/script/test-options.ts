@@ -1,5 +1,10 @@
 import type { TestRunnerOptions } from "../../../script/shared/test-runner"
 
+export const organizationSourceDOMFiles = [
+  "test/organization/handoff-source.render.test.ts",
+  "test/organization/workspace-source.render.test.ts",
+] as const
+
 // Playwright suites launch Chromium. bun test runs files in parallel worker
 // processes and reaps dangling children when a worker exits, which can kill a
 // sibling suite's freshly launched browser. Run every Chromium suite serially
@@ -7,6 +12,27 @@ import type { TestRunnerOptions } from "../../../script/shared/test-runner"
 // These `mock.module`-heavy suites stub the same context modules under the same
 // specifiers; Bun's mocks are process-global, so each needs its own process.
 const playwrightIsolated = [
+  ...organizationSourceDOMFiles,
+  "test/context/space-combined.browser.test.ts",
+  "test/organization/notifications.browser.test.ts",
+  "test/context/notification-platform.dom.test.ts",
+  "test/organization/authorization.browser.test.ts",
+  "test/organization/space.browser.test.ts",
+  "test/organization/sign-out-store.browser.test.ts",
+  "test/organization/workspace.browser.test.ts",
+  "test/organization/publication-recovery.browser.test.ts",
+  "test/organization/workspace-recovery.browser.test.ts",
+  "test/organization/workspace-requests.browser.test.ts",
+  "test/organization/members.browser.test.ts",
+  "test/organization/transcript.browser.test.ts",
+  "test/organization/sessions.browser.test.ts",
+  "test/organization/handoff.browser.test.ts",
+  "test/organization/account-devices.browser.test.ts",
+  "test/organization/interactions.browser.test.ts",
+  "test/organization/decision-outbox.browser.test.ts",
+  "test/organization/question-drafts.browser.test.ts",
+  "test/organization/api-tokens.browser.test.ts",
+  "test/organization/decision-state.test.ts",
   "test/components/settings/panels/runtime-resources.browser.test.ts",
   "test/components/provider/provider-connection-test.dom.test.ts",
   "test/components/digital-twin/composer.dom.test.ts",
@@ -23,6 +49,7 @@ const playwrightIsolated = [
   "test/context/workbench/residency-capabilities.dom.test.ts",
   "test/plugin/host-capabilities.dom.test.ts",
   "test/context/global-sync-lifecycle.dom.test.ts",
+  "test/context/server-identity.dom.test.ts",
   "test/context/layout/project-navigation.dom.test.ts",
   "test/context/sync-history-transition.dom.test.ts",
   "test/testing/focus-presentation.browser.test.ts",
@@ -90,6 +117,7 @@ const playwrightIsolated = [
   "test/components/session/conversation-process.dom.test.ts",
   "test/components/session/session-submission-status.dom.test.ts",
   "test/components/dialog/workspace-dialog.dom.test.ts",
+  "test/components/dialog/confirm-owned.browser.test.ts",
   "test/components/dialog/directory-navigation.dom.test.ts",
   "test/components/dialog/directory-selection.dom.test.ts",
   "test/components/dialog/project-settings.dom.test.ts",
@@ -177,6 +205,9 @@ export const testOptions = {
   isolated: playwrightIsolated,
   isolatedTimeoutMs: 120000,
   browserOnly: [
+    ...organizationSourceDOMFiles,
+    "test/organization/attachment-directory.test.ts",
+    "test/organization/decision-state.test.ts",
     "test/components/prompt-input/loop-status-resource.test.ts",
     "test/components/session/conversation-hydration.test.ts",
     "test/components/session/project-directory-resource.test.ts",

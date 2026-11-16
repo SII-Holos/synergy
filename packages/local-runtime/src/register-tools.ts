@@ -26,6 +26,7 @@ import { ProcessTool } from "./tools/process"
 import { AgentConfigTool, AgentConfigToolGroup } from "./tools/agent-config"
 import { ToolExposure } from "@ericsanchezok/synergy-harness/tool/exposure"
 import { RuntimeReloadTool } from "./tools/runtime-reload"
+import { ProcessAccessSource } from "@ericsanchezok/synergy-harness/process/access-source"
 
 export function registerLocalTools() {
   registerLocalToolInputHistory()
@@ -58,7 +59,7 @@ export function registerLocalTools() {
       SessionSendTool,
       ScopeListTool,
       SkillTool,
-      ProcessTool,
+      { ...ProcessTool, requiresWorkspace: !ProcessAccessSource.has() },
       RuntimeReloadTool,
       AgentConfigTool,
     ]

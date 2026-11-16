@@ -1,3 +1,8 @@
+import {
+  SessionTransferEpochs as Epochs,
+  SessionTransferGate as Gate,
+} from "@ericsanchezok/synergy-harness/session/transfer"
+import { BlueprintTransferIndex } from "../transfer-index"
 import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
@@ -80,7 +85,9 @@ export namespace SuperPlanStore {
         time: { created: now, updated: now },
       })
 
+      for (const sessionID of BlueprintTransferIndex.planSessions(run)) await Gate.assert(sessionID)
       await Storage.write(StoragePath.superPlanRun(sid, runID), run)
+      await BlueprintTransferIndex.plan(run)
       await Bus.publish(SuperPlanEvent.Created, { run })
       await appendEvent(scopeID, runID, {
         kind: "run_created",
@@ -110,12 +117,15 @@ export namespace SuperPlanStore {
   ): Promise<SuperPlanTypes.Run> {
     return Storage.transaction(async () => {
       const sid = Identifier.asScopeID(scopeID)
+      const previous = await get(scopeID, runID)
       const run = await Storage.update<SuperPlanTypes.Run>(StoragePath.superPlanRun(sid, runID), (draft) => {
         editor(draft)
         draft.time.updated = Date.now()
       })
       const parsed = SuperPlanTypes.Run.parse(run)
+      for (const sessionID of BlueprintTransferIndex.planSessions(parsed)) await Epochs.assertOwnerMutation(sessionID)
       await Storage.write(StoragePath.superPlanRun(sid, runID), parsed)
+      await BlueprintTransferIndex.plan(parsed, previous)
       await Bus.publish(SuperPlanEvent.Updated, { run: parsed })
       return parsed
     })

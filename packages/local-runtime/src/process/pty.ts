@@ -13,12 +13,17 @@ import { WorkspaceState } from "@ericsanchezok/synergy-harness/workspace/state"
 import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
 import { EnvironmentResources } from "@ericsanchezok/synergy-harness/environment/resources"
 import { EnvironmentProcess } from "@ericsanchezok/synergy-harness/environment/process"
+import { EnvironmentOrigin } from "@ericsanchezok/synergy-harness/environment/origin"
 import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
 import { once } from "node:events"
 import { ObservabilityMetrics } from "@ericsanchezok/synergy-harness/observability/metrics"
 import { ObservabilityRedaction } from "@ericsanchezok/synergy-harness/observability/redaction"
 
 export namespace Pty {
+  const registration = RuntimeContext.state<{ origin?: ReturnType<typeof EnvironmentOrigin.registerHost> }>(() => ({}))
+  export function register() {
+    registration().origin ??= EnvironmentOrigin.registerHost("pty")
+  }
   export interface Client {
     readyState: number
     bufferedAmount?: number
@@ -165,16 +170,33 @@ export namespace Pty {
   }
 
   export async function create(input: CreateInput, signal?: AbortSignal): Promise<Info> {
-    if (!input.sessionID) return createInWorkspace(input, signal)
-    const session = await Session.get(input.sessionID)
+    input = CreateInput.parse(input)
+    const selected = EnvironmentResources.current()
+    const inherited = selected?.origin
+    if (selected && !inherited) throw new Error("Terminal requires an owned resource origin")
+    inherited?.assertCurrent()
+    const id = Identifier.create("pty", false)
+    const origin = registration().origin?.capture(id)
+    if (!origin) throw new Error("Terminal Host origin is unavailable")
+    const launch = {
+      id,
+      origin,
+      inherited,
+      workspaceID: selected
+        ? (selected.workspace?.id ?? selected.selection?.workspaceID)
+        : ScopeContext.tryWorkspace()?.id,
+      environmentID: selected?.environment?.id ?? selected?.selection?.environmentID,
+    }
+    if (!input.sessionID) return createInWorkspace(input, launch, signal)
     const scope = ScopeContext.current.scope
+    const session = await Session.get(input.sessionID)
     if (session.scope.id !== scope.id) throw new Storage.NotFoundError({ message: "Session not found in this Scope" })
     return ScopeContext.provide({
       scope,
       workspace: session.workspace,
       fn: () =>
         WorkspaceAccess.task({ sessionID: session.id, workspace: session.workspace, signal, lazy: true }, () =>
-          createInWorkspace(input, signal, {
+          createInWorkspace(input, launch, signal, {
             environmentID: session.environmentID ?? null,
             workspaceID: session.workspaceID,
           }),
@@ -184,17 +206,26 @@ export namespace Pty {
 
   async function createInWorkspace(
     input: CreateInput,
+    captured: {
+      id: string
+      origin: EnvironmentOrigin.Token
+      inherited?: EnvironmentOrigin.Captured
+      workspaceID?: string | null
+      environmentID?: string | null
+    },
     signal?: AbortSignal,
     selection?: Pick<EnvironmentResources.Selection, "workspaceID" | "environmentID">,
   ): Promise<Info> {
     const workspace = ScopeContext.current.workspace
     const scopeID = ScopeContext.current.scope.id
-    const id = Identifier.create("pty", false)
+    const { id, origin, inherited } = captured
+    const workspaceID = selection ? selection.workspaceID : captured.workspaceID
+    const environmentID = selection ? selection.environmentID : captured.environmentID
     const scopeOwner = state()
     const workspaceOwner = workspace
       ? owners()
-      : selection?.workspaceID
-        ? await WorkspaceCatalog.get(selection.workspaceID, scopeID).then((info) =>
+      : workspaceID
+        ? await WorkspaceCatalog.get(workspaceID, scopeID).then((info) =>
             WorkspaceState.provide({ id: info.id, generation: info.binding.generation, scopeID }, owners),
           )
         : undefined
@@ -209,14 +240,19 @@ export namespace Pty {
     const cancelled = signal ? AbortSignal.any([signal, abort.signal]) : abort.signal
     let started: Awaited<ReturnType<typeof spawn>> | undefined
     try {
+      if (inherited)
+        await EnvironmentOrigin.assertAdmission(inherited, { scopeID, environmentID: environmentID ?? undefined })
       await using resources = await EnvironmentResources.select({
         scopeID,
         ownerID: input.sessionID ?? id,
-        workspaceID: selection ? selection.workspaceID : workspace?.id,
-        environmentID: selection?.environmentID,
+        workspaceID,
+        environmentID,
+        origin,
         needs: { execution: "pty" },
         signal: cancelled,
       })
+      if (inherited)
+        await EnvironmentOrigin.assertAdmission(inherited, { scopeID, environmentID: resources.environment?.id })
       const command = input.command || resources.runtime!.shell
       const args = [...(input.args ?? [])]
       if (command.endsWith("sh")) args.push("-l")

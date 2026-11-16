@@ -6,6 +6,7 @@ import { WorkspaceCoordinator } from "@ericsanchezok/synergy-local-runtime/works
 import { registerConfig } from "../../src/config-schema"
 import { registerWorkspaceFileSymbolSource } from "../../src/workspace-symbol-source"
 import { registerLspToolSource } from "../../src/tool-source"
+import { LSPProcess } from "../../src/process"
 
 export function testRuntime() {
   return harnessRuntime({
@@ -17,6 +18,7 @@ export function testRuntime() {
           }),
         })
         registerConfig()
+        LSPProcess.register()
         registerWorkspaceFileSymbolSource()
         registerLspToolSource()
       },

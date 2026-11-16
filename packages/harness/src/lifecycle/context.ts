@@ -52,7 +52,7 @@ export namespace RuntimeContext {
 
   export function create(host: RuntimeHost, mode: Instance["mode"] = "unknown"): Instance {
     if (!path.isAbsolute(host.home) || !path.isAbsolute(host.root)) throw new Error("Runtime paths must be absolute")
-    assertIsolatedTestHome(host.root, Bun.main, process.argv, host.env)
+    assertIsolatedTestHome(host.root, typeof Bun === "undefined" ? undefined : Bun.main, process.argv, host.env)
     const instance: Instance = {
       host: Object.freeze({
         ...host,

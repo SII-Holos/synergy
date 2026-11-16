@@ -105,6 +105,37 @@ test("direct child pages bound record probes and retain cursors across empty pag
   }
 })
 
+test("branch-inclusive pages retain nested-only children, ordering and namespace boundaries", async () => {
+  for (const descending of [false, true]) {
+    const { tx } = transaction()
+    try {
+      const keys: string[][] = []
+      let after: string | undefined
+      do {
+        const page = await tx.childKeys({
+          prefix: ["markers"],
+          after,
+          before: "000020",
+          limit: 3,
+          descending,
+          includeBranches: true,
+        })
+        expect(page.keys.length).toBeLessThanOrEqual(3)
+        keys.push(...page.keys)
+        after = page.after
+      } while (after)
+      const expected = Array.from({ length: 20 }, (_, index) => ["markers", String(index).padStart(6, "0")])
+      expect(keys).toEqual(descending ? expected.toReversed() : expected)
+      expect(
+        (await tx.childKeys({ prefix: ["first"], includeBranches: true })).keys.some((key) => key[1] === "foreign"),
+      ).toBeFalse()
+      expect(await tx.childKeys({ prefix: ["missing"], includeBranches: true })).toEqual({ keys: [], after: undefined })
+    } finally {
+      tx.finish()
+    }
+  }
+})
+
 test("prefix traversal probes only descendant records, including an absent recovery root", async () => {
   for (const prefix of [["first"], ["storage_staging"], ["first", "foreign"]]) {
     const { tx, plans } = transaction()

@@ -83,7 +83,7 @@ function SessionConversationView(input: SessionConversationProps) {
   onCleanup(() => window.removeEventListener("visibilitychange", visibility))
   createEffect(() => {
     if (!active() || !visible()) return
-    const view = globalSync.partArrival.open([sdk.url, sdk.scopeKey, props.sessionID])
+    const view = globalSync.partArrival.open([sdk.cacheKey, sdk.scopeKey, props.sessionID])
     setArrivalView(view)
     onCleanup(() => {
       view.release()

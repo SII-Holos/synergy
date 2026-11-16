@@ -35,7 +35,7 @@ beforeAll(async () => {
     const counts={requests:[],native:[],probes:0,settledImports:0,instructions:[]};let hold=false,finish=()=>{},holdImport=false,finishImport=()=>{},importError=null
     const profile={id:"personal",name:"Personal",enabled:true,kind:"persistent",revision:1,createdAt:1,origins:{}}
     const other={...profile,id:"other",name:"Other"}
-    export const sdk={get url(){return serverUrl()},capabilities:{current:selection,has:id=>id==="browser" && selection()?.features.includes(id)},client:{browser:{
+    export const sdk={get url(){return serverUrl()},get cacheKey(){return JSON.stringify(["personal-fixture",serverUrl()])},capabilities:{current:selection,has:id=>id==="browser" && selection()?.features.includes(id)},client:{browser:{
       session:async ()=>{counts.requests.push("session");return {data:{ownerKey:"scope:home:scope",pages:[]}}},
       profiles:async ()=>{counts.requests.push("profiles");return {data:{profiles:[profile,other],defaultProfileId:"personal"}}},
       dataContext:async input=>{counts.requests.push("dataContext:"+input.browserDataContextInput.profileId);return {data:{contextId:"context-"+input.browserDataContextInput.profileId,profile:input.browserDataContextInput.profileId==="other" ? other : profile}}},

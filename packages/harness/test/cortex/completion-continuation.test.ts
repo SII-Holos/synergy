@@ -18,10 +18,19 @@ import { Tool } from "../../src/tool/tool"
 import { ToolRegistry } from "../../src/tool/registry"
 import { testRuntime } from "../support/runtime"
 
-async function until(predicate: () => Promise<boolean>) {
+async function until(predicate: () => Promise<boolean>, diagnose?: () => Promise<unknown>) {
   const deadline = Date.now() + 5_000
   while (!(await predicate())) {
-    if (Date.now() > deadline) throw new Error("Continuation did not settle")
+    if (Date.now() > deadline) {
+      if (diagnose) {
+        const facts = await diagnose().then(
+          (value) => value,
+          (error: unknown) => ({ diagnosticError: error instanceof Error ? error.name : "UnknownError" }),
+        )
+        console.error("Cortex completion continuation boundary", facts)
+      }
+      throw new Error("Continuation did not settle")
+    }
     await Bun.sleep(5)
   }
 }
@@ -161,11 +170,35 @@ test("an older root's Cortex completion continues the latest completed root exac
           expect(prompts).toHaveLength(3)
 
           releaseChild.resolve()
-          await until(async () => {
-            const current = await Session.get(session.id)
-            if (current.paused) throw new Error(current.paused.description)
-            return prompts.length === 5 && !SessionManager.isRunning(session.id)
-          })
+          await until(
+            async () => {
+              const current = await Session.get(session.id)
+              if (current.paused) throw new Error(current.paused.description)
+              return prompts.length === 5 && !SessionManager.isRunning(session.id)
+            },
+            async () => {
+              const [parent, child, firstRun, latestRun, inbox] = await Promise.all([
+                Session.get(session.id),
+                task ? Session.get(task.sessionID) : undefined,
+                RolloutLedger.getRun(owner, firstRoot),
+                RolloutLedger.getRun(owner, latestRoot),
+                SessionInbox.list(session.id),
+              ])
+              return {
+                parentModelCalls: prompts.length,
+                launches,
+                parentPaused: !!parent.paused,
+                parentRunning: SessionManager.isRunning(session.id),
+                childStatus: child?.cortex?.status,
+                childNotifyParent: child?.cortex?.notifyParentOnComplete,
+                childNoticeDelivered: child?.cortex?.deliveryNotifiedAt !== undefined,
+                childSettled: child?.cortex?.settledAt !== undefined,
+                firstRunStatus: firstRun.status,
+                latestRunStatus: latestRun.status,
+                pendingInbox: inbox.length,
+              }
+            },
+          )
           await until(async () => (await RolloutLedger.getRun(owner, latestRoot)).status === "completed")
           await until(async () => (await RolloutLedger.getRun(owner, firstRoot)).status === "completed")
           const messages = await Session.messages({ sessionID: session.id })

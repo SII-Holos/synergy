@@ -1,3 +1,5 @@
+import { bootstrapPhysicalRecordRoots } from "./bootstrap-layout"
+import { StorageBootstrapBase } from "./bootstrap-base"
 import { RuntimeContext } from "../lifecycle/context"
 import { createHash, randomUUID } from "node:crypto"
 import fs from "node:fs/promises"
@@ -99,6 +101,38 @@ async function rejectLegacyWriters(
 }
 
 export namespace StorageBootstrap {
+  export const DatasetIdentity = z.strictObject({ storeID: z.uuid(), artifactStoreID: z.uuid() })
+  export const target = targetIdentity
+  export async function currentIdentity() {
+    const runtime = RuntimeContext.current(),
+      primary = runtime.storage,
+      current = Storage.current()
+    const configuration = JSON.stringify(current.store.options),
+      root = runtime.host.root
+    const assert = () => {
+      const active = Storage.current()
+      if (
+        !primary ||
+        RuntimeContext.current() !== runtime ||
+        runtime.storage !== primary ||
+        runtime.host.root !== root ||
+        current.store !== primary.store ||
+        active.store !== primary.store ||
+        current.artifactDirectory !== primary.artifactDirectory ||
+        active.artifactDirectory !== primary.artifactDirectory ||
+        current.artifactObjects !== primary.artifactObjects ||
+        active.artifactObjects !== primary.artifactObjects ||
+        JSON.stringify(current.store.options) !== configuration
+      )
+        throw new StorageIntegrityError("Dataset identity requires its original primary Store and artifact owner")
+    }
+    assert()
+    const [raw] = await Storage.readMany([["storage_meta", "identity"]])
+    const identity = DatasetIdentity.parse(raw)
+    assert()
+    return Object.freeze({ ...identity, target: targetIdentity(current.store.options) })
+  }
+  export type RestorationBase = StorageBootstrapBase.Evidence
   export async function status(root: string) {
     const saved = await optionalJson(path.join(root, "data", "storage", "manifest.json"))
     return saved === undefined ? undefined : Manifest.parse(saved)
@@ -123,6 +157,35 @@ export namespace StorageBootstrap {
       if (identity.storeID !== manifest.storeID || identity.artifactStoreID !== manifest.artifactStoreID)
         throw new StorageIntegrityError("Database and artifacts belong to different datasets")
       return { store, artifactDirectory: path.join(root, "data"), manifest }
+    } catch (error) {
+      await store.close()
+      throw error
+    }
+  }
+
+  export async function openExisting(root: string) {
+    const inspected = await inspect(root)
+    if (!inspected) throw new StorageIntegrityError("An active storage manifest is required for cleanup")
+    const { readonly: _, ...options } = inspected.store.options
+    try {
+      await StorageCompat.assertConverged(inspected.store)
+    } finally {
+      await inspected.store.close()
+    }
+    const store = await TransactionalStore.openExisting(options)
+    try {
+      const identity = DatasetIdentity.parse(await store.read(["storage_meta", "identity"]))
+      const manifest = await status(root)
+      const current = resolveStoreOptions(root, await readStorageConfiguration(root), inspected.manifest.namespace)
+      if (
+        JSON.stringify(manifest) !== JSON.stringify(inspected.manifest) ||
+        targetIdentity(current) !== inspected.manifest.target ||
+        identity.storeID !== inspected.manifest.storeID ||
+        identity.artifactStoreID !== inspected.manifest.artifactStoreID ||
+        (await optionalJson(path.join(root, "data", "storage", "switch.json")))
+      )
+        throw new StorageIntegrityError("Existing cleanup attachment changed its original dataset")
+      return { store, artifactDirectory: inspected.artifactDirectory, manifest: inspected.manifest }
     } catch (error) {
       await store.close()
       throw error
@@ -210,7 +273,9 @@ export namespace StorageBootstrap {
     root: string
     recover?: boolean
     progress?: (progress: ImportProgress) => void
+    beforeInitialize?: (store: TransactionalStore) => Promise<void>
   }) {
+    const beforeInitialize = options.beforeInitialize
     options.progress?.({ stage: "prepare", current: 0, total: 0, bytes: 0 })
     const root = path.resolve(options.root)
     if (await optionalJson(path.join(root, "data", "storage", "switch.json")))
@@ -252,6 +317,9 @@ export namespace StorageBootstrap {
         mustExist: manifest.phase !== "importing",
       })
       try {
+        await beforeInitialize?.(store)
+        const emptyBeforeInitialization =
+          beforeInitialize && (await store.snapshot((tx) => tx.queryKeys({ prefix: [], limit: 1 }))).length === 0
         const identityKey = ["storage_meta", "identity"]
         const [identity] = await store.readMany<{ storeID: string; artifactStoreID: string }>([identityKey])
         if (identity) {
@@ -303,15 +371,7 @@ export namespace StorageBootstrap {
               operationID: `portable-${manifest.backupID}`,
               accept: (entry) =>
                 (entry.type !== "record" && entry.type !== "artifact") ||
-                (![
-                  "storage_meta",
-                  "storage_import",
-                  "storage_import_files",
-                  "storage_staging",
-                  "storage_transfer",
-                  "compat_import",
-                  "compat_catalog",
-                ].includes(entry.key[0]) &&
+                (!bootstrapPhysicalRecordRoots.has(entry.key[0]) &&
                   // A convenience archive may originate from another home;
                   // grants and trust decisions must not arrive with it.
                   !authorityRecordRoots.has(entry.key[0])),
@@ -326,13 +386,26 @@ export namespace StorageBootstrap {
               : undefined
           await StorageCompat.seedLocators(store, backup?.sourceRoot ?? path.join(root, "data"), backup?.backupID)
         }
-        await StorageArtifactMigration.run({ dataRoot: path.join(root, "data"), store, progress: options.progress })
+        const artifacts = await StorageArtifactMigration.run({
+          dataRoot: path.join(root, "data"),
+          store,
+          progress: options.progress,
+        })
         if (manifest.phase === "active") {
           if (manifest.compatBoundary) await StorageCompat.rejectForeignWriters(path.join(root, "data"), store)
           else await rejectLegacyWriters(path.join(root, "data"), store, options.progress)
         }
+        let baseSource: Promise<StorageBootstrapBase.Source | undefined> | undefined
+        let originalInitialization: ReadonlyMap<string, unknown> | undefined
+        const captureBase = () =>
+          (baseSource ??= originalInitialization
+            ? StorageBootstrapBase.capture(store, originalInitialization)
+            : Promise.resolve(undefined))
         const activate = async () => {
-          if (manifest.phase === "active") return
+          if (manifest.phase === "active") {
+            await captureBase()
+            return
+          }
           options.progress?.({ stage: "check", current: 0, total: 0, bytes: 0 })
           await Storage.validateArtifacts(
             { store, artifactDirectory: path.join(root, "data") },
@@ -342,14 +415,39 @@ export namespace StorageBootstrap {
           )
           manifest.phase = "activating"
           await persist()
-          await importer.retire()
+          const retired = await importer.retire()
+          if (emptyBeforeInitialization && retired && retired.files === 0 && artifacts.cursor === 0) {
+            originalInitialization = new Map<string, unknown>([
+              [JSON.stringify(identityKey), { storeID: manifest.storeID, artifactStoreID: manifest.artifactStoreID }],
+              [JSON.stringify(["storage_import", "info"]), retired],
+              [JSON.stringify(["storage_meta", "artifact-packs-v2"]), artifacts],
+              ...(manifest.compatBoundary
+                ? ([
+                    [JSON.stringify(StorageCompat.infoKey), StorageCompat.emptyInitialization(manifest.backupID)],
+                  ] as const)
+                : []),
+            ])
+          }
           if (manifest.compatBoundary) await StorageCompat.rejectForeignWriters(path.join(root, "data"), store)
           else await rejectLegacyWriters(path.join(root, "data"), store, options.progress)
           manifest.phase = "active"
           await persist()
+          await captureBase()
         }
         if (manifest.phase === "activating") await activate()
-        return { store, manifest, activate }
+        if (manifest.phase === "active") await captureBase()
+        return {
+          store,
+          manifest,
+          activate,
+          async withRestorationBase<T>(body: (base: StorageBootstrapBase.Evidence) => Promise<T>) {
+            if (manifest.phase !== "active")
+              throw new StorageIntegrityError("Restoration base requires completed native initialization")
+            const source = await baseSource
+            if (!source) throw new StorageIntegrityError("Restoration base requires its original empty initialization")
+            return StorageBootstrapBase.withBase(source, body)
+          },
+        }
       } catch (error) {
         await store.close()
         throw error

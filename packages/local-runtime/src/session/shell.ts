@@ -150,6 +150,16 @@ async function shellInSession(input: ShellInput, lease: SessionManager.LoopLease
           },
           async () => {
             await using resources = await EnvironmentResources.resolve({
+              origin: {
+                kind: "session",
+                scopeID: session.scope.id,
+                sessionID: session.id,
+                rootID: userMsg.id,
+                runID: userMsg.id,
+                messageID: msg.id,
+                callID: part.callID,
+                tool: "bash",
+              },
               scopeID: session.scope.id,
               environmentID: session.environmentID ?? null,
               workspaceID: session.workspaceID,

@@ -85,6 +85,7 @@ export function fileServices(input: unknown): Driver {
             const selection = { scopeID: "home", environmentID: environment.id, workspaceID: workspace.id }
             await atomicJSON(path.join(directory, "identity.json"), { ...selection, sessionID: session.id })
             await using resources = await EnvironmentResources.resolve({
+              origin: host.origin(context.scenario.id),
               ...selection,
               needs: { workspace: true, execution: "exec" },
             })
@@ -345,6 +346,7 @@ export function fileServices(input: unknown): Driver {
                           await checkpoint("callback-held", captured)
                           const next = await makeWorkspace("next-workspace")
                           await using nextResources = await EnvironmentResources.resolve({
+                            origin: host.origin(context.scenario.id),
                             scopeID: "home",
                             workspaceID: next.id,
                             environmentID: environment.id,

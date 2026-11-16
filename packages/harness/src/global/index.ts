@@ -4,6 +4,7 @@ import fs from "fs/promises"
 import path from "path"
 import { pathToFileURL } from "url"
 import { RuntimeContext } from "../lifecycle/context"
+import { HomeOwnership } from "../lifecycle/home-ownership"
 
 function homeDir() {
   return RuntimeContext.current().host.home
@@ -115,6 +116,7 @@ export namespace Global {
   export async function initialize(
     options: { cache?: boolean; configSchemaPath?: string; configSchema?: string } = {},
   ) {
+    await HomeOwnership.assert({ required: true })
     await Promise.all([
       fs.mkdir(Global.Path.root, { recursive: true }),
       fs.mkdir(Global.Path.data, { recursive: true }),

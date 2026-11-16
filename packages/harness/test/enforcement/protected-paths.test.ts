@@ -202,6 +202,22 @@ describe("checkProtectedPath - worktree exclusion", () => {
 })
 
 describe("checkProtectedPath - Synergy auth and dotenv candidates", () => {
+  for (const mode of ["read", "write"] as const) {
+    test(`Runtime machine credentials are an exact secret root for ${mode}`, () =>
+      runtime.run(() => {
+        const result = checkProtectedPath(path.join(runtime.host.root, "auth", "organization-runtime.json"), mode, {
+          workspaceRoot: "/workspace",
+          synergyRoot: runtime.host.root,
+        })
+        expect(result).toMatchObject({
+          matched: true,
+          category: "credentials",
+          exactSecretRoot: true,
+          smartAllowEligible: false,
+        })
+      }))
+  }
+
   test("global Synergy auth root is an exact secret root", () =>
     runtime.run(() => {
       const r = checkProtectedPath("/home/user/.synergy/data/auth/provider-auth.json", "read", {

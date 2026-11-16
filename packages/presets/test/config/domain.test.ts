@@ -17,6 +17,7 @@ test("config domain registry maps every top-level config key exactly once", () =
 
     expect(domainKeys).toEqual(schemaKeys)
     expect(new Set(domainKeys).size).toBe(domainKeys.length)
+    expect(ConfigDomain.domainForKey("organization")).toBeUndefined()
   }))
 
 test("config domain filenames are stable and ordered", () =>

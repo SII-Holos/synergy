@@ -1,0 +1,48 @@
+{
+  "organization": {
+    "infrastructure": {
+      "version": 1,
+      "database": {
+        "backend": "postgres",
+        "namespace": "organization",
+        "urlFile": "/run/organization-credentials/postgres-url",
+        "maxConnections": 2,
+      },
+      "stores": {
+        "team-files": {
+          "provider": "s3",
+          "bucket": "organization",
+          "region": "us-east-1",
+          "endpoint": "https://objects.example.org",
+          "prefix": "organization/workspaces",
+          "credentialsFile": "/run/organization-credentials/object-credentials.json",
+        },
+      },
+      "environments": {
+        "team-execution": {
+          "provider": "docker",
+          "host": {
+            "endpoint": "https://engine.example.org:2376",
+            "engineTLS": {
+              "certFile": "/run/organization-credentials/engine-cert.pem",
+              "keyFile": "/run/organization-credentials/engine-key.pem",
+              "caFile": "/run/organization-credentials/engine-ca.pem",
+            },
+            "executionHostname": "execution.example.org",
+            "publishHostIP": "0.0.0.0",
+            "executionTLS": {
+              "certFile": "/run/organization-credentials/execution-cert.pem",
+              "keyFile": "/run/organization-credentials/execution-key.pem",
+            },
+          },
+          "spec": {
+            "image": "synergy-execution-host:release",
+            "cpus": 1,
+            "memoryBytes": 1073741824,
+            "pids": 256,
+          },
+        },
+      },
+    },
+  },
+}

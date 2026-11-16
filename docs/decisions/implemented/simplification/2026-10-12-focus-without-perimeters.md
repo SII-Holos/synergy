@@ -16,6 +16,8 @@ The [browser regression](../../../../apps/web/test/testing/focus-presentation.br
 
 Computed-surface checks cover structural containers and semantic actions in both themes and forced colors. Project settings also exercise focus return from the nested folder picker.
 
+Organization connection disclosures and publication actions use the same shared focus owner. Publication resting, hover and selected paints stay in the components layer so their background shorthands cannot reset its unlayered focus fill. Focused rich labels inherit that owner's system foreground in forced colors. The browser regression imports their actual styles and checks ordinary, selected and hovered actions with their nested labels. See the [organization cascade postmortem](../../../postmortem/0194-organization-controls-overrode-shared-keyboard-focus.md).
+
 Settings, permission, directory, activity-row and Desktop startup regressions retain keyboard selection, focus return and geometry checks, asserting the current surface or text cue instead of retired perimeter highlights. CSS fixtures preserve production cascade layers, and animated cues are measured after their actual transition settles.
 
 ## Alternatives considered

@@ -11,8 +11,14 @@ import { StorageFormatV3State } from "./format-v3-state"
 import { StoragePath } from "./path"
 import { EvidenceOwnerProjection } from "./evidence-owner-projection"
 import { UpgradeWork } from "./upgrade-work"
+import {
+  maintenanceRetirementRecordMigration,
+  maintenanceRetirementPhysicalMigration,
+} from "./maintenance-retirement-migration"
 
 export const migrations: Migration[] = [
+  maintenanceRetirementRecordMigration,
+  maintenanceRetirementPhysicalMigration,
   {
     id: "20261021-text-lexical-structure",
     isApplied: async () => true,

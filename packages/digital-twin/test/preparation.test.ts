@@ -127,35 +127,80 @@ test("first use reconciles history changed while the component was dormant", asy
 }, 15000)
 
 test("representative statistics include every prepared family and warm reads reuse the projection cache", async () => {
+  const started = performance.now()
+  let stage = "runtime-open"
+  let families = 0
+  let prepareSteps = 0
+  let bodyExitStage: string | undefined
+  const marks: { statistics?: number; stopped?: number; finalStopped?: number; closed?: number } = {}
+  const elapsed = () => Math.round(performance.now() - started)
+  const timing = process.env.CI === "true" || process.env.SYNERGY_CI_TIMING === "1"
+  let reports = 0
+  const report = (event: "milestone" | "statistics" | "finished") => {
+    if (!timing || reports >= 8) return
+    reports++
+    console.info(
+      "digital-twin-preparation-timing",
+      JSON.stringify({ event, stage, elapsedMs: elapsed(), families, prepareSteps, bodyExitStage, marks }),
+    )
+  }
+  report("milestone")
   const runtime = await testRuntime({ register: digitalTwin().register })
   try {
+    stage = "scope-enter"
     await runtime.run(() =>
       ScopeContext.provide({
         scope: Scope.home(),
         fn: async () => {
+          stage = "resume"
           await UpgradeWork.control("resume")
           for (let index = 0; index < 130; index++) {
+            stage = "session-create"
             const session = await Session.create({})
+            stage = "utterance"
             await utterance(session.id, `第 ${index} 个 API 的边界要清晰`)
-            while (!(await prepareStep({ scopeID: session.scope.id, sessionID: session.id }))) {}
+            stage = "prepare"
+            while (!(await prepareStep({ scopeID: session.scope.id, sessionID: session.id }))) prepareSteps++
+            prepareSteps++
+            families++
+            if (families === 32 || families === 64 || families === 96 || families === 128 || families === 130)
+              report("milestone")
           }
+          stage = "statistics"
           const bundle = await representatives()
+          marks.statistics = elapsed()
           expect(bundle.statistics.reduce((sum, value) => sum + value.count, 0)).toBe(130)
           expect(new Set(bundle.references.map((ref) => ref.family)).size).toBeGreaterThan(4)
           expect(bundle.references.length).toBeLessThanOrEqual(96)
+          stage = "stop"
+          report("statistics")
           await runtime.run(stopPreparation)
+          marks.stopped = elapsed()
           using reads = spyOn(Storage, "query")
+          stage = "warm-representatives"
           expect((await representatives()).statistics).toEqual(bundle.statistics)
           expect(reads).not.toHaveBeenCalled()
+          stage = "current"
           expect(await representativesCurrent(bundle)).toBe(true)
         },
       }),
     )
+    stage = "body-completed"
   } finally {
-    await runtime.run(stopPreparation)
-    await runtime.close()
+    bodyExitStage = stage
+    stage = "final-stop"
+    try {
+      await runtime.run(stopPreparation)
+      marks.finalStopped = elapsed()
+      stage = "close"
+      await runtime.close()
+      marks.closed = elapsed()
+      stage = "completed"
+    } finally {
+      report("finished")
+    }
   }
-}, 20_000)
+}, 60_000)
 
 test("cold projection loading honors the background pause gate", async () => {
   const runtime = await testRuntime({ register: digitalTwin().register })

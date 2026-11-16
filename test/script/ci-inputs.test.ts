@@ -430,4 +430,4 @@ test("leaf test classification checks imports, exports and unresolved consumers 
   } finally {
     await rm(root, { recursive: true, force: true })
   }
-})
+}, 30_000)

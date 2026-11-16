@@ -1,0 +1,48 @@
+.organization-interactions {
+  display: flex;
+  flex-direction: column;
+  flex: 0 1 auto;
+  min-height: 0;
+  gap: 8px;
+  max-height: min(45dvh, 32rem);
+  overflow: auto;
+  overscroll-behavior: contain;
+  width: min(100%, 50rem);
+  margin-inline: auto;
+}
+.organization-interactions:empty {
+  display: none;
+}
+.organization-interactions:not(:empty) {
+  min-height: 56px;
+}
+.organization-interactions .decision-card {
+  margin-bottom: 0;
+  flex-shrink: 0;
+}
+.organization-interaction-status,
+.organization-interaction-recovery {
+  margin: 0;
+  padding: 8px 12px;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--text-base);
+}
+.organization-interaction-recovery {
+  border: 1px solid var(--border-weak-base);
+  border-radius: 8px;
+}
+.organization-interaction-recovery p {
+  margin: 0 0 8px;
+}
+.organization-interactions .organization-form-actions {
+  margin: 0;
+}
+@media (max-width: 600px) {
+  .organization-interactions {
+    max-height: 38dvh;
+  }
+  .organization-interactions .decision-card {
+    max-height: 34dvh;
+  }
+}

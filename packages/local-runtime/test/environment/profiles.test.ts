@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test"
-import { testRuntime } from "../support/runtime"
+import { testRuntime as localRuntime } from "../support/runtime"
+import { testEnvironmentRuntime } from "@ericsanchezok/synergy-harness/test/support/environment-origin"
 import { Config } from "@ericsanchezok/synergy-harness/config/config"
 import { Environment } from "@ericsanchezok/synergy-harness/environment"
 import { WorkspaceContent } from "@ericsanchezok/synergy-harness/workspace/content"
@@ -8,6 +9,30 @@ import { DockerProfileSpec } from "../../src/environment/profile-schema"
 import { ConfigDomain } from "@ericsanchezok/synergy-harness/config/domain"
 import { EnvironmentResources } from "@ericsanchezok/synergy-harness/environment/resources"
 import { EnvironmentProcess } from "@ericsanchezok/synergy-harness/environment/process"
+import { EnvironmentProviders } from "@ericsanchezok/synergy-harness/environment/provider"
+
+const testRuntime = (options: Parameters<typeof localRuntime>[0] = {}) => testEnvironmentRuntime(options, localRuntime)
+
+test("explicit native composition ignores personal resource profiles and allocates no compute", async () => {
+  const { testRuntime: harnessRuntime } = await import("@ericsanchezok/synergy-harness/test/support/runtime")
+  const { registerLocalRuntime } = await import("../../src/register")
+  const { testWorkspaceCoordinator } = await import("../support/runtime")
+  await using runtime = await harnessRuntime({
+    composition: {
+      register: () => registerLocalRuntime({ environment: "native", workspaceCoordinator: testWorkspaceCoordinator() }),
+    },
+  })
+  await runtime.run(async () => {
+    await Config.updateGlobal({ resources: { defaultEnvironment: null } })
+    expect(EnvironmentProviders.list()).toEqual([{ id: "native", ownership: "borrowed" }])
+    expect(await EnvironmentProviders.resolveDefault()).toEqual({ provider: "native", spec: {}, reuse: "scope" })
+    expect(await Environment.select({ scopeID: "home", ownerID: "member" })).toMatchObject({
+      provider: "native",
+      state: "idle",
+      generation: 0,
+    })
+  })
+})
 
 test("API-only composition retains stored Workspaces and advertises no execution profiles", async () => {
   const { testRuntime: harnessRuntime } = await import("@ericsanchezok/synergy-harness/test/support/runtime")
@@ -129,6 +154,7 @@ test.skipIf(!image)(
       expect(environment.state).toBe("idle")
       try {
         await using resources = await EnvironmentResources.resolve({
+          origin: runtime.origin("profiles-1"),
           ...selection,
           needs: { execution: "exec", workspace: true },
         })

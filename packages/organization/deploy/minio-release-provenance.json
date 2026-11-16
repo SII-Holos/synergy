@@ -1,0 +1,143 @@
+{
+  "version": 1,
+  "purpose": "Fixed-version organization infrastructure acceptance images; not product object-provider selection",
+  "base": {
+    "source": "https://registry-1.docker.io/v2/library/debian/manifests/bookworm-slim",
+    "image": "docker.io/library/debian:bookworm-slim",
+    "digest": "sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc",
+    "platforms": [
+      {
+        "digest": "sha256:c67e92c8099ba22853ab4cfda7cfb494d253d6012ca82dee98ba8976772af018",
+        "platform": {
+          "architecture": "amd64",
+          "os": "linux"
+        }
+      },
+      {
+        "digest": "sha256:ec8534cda2cb30f29f44f23e135297af7a1496f2990fd8e4e84aa36b081a757a",
+        "platform": {
+          "architecture": "arm64",
+          "os": "linux",
+          "variant": "v8"
+        }
+      }
+    ]
+  },
+  "releases": [
+    {
+      "id": 245369527,
+      "tag": "RELEASE.2025-09-07T16-13-09Z",
+      "url": "https://github.com/minio/minio/releases/tag/RELEASE.2025-09-07T16-13-09Z",
+      "updated": "2026-04-24T17:54:28Z",
+      "assets": [
+        {
+          "id": 404655976,
+          "name": "minio.linux-amd64.RELEASE.2025-09-07T16-13-09Z",
+          "size": 110989496,
+          "digest": "sha256:7c5bd8512c6e966455b1d198209358b2d191c77a83ab377c4073281065fb855f",
+          "url": "https://github.com/minio/minio/releases/download/RELEASE.2025-09-07T16-13-09Z/minio.linux-amd64.RELEASE.2025-09-07T16-13-09Z"
+        },
+        {
+          "id": 404655924,
+          "name": "minio.linux-arm64.RELEASE.2025-09-07T16-13-09Z",
+          "size": 105251000,
+          "digest": "sha256:5c83cd2cf151717ba0243f73e1c7802ff36e272b67144bdd7f1f7d684fd6f03d",
+          "url": "https://github.com/minio/minio/releases/download/RELEASE.2025-09-07T16-13-09Z/minio.linux-arm64.RELEASE.2025-09-07T16-13-09Z"
+        }
+      ],
+      "commit": "07c3a429bfed433e49018cb0f78a52145d4bedeb",
+      "tagObject": "01ce918d8279a20e4706b96a64396146894adee4",
+      "tagVerification": {
+        "verified": true,
+        "reason": "valid"
+      },
+      "api": "https://api.github.com/repos/minio/minio/releases/tags/RELEASE.2025-09-07T16-13-09Z"
+    },
+    {
+      "id": 245325909,
+      "tag": "RELEASE.2025-08-13T08-35-41Z",
+      "url": "https://github.com/minio/mc/releases/tag/RELEASE.2025-08-13T08-35-41Z",
+      "updated": "2026-04-21T16:39:57Z",
+      "assets": [
+        {
+          "id": 401741332,
+          "name": "mc.linux-amd64.RELEASE.2025-08-13T08-35-41Z",
+          "size": 30535864,
+          "digest": "sha256:01f866e9c5f9b87c2b09116fa5d7c06695b106242d829a8bb32990c00312e891",
+          "url": "https://github.com/minio/mc/releases/download/RELEASE.2025-08-13T08-35-41Z/mc.linux-amd64.RELEASE.2025-08-13T08-35-41Z"
+        },
+        {
+          "id": 401741340,
+          "name": "mc.linux-arm64.RELEASE.2025-08-13T08-35-41Z",
+          "size": 28704952,
+          "digest": "sha256:14c8c9616cfce4636add161304353244e8de383b2e2752c0e9dad01d4c27c12c",
+          "url": "https://github.com/minio/mc/releases/download/RELEASE.2025-08-13T08-35-41Z/mc.linux-arm64.RELEASE.2025-08-13T08-35-41Z"
+        }
+      ],
+      "commit": "7394ce0dd2a80935aded936b09fa12cbb3cb8096",
+      "tagObject": "d6541ea280b73a834b64d4097e21f2be77676104",
+      "tagVerification": {
+        "verified": true,
+        "reason": "valid"
+      },
+      "api": "https://api.github.com/repos/minio/mc/releases/tags/RELEASE.2025-08-13T08-35-41Z"
+    }
+  ],
+  "sourceFiles": [
+    {
+      "repository": "minio/minio",
+      "commit": "07c3a429bfed433e49018cb0f78a52145d4bedeb",
+      "path": "LICENSE",
+      "url": "https://raw.githubusercontent.com/minio/minio/07c3a429bfed433e49018cb0f78a52145d4bedeb/LICENSE",
+      "bytes": 34523,
+      "sha256": "0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0"
+    },
+    {
+      "repository": "minio/minio",
+      "commit": "07c3a429bfed433e49018cb0f78a52145d4bedeb",
+      "path": "CREDITS",
+      "url": "https://raw.githubusercontent.com/minio/minio/07c3a429bfed433e49018cb0f78a52145d4bedeb/CREDITS",
+      "bytes": 1882228,
+      "sha256": "113b8c63dfd987d3652950d7c2aecb1c0952b41781e79bcdac6a316418d48542"
+    },
+    {
+      "repository": "minio/minio",
+      "commit": "07c3a429bfed433e49018cb0f78a52145d4bedeb",
+      "path": "dockerscripts/docker-entrypoint.sh",
+      "url": "https://raw.githubusercontent.com/minio/minio/07c3a429bfed433e49018cb0f78a52145d4bedeb/dockerscripts/docker-entrypoint.sh",
+      "bytes": 675,
+      "sha256": "c6a01decb5d104ef7327d0d642ce34bcc2396e600a1b7ba03568ac65b3d473be"
+    },
+    {
+      "repository": "minio/mc",
+      "commit": "7394ce0dd2a80935aded936b09fa12cbb3cb8096",
+      "path": "LICENSE",
+      "url": "https://raw.githubusercontent.com/minio/mc/7394ce0dd2a80935aded936b09fa12cbb3cb8096/LICENSE",
+      "bytes": 34523,
+      "sha256": "0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0"
+    },
+    {
+      "repository": "minio/mc",
+      "commit": "7394ce0dd2a80935aded936b09fa12cbb3cb8096",
+      "path": "CREDITS",
+      "url": "https://raw.githubusercontent.com/minio/mc/7394ce0dd2a80935aded936b09fa12cbb3cb8096/CREDITS",
+      "bytes": 668850,
+      "sha256": "4ead58181c478e2f449d5778165684f4fceb1e7b8b3ee150051c8e7adfe4f337"
+    }
+  ],
+  "upstreamDockerfiles": [
+    {
+      "url": "https://github.com/minio/minio/blob/07c3a429bfed433e49018cb0f78a52145d4bedeb/Dockerfile.release"
+    },
+    {
+      "url": "https://github.com/minio/mc/blob/7394ce0dd2a80935aded936b09fa12cbb3cb8096/Dockerfile.release"
+    }
+  ],
+  "compatibility": {
+    "architectures": ["linux/amd64", "linux/arm64"],
+    "minioEntrypoint": "exact upstream shell script, sha256 checked before image publication",
+    "minioSecretFiles": "MINIO_ROOT_USER_FILE/MINIO_ROOT_PASSWORD_FILE are read by cmd/common-main.go at the same source commit; original Compose mounts and names unchanged",
+    "mcEntrypoint": ["mc"],
+    "mcConfig": "Original --config-dir /configuration and private version-ten config remain unchanged"
+  }
+}

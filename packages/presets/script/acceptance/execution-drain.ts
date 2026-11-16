@@ -272,6 +272,7 @@ export function executionDrain(input: unknown): Driver {
               let replacementConsistent = false
               {
                 await using resources = await EnvironmentResources.resolve({
+                  origin: host.origin(context.scenario.id),
                   ...selection,
                   needs: { workspace: true, execution: "exec" },
                 })

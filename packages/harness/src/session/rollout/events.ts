@@ -1,5 +1,7 @@
 import { z } from "zod"
 import { BusEvent } from "../../bus/bus-event"
+import { isDeepStrictEqual } from "node:util"
+import { StorageIntegrityError } from "../../storage/errors"
 import { RolloutSchema } from "./schema"
 
 export namespace RolloutEvents {
@@ -50,5 +52,21 @@ export namespace RolloutEvents {
                 ? "segment"
                 : "run"
     return Record.parse({ kind, value })
+  }
+
+  /** Reads one original committed journal record without recovering or folding its owner. */
+  export async function readCommitted(owner: RolloutSchema.Owner, revision: number): Promise<Record> {
+    owner = RolloutSchema.Owner.parse(owner)
+    revision = z.number().int().positive().safe().parse(revision)
+    const { RolloutJournal } = await import("./journal")
+    for await (const event of RolloutJournal.events(owner, revision, revision - 1)) {
+      if (event.kind !== "record" || event.seq !== revision)
+        throw new StorageIntegrityError("Committed Rollout record is missing its original evidence")
+      const record = parse(event.key, event.value)
+      if (!isDeepStrictEqual(record.value.owner, owner))
+        throw new StorageIntegrityError("Committed Rollout record belongs to another native owner")
+      return record
+    }
+    throw new StorageIntegrityError("Committed Rollout record is unavailable")
   }
 }

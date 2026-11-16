@@ -60,13 +60,12 @@ describe("plugin shell.run Host Service", () => {
       const selectResources = EnvironmentResources.select
       const select = spyOn(EnvironmentResources, "select").mockImplementation(async (input) => {
         const resources = await selectResources(input)
-        return {
-          ...resources,
-          async [Symbol.asyncDispose]() {
-            events.push("release")
-            await resources[Symbol.asyncDispose]()
-          },
+        const dispose = resources[Symbol.asyncDispose].bind(resources)
+        resources[Symbol.asyncDispose] = async () => {
+          events.push("release")
+          await dispose()
         }
+        return resources
       })
       const failure = new Error("Shell execution failed")
       const execute = spyOn(SandboxBackend, "executeAsync").mockImplementation(async () => {

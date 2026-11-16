@@ -1,4 +1,4 @@
-import { Marked } from "marked"
+import { Marked, type Token } from "marked"
 import { ResourceReference } from "./resource-reference"
 
 const markdown = new Marked()
@@ -15,6 +15,25 @@ export function markdownAssetReferences(text: string): string[] {
     if (reference.kind === "asset") references.add(reference.url)
   })
   return [...references]
+}
+
+export function* markdownAssetReferencesComplete(text: string): Generator<string> {
+  if (!text.includes("asset://")) return
+  function* references(tokens: readonly Token[]): Generator<string> {
+    for (const token of tokens) {
+      if (token.type === "image" || token.type === "link") {
+        const reference = ResourceReference.parse(token.href)
+        if (reference.kind === "asset") yield reference.url
+      }
+      if (token.type === "table") {
+        for (const cell of token.header) yield* references(cell.tokens)
+        for (const row of token.rows) for (const cell of row) yield* references(cell.tokens)
+      } else if (token.type === "list") {
+        for (const item of token.items) yield* references(item.tokens)
+      } else if ("tokens" in token && token.tokens) yield* references(token.tokens)
+    }
+  }
+  yield* references(markdown.lexer(text))
 }
 
 export function attachmentSuppression(

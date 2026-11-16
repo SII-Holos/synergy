@@ -2,17 +2,14 @@ import { afterAll, beforeAll, expect, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
 import { chromium, type Browser, type Page } from "playwright"
-import { createServer, type ViteDevServer } from "vite"
-import solid from "vite-plugin-solid"
-import tailwindcss from "@tailwindcss/vite"
-import { fixturePort } from "@ericsanchezok/synergy-testing/fixture"
+import { createBrowserFixture, type BrowserFixture } from "../../support/browser-fixture"
 
 type Fixture = {
   results: { directory: string | string[] }[]
   requests: string[]
 }
 let fixture: string
-let server: ViteDevServer
+let server: BrowserFixture
 let browser: Browser
 let page: Page
 let base: string
@@ -54,28 +51,20 @@ beforeAll(async () => {
     render(()=><I18nProvider i18n={setupI18n({locale:"en",messages:{en:{}}})}><DialogProvider><App/></DialogProvider></I18nProvider>,document.getElementById("root"))
   `,
   )
-  const port = await fixturePort()
   const bridge = path.join(fixture, "bridge.ts")
-  server = await createServer({
-    configFile: false,
+  server = await createBrowserFixture({
     root: fixture,
-    cacheDir: path.join(fixture, ".vite"),
-    plugins: [solid(), tailwindcss()],
-    resolve: {
-      alias: [
-        ...["@/context/global-sdk", "@/context/global-sync", "@/context/server"].map((find) => ({
-          find,
-          replacement: bridge,
-        })),
-        { find: "@", replacement: appSrc },
-      ],
-    },
-    optimizeDeps: { include: ["solid-js", "solid-js/web", "solid-js/store", "@lingui/core", "@lingui/solid"] },
-    server: { host: "127.0.0.1", port, strictPort: true, fs: { allow: [path.resolve(appSrc, "../../.."), fixture] } },
+    styled: true,
+    localized: false,
+    aliases: [
+      ...["@/context/global-sdk", "@/context/global-sync", "@/context/server"].map((find) => ({
+        find,
+        replacement: bridge,
+      })),
+      { find: "@", replacement: appSrc },
+    ],
   })
-  await server.listen()
-  base = server.resolvedUrls!.local[0]!
-  await server.warmupRequest("/main.tsx")
+  base = server.url
   browser = await chromium.launch({ headless: true })
   page = await browser.newPage({ viewport: { width: 375, height: 812 } })
   page.setDefaultTimeout(5000)

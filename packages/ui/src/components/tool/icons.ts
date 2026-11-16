@@ -10,6 +10,7 @@ const toolIcons: Record<string, string> = {
   bash: "square-terminal",
   process: "monitor-cog",
   read: "book-open-text",
+  organization_knowledge: "book-open-text",
   view_file: "book-open-text",
   write: "file-plus-2",
   save_file: "file-plus-2",

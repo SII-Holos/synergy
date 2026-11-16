@@ -6,6 +6,8 @@ import * as path from "node:path"
 import z from "zod"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { Session } from "@ericsanchezok/synergy-harness/session"
+import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
+import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/ledger"
 import { SessionProcessor } from "@ericsanchezok/synergy-harness/test/support/internals"
 import { ToolResolver } from "@ericsanchezok/synergy-harness/test/support/internals"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
@@ -62,11 +64,23 @@ function bashRegistryTool() {
 
 async function resolveBashTool(sessionID: string) {
   const session = await Session.get(sessionID)
+  const rootID = Identifier.ascending("message")
+  await Session.updateMessage({
+    id: rootID,
+    sessionID,
+    role: "user",
+    rootID,
+    isRoot: true,
+    agent: PrimaryAgentIdentity.names.general,
+    model: { providerID: model.providerID, modelID: model.id },
+    time: { created: Date.now() },
+  })
   const assistantMessage = {
-    id: "msg_tool_resolver_autonomous",
+    id: Identifier.ascending("message"),
     sessionID,
     role: "assistant" as const,
-    parentID: "msg_user",
+    parentID: rootID,
+    rootID,
     modelID: "test-model",
     providerID: "test-provider",
     mode: "build",
@@ -77,6 +91,8 @@ async function resolveBashTool(sessionID: string) {
     time: { created: 0 },
   }
   await Session.updateMessage(assistantMessage)
+  const owner = { kind: "session" as const, scopeID: session.scope.id, sessionID }
+  await RolloutLedger.beginRun(owner, rootID)
   const processor = SessionProcessor.create({
     assistantMessage,
     sessionID,
@@ -93,9 +109,21 @@ async function resolveBashTool(sessionID: string) {
       userTools: { bash: true },
       includeMCP: false,
     })
-    return { processor, bash: resolved.executionTools.bash as any }
+    return {
+      bash: resolved.executionTools.bash as any,
+      async dispose() {
+        processor.dispose("test")
+        const tools = await RolloutLedger.tools(owner, rootID)
+        await RolloutLedger.finishRun(
+          owner,
+          rootID,
+          tools.some((tool) => tool.status !== "completed") ? "failed" : "completed",
+        )
+      },
+    }
   } catch (error) {
     processor.dispose("test")
+    await RolloutLedger.finishRun(owner, rootID, "failed")
     throw error
   }
 }
@@ -115,7 +143,7 @@ test("autonomous profile-auto-allowed bash installs the sandbox wrapper and runs
         }))
         const session = await Session.create({ controlProfile: "autonomous" })
         try {
-          const { processor, bash } = await resolveBashTool(session.id)
+          const { dispose, bash } = await resolveBashTool(session.id)
           try {
             const result = await bash.execute(
               { command: 'echo "$TMPDIR"' },
@@ -129,7 +157,7 @@ test("autonomous profile-auto-allowed bash installs the sandbox wrapper and runs
             expect(result.output).toContain(".synergy/tmp")
             expect(result.output).toContain(tmp.path)
           } finally {
-            processor.dispose("test")
+            await dispose()
           }
         } finally {
           await Session.remove(session.id)
@@ -161,7 +189,7 @@ test("a session-approved external read is forwarded into the sandbox wrapper rea
         // an external read into the sandbox roots.
         SandboxSessionApproval.remember(session.id, "/etc/hosts", "read")
         try {
-          const { processor, bash } = await resolveBashTool(session.id)
+          const { dispose, bash } = await resolveBashTool(session.id)
           try {
             const result = await bash.execute(
               { command: "cat /etc/hosts" },
@@ -182,7 +210,7 @@ test("a session-approved external read is forwarded into the sandbox wrapper rea
               ),
             ).toBe(true)
           } finally {
-            processor.dispose("test")
+            await dispose()
           }
         } finally {
           SandboxSessionApproval.clear(session.id)
@@ -209,7 +237,7 @@ test("full_access keeps the historical sandbox bypass for bash", () =>
         }))
         const session = await Session.create({ controlProfile: "full_access" })
         try {
-          const { processor, bash } = await resolveBashTool(session.id)
+          const { dispose, bash } = await resolveBashTool(session.id)
           try {
             const result = await bash.execute(
               { command: "echo bypass-ok" },
@@ -219,7 +247,7 @@ test("full_access keeps the historical sandbox bypass for bash", () =>
             expect(result.output).toContain("bypass-ok")
             expect(prepare.mock.calls.length).toBe(0)
           } finally {
-            processor.dispose("test")
+            await dispose()
           }
         } finally {
           await Session.remove(session.id)
@@ -255,7 +283,7 @@ test("real OS sandbox contains a variable-target host tmp write under autonomous
         const session = await Session.create({ controlProfile: "autonomous" })
         const hostFile = path.join(os.tmpdir(), `synergy-e2e-${process.pid}-${Date.now()}.txt`)
         try {
-          const { processor, bash } = await resolveBashTool(session.id)
+          const { dispose, bash } = await resolveBashTool(session.id)
           try {
             const result = await bash.execute(
               {
@@ -271,7 +299,7 @@ test("real OS sandbox contains a variable-target host tmp write under autonomous
             // The host shared temporary directory was NOT written.
             expect(fs.existsSync(hostFile)).toBe(false)
           } finally {
-            processor.dispose("test")
+            await dispose()
           }
         } finally {
           await Session.remove(session.id)
@@ -303,7 +331,7 @@ test("real OS sandbox allows workspace writes under autonomous (darwin)", () =>
         ;(ToolRegistry.tools as any) = mock(async () => [bashRegistryTool()])
         const session = await Session.create({ controlProfile: "autonomous" })
         try {
-          const { processor, bash } = await resolveBashTool(session.id)
+          const { dispose, bash } = await resolveBashTool(session.id)
           try {
             const target = path.join(tmp.path, "ws-e2e.txt")
             const result = await bash.execute(
@@ -313,7 +341,7 @@ test("real OS sandbox allows workspace writes under autonomous (darwin)", () =>
             expect(result.output).toContain("ws-ok")
             expect(fs.existsSync(target)).toBe(true)
           } finally {
-            processor.dispose("test")
+            await dispose()
           }
         } finally {
           await Session.remove(session.id)

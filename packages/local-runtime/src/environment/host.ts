@@ -59,6 +59,20 @@ export namespace ExecutionHost {
             return Response.json(await input.executor.describe())
           }
           if (request.method === "GET" && url.pathname === "/v1/openapi.json") return Response.json(openAPI())
+          if (url.pathname.startsWith("/v1/preparations/")) {
+            const id = ExecutionProtocol.ID.parse(decodeURIComponent(url.pathname.slice("/v1/preparations/".length)))
+            if (request.method === "GET") {
+              if (!input.executor.inspectPreparation)
+                return Response.json({ error: "Durable preparation inspection unavailable" }, { status: 404 })
+              return Response.json(await input.executor.inspectPreparation(id))
+            }
+            if (request.method === "DELETE") {
+              if (!input.executor.releasePreparation)
+                return Response.json({ error: "Durable preparation release unavailable" }, { status: 404 })
+              await input.executor.releasePreparation(id)
+              return Response.json(true)
+            }
+          }
           if (url.pathname === "/v1/inputs" && request.method === "POST") {
             if (!input.executor.prepareInputs)
               return Response.json({ error: "Input staging unavailable" }, { status: 404 })
@@ -82,7 +96,13 @@ export namespace ExecutionHost {
             )
           }
           if (url.pathname.startsWith("/v1/sandbox/") && request.method === "DELETE") {
-            await input.executor.releaseSandbox?.(z.string().uuid().parse(url.pathname.slice("/v1/sandbox/".length)))
+            if (!input.executor.releaseSandbox)
+              return Response.json({ error: "Sandbox cleanup unavailable" }, { status: 404 })
+            const operationID = url.searchParams.get("operationID")
+            await input.executor.releaseSandbox(
+              z.string().uuid().parse(url.pathname.slice("/v1/sandbox/".length)),
+              operationID === null ? undefined : ExecutionProtocol.ID.parse(operationID),
+            )
             return Response.json(true)
           }
           if (url.pathname === "/v1/workspaces" && request.method === "POST") {
@@ -348,6 +368,17 @@ export namespace ExecutionHost {
       security: [{ bearerAuth: [] }],
       components: { securitySchemes: { bearerAuth: { type: "http", scheme: "bearer" } } },
       paths: {
+        "/v1/preparations/{id}": {
+          parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+          get: {
+            summary: "Inspect original durable preparation receipts without dispatch",
+            responses: { "200": { description: "Original preparation", ...json(ExecutionProtocol.Preparation) } },
+          },
+          delete: {
+            summary: "Seal original preparation cleanup after all retained effects have settled",
+            responses: { "200": { description: "Released" } },
+          },
+        },
         "/v1/inputs": action("Stage immutable execution inputs", ExecutionProtocol.Inputs),
         "/v1/inputs/{id}": {
           delete: {
@@ -357,7 +388,11 @@ export namespace ExecutionHost {
         },
         "/v1/sandbox": action("Prepare target sandbox containment", ExecutionProtocol.SandboxInput),
         "/v1/sandbox/{id}": {
-          delete: { summary: "Release target sandbox preparation", responses: { "200": { description: "Released" } } },
+          delete: {
+            summary: "Release target sandbox preparation",
+            parameters: [{ name: "operationID", in: "query", required: false, schema: { type: "string" } }],
+            responses: { "200": { description: "Released" } },
+          },
         },
         "/v1/workspaces": action(
           "Manage Workspace mounts, file operations and retained checkpoints",

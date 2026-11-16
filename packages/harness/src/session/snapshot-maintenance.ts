@@ -15,8 +15,21 @@ import { SnapshotPack } from "./snapshot-pack"
 import { SnapshotRecords } from "./snapshot-records"
 import { SnapshotPool } from "./snapshot-pool"
 import { SnapshotProtection } from "./snapshot-protection"
+import { SnapshotCheckpoint } from "./snapshot-checkpoint"
+import { StoredSnapshotMaintenance } from "./stored-snapshot-maintenance"
+import { SnapshotRestoration } from "./snapshot-restoration"
 
 export namespace SnapshotMaintenance {
+  export type ArchiveEvidence = SnapshotCheckpoint.ArchiveEvidence
+  export const withCapture = SnapshotCheckpoint.withCapture
+  export const assertArchive = SnapshotCheckpoint.assertArchive
+  export const compareNamespace = SnapshotCheckpoint.compareNamespace
+  export const NamespaceMismatch = SnapshotCheckpoint.NamespaceMismatch
+  export const withRestoredSegment = SnapshotCheckpoint.withRestoredSegment
+  export const withInstalledSegment = SnapshotRestoration.withInstalled
+  export const assertInstalledSegment = SnapshotRestoration.assertInstalled
+  export const verifyInstalledSegment = SnapshotRestoration.verifyInstalled
+  export const collectStoredPreparations = StoredSnapshotMaintenance.collect
   const Journal = z.object({
     version: z.literal(2),
     phase: z.enum(["inventoried", "imported", "verified", "protected", "switched", "cleaned"]),
@@ -160,8 +173,9 @@ export namespace SnapshotMaintenance {
             continue
           if (await SnapshotStore.owner(scopeID, entry.name)) continue
           await SnapshotStore.write(StoragePath.snapshotOwner(scopeID, entry.name), {
-            version: 2,
+            version: 3,
             backend: "legacy",
+            retentionID: entry.name,
           } satisfies SnapshotStore.Owner)
         }
       })
@@ -463,8 +477,9 @@ export namespace SnapshotMaintenance {
         journal.phase = "protected"
         await SnapshotStore.write(key, journal)
         await SnapshotStore.write(StoragePath.snapshotOwner(scopeID, sessionID), {
-          version: 2,
+          version: 3,
           backend: "shared",
+          retentionID: sessionID,
         } satisfies SnapshotStore.Owner)
         journal.phase = "switched"
         await SnapshotStore.write(key, journal)

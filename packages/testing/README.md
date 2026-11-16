@@ -16,3 +16,5 @@ Spawn-based CI and coverage runners import `createIsolatedTestEnv`, pass the ret
 The bound `tmpdir()` retains its directory under the process fixture root after lexical disposal because Scope-owned asynchronous work may still reference it. Dispose owned runtime resources before process cleanup. Worker-path tests do not install the in-process hook automatically; suites using the compatibility preload must explicitly remove and restore that hook when exercising worker execution.
 
 Run `bun run test`, `bun run typecheck`, and `bun run test:coverage` from this package.
+
+`@ericsanchezok/synergy-testing/organization-tls` supplies the synthetic localhost certificate and key shared by organization HTTPS fixtures. It loads no Runtime and requires no certificate-generation subprocess.

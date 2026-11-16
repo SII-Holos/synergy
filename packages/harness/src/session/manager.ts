@@ -34,12 +34,26 @@ import { z } from "zod"
 const log = Log.create({ service: "session.manager" })
 
 export namespace SessionManager {
-  export async function waitForIdle(sessionID: string): Promise<void> {
+  export async function waitForIdle(sessionID: string, signal?: AbortSignal): Promise<void> {
+    signal?.throwIfAborted()
     const lease = getRuntime(sessionID)?.owner?.lease
-    await Promise.all([
+    const settled = Promise.all([
       runtimeState().sessionCompletions.get(sessionID),
       lease ? runtimeState().leaseReleases.get(lease)?.promise : undefined,
     ])
+    if (!signal) {
+      await settled
+      return
+    }
+    const cancelled = Promise.withResolvers<never>()
+    const abort = () => cancelled.reject(signal.reason)
+    signal.addEventListener("abort", abort, { once: true })
+    try {
+      if (signal.aborted) abort()
+      await Promise.race([settled, cancelled.promise])
+    } finally {
+      signal.removeEventListener("abort", abort)
+    }
   }
   export namespace SessionMail {
     export interface Model {

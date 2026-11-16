@@ -41,6 +41,8 @@ Web, Desktop, CLI, Channels, Agenda, Cortex, and plugins all enter this same run
 
 ## Dependency and deployment principles
 
+The independently deployed [organization service](organization.md) owns collaboration records and authorization without opening an Agent execution lifecycle.
+
 A business operation has one service owner. Its tools, routes, configuration, durable upgrades and command contributions stay with that owner; interface adapters call the same service. Generic execution accepts typed contributions without importing the concrete business package. Registration is explicit and complete before migrations or execution start, with no package scanning or universal service container.
 
 Package boundaries express independently consumable code and dependency weight. Process boundaries express lifecycle or native execution requirements. Shared Browser, Computer and Link protocols let both sides communicate without importing either host implementation. Plugin author APIs and development tools remain separate from the process that executes plugins. Only actual native hosting requires Electron; optional business backends can run without Desktop.

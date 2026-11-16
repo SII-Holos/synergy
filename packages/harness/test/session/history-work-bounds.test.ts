@@ -20,6 +20,13 @@ test.each([64, 512, 2478, 5000])(
   "finite reads stay within selected bodies across %i historical messages",
   (count) =>
     runtime.run(async () => {
+      const started = performance.now()
+      const mark = (stage: string, work: Record<string, number> = {}) =>
+        console.error(
+          "history-work-bounds stage",
+          JSON.stringify({ count, stage, elapsedMs: Math.round(performance.now() - started), ...work }),
+        )
+      mark("scope:start")
       await using tmp = await tmpdir({ git: true })
       await ScopeContext.provide({
         scope: await tmp.scope(),
@@ -59,31 +66,51 @@ test.each([64, 512, 2478, 5000])(
               { key: StoragePath.messagePart(owner.scopeID, owner.sessionID, id, part.id), value: part },
             )
           }
-          for (let offset = 0; offset < rows.length; offset += 256)
+          mark("seed:start", { rows: rows.length })
+          for (let offset = 0; offset < rows.length; offset += 256) {
             await Storage.transaction((tx) => tx.writeMany(rows.slice(offset, offset + 256)))
+            if (offset % 1024 === 0 || offset + 256 >= rows.length)
+              mark("seed:progress", { rows: Math.min(offset + 256, rows.length) })
+          }
+          mark("model-infos:start")
           await SessionHistory.modelMessageInfos({ sessionID: session.id })
+          mark("model-infos:done")
+          mark("summarize:start")
           await SessionSummary.summarize({ sessionID: session.id, messageID: ids.at(-1)!, diffOnly: true })
+          mark("summarize:done")
           using parts = spyOn(MessageV2, "parts")
           using binary = spyOn(Storage, "readBinary")
           using queries = spyOn(Storage, "query")
+          mark("finite-read:start")
           const selected = await SessionHistory.messages({ sessionID: session.id, limit: 24 })
+          mark("finite-read:done")
           expect(selected.map((message) => message.info.id)).toEqual(ids.slice(-24))
           expect(parts.mock.calls.filter(([input]) => input.sessionID === session.id)).toHaveLength(24)
           expect(binary).not.toHaveBeenCalled()
           expect(queries.mock.calls.length).toBeLessThan(count + 256)
           parts.mockClear()
+          mark("last-exchange:start")
           await Session.updateLastExchange(session.id)
+          mark("last-exchange:done")
           const latest = selected.at(-1)!
           const text = latest.parts[0]
           expect((await Session.get(session.id)).lastExchange?.user).toBe(
             text.type === "text" ? text.text.slice(0, 200) : undefined,
           )
           expect(parts.mock.calls.filter(([input]) => input.sessionID === session.id)).toHaveLength(0)
+          mark("continuation-propose:start")
           await ContinuationKernel.propose(session.id)
+          mark("continuation-propose:done")
           if (latest.info.role !== "user") throw new Error("Expected input")
+          mark("rollout-start:start")
           const segment = await RolloutLifecycle.start(session, latest.info, latest.parts)
+          mark("rollout-start:done")
+          mark("rollout-finish:start")
           await RolloutLifecycle.finishSegment(segment, "completed")
+          mark("rollout-finish:done")
+          mark("loop-settle:start")
           await LoopJob.settleDetached(session.id)
+          mark("loop-settle:done")
           expect(parts.mock.calls.filter(([input]) => input.sessionID === session.id).length).toBeLessThanOrEqual(2)
           expect(
             parts.mock.calls

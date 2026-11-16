@@ -60,7 +60,7 @@ export const { use: useNoteDocuments, provider: NoteDocumentsProvider } = create
     })
     return {
       retain(scopeID: string, id: string) {
-        const key = JSON.stringify([sdk.url, scopeID, id])
+        const key = JSON.stringify([sdk.cacheKey, scopeID, id])
         const document = documents.get(key)
         if (!document) throw new Error("Note controller must be loaded before retention")
         document.readers++
@@ -70,11 +70,11 @@ export const { use: useNoteDocuments, provider: NoteDocumentsProvider } = create
         }
       },
       navigation(scopeID: string) {
-        const key = JSON.stringify([sdk.url, scopeID])
+        const key = JSON.stringify([sdk.cacheKey, scopeID])
         const existing = navigation.get(key)
         if (existing) return existing
         const [state, setState] = persisted(
-          Persist.workspace(Persist.scopeKey(sdk.url, scopeID), "notes-navigation"),
+          Persist.workspace(Persist.scopeKey(sdk.cacheKey, scopeID), "notes-navigation"),
           createStore({ open: true, width: 260 }),
         )
         const value = {
@@ -86,10 +86,10 @@ export const { use: useNoteDocuments, provider: NoteDocumentsProvider } = create
         return value
       },
       peek(scopeID: string, id: string) {
-        return documents.get(JSON.stringify([sdk.url, scopeID, id]))?.controller
+        return documents.get(JSON.stringify([sdk.cacheKey, scopeID, id]))?.controller
       },
       get(scopeID: string, id: string) {
-        const key = JSON.stringify([sdk.url, scopeID, id])
+        const key = JSON.stringify([sdk.cacheKey, scopeID, id])
         const existing = documents.get(key)
         if (existing) {
           documents.delete(key)
@@ -99,7 +99,7 @@ export const { use: useNoteDocuments, provider: NoteDocumentsProvider } = create
         return createRoot((dispose) => {
           const client = sdk.client
           const backup = createNoteDraftStorage(
-            Persist.workspace(Persist.scopeKey(sdk.url, scopeID), `note:${windowKey}:${id}`),
+            Persist.workspace(Persist.scopeKey(sdk.cacheKey, scopeID), `note:${windowKey}:${id}`),
           )
           const controller = createNoteDocumentController({
             id,

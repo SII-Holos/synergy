@@ -13,6 +13,9 @@ import { RuntimeContext } from "../lifecycle/context"
 import { SessionMigrationTarget } from "../migration/session-target"
 import type { Session } from "."
 import { RolloutMigration } from "./rollout/migration"
+import { RolloutToolPartIndex } from "./rollout/tool-part-index"
+import { SessionAttachmentIndex } from "./attachment-index"
+import { SessionPartFieldSource } from "./part-field-source"
 import { RolloutJournalMaintenance } from "./rollout/journal-maintenance"
 import { $ } from "bun"
 import path from "path"
@@ -2516,6 +2519,13 @@ export const migrations: Migration[] = [
   },
   RolloutMigration.migration,
   RolloutMigration.pricingMigration,
+  RolloutToolPartIndex.sessionMigration,
+  RolloutToolPartIndex.operationMigration,
+  RolloutToolPartIndex.sessionInputMigration,
+  RolloutToolPartIndex.operationInputMigration,
+  SessionAttachmentIndex.migration,
+  SessionAttachmentIndex.presentationMigration,
+  SessionPartFieldSource.migration,
   RolloutJournalMaintenance.migration,
   RolloutExecutionMigration.migration,
 
@@ -2565,7 +2575,7 @@ export const migrations: Migration[] = [
     async up(progress) {
       const { Session } = await import(".")
       progress?.(0, 1)
-      await Storage.transaction((tx) => Session.rebuildStorageIndexes(tx))
+      await Storage.transaction((tx) => Session.rebuildStorageIndexes(Storage.current().store, tx))
       progress?.(1, 1)
     },
   },

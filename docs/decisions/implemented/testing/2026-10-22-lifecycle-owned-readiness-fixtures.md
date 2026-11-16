@@ -25,3 +25,5 @@ Review DOM fixtures scope empty statuses to their comparison or navigation owner
 ## Consequences
 
 The fixtures retain their existing behavioral assertions and require neither live credentials nor platform-specific data. Docker integration still runs in its CI group; local clock and cancellation tests stay small. Product deadlines and lifecycle semantics are unchanged.
+
+The non-cooperative compaction deadline control subscribes to the captured original attempt before releasing its late processor. It waits for that attempt's late `finish: "stop"` update followed by the original failed-attempt restoration, then retains the abort, failed metadata, excluded context, absent recovery Part and message-count assertions. A settled processor or one event-loop turn cannot stand in for the restoration owner. The existing deadline and test timeout remain unchanged.

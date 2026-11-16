@@ -674,6 +674,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
 
   const doEnsureInit = () => {
     const result = ensureInit({
+      cacheKey: globalSDK.cacheKey,
       cfg: config(),
       setName: "global",
       refreshing,
@@ -742,6 +743,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
         defaultSettingsState(input.sendShortcut(), theme.colorScheme()),
       )
       ensureInit({
+        cacheKey: globalSDK.cacheKey,
         cfg: { ...config(), ...savedConfig },
         setName: "global",
         refreshing: () => false,

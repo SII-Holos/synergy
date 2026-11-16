@@ -82,6 +82,9 @@ test("installed owner configuration validates an early schema reference and pres
       assert.equal(Experiment.Runtime.safeParse({ lsp: false }).success, true)
       const { ConfigDomain } = await import("@ericsanchezok/synergy-harness/config/domain")
       assert.equal(z.toJSONSchema(ConfigDomain.Id).enum.includes("library"), true)
+      assert.equal(z.toJSONSchema(ConfigDomain.Id).enum.includes("organization"), true)
+      assert.equal(Config.Info.safeParse({ organization: { clientAuthentication: { clients: [] } } }).success, true)
+      assert.equal(Config.Info.safeParse({ organization: { authentication: { loginMs: 0 } } }).success, false)
       assert.equal(ConfigDomain.Id.safeParse("bogus").success, false)
       assert.equal(ConfigExtensions.readField({ activityDisplay: "full" }, "activityDisplay"), "full")
       assert.deepEqual(ConfigExtensions.references({

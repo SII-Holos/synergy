@@ -58,8 +58,9 @@ test("Blueprint patches preserve other known and future owner fields", () =>
     })
     await recordBlueprintNoteRun({ scopeID: "home", noteID: note.id, loopID: "blp_existing", started: 123 })
     const key = ["notes", "home", note.id]
-    const current = await NoteStore.get("home", note.id)
-    await Storage.write(key, { ...current, blueprint: { ...current.blueprint, future: { checkpoint: [1, 2] } } })
+    await NoteStore.mutateMetadata("home", note.id, (draft) => {
+      ;(draft.blueprint as Record<string, unknown>).future = { checkpoint: [1, 2] }
+    })
     const changed = await NoteStore.update("home", note.id, { blueprint: { description: "Updated" } })
     expect(changed.blueprint).toEqual({
       description: "Updated",

@@ -3,7 +3,7 @@ import { Environment } from "../../src/environment"
 import { EnvironmentExecution } from "../../src/environment/execution"
 import { EnvironmentProviders } from "../../src/environment/provider"
 import type { Executor, ExecutionProtocol } from "../../src/environment/executor"
-import { testRuntime } from "../support/runtime"
+import { testEnvironmentRuntime as testRuntime } from "../support/environment-origin"
 import { Storage } from "../../src/storage/storage"
 import { EnvironmentControl } from "../../src/environment/control"
 
@@ -80,6 +80,7 @@ test("unchanged execution observation does not enter the writer queue and cancel
       spec: {},
     })
     const initial = await EnvironmentExecution.start({
+      origin: runtime.origin("operation"),
       id: "observed",
       scopeID: "scope",
       environmentID: environment.id,
@@ -135,7 +136,13 @@ test("reconciliation refreshes a moved endpoint without changing allocation iden
     })
     f.loseResponse()
     await expect(
-      EnvironmentExecution.start({ id: "moving", scopeID: "scope", environmentID: environment.id, command }),
+      EnvironmentExecution.start({
+        origin: runtime.origin("moving"),
+        id: "moving",
+        scopeID: "scope",
+        environmentID: environment.id,
+        command,
+      }),
     ).rejects.toThrow("ack lost")
     const submitted = await EnvironmentExecution.get("moving", "scope")
     online = false
@@ -173,7 +180,13 @@ test("execution intent precedes dispatch, duplicate operation IDs never repeat a
   await runtime.run(async () => {
     const environment = await Environment.bind({ scopeID: "scope", ownerID: "session", provider: "fixture", spec: {} })
     f.loseResponse()
-    const input = { scopeID: "scope", environmentID: environment.id, id: "operation", command }
+    const input = {
+      origin: runtime.origin("operation"),
+      scopeID: "scope",
+      environmentID: environment.id,
+      id: "operation",
+      command,
+    }
     await expect(EnvironmentExecution.start(input)).rejects.toThrow("ack lost")
     expect((await EnvironmentExecution.get(input.id, "scope")).state).toBe("submitted")
     expect((await EnvironmentExecution.start(input)).state).toBe("exited")
@@ -208,7 +221,13 @@ test("failed checkpoint retains the use and retries saving without re-executing"
   })
   await runtime.run(async () => {
     const environment = await Environment.bind({ scopeID: "scope", ownerID: "session", provider: "fixture", spec: {} })
-    await EnvironmentExecution.start({ scopeID: "scope", environmentID: environment.id, id: "operation", command })
+    await EnvironmentExecution.start({
+      origin: runtime.origin("operation"),
+      scopeID: "scope",
+      environmentID: environment.id,
+      id: "operation",
+      command,
+    })
     await expect(
       EnvironmentExecution.complete("operation", "scope", async () => {
         throw new Error("upload failed")
@@ -257,6 +276,7 @@ test("compiler artifacts may change on replay while the original command intent 
   await runtime.run(async () => {
     const environment = await Environment.bind({ scopeID: "scope", ownerID: "session", provider: "fixture", spec: {} })
     const input = {
+      origin: runtime.origin("operation"),
       scopeID: "scope",
       environmentID: environment.id,
       id: "compiled",
@@ -304,7 +324,13 @@ test.each(["ack-lost", "unknown", "release-lost"] as const)(
         ).id
         f.loseResponse()
         await expect(
-          EnvironmentExecution.start({ id: "recover", scopeID: "scope", environmentID, command }),
+          EnvironmentExecution.start({
+            origin: first.origin("recover"),
+            id: "recover",
+            scopeID: "scope",
+            environmentID,
+            command,
+          }),
         ).rejects.toThrow("ack lost")
         if (failure === "unknown") f.operations.delete("recover")
         if (failure === "release-lost") {
@@ -367,7 +393,13 @@ test("checkpoint failures survive a lost release acknowledgement, restart and al
     await first.run(async () => {
       environmentID = (await Environment.bind({ scopeID: "scope", ownerID: "owner", provider: provider.id, spec: {} }))
         .id
-      await EnvironmentExecution.start({ id: "failed-checkpoint", scopeID: "scope", environmentID, command })
+      await EnvironmentExecution.start({
+        origin: first.origin("failed-checkpoint"),
+        id: "failed-checkpoint",
+        scopeID: "scope",
+        environmentID,
+        command,
+      })
       f.executor.release = async (id) => {
         await release(id)
         throw new Error("release acknowledgement lost")
@@ -423,7 +455,13 @@ test("the active-operation migration indexes unfinished records and excludes com
   await runtime.run(async () => {
     const environment = await Environment.bind({ scopeID: "scope", ownerID: "session", provider: "fixture", spec: {} })
     for (const id of ["active", "done"])
-      await EnvironmentExecution.start({ id, scopeID: "scope", environmentID: environment.id, command })
+      await EnvironmentExecution.start({
+        origin: runtime.origin(id),
+        id,
+        scopeID: "scope",
+        environmentID: environment.id,
+        command,
+      })
     await EnvironmentExecution.complete("done", "scope")
     await Storage.remove(["environment_execution_active", "scope", "active"])
     const migration = environmentMigrations.find((item) => item.id === "20260928-environment-active-executions")!

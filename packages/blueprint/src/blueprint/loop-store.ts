@@ -1,3 +1,9 @@
+import { BlueprintLoopRuntime } from "./loop-runtime"
+import {
+  SessionTransferEpochs as Epochs,
+  SessionTransferGate as Gate,
+} from "@ericsanchezok/synergy-harness/session/transfer"
+import { BlueprintTransferIndex } from "../transfer-index"
 import { recordBlueprintNoteRun } from "../note-kind"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
@@ -74,6 +80,22 @@ function terminalHookLock(scopeID: string, loopID: string): string {
 }
 
 export namespace BlueprintLoopStore {
+  export async function suspendForTransfer(scopeID: string, id: string) {
+    cancelDeadline(scopeID, id)
+    using _ = await Lock.write(terminalHookLock(scopeID, id))
+  }
+
+  export async function resumeTransferred(scopeID: string, id: string) {
+    const loop = await get(scopeID, id)
+    if (loop.pluginOwner) throw new Error("Blueprint transfer requires the exact plugin generation owner")
+    if (isActiveLoopStatus(loop.status) && loop.status !== "armed" && loop.budget?.maxRuntimeMs)
+      BlueprintLoopRuntime.scheduleDeadline(
+        scopeID,
+        id,
+        Math.max(0, loop.time.created + loop.budget.maxRuntimeMs - Date.now()),
+      )
+  }
+
   export async function create(input: {
     noteID: string
     noteVersion?: number
@@ -135,7 +157,9 @@ export namespace BlueprintLoopStore {
         auditTools: input.auditTools,
         time: { created: now, updated: now },
       }
+      await Gate.assert(loop.sessionID)
       await Storage.write(StoragePath.blueprintLoop(sid, id), loop)
+      await BlueprintTransferIndex.loop(loop)
 
       await recordBlueprintNoteRun({ scopeID, noteID: loop.noteID, loopID: id, source: loop.source, started: now })
 
@@ -272,6 +296,8 @@ export namespace BlueprintLoopStore {
         if (patch.error !== undefined) draft.error = patch.error
       })
 
+      for (const sessionID of BlueprintTransferIndex.loopSessions(updated)) await Epochs.assertOwnerMutation(sessionID)
+      await BlueprintTransferIndex.loop(updated, current)
       const phase = PRESENTATION_PHASE[updated.status]
       if (isTerminal || (patch.status === "running" && current.status === "auditing"))
         await syncBoundSessionBlueprint({ sessionID: current.auditSessionID, loopID: id })
@@ -315,6 +341,7 @@ export namespace BlueprintLoopStore {
     using _ = await Lock.write(terminalHookLock(scopeID, id))
     const path = StoragePath.blueprintLoop(Identifier.asScopeID(scopeID), id)
     const loop = await get(scopeID, id)
+    await Gate.assert(loop.sessionID)
     if (!loop.pluginOwner || loop.terminalHookDeliveredAt !== undefined) return
 
     const delivery = await deliverPluginTerminalHook(

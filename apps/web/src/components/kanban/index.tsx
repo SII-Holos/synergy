@@ -65,7 +65,7 @@ export function KanbanPanel() {
   const layout = useLayout()
 
   const [store, setStore, , ready] = persisted(
-    { ...Persist.global("kanban", ["kanban.v1"]), migrate: migrateKanbanPreferences },
+    { ...Persist.connection(globalSDK.cacheKey, "kanban"), migrate: migrateKanbanPreferences },
     createStore<KanbanPersisted>(defaultKanbanPreferences()),
   )
 

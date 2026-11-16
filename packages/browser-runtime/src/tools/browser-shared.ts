@@ -43,7 +43,14 @@ export namespace BrowserToolHelper {
         ctx.abort.throwIfAborted()
         const task = await Session.get(ctx.sessionID)
         if (task.scope.id !== ScopeContext.current.scope.id) throw new Error("Browser task belongs to another Scope")
-        const environment = task.environmentID ? await Environment.get(task.environmentID, task.scope.id) : undefined
+        const environment = await Environment.selectNative({
+          scopeID: task.scope.id,
+          ownerID: task.id,
+          environmentID: task.environmentID ?? null,
+          workspaceID: task.workspaceID,
+          workspaceGeneration: task.workspace?.generation,
+          signal: ctx.abort,
+        })
         if (environment?.provider !== "native")
           throw new BrowserProtocolError({
             code: "browser_environment_unavailable",

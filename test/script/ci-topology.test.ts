@@ -11,8 +11,13 @@ interface Job {
   name?: string
   if?: string
   needs?: string[]
-  "timeout-minutes"?: number
-  strategy?: { "max-parallel": number; "fail-fast": boolean }
+  "timeout-minutes"?: number | string
+  "runs-on"?: string
+  strategy?: {
+    "max-parallel": number
+    "fail-fast": boolean
+    matrix?: { include?: Array<{ role: string; runner: string }> }
+  }
   steps?: { name?: string; if?: string | boolean; run?: string; uses?: string; with?: Record<string, unknown> }[]
 }
 const workflow = Bun.YAML.parse(await readFile(path.join(root, ".github/workflows/ci.yml"), "utf8")) as {
@@ -155,12 +160,40 @@ describe("required CI topology", () => {
       const job = workflow.jobs[pool]!
       expect(job.strategy?.["max-parallel"]).toBe(limit)
       expect(job.strategy?.["fail-fast"]).toBe(false)
+      expect(job["timeout-minutes"]).toBe(
+        ["linux", "linux_core", "linux_full"].includes(pool) ? "${{ matrix.timeoutMinutes }}" : 45,
+      )
       expect(job.steps?.some((step) => step.with?.["if-no-files-found"] === "error")).toBe(true)
     }
     expect(workflow.jobs.contracts!.needs).toEqual(["plan"])
     expect(workflow.jobs.docker_direct!.needs).toEqual(["plan"])
     expect(workflow.jobs.docker!.needs).toEqual(["plan", "benchmark-prepare"])
     expect(Object.keys(workflow.jobs).filter((name) => name.startsWith("docker"))).toEqual(["docker_direct", "docker"])
+  })
+  test("cross-OS peers finish native preparation before starting the shared business window", async () => {
+    const cross = Bun.YAML.parse(
+      await readFile(path.join(root, ".github/workflows/organization-cross-os.yml"), "utf8"),
+    ) as { jobs: Record<string, Job> }
+    const peer = cross.jobs.peer!
+    expect(workflow.jobs.macos?.["runs-on"]).toBe("macos-26")
+    expect(peer.strategy?.matrix?.include).toEqual([
+      { role: "darwin", runner: workflow.jobs.macos?.["runs-on"] },
+      { role: "linux", runner: "ubuntu-24.04-arm" },
+    ])
+    const steps = peer.steps!
+    const publish = steps.findIndex((step) => step.with?.path === "${{ env.SYNERGY_CROSS_OS_STATE }}/public.json")
+    const ready = steps.findIndex((step) => step.run?.includes("cross-os-transport.ts peer-ready"))
+    const start = steps.findIndex((step) => step.name === "Start the original native peer and keep its process alive")
+    expect(publish).toBeGreaterThanOrEqual(0)
+    expect(ready).toBeGreaterThan(publish)
+    expect(start).toBeGreaterThan(ready)
+    for (const [index, step] of steps.entries()) {
+      if (step.uses?.startsWith("actions/download-artifact@") || step.uses?.startsWith("oven-sh/setup-bun@"))
+        expect(index, step.name).toBeLessThan(publish)
+      if (step.name?.startsWith("Install ") || step.name?.startsWith("Prepare ") || step.run?.startsWith("bun install"))
+        expect(index, step.name).toBeLessThan(publish)
+    }
+    expect(peer["timeout-minutes"]).toBe(32)
   })
   test("every dev/main push and the daily cold run remain enabled", () => {
     expect(workflow.on.push.branches).toEqual(["dev", "main"])
@@ -270,7 +303,7 @@ describe("required CI topology", () => {
     ) as { jobs: Record<string, Job> }
     for (const configured of [workflow, diagnostic]) {
       const job = configured.jobs["benchmark-prepare"]!
-      expect(job["timeout-minutes"]! * 60 - seconds).toBeGreaterThanOrEqual(180)
+      expect(Number(job["timeout-minutes"]) * 60 - seconds).toBeGreaterThanOrEqual(180)
       const collect = job.steps!.find((step) => step.run?.includes("synergy_bench/ci_evidence.py"))!
       expect(collect).toBeDefined()
       expect(collect.if).toBe("failure() || cancelled()")

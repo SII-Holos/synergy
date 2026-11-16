@@ -255,14 +255,21 @@ export namespace ObservabilityTelemetryClient {
 
   function spawnWorker(input: { dbPath: string; config: TelemetryProtocol.WorkerConfig }): void {
     const instanceState = runtimeState()
+    const owner = RuntimeContext.current()
 
     const command =
-      installedWorkerCommand(RuntimeContext.current().host.env, "__observability-worker-runner") ??
+      installedWorkerCommand(owner.host.env, "__observability-worker-runner") ??
       (fs.existsSync(runnerPath)
-        ? [process.execPath, "run", runnerPath]
+        ? [
+            process.execPath,
+            "run",
+            "--no-env-file",
+            `--config=${process.platform === "win32" ? "NUL" : "/dev/null"}`,
+            runnerPath,
+          ]
         : [process.execPath, "__observability-worker-runner"])
     const env: Record<string, string | undefined> = {
-      ...RuntimeContext.current().host.env,
+      ...owner.host.env,
       SYNERGY_OBSERVABILITY_PARENT_PID: String(process.pid),
       SYNERGY_OBSERVABILITY_WORKER: "1",
     }
@@ -270,34 +277,40 @@ export namespace ObservabilityTelemetryClient {
     delete env.SYNERGY_POLICY_WORKER
     const processHandle = Bun.spawn({
       cmd: command,
+      cwd: owner.host.root,
       env,
-      ipc: RuntimeContext.current().bind((message: unknown) => {
-        let parsed: TelemetryProtocol.WorkerToHost | undefined
-        try {
-          parsed = TelemetryProtocol.parseWorkerToHost(typeof message === "string" ? JSON.parse(message) : message)
-        } catch {
-          return
-        }
-        if (!parsed) return
-        onMessage(parsed)
-      }),
+      ipc(message: unknown) {
+        if (instanceState.worker !== processHandle) return
+        owner.run(() => {
+          let parsed: TelemetryProtocol.WorkerToHost | undefined
+          try {
+            parsed = TelemetryProtocol.parseWorkerToHost(typeof message === "string" ? JSON.parse(message) : message)
+          } catch {
+            return
+          }
+          if (!parsed) return
+          onMessage(parsed)
+        })
+      },
       stdout: "ignore",
       stderr: "ignore",
-      onExit: RuntimeContext.current().bind(() => {
+      onExit() {
         if (instanceState.worker !== processHandle) return
-        instanceState.worker = undefined
-        instanceState.workerReady = false
-        instanceState.uncertain += instanceState.sentBatches.reduce((total, batch) => total + batch.observations, 0)
-        instanceState.sentBatches.length = 0
-        instanceState.lastWorkerCommitted = 0
-        instanceState.lastWorkerDropped = 0
-        instanceState.lastWorkerDroppedObservations = 0
-        failAllWaiters()
-        if (!instanceState.started) return
-        instanceState.restarts++
-        instanceState.failures++
-        scheduleRestart()
-      }),
+        owner.run(() => {
+          instanceState.worker = undefined
+          instanceState.workerReady = false
+          instanceState.uncertain += instanceState.sentBatches.reduce((total, batch) => total + batch.observations, 0)
+          instanceState.sentBatches.length = 0
+          instanceState.lastWorkerCommitted = 0
+          instanceState.lastWorkerDropped = 0
+          instanceState.lastWorkerDroppedObservations = 0
+          failAllWaiters()
+          if (!instanceState.started) return
+          instanceState.restarts++
+          instanceState.failures++
+          scheduleRestart()
+        })
+      },
     })
     instanceState.worker = processHandle
     // Bun buffers IPC messages until the child registers its handler, so the

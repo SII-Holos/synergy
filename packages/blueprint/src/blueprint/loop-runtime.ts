@@ -1,3 +1,7 @@
+import {
+  SessionTransferGate as Gate,
+  SessionTransferEpochs as Epochs,
+} from "@ericsanchezok/synergy-harness/session/transfer"
 import { BlueprintLoopStore, isActiveLoopStatus } from "./loop-store"
 import { clearTimer, hasDeadlineTimer, setDeadlineTimer } from "./deadline"
 import { Session } from "@ericsanchezok/synergy-harness/session"
@@ -14,6 +18,7 @@ export namespace BlueprintLoopRuntime {
       const scopeID = ScopeContext.current.scope.id
       const loops = await BlueprintLoopStore.list(scopeID).catch(() => [])
       for (const loop of loops) {
+        if (await Epochs.isFrozen(loop.sessionID)) continue
         if (loop.source !== "plugin" || !loop.pluginOwner) continue
         if (!isActiveLoopStatus(loop.status)) {
           if (loop.terminalHookDeliveredAt === undefined) {
@@ -57,6 +62,7 @@ export namespace BlueprintLoopRuntime {
 async function expireLoop(scopeID: string, loopID: string): Promise<void> {
   const loop = await BlueprintLoopStore.get(scopeID, loopID).catch(() => undefined)
   if (!loop) return
+  await Gate.assert(loop.sessionID)
   if (!isActiveLoopStatus(loop.status)) return
 
   // Cancel execution task

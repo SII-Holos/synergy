@@ -9,6 +9,7 @@ Own complete-product source composition, cross-domain data commands and integrat
 - Keep core-only tests in Harness or Local Runtime. Full API, cross-domain lifecycle and product configuration tests belong here and explicitly register their required services.
 - Preserve unloaded domain data and existing migration IDs and ledgers. Read [persistence guidance](../../.synergy/skill/change-persistence/SKILL.md) before changing upgrades, imports or data movement.
 - Full-data copies hold native directory retirement claims as well as offline Home locks, including selected folders and source removal. Copied Git relationship repair belongs to Local Runtime and must never reconnect to an uncopied source.
+- Offline imports retain the actual initialized target Store through claim release; source readers close before removal. Preserve the original storage configuration root independently of physical path canonicalization.
 - Select Browser hosting only in the Desktop composition; CLI/Web omit it. Browser backend ownership belongs to `packages/browser-runtime`; protocol contracts belong to `packages/browser-core`.
 
 Prepare native PTY assets with `bun ../../packages/local-runtime/script/build-pty.ts` before `bun test test/server/runtime-websocket-shutdown.test.ts`. CI supplies the verified native build artifact.
@@ -25,6 +26,6 @@ Review the owning Skill for CLI, persistence, execution, API, Browser or Channel
 
 Consume declarative core/full/Web/Desktop selections from Plugin Host’s public `installation/catalog` leaf. Full includes backend components, HTTP and authoring tools; Web adds the application payload and Desktop adds its signed shell. `dataManagement()` contributes cross-domain data commands through the same component API. Source development also selects the local Web assets explicitly.
 
-Public `PresetRuntimeHandle` embeds the backend without repository paths. Callers explicitly select Web assets with `webAppDirectory`; only the source CLI selects repository assets. Publish the active configuration schema through the shared lifecycle instead of copying an executable-adjacent schema. Verify both API-only and explicit-Web embedding outside the repository.
+`PresetRuntimeHandle` composes typed `additionalComponents` beside the canonical backend before sealing. Select Web assets with `webAppDirectory`; only source CLI selects repository assets. Publish schemas through lifecycle. Verify external embedding, `test/server/runtime-additional-components.test.ts` and `test/acceptance/runtime.test.ts`; controlled observers require composed Host origins.
 
 Feature selection uses Util’s shared resolver before registration. Full contract generation explicitly includes all declarations. Offline maintenance loads dormant owner data contributions without runtime activation; follow [develop-feature](../../.synergy/skill/develop-feature/SKILL.md).

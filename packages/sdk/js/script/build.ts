@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 import { fileURLToPath } from "url"
-import { generateOpenApi } from "../../../../script/generate-openapi"
+import { generateOpenApi, generateOrganizationOpenApi } from "../../../../script/generate-openapi"
 const dir = fileURLToPath(new URL("..", import.meta.url))
 process.chdir(dir)
 
@@ -150,9 +150,30 @@ if (!process.argv.includes("--compile-only")) {
     ],
   })
 
+  const organizationSpec = path.join(dir, "organization.openapi.json")
+  await writeFile(organizationSpec, await generateOrganizationOpenApi())
+  try {
+    await createClient({
+      input: organizationSpec,
+      output: { path: "./src/organization-gen", tsConfigPath: path.join(dir, "tsconfig.json"), clean: true },
+      plugins: [
+        { name: "@hey-api/typescript", exportFromIndex: false },
+        {
+          name: "@hey-api/sdk",
+          instance: "OrganizationClient",
+          exportFromIndex: false,
+          auth: false,
+          paramsStructure: "flat",
+        },
+        { name: "@hey-api/client-fetch", exportFromIndex: false },
+      ],
+    })
+  } finally {
+    await $`rm ${organizationSpec}`
+  }
   await $`bun prettier --cache --cache-strategy content --write src`
   await $`rm openapi.json`
 }
 
 await $`rm -rf dist`
-await $`bun tsc`
+await $`tsc6`

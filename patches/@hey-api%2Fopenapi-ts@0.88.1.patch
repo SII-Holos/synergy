@@ -10,3 +10,29 @@ index 07cff3c3fd6638af2e4123b16a339d50651d93ce..f8e51765d89cd4864d31720c0c86bd2b
            } catch {
              // noop
            }
+diff --git a/dist/clients/core/params.ts b/dist/clients/core/params.ts
+--- a/dist/clients/core/params.ts
++++ b/dist/clients/core/params.ts
+@@ -72,6 +72,8 @@ const buildKeyMap = (fields: FieldsConfig, map?: KeyMap): KeyMap => {
+           in: config.in,
+           map: config.map,
+         });
++      } else if (config.in === 'body') {
++        map.set('body', { map: 'body' });
+       }
+     } else if ('key' in config) {
+       map.set(config.key, {
+@@ -95,6 +97,12 @@ interface Params {
+ const stripEmptySlots = (params: Params) => {
+   for (const [slot, value] of Object.entries(params)) {
+-    if (value && typeof value === 'object' && !Object.keys(value).length) {
++    if (
++      value &&
++      typeof value === 'object' &&
++      (Object.getPrototypeOf(value) === Object.prototype ||
++        Object.getPrototypeOf(value) === null) &&
++      !Object.keys(value).length
++    ) {
+       delete params[slot as Slot];
+     }
+   }

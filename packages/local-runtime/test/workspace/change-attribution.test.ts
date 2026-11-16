@@ -14,6 +14,9 @@ import { OwnedProcess } from "../../src/process/owned-process"
 import { FileMutation } from "../../src/file/mutation"
 import { testRuntime } from "../support/runtime"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
+import { AsyncLocalStorage } from "node:async_hooks"
+import { SnapshotStore } from "../../../harness/src/session/snapshot-store"
+import { SnapshotGit } from "../../../harness/src/session/snapshot-git"
 
 const runtime = await testRuntime()
 await runtime.run(() => Log.init({ print: true, level: "WARN" }))
@@ -215,51 +218,109 @@ test(
 
 test("additional workspaces receive a baseline before their first write and keep distinct identities", () =>
   runtime.run(async () => {
-    await using own = await tmpdir()
-    await using shared = await tmpdir()
-    await ScopeContext.provide({
-      scope: await own.scope(),
-      async fn() {
-        const a = await actor()
-        const source = await WorkspaceCatalog.get(a.session.workspaceID!, a.session.scope.id)
-        const target = await WorkspaceBinding.register(a.session.scope.id, shared.path)
-        await WorkspaceBinding.setSharing(source.id, {
-          scopeID: source.scopeID,
-          expectedRevision: source.revision,
-          workspaceIDs: [target.id],
-        })
-        const file = path.join(shared.path, "shared.txt")
-        await Bun.write(file, "shared baseline\n")
-        await SessionFileChanges.begin(a.input)
-        await a.task(async () => {
-          await WorkspaceBinding.writableRoots(ScopeContext.current.workspace!)
-          await a.tool("shared-write", () => FileMutation.write({ path: file, content: "shared change\n" }))
-        })
-        await SessionFileChanges.finish(a.input)
-        expect(await Session.diff(a.session.id)).toMatchObject([
-          { file: "shared.txt", workspace: { id: target.id, root: shared.path } },
-        ])
-        const full = await SessionHistory.fileDiff({
-          sessionID: a.session.id,
-          messageID: a.user.id,
-          workspaceID: target.id,
-          generation: target.binding.generation,
-          file: "shared.txt",
-        })
-        expect(full.patch).toContain("-shared baseline")
-        await Bun.write(file, "current unrelated content")
-        expect(
-          (
-            await SessionHistory.fileDiff({
+    const began = performance.now()
+    const observing = new AsyncLocalStorage<boolean>()
+    const observe = async <T>(stage: string, body: () => Promise<T>): Promise<T> => {
+      const emit = (event: "enter" | "settled") =>
+        console.error(
+          "WORKSPACE_BASELINE_PHASE",
+          JSON.stringify({ stage, event, elapsedMs: Math.round(performance.now() - began) }),
+        )
+      emit("enter")
+      try {
+        return await body()
+      } finally {
+        emit("settled")
+      }
+    }
+    await using own = await observe("primary-fixture", () => tmpdir())
+    await using shared = await observe("additional-fixture", () => tmpdir())
+    const workspace = () => {
+      const selected = ScopeContext.tryWorkspace()
+      return selected?.path === shared.path ? "additional" : selected ? "primary" : "outside-scope"
+    }
+    const initialize = SnapshotStore.initialize
+    using initialization = spyOn(SnapshotStore, "initialize").mockImplementation((...args) =>
+      observing.getStore()
+        ? observe(`snapshot-initialize:ambient-${workspace()}`, () => initialize(...args))
+        : initialize(...args),
+    )
+    const git = SnapshotGit.run
+    using commands = spyOn(SnapshotGit, "run").mockImplementation((...args) => {
+      if (!observing.getStore()) return git(...args)
+      const verb =
+        args[0].find((value) =>
+          [
+            "init",
+            "config",
+            "hash-object",
+            "ls-files",
+            "read-tree",
+            "write-tree",
+            "update-index",
+            "diff",
+            "update-ref",
+            "cat-file",
+            "rev-parse",
+            "pack-objects",
+            "index-pack",
+          ].includes(value),
+        ) ?? "other"
+      return observe(`snapshot-git:ambient-${workspace()}:${verb}`, () => git(...args))
+    })
+    await observing.run(true, async () =>
+      ScopeContext.provide({
+        scope: await own.scope(),
+        async fn() {
+          const a = await observe("actor", () => actor())
+          const source = await WorkspaceCatalog.get(a.session.workspaceID!, a.session.scope.id)
+          const target = await observe("register-additional", () =>
+            WorkspaceBinding.register(a.session.scope.id, shared.path),
+          )
+          await observe("set-sharing", () =>
+            WorkspaceBinding.setSharing(source.id, {
+              scopeID: source.scopeID,
+              expectedRevision: source.revision,
+              workspaceIDs: [target.id],
+            }),
+          )
+          const file = path.join(shared.path, "shared.txt")
+          await Bun.write(file, "shared baseline\n")
+          await observe("begin-primary-baseline", () => SessionFileChanges.begin(a.input))
+          await a.task(async () => {
+            await observe("admit-additional", () => WorkspaceBinding.writableRoots(ScopeContext.current.workspace!))
+            await observe("additional-baseline-and-native-write", () =>
+              a.tool("shared-write", () => FileMutation.write({ path: file, content: "shared change\n" })),
+            )
+          })
+          await observe("finish-endpoints-and-publish", () => SessionFileChanges.finish(a.input))
+          expect(await observe("read-summary-diff", () => Session.diff(a.session.id))).toMatchObject([
+            { file: "shared.txt", workspace: { id: target.id, root: shared.path } },
+          ])
+          const full = await observe("read-original-diff", () =>
+            SessionHistory.fileDiff({
               sessionID: a.session.id,
+              messageID: a.user.id,
               workspaceID: target.id,
               generation: target.binding.generation,
               file: "shared.txt",
-            })
-          ).patch,
-        ).toEqual(full.patch)
-      },
-    })
+            }),
+          )
+          expect(full.patch).toContain("-shared baseline")
+          await Bun.write(file, "current unrelated content")
+          expect(
+            (
+              await SessionHistory.fileDiff({
+                sessionID: a.session.id,
+                workspaceID: target.id,
+                generation: target.binding.generation,
+                file: "shared.txt",
+              })
+            ).patch,
+          ).toEqual(full.patch)
+        },
+      }),
+    )
   }))
 
 test("one workspace capture failure retains the other workspace's net changes", () =>

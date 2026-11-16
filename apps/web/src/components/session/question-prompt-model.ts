@@ -42,13 +42,13 @@ export const QuestionDraftSchema = z.object({
 export type QuestionDraft = z.infer<typeof QuestionDraftSchema>
 
 export function decisionIdentity(input: {
-  serverURL: string
+  connectionKey: string
   scopeID: string
   sessionID: string
   requestID: string
   kind: "question" | "permission"
 }) {
-  return JSON.stringify([input.serverURL, input.scopeID, input.sessionID, input.requestID, input.kind])
+  return JSON.stringify([input.connectionKey, input.scopeID, input.sessionID, input.requestID, input.kind])
 }
 
 export function sanitizeQuestionDraft(request: QuestionRequest, value?: unknown): QuestionDraft {

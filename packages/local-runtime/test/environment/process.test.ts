@@ -13,10 +13,30 @@ import { WorkspaceBlobs, WorkspaceContent } from "@ericsanchezok/synergy-harness
 import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
 import { WorkspaceOperations } from "@ericsanchezok/synergy-harness/workspace/operations"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
-import { testRuntime } from "@ericsanchezok/synergy-harness/test/support/runtime"
+import { testRuntime as openTestRuntime } from "@ericsanchezok/synergy-harness/test/support/runtime"
+import { EnvironmentOrigin } from "@ericsanchezok/synergy-harness/environment/origin"
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { registerNativeEnvironment } from "../../src/environment/native"
 import { WorkspaceCoordinator } from "../../src/workspace/coordinator"
+
+const origins = new WeakMap<RuntimeContext.Instance, ReturnType<typeof EnvironmentOrigin.registerHost>>()
+
+function testRuntime(input?: Parameters<typeof openTestRuntime>[0]) {
+  return openTestRuntime({
+    ...input,
+    register() {
+      origins.set(RuntimeContext.current(), EnvironmentOrigin.registerHost("native-process-fixture"))
+      input?.register?.()
+    },
+  })
+}
+
+function nativeOrigin() {
+  const host = origins.get(RuntimeContext.current())
+  if (!host) throw new Error("The native process fixture has no registered Host owner")
+  return host.capture("original-process")
+}
 
 test("activation observes native readiness before paused output applies backpressure", async () => {
   await using tmp = await tmpdir()
@@ -30,6 +50,7 @@ test("activation observes native readiness before paused output applies backpres
   await runtime.run(async () => {
     const environment = await Environment.bind({ scopeID: "scope", ownerID: "owner", provider: "native", spec: {} })
     await using resources = await EnvironmentResources.resolve({
+      origin: nativeOrigin(),
       scopeID: "scope",
       environmentID: environment.id,
       needs: { execution: "exec" },
@@ -132,6 +153,7 @@ test.each(["resume", "stop", "abort"])(
     await runtime.run(async () => {
       const environment = await Environment.bind({ scopeID: "scope", ownerID: "owner", provider: "native", spec: {} })
       await using resources = await EnvironmentResources.resolve({
+        origin: nativeOrigin(),
         scopeID: "scope",
         environmentID: environment.id,
         needs: { execution: "exec" },
@@ -216,7 +238,11 @@ test("process streams finish only after checkpoint publication and reuse operati
       backend: { provider: "objects", spec: { blobStore: "fixture" } },
     })
     const selection = { scopeID: "scope", workspaceID: workspace.id, environmentID: environment.id }
-    await using resources = await EnvironmentResources.resolve({ ...selection, needs: { execution: "exec" } })
+    await using resources = await EnvironmentResources.resolve({
+      ...selection,
+      origin: nativeOrigin(),
+      needs: { execution: "exec" },
+    })
     const command = {
       command: process.execPath,
       args: [
@@ -273,6 +299,7 @@ test("process completion saves its explicitly selected Workspace independently o
       backend: { provider: "objects", spec: { blobStore: "fixture" } },
     })
     await using resources = await EnvironmentResources.resolve({
+      origin: nativeOrigin(),
       scopeID: "scope",
       workspaceID: workspace.id,
       environmentID: environment.id,
@@ -332,7 +359,11 @@ test.each(["command", "mutation"])(
         backend: { provider: "objects", spec: { blobStore: "fixture" } },
       })
       const selection = { scopeID, workspaceID: workspace.id, environmentID: environment.id }
-      await using resources = await EnvironmentResources.resolve({ ...selection, needs: { execution: "exec" } })
+      await using resources = await EnvironmentResources.resolve({
+        ...selection,
+        origin: nativeOrigin(),
+        needs: { execution: "exec" },
+      })
       async function run(id: string, value: string) {
         const operation = await EnvironmentProcess.prepare({
           id,
@@ -401,6 +432,7 @@ test("idle native execution waits for changes without repeatedly reading authori
   await runtime.run(async () => {
     const environment = await Environment.bind({ scopeID: "idle", ownerID: "idle", provider: "native", spec: {} })
     await using resources = await EnvironmentResources.resolve({
+      origin: nativeOrigin(),
       scopeID: "idle",
       environmentID: environment.id,
       needs: { execution: "exec" },
@@ -463,6 +495,7 @@ test("a replaced directory reports checkpoint failure after output drainage and 
     const workspace = await WorkspaceBinding.register(scope.id, root)
     const environment = await Environment.bind({ scopeID: scope.id, ownerID: "owner", provider: "native", spec: {} })
     await using resources = await EnvironmentResources.resolve({
+      origin: nativeOrigin(),
       scopeID: scope.id,
       workspaceID: workspace.id,
       environmentID: environment.id,

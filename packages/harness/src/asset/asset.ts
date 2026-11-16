@@ -4,11 +4,18 @@ import { Global } from "../global"
 import { isPathContained } from "../util/path-contain"
 import { RuntimeContext } from "../lifecycle/context"
 import { AtomicFile } from "@ericsanchezok/synergy-util/atomic-file"
+import { NativeAssetContent } from "./native-content"
+import { Storage } from "../storage/storage"
+import { StorageConflictError } from "../storage/errors"
 
 export namespace Asset {
   export interface Persistence {
     write(id: string, bytes: Uint8Array): Promise<void>
     read(id: string): Promise<Uint8Array | undefined>
+    open?(id: string, signal?: AbortSignal): Promise<NativeAssetContent.Content | undefined>
+    installStream?(
+      input: NativeAssetContent.Install,
+    ): Promise<{ id: string; bytes: number; sha256: string; created: boolean }>
   }
   const state = RuntimeContext.state(() => ({ backend: undefined as Persistence | undefined }))
 
@@ -51,19 +58,57 @@ export namespace Asset {
   export async function publish(id: string, bytes: Uint8Array, options: { durable?: boolean } = {}) {
     if (!isValidId(id) || !new Bun.CryptoHasher("sha256").update(bytes).digest("hex").startsWith(id.split(".")[0]!))
       throw new Error("Asset content does not match its identifier")
-    await state().backend?.write(id, bytes)
-    await AtomicFile.writeFileAtomic(filePath(id), bytes, { private: true, durable: options.durable })
+    const backend = state().backend
+    await backend?.write(id, bytes)
+    await (backend ? NativeAssetContent.materialize : NativeAssetContent.install)({
+      id,
+      bytes: bytes.length,
+      sha256: new Bun.CryptoHasher("sha256").update(bytes).digest("hex"),
+      content: (async function* () {
+        yield bytes
+      })(),
+      durable: options.durable ?? false,
+    })
+  }
+
+  export async function open(id: string, signal?: AbortSignal) {
+    if (!isValidId(id)) return undefined
+    const backend = state().backend
+    if (backend?.open) return backend.open(id, signal)
+    if (backend) await read(id)
+    return NativeAssetContent.open(id, signal)
+  }
+
+  export async function installStream(input: NativeAssetContent.Install) {
+    if (Storage.available() && Storage.inTransaction())
+      throw new StorageConflictError("Asset content installation must precede Session activation")
+    const backend = state().backend
+    if (backend?.installStream) return backend.installStream(input)
+    if (backend) throw new Error("Asset storage must provide streaming installation")
+    return NativeAssetContent.install(input)
   }
 
   export async function read(id: string): Promise<ReturnType<typeof Bun.file> | undefined> {
     if (!isValidId(id)) return undefined
     const backend = state().backend
     if (backend) {
-      const bytes = await backend.read(id)
-      if (!bytes) return undefined
-      if (!new Bun.CryptoHasher("sha256").update(bytes).digest("hex").startsWith(id.split(".")[0]!))
-        throw new Error("Asset content does not match its identifier")
-      await AtomicFile.writeFileAtomic(filePath(id), bytes, { private: true })
+      if (backend.open) {
+        const content = await backend.open(id)
+        if (!content) return undefined
+        await NativeAssetContent.materialize({
+          id,
+          bytes: content.bytes,
+          sha256: content.sha256,
+          content: content.stream(),
+          durable: false,
+        })
+      } else {
+        const bytes = await backend.read(id)
+        if (!bytes) return undefined
+        if (!new Bun.CryptoHasher("sha256").update(bytes).digest("hex").startsWith(id.split(".")[0]!))
+          throw new Error("Asset content does not match its identifier")
+        await AtomicFile.writeFileAtomic(filePath(id), bytes, { private: true })
+      }
     }
     const file = Bun.file(filePath(id))
     if (!(await file.exists())) return undefined

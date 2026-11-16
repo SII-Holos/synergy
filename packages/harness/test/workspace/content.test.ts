@@ -90,25 +90,29 @@ test("bounded object reads follow contained links and only fetch intersecting ch
     const data = new Uint8Array(WorkspaceTree.chunkBytes + 16).fill(7)
     data.fill(9, WorkspaceTree.chunkBytes)
     info = await WorkspaceContent.write(selection, { path: "file", data, expectedVersion: null })
-    const tree = await WorkspaceContent.manifest(info, blobs)
-    info = await WorkspaceContent.publish(info, blobs, {
-      ...tree,
-      entries: [
-        ...tree.entries,
-        { path: "link", kind: "symlink", mode: 0o777, target: "file" },
-        { path: "cycle", kind: "symlink", mode: 0o777, target: "cycle" },
-      ],
-    })
+    for (const [name, target] of [
+      ["link", "file"],
+      ["cycle", "cycle"],
+    ])
+      info = await WorkspaceContent.mutate(selection, {
+        kind: "replace",
+        path: name!,
+        mode: "120000",
+        data: Buffer.from(target!).toString("base64"),
+        expectedVersion: null,
+      })
     reads.length = 0
     const range = await WorkspaceContent.readRange(selection, "link", WorkspaceTree.chunkBytes + 2, 4)
     expect([...range.bytes]).toEqual([9, 9, 9, 9])
     expect(range.version).toBe(`sha256:${WorkspaceTree.hash(data)}`)
-    expect(reads).toHaveLength(2)
+    expect((await WorkspaceContent.readRange(selection, "link", Number.MAX_SAFE_INTEGER, 4)).bytes).toHaveLength(0)
+    expect(reads.filter((hash) => hash === WorkspaceTree.hash(data.subarray(WorkspaceTree.chunkBytes)))).toHaveLength(1)
+    expect(reads).not.toContain(WorkspaceTree.hash(data.subarray(0, WorkspaceTree.chunkBytes)))
     await expect(WorkspaceContent.read(selection, "cycle")).rejects.toThrow("cycle")
     await WorkspaceContent.write(selection, { path: "link", data: new Uint8Array([1]), expectedVersion: range.version })
     expect([...(await WorkspaceContent.read(selection, "file"))]).toEqual([1])
     const latest = await WorkspaceCatalog.get(info.id, info.scopeID)
-    expect((await WorkspaceContent.manifest(latest, blobs)).entries.find((entry) => entry.path === "link")?.kind).toBe(
+    expect(await WorkspaceContent.withTree(latest, blobs, async (tree) => (await tree.get("link"))?.kind)).toBe(
       "symlink",
     )
   })
@@ -152,10 +156,8 @@ test("object directory operations commit their receipt with the head and allocat
     )
     const version = async (filename: string) => {
       const current = await WorkspaceCatalog.get(info.id, info.scopeID)
-      const tree = await WorkspaceContent.manifest(current, blobs)
-      return WorkspaceTree.entryVersion(
-        tree.entries.find((entry) => entry.path === filename)!,
-        current.content?.revision,
+      return WorkspaceContent.withTree(current, blobs, async (tree) =>
+        WorkspaceTree.entryVersion((await tree.get(filename))!, current.content?.revision),
       )
     }
     await WorkspaceOperations.mutate({
@@ -213,9 +215,9 @@ test("object write operations persist explicit modes and include them in replay 
       expect(await WorkspaceOperations.write(input)).toEqual(operation)
       await expect(WorkspaceOperations.write({ ...input, mode: mode ^ 0o100 })).rejects.toThrow("different input")
       const latest = await WorkspaceCatalog.get(workspace.id, workspace.scopeID)
-      expect(
-        (await WorkspaceContent.manifest(latest, blobs)).entries.find((entry) => entry.path === input.path)?.mode,
-      ).toBe(mode)
+      expect(await WorkspaceContent.withTree(latest, blobs, async (tree) => (await tree.get(input.path))?.mode)).toBe(
+        mode,
+      )
     }
     expect((await WorkspaceCatalog.get(workspace.id, workspace.scopeID)).content?.revision).toBe(3)
     expect(await Storage.list(["environment"])).toHaveLength(0)

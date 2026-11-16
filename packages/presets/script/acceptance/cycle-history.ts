@@ -7,6 +7,7 @@ import { Cortex } from "@ericsanchezok/synergy-harness/cortex"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionInvoke } from "@ericsanchezok/synergy-harness/session/invoke"
 import { createUserMessage } from "@ericsanchezok/synergy-harness/session/input"
+import type { EnvironmentOrigin } from "@ericsanchezok/synergy-harness/environment/origin"
 import { EnvironmentResources } from "@ericsanchezok/synergy-harness/environment/resources"
 import { FileView } from "@ericsanchezok/synergy-local-runtime/file/view"
 import type { Identity } from "./remote-protocol"
@@ -29,6 +30,7 @@ export async function cycleHistory(
   identity: Identity,
   settings: Settings,
   baseURL: string,
+  origin: EnvironmentOrigin.Token,
 ) {
   const file = path.join(directory, "cycles.json")
   const state = CycleHistory.parse(
@@ -76,7 +78,7 @@ export async function cycleHistory(
     ).join("")
     const name = `history-${round}.txt`
     {
-      await using resources = await EnvironmentResources.resolve({ ...identity, needs: { workspace: true } })
+      await using resources = await EnvironmentResources.resolve({ origin, ...identity, needs: { workspace: true } })
       await EnvironmentResources.provide(resources, `history-${round}`, () =>
         FileView.write(name, Buffer.from(payload), null),
       )

@@ -1,31 +1,11 @@
-import solid from "babel-preset-solid"
-import typescript from "@babel/preset-typescript"
+import { setupSolidSourceDOM } from "../../../support/solid-source-dom"
 import { expect, mock, test } from "bun:test"
-import { plugin } from "bun"
-import { transformAsync } from "@babel/core"
 import { createComponent } from "solid-js"
 import { render } from "solid-js/web"
 import { setupI18n } from "@lingui/core"
 import type { GeneralStore } from "../../../../src/components/settings/types"
 
-await plugin({
-  name: "storage-panel-dom",
-  setup(build) {
-    build.onLoad({ filter: /\.tsx$/ }, async ({ path }) => ({
-      contents: (await transformAsync(await Bun.file(path).text(), {
-        filename: path,
-        parserOpts: { plugins: ["jsx"] },
-        presets: [
-          [solid, { generate: "dom" }],
-          [typescript, { ignoreExtensions: true, onlyRemoveTypeImports: false }],
-        ],
-        sourceMaps: "inline",
-      }))!.code!,
-      loader: "js",
-    }))
-    build.onLoad({ filter: /\.css$/ }, () => ({ contents: "", loader: "js" }))
-  },
-})
+await setupSolidSourceDOM()
 const i18n = setupI18n({ locale: "en", messages: { en: {} } })
 mock.module("@lingui/solid", () => ({ useLingui: () => ({ _: i18n._.bind(i18n) }) }))
 mock.module("../../../../src/context/platform", () => ({ usePlatform: () => ({}) }))

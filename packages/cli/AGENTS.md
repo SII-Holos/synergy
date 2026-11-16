@@ -14,6 +14,8 @@ Model setup writes optional Library and Anima defaults only when their configura
 
 Command contributions may select maintenance storage from parsed positionals; HTTP-only subcommands must not acquire the local Home lock.
 
+An independent service contribution declares `initialization: "owner"` to own its Home, store, logs and cleanup. The parser must not create ambient configuration or mirror failures into ambient telemetry for it. Independent executables use `commandsOnly` with owner-initialized contributions and explicit registration. Keep the single parser; verify rejected input before ownership and the installed entry outside the checkout.
+
 Workspace and Environment commands require an attached server and explicit Scope, use generated SDK operations, and retain mutation preconditions and structured errors. Verify with `bun test test/cli/resources.test.ts`.
 
 Own server process lifetime, managed startup reporting, signals and terminal presentation through an injected runtime factory. Keep `runCli()` as the sole parser. Agent Runtime opens the explicit composition; Harness supplies execution, and Plugin Host supplies plugin hosting when selected. Optional product domains contribute through component adapters. The CLI must not import optional product implementations. Test command-load failures and preserve send cancellation and recording-error exit codes. Poll the shared durable input projection through admission; a queued input need not have a Run record.
@@ -27,3 +29,5 @@ Use shared `synergy-util/terminal` and `cli-command` primitives; network and Sco
 Use the shared feature plan before registration. Managed readiness reports its candidate selection and active components separately. Offline maintenance accepts explicit dormant data contributions; it must not activate their services. Follow [feature lifecycle](../../docs/architecture/feature-lifecycle.md).
 
 The installed launcher must verify its selected generation before any Harness import. All installed subprocess roles return through that launcher with the same generation digest; keep source embedding independent from ambient installation discovery. Use metadata-owned special runners instead of importing optional product implementations into the CLI.
+
+Core Agent and policy workers register their pinned composition before initializing global paths so the owning component can validate its dedicated Home. Keep mismatched ownership closed; verify both worker roles through the CLI process entry.

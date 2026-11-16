@@ -48,7 +48,7 @@ test("Scope leases protect overlapping pages and reject evicted bootstrap result
         session:{list:()=>new Promise(resolve=>lists.push(resolve)),inbox:()=>{inboxRequests.push(options.scopeID);inboxReady();return ok([])}},
       }
     }
-    export const useGlobalSDK = () => ({capabilities:{load:async()=>{},has:()=>false,current:()=>undefined},prepareScopeState(){},connected,content:{active(){}},event:{listen:fn=>{listener=fn;return()=>{listener=undefined}}},url:'http://localhost/',client:{
+    export const useGlobalSDK = () => ({capabilities:{load:async()=>{},has:()=>false,current:()=>undefined},prepareScopeState(){},connected,content:{active(){}},event:{listen:fn=>{listener=fn;return()=>{listener=undefined}}},url:'http://localhost/',cacheKey:'personal-fixture',requestKey:'global-sync-lifecycle.dom.test',client:{
       config:{global:()=>ok({})},global:{health:()=>ok({healthy:true}),paths:{get:()=>ok({})},agenda:{list:()=>{optionalRequests.push("agenda");return ok([])}}},
       scope:{list:()=>ok([])},provider:{list:()=>ok({all:[]}),auth:()=>ok({})},session:{statuses:seedStatuses},cortex:{list:()=>ok([])},
     }})

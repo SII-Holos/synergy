@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test"
 import { mkdtemp, readdir, readFile, rm, stat } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
+import { createServer } from "node:http"
+import type { AddressInfo } from "node:net"
 import { fileURLToPath } from "node:url"
 import { chromium, webkit } from "playwright"
 
@@ -853,6 +855,45 @@ async function expectSidebarScrollStaysInsideViewport(css: string, index: string
   }
 }
 
+async function expectOrganizationAuthorizationBoots(outDir: string) {
+  const server = createServer((request, response) => {
+    void (async () => {
+      const file = path.resolve(outDir, `.${new URL(request.url ?? "/", "http://localhost").pathname}`)
+      if (!file.startsWith(outDir + path.sep)) return response.writeHead(404).end()
+      const content = Bun.file(file)
+      if (!(await content.exists())) return response.writeHead(404).end()
+      response.setHeader("content-type", content.type)
+      response.end(Buffer.from(await content.arrayBuffer()))
+    })().catch(() => response.writeHead(500).end())
+  })
+  let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined
+  try {
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
+    browser = await chromium.launch({ headless: true })
+    const page = await browser.newPage({ locale: "en-US", viewport: { width: 375, height: 720 } })
+    const errors: string[] = []
+    const runtimeRequests: string[] = []
+    page.on("pageerror", (error) => errors.push(error.message))
+    page.on("request", (request) => {
+      if (["fetch", "xhr"].includes(request.resourceType())) runtimeRequests.push(request.url())
+    })
+    page.on("websocket", (socket) => runtimeRequests.push(socket.url()))
+    const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/organization.html`
+    await page.goto(`${url}#invalid`, { waitUntil: "networkidle" })
+    await page.getByRole("heading", { name: "Connect to your organization" }).waitFor()
+    expect(await page.getByRole("alert").textContent()).toContain("This connection link is no longer valid")
+    expect(page.url()).toBe(url)
+    expect(runtimeRequests).toEqual([])
+    expect(errors).toEqual([])
+  } finally {
+    await browser?.close()
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()))
+      server.closeAllConnections()
+    })
+  }
+}
+
 async function runAppBuild(outDir: string) {
   const proc = Bun.spawn({
     cmd: [process.execPath, "run", "build", "--outDir", outDir, "--emptyOutDir", "--manifest"],
@@ -884,6 +925,7 @@ describe("app production build contract", () => {
         readBuiltManifest(outDir),
       ])
 
+      await expectOrganizationAuthorizationBoots(outDir)
       await expectSidebarScrollStaysInsideViewport(css, index)
       for (const contract of rootRuleContracts) {
         expectRootRule(css, contract)

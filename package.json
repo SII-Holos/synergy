@@ -119,7 +119,10 @@
       "packages/github-agenda",
       "packages/channel-blueprint",
       "packages/channel-light-loop",
-      "packages/channel-lattice"
+      "packages/channel-lattice",
+      "packages/organization-protocol",
+      "packages/organization",
+      "packages/organization-runtime"
     ],
     "catalog": {
       "@babel/core": "8.0.7",
@@ -175,6 +178,7 @@
     "@arethetypeswrong/cli": "0.18.5",
     "@ericsanchezok/synergy-harness": "workspace:*",
     "@ericsanchezok/synergy-local-runtime": "workspace:*",
+    "@ericsanchezok/synergy-organization": "workspace:*",
     "@ericsanchezok/synergy-plugin": "workspace:*",
     "@ericsanchezok/synergy-sdk": "workspace:*",
     "@ericsanchezok/synergy-testing": "workspace:*",

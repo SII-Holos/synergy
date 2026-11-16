@@ -11,6 +11,10 @@ on:
       file:
         description: Repository relative test file
         type: string
+      native_capacity_profile:
+        description: Sample one original native capacity window (diagnostic only)
+        type: boolean
+        default: false
 permissions:
   contents: read
   actions: read
@@ -59,7 +63,12 @@ jobs:
           TASK: ${{ inputs.task }}
           PACKAGE: ${{ inputs.package }}
           FILE: ${{ inputs.file }}
+          CAPACITY_PROFILE: ${{ inputs.native_capacity_profile }}
         run: |
+          if [ "$CAPACITY_PROFILE" = true ] && { [ "$FILE" != packages/organization-runtime/test/capacity-sync.test.ts ] || [ -n "$TASK" ] || [ -n "$PACKAGE" ]; }; then
+            echo 'Native window sampling requires only the original capacity test file'
+            exit 1
+          fi
           args=(--mode diagnostic)
           if [ -n "$TASK" ]; then args+=(--only "$TASK"); fi
           if [ -n "$PACKAGE" ]; then args+=(--package "$PACKAGE"); fi
@@ -266,7 +275,13 @@ jobs:
       - name: Execute diagnostic selection
         env:
           CI_UNIT: ${{ matrix.id }}
-        run: bun script/ci.ts run --unit "$CI_UNIT"
+          SYNERGY_CAPACITY_NATIVE_WINDOW_PROFILE: ${{ inputs.native_capacity_profile && 'transaction-1000' || '' }}
+          SYNERGY_CAPACITY_NATIVE_WINDOW_PROFILE_PATH: ${{ runner.temp }}/native-capacity-window-profile/raw.json
+        run: |
+          if [ "$SYNERGY_CAPACITY_NATIVE_WINDOW_PROFILE" = transaction-1000 ]; then
+            mkdir -p "$(dirname "$SYNERGY_CAPACITY_NATIVE_WINDOW_PROFILE_PATH")"
+          fi
+          bun script/ci.ts run --unit "$CI_UNIT"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
@@ -275,3 +290,11 @@ jobs:
           if-no-files-found: error
           include-hidden-files: true
           retention-days: 7
+      - name: Retain optional native capacity window profile
+        if: ${{ always() && inputs.native_capacity_profile }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ci-diagnostic-native-capacity-profile-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/native-capacity-window-profile
+          if-no-files-found: warn
+          retention-days: 1

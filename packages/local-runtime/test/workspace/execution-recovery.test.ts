@@ -12,7 +12,9 @@ import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
 import { WorkspaceBinding, WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
 import { WorkspaceBlobs, WorkspaceContent } from "@ericsanchezok/synergy-harness/workspace/content"
 import { WorkspaceMounts } from "@ericsanchezok/synergy-harness/workspace/mount"
-import { testRuntime, testWorkspaceCoordinator } from "../support/runtime"
+import { testRuntime as localRuntime, testWorkspaceCoordinator } from "../support/runtime"
+import { testEnvironmentRuntime } from "@ericsanchezok/synergy-harness/test/support/environment-origin"
+const testRuntime = (options: Parameters<typeof localRuntime>[0] = {}) => testEnvironmentRuntime(options, localRuntime)
 
 async function bindDirectory(project: Awaited<ReturnType<typeof tmpdir>>) {
   const scope = await project.scope()
@@ -88,6 +90,7 @@ test("startup recovers a legacy unsaved native result after directory replacemen
   const fixture = await first.run(async () => {
     const fixture = await bindDirectory(project)
     await EnvironmentExecution.start({
+      origin: first.origin("native-execution"),
       id,
       scopeID: fixture.scopeID,
       environmentID: fixture.environment.id,
@@ -103,7 +106,8 @@ test("startup recovers a legacy unsaved native result after directory replacemen
     })
     expect(await output(id, fixture.scopeID)).toEqual({ stdout: "finished\n", stderr: "diagnostic\n" })
     await replaceDirectory(fixture.root)
-    const legacy = { ...execution, state: "unsaved" }
+    const { origin: _origin, ...previous } = execution
+    const legacy = { ...previous, state: "unsaved" }
     expect(legacy).not.toHaveProperty("checkpointFailures")
     expect(legacy).not.toHaveProperty("saved")
     await Storage.write(StoragePath.environmentExecution(fixture.scopeID, id), legacy)
@@ -202,6 +206,7 @@ test("startup retries a native release with a lost acknowledgement without repea
   const fixture = await first.run(async () => {
     const fixture = await bindDirectory(project)
     await EnvironmentExecution.start({
+      origin: first.origin("native-execution"),
       id,
       scopeID: fixture.scopeID,
       environmentID: fixture.environment.id,
@@ -292,6 +297,7 @@ test("a replaced directory cannot release a native execution while its captured 
       environmentID: fixture.environment.id,
     })
     await EnvironmentExecution.start({
+      origin: first.origin("native-execution"),
       id,
       scopeID: fixture.scopeID,
       environmentID: fixture.environment.id,
@@ -356,12 +362,10 @@ test("a replaced directory cannot release a native execution while its captured 
     const { info, store } = await WorkspaceContent.resolve(selection, true)
     expect(info.content?.manifest).toBeString()
     expect(completed.saved).toEqual({ [info.id]: info.content! })
-    const manifest = await WorkspaceContent.manifest(info, store)
-    const entry = manifest.entries.find((entry) => entry.path === "object.bin")
-    expect(entry).toMatchObject({ kind: "file", size: 5 })
-    if (entry?.kind !== "file") throw new Error("Saved object checkpoint has no file")
-    const bytes = await Promise.all(entry.chunks.map((chunk) => store.get(chunk.hash, chunk.size)))
-    expect(Buffer.concat(bytes)).toEqual(Buffer.from([0, 1, 127, 128, 255]))
+    await WorkspaceContent.withTree(info, store, async (tree) => {
+      expect(await tree.get("object.bin")).toMatchObject({ kind: "file", size: 5 })
+      expect(Buffer.concat(await Array.fromAsync(tree.read("object.bin")))).toEqual(Buffer.from([0, 1, 127, 128, 255]))
+    })
     expect(await Environment.uses(fixture.environment.id)).toEqual([])
     expect(await testWorkspaceCoordinator().inspect()).toEqual([])
     expect(await output(id, fixture.scopeID)).toEqual({ stdout: "finished\n", stderr: "diagnostic\n" })
@@ -387,6 +391,7 @@ test("a live native process still blocks rebinding a replaced directory until ca
     const fixture = await bindDirectory(project)
     const id = "live-directory-rebind"
     const started = await EnvironmentExecution.start({
+      origin: runtime.origin("native-execution"),
       id,
       scopeID: fixture.scopeID,
       environmentID: fixture.environment.id,

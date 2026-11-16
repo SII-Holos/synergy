@@ -1,3 +1,4 @@
+import { SessionTransferEpochs } from "@ericsanchezok/synergy-harness/session/transfer"
 import { BlueprintLoopService, BlueprintLoopStore, LoopError } from "@ericsanchezok/synergy-blueprint/blueprint"
 import type { Info as BlueprintLoopInfo } from "@ericsanchezok/synergy-blueprint/blueprint/types"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
@@ -42,6 +43,7 @@ export namespace LatticeController {
     let outcome: GateOutcome
     {
       using _ = await LatticeLock.write(gate.scopeID, gate.sessionID)
+      if (await SessionTransferEpochs.isFrozen(gate.sessionID)) return undefined
       outcome = await reconcileGateLocked(gate)
     }
     if (outcome.terminalRunID) {
@@ -102,6 +104,7 @@ export namespace LatticeController {
     let outcome: DirectOutcome
     {
       using _ = await LatticeLock.write(scopeID, sessionID)
+      if (await SessionTransferEpochs.isFrozen(sessionID)) return
       outcome = await reconcileDirectLocked(scopeID, sessionID, reason)
     }
     if (outcome.terminalRunID) {

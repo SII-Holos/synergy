@@ -6,6 +6,7 @@ import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
+import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/ledger"
 import { ToolInvocation } from "@ericsanchezok/synergy-harness/tools"
 import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { EnforcementError } from "@ericsanchezok/synergy-harness/enforcement/errors"
@@ -34,8 +35,11 @@ async function invocation(permission?: PermissionNext.Ruleset, workspaceID?: str
     ...(workspaceID ? { workspaceID } : { workspace: ScopeContext.tryWorkspace() ?? null }),
   })
   const agent = PrimaryAgentIdentity.names.general
+  const rootID = Identifier.ascending("message")
   const parent = await Session.updateMessage({
-    id: Identifier.ascending("message"),
+    id: rootID,
+    rootID,
+    isRoot: true,
     sessionID: session.id,
     role: "user",
     agent,
@@ -57,15 +61,28 @@ async function invocation(permission?: PermissionNext.Ruleset, workspaceID?: str
     cost: 0,
     tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
   })
-  return (input: Record<string, unknown>) =>
-    ToolInvocation.invoke({
-      sessionID: session.id,
-      messageID: assistant.id,
-      agent,
-      tool: "workbench_view",
-      args: { input },
-      signal: new AbortController().signal,
-    })
+  const owner = { kind: "session" as const, scopeID: session.scope.id, sessionID: session.id }
+  await RolloutLedger.beginRun(owner, parent.id)
+  return {
+    execute: (input: Record<string, unknown>) =>
+      ToolInvocation.invoke({
+        sessionID: session.id,
+        messageID: assistant.id,
+        agent,
+        tool: "workbench_view",
+        args: { input },
+        signal: new AbortController().signal,
+      }),
+    async [Symbol.asyncDispose]() {
+      const tools = await RolloutLedger.tools(owner, parent.id)
+      await RolloutLedger.finishRun(
+        owner,
+        parent.id,
+        tools.some((tool) => tool.status !== "completed") ? "failed" : "completed",
+      )
+      await Session.remove(session.id)
+    },
+  }
 }
 
 test("registered presentation keeps status workspace-independent but classifies a file against its actual captured root", async () => {
@@ -75,8 +92,8 @@ test("registered presentation keeps status workspace-independent but classifies 
       scope: Scope.home(),
       workspace: null,
       async fn() {
-        const invoke = await invocation()
-        expect((await invoke({ action: "status" })).metadata.status).toBe("unavailable")
+        await using invoke = await invocation()
+        expect((await invoke.execute({ action: "status" })).metadata.status).toBe("unavailable")
       },
     })
     const directory = path.join(runtime.host.root, "data", "auth")
@@ -86,9 +103,9 @@ test("registered presentation keeps status workspace-independent but classifies 
     await ScopeContext.provide({
       scope,
       async fn() {
-        const invoke = await invocation()
+        await using invoke = await invocation()
         await expect(
-          invoke({ action: "open", target: { kind: "workspace-file", path: "presentation-source.txt" } }),
+          invoke.execute({ action: "open", target: { kind: "workspace-file", path: "presentation-source.txt" } }),
         ).rejects.toBeInstanceOf(EnforcementError.PolicyDenied)
       },
     })
@@ -107,9 +124,9 @@ test("registered presentation enforces read denials on the resolved file rather 
       scope,
       async fn() {
         const resolved = path.join(ScopeContext.current.directory, "source.txt")
-        const invoke = await invocation(PermissionNext.fromConfig({ read: { [resolved]: "deny" } }))
+        await using invoke = await invocation(PermissionNext.fromConfig({ read: { [resolved]: "deny" } }))
         await expect(
-          invoke({ action: "open", target: { kind: "workspace-file", path: "source.txt" } }),
+          invoke.execute({ action: "open", target: { kind: "workspace-file", path: "source.txt" } }),
         ).rejects.toBeInstanceOf(PermissionNext.DeniedError)
       },
     })
@@ -129,17 +146,17 @@ test("registered presentation captures object Workspaces without a native Sessio
             backend: { provider: "objects", spec: { blobStore: "fixture", ...(virtualRoot ? { virtualRoot } : {}) } },
           })
           expect(WorkspaceCatalog.projection(workspace)).toBeNull()
-          const invoke = await invocation(undefined, workspace.id)
+          await using invoke = await invocation(undefined, workspace.id)
           const target = { action: "open", target: { kind: "workspace-file", path: "source.txt" } }
-          expect((await invoke(target)).metadata).toMatchObject({
+          expect((await invoke.execute(target)).metadata).toMatchObject({
             status: "unavailable",
             reason: "No ready frontend supporting this target is actively showing this Scope and Session.",
           })
-          const denied = await invocation(
+          await using denied = await invocation(
             PermissionNext.fromConfig({ read: { [virtualRoot ? `${virtualRoot}/source.txt` : "source.txt"]: "deny" } }),
             workspace.id,
           )
-          await expect(denied(target)).rejects.toBeInstanceOf(PermissionNext.DeniedError)
+          await expect(denied.execute(target)).rejects.toBeInstanceOf(PermissionNext.DeniedError)
         }
       },
     }),

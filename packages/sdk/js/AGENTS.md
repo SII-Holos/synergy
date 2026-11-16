@@ -2,7 +2,7 @@
 
 This package contains generated OpenAPI clients plus narrow handwritten client/server helpers. Load `change-server-api` for every route or schema change.
 
-- Treat `src/gen/` as generated output. Never hand-edit it; change server OpenAPI metadata/schema and run `./script/generate.ts` from the repository root.
+- Treat `src/gen/` and `src/organization-gen/` as generated output. Never hand-edit them; change the owning server OpenAPI metadata/schema and run `./script/generate.ts` from the repository root. Organization APIs use the separate `./organization` client and contract; preserve its caller-provided fetch, headers and authentication.
 - Keep `createSynergyClient()` responsible for client construction and the established directory/Scope headers. Preserve caller-provided fetch, headers, auth, errors, base URL, and asset behavior.
 - Managed start requires an absolute executable, exact version/component selection and explicit data home. Protocol 2 verifies candidate selection separately from active components; dormant experiments are valid. Use private bearer credentials and owned-child cleanup; attach verifies active components and never stops a server. Keep handwritten helpers small and public-runtime safe. Do not import private core implementation into this published package.
 - Inspect generated diffs for operation IDs, reusable schema names, optionality, error responses, and accidental churn. Update every first-party consumer when a generated method changes.

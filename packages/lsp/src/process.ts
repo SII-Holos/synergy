@@ -4,11 +4,16 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
 import { EnvironmentResources } from "@ericsanchezok/synergy-harness/environment/resources"
 import { EnvironmentProcess } from "@ericsanchezok/synergy-harness/environment/process"
+import { EnvironmentOrigin } from "@ericsanchezok/synergy-harness/environment/origin"
 import { randomUUID } from "node:crypto"
 import fs from "node:fs/promises"
 import path from "node:path"
 
 export namespace LSPProcess {
+  const registration = RuntimeContext.state<{ origin?: ReturnType<typeof EnvironmentOrigin.registerHost> }>(() => ({}))
+  export function register() {
+    registration().origin ??= EnvironmentOrigin.registerHost("lsp")
+  }
   export interface Command {
     command: string
     args: string[]
@@ -57,21 +62,39 @@ export namespace LSPProcess {
     cooperative = true,
     cleanup?: () => Promise<void>,
   ) {
+    command = {
+      ...command,
+      args: [...command.args],
+      env: command.env && { ...command.env },
+      mutationRoots: command.mutationRoots && [...command.mutationRoots],
+    }
     const selected = EnvironmentResources.current()
     const scopeID = ScopeContext.current.scope.id
-    const workspaceID = selected?.workspace?.id ?? ScopeContext.tryWorkspace()?.id
+    const workspaceID = selected
+      ? (selected.workspace?.id ?? selected.selection?.workspaceID)
+      : ScopeContext.tryWorkspace()?.id
     const environmentID = selected?.environment?.id ?? selected?.selection?.environmentID
+    const id = `lsp:${randomUUID()}`
+    const inherited = selected?.origin
+    if (selected && !inherited) throw new Error("Language server requires an owned resource origin")
+    const origin = registration().origin?.capture(id)
+    if (!origin) throw new Error("Language server Host origin is unavailable")
+    if (inherited)
+      await EnvironmentOrigin.assertAdmission(inherited, { scopeID, environmentID: environmentID ?? undefined })
     const resources = await (environmentID ? EnvironmentResources.resolve : EnvironmentResources.select)({
       scopeID,
       ownerID: `lsp:${workspaceID ?? scopeID}`,
       workspaceID,
       environmentID,
+      origin,
       needs: { execution: "exec" },
       signal,
     })
     try {
+      if (inherited)
+        await EnvironmentOrigin.assertAdmission(inherited, { scopeID, environmentID: resources.environment?.id })
       const owned = await EnvironmentProcess.prepare({
-        id: `lsp:${randomUUID()}`,
+        id,
         scopeID,
         resources,
         signal,

@@ -6,9 +6,10 @@ import { createPlan, type Task } from "../../script/ci/plan"
 import { executeTask } from "../../script/ci/run"
 import { verifyResults } from "../../script/ci/evidence"
 import { verifyCoverage } from "../../script/ci/coverage"
+import { verifyScenarios } from "../../script/ci/junit"
 
-// A real child proves that execution, inventory evidence and threshold admission agree.
-test("a fresh complete suite passes; omitted files and stale reports cannot contribute coverage", async () => {
+// Real children prove that split package evidence must remain complete before threshold admission.
+test("a complete partitioned suite passes; missing partitions, omitted files and stale reports cannot contribute coverage", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "ci-run-"))
   const inheritedAttempt = process.env.GITHUB_RUN_ATTEMPT
   try {
@@ -16,11 +17,16 @@ test("a fresh complete suite passes; omitted files and stale reports cannot cont
     const owner = "packages/example"
     await Bun.write(path.join(root, "package.json"), JSON.stringify({ workspaces: { packages: [owner] } }))
     await Bun.write(path.join(root, owner, "package.json"), '{"name":"example"}')
-    await Bun.write(path.join(root, owner, "src/value.ts"), "export function value() { return 42 }")
-    await Bun.write(
-      path.join(root, owner, "test/value.test.ts"),
-      'import {test,expect} from "bun:test"; import {value} from "../src/value"; test("value",()=>expect(value()).toBe(42));',
-    )
+    for (const [name, expected] of [
+      ["value", 42],
+      ["other", 7],
+    ] as const) {
+      await Bun.write(path.join(root, owner, `src/${name}.ts`), `export function ${name}() { return ${expected} }`)
+      await Bun.write(
+        path.join(root, owner, `test/${name}.test.ts`),
+        `import {test,expect} from "bun:test"; import {${name}} from "../src/${name}"; test("${name}",()=>expect(${name}()).toBe(${expected}));`,
+      )
+    }
     const runner = path.resolve(import.meta.dir, "../../packages/testing/script/run.ts")
     await Bun.write(
       path.join(root, "script/coverage-exempt.json"),
@@ -44,24 +50,29 @@ test("a fresh complete suite passes; omitted files and stale reports cannot cont
       changed: [],
       baseWorkspaces: [],
       headWorkspaces: [],
-      tasks: [
-        {
-          id: "suite",
-          kind: "suite",
-          pool: "linux",
-          owners: [owner],
-          needs: [],
-          seconds: 1,
-          package: owner,
-          files: ["test/value.test.ts"],
-        },
-      ],
+      tasks: ["value", "other"].map((name, partition): Task => ({
+        id: `suite-${partition}`,
+        kind: "suite",
+        pool: "linux",
+        owners: [owner],
+        needs: [],
+        seconds: 1,
+        package: owner,
+        partition,
+        files: [`test/${name}.test.ts`],
+        scenarios: [name],
+      })),
     })
-    const result = await executeTask(plan.tasks[0]!, plan, root)
-    expect(result.executionAttempt).toBe(plan.attempt)
-    expect(verifyResults(plan, [result], ["success"])).toEqual([])
+    const results = []
+    for (const task of plan.tasks) results.push(await executeTask(task, plan, root))
+    expect(results.every((result) => result.executionAttempt === plan.attempt)).toBe(true)
+    expect(verifyResults(plan, results, ["success"])).toEqual([])
     const reports = path.join(root, ".artifacts/ci/results")
-    expect((await verifyCoverage(root, reports, plan, [result])).errors).toEqual([])
+    expect(await verifyScenarios(reports, plan, results)).toEqual([])
+    expect((await verifyCoverage(root, reports, plan, results)).errors).toEqual([])
+    const missing = await verifyCoverage(root, reports, plan, results.slice(0, 1), { diagnostic: true })
+    expect(missing.incomplete).toContain(owner)
+    expect(verifyResults(plan, results.slice(0, 1), ["success"])).toContain("Missing task: suite-1")
     await Bun.write(path.join(root, owner, "src/unmeasured.ts"), "export const missing = 1")
     const unrelated: Task = {
       id: "unrelated",
@@ -77,20 +88,21 @@ test("a fresh complete suite passes; omitted files and stale reports cannot cont
       root,
       reports,
       { ...plan, tasks: [...plan.tasks, unrelated], selected: [...plan.selected, unrelated.id] },
-      [result],
+      results,
       { diagnostic: true },
     )
     expect(diagnostics.verdicts.find((entry) => entry.package === owner)?.missing).toBe(1)
     expect(diagnostics.incomplete).toContain("packages/unrelated")
     await rm(path.join(root, owner, "src/unmeasured.ts"))
+    const result = results[0]!
     const timing = result.reports.find((report) => report.kind === "timing")!
     const omitted = { ...result, reports: result.reports.filter((report) => report !== timing) }
-    expect((await verifyCoverage(root, reports, plan, [omitted])).errors).toContain(
-      "Incomplete or repeated test inventory: suite",
+    expect((await verifyCoverage(root, reports, plan, [omitted, results[1]!])).errors).toContain(
+      "Incomplete or repeated test inventory: suite-0",
     )
     const lcov = result.reports.find((report) => report.kind === "lcov")!
     await Bun.write(path.join(reports, lcov.path), "old report")
-    await expect(verifyCoverage(root, reports, plan, [result])).rejects.toThrow("checksum")
+    await expect(verifyCoverage(root, reports, plan, results)).rejects.toThrow("checksum")
   } finally {
     if (inheritedAttempt === undefined) delete process.env.GITHUB_RUN_ATTEMPT
     else process.env.GITHUB_RUN_ATTEMPT = inheritedAttempt

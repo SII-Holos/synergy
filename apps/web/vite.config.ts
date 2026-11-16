@@ -95,6 +95,10 @@ export default defineConfig(async ({ command }) => {
       target: "esnext",
       sourcemap: buildIdentity.sourcemap,
       rollupOptions: {
+        input: {
+          app: fileURLToPath(new URL("./index.html", import.meta.url)),
+          organization: fileURLToPath(new URL("./organization.html", import.meta.url)),
+        },
         output: {
           manualChunks(id: string) {
             if (id.includes("node_modules/solid-js") || id.includes("node_modules/@solidjs")) return "vendor-solid"

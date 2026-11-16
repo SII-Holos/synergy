@@ -2,6 +2,7 @@ import { RuntimeContext } from "../lifecycle/context"
 import { EnvironmentSchema } from "./schema"
 import type { Executor } from "./executor"
 import type { WorkspaceCatalog } from "../workspace/catalog"
+import type { EnvironmentPortableSchema } from "./portable-schema"
 
 export interface EnvironmentRequest {
   environmentID: string
@@ -14,6 +15,7 @@ export interface EnvironmentProvider {
   readonly id: string
   readonly ownership?: "borrowed" | "managed"
   validateSpec?(spec: EnvironmentSchema.Info["spec"]): EnvironmentSchema.Info["spec"]
+  portableDescriptor?(spec: EnvironmentSchema.Info["spec"]): EnvironmentPortableSchema.Descriptor
   allocate(request: EnvironmentRequest): Promise<EnvironmentSchema.Allocation>
   inspect(
     request: EnvironmentRequest,
@@ -25,6 +27,10 @@ export interface EnvironmentProvider {
   >
   resume?(request: EnvironmentRequest): Promise<EnvironmentSchema.Allocation>
   deallocate(request: EnvironmentRequest): Promise<void>
+  withDeallocation?(
+    info: EnvironmentSchema.Info,
+    release: () => Promise<EnvironmentSchema.Info>,
+  ): Promise<EnvironmentSchema.Info>
   connect?(request: EnvironmentRequest, target: EnvironmentSchema.Target): Promise<Executor>
   workspacePath?(spec: EnvironmentSchema.Info["spec"], workspace: WorkspaceCatalog.Info): Promise<string>
   close?(): Promise<void>

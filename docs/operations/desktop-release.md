@@ -32,6 +32,8 @@ bun run desktop:dist
 
 `desktop:pack` and `desktop:dist` build the Electron main/preload bundles, prepare a current-platform launcher with a sealed Web preset module graph, and run `electron-builder`. Release workflows build the exact runtime targets with `SYNERGY_BUILD_TARGETS`, run the same runtime preparation step, and inject each complete runtime with `apps/desktop/script/after-pack.cjs`. Packaging fails before copying when the runtime lacks its executable, sealed generation, module-owned Web/native resources, or a valid `runtime-manifest.sha256`.
 
+Desktop dependency collection excludes only the Local Runtime temporary `sandbox-probes` subtree through the application matcher. Keep official PTY and watcher artifacts and the independent native package selected. The actual dependency walker, copier and ASAR regression verifies this boundary; see the [decision](../decisions/implemented/bug-fix/2026-11-14-exclude-volatile-sandbox-probes-from-desktop-dependencies.md).
+
 The product icon is generated from `packages/ui/src/assets/brand/synergy-product-icon-source.png` with `bun run brand:gen`. Desktop packaging consumes only `build/icon.png`; electron-builder converts that PNG into the platform-specific macOS, Windows, and Linux formats. Run `bun run brand:gen:check` to reject stale Web, UI, social, notification, or Desktop derivatives.
 
 Native unread indicators use `build/unread-overlay.png` for the Windows taskbar overlay and generated `build/icon-unread.png` for the Linux tray fallback. `electron-builder.json` copies both fixed assets into `resources/icons`; keep the source assets and packaging assertions together when changing their runtime paths.

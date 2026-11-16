@@ -1561,7 +1561,7 @@ export function createPromptInputController(props: PromptInputProps) {
 
   const MAX_HISTORY = 100
   const [history, setHistory] = persisted(
-    { ...Persist.global("prompt-history", ["prompt-history.v1"]), migrate: sanitizePromptHistory },
+    { ...Persist.connection(sdk.cacheKey, "prompt-history"), migrate: sanitizePromptHistory },
     createStore<{
       entries: PromptHistoryEntry[]
     }>({
@@ -1569,7 +1569,7 @@ export function createPromptInputController(props: PromptInputProps) {
     }),
   )
   const [shellHistory, setShellHistory] = persisted(
-    { ...Persist.global("prompt-history-shell", ["prompt-history-shell.v1"]), migrate: sanitizePromptHistory },
+    { ...Persist.connection(sdk.cacheKey, "prompt-history-shell"), migrate: sanitizePromptHistory },
     createStore<{
       entries: PromptHistoryEntry[]
     }>({

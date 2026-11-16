@@ -9,7 +9,9 @@ import { testRuntime } from "../support/runtime"
 test("workspace storage migration is idempotent and preserves local identity, generation and history", async () => {
   await using runtime = await testRuntime()
   await runtime.run(async () => {
-    await workspaceMigrations[0].up(() => {})
+    const migration = workspaceMigrations.find((item) => item.id === "20260927-workspace-storage-backend")
+    if (!migration) throw new Error("Workspace storage-backend migration is not registered")
+    await migration.up(() => {})
     const original = await WorkspaceCatalog.register({
       scopeID: "scope",
       type: "git_worktree",
@@ -20,10 +22,10 @@ test("workspace storage migration is idempotent and preserves local identity, ge
     })
     const { backend: _backend, content: _content, ...legacy } = original
     await Storage.write(StoragePath.workspace(original.id), legacy)
-    await workspaceMigrations[0].up(() => {})
+    await migration.up(() => {})
     const migrated = await WorkspaceCatalog.get(original.id, "scope")
     expect(migrated).toEqual(original)
-    await workspaceMigrations[0].up(() => {})
+    await migration.up(() => {})
     expect(await WorkspaceCatalog.get(original.id, "scope")).toEqual(migrated)
     expect(await Storage.list(["environment"])).toHaveLength(0)
   })

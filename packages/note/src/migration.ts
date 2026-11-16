@@ -1,3 +1,5 @@
+import { noteTransferSnapshotMigration } from "./transfer-snapshot"
+import { noteVersionMigration } from "./version-store"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
@@ -13,6 +15,8 @@ export { migrateNoteHomeScope } from "./scope-migration"
 const log = Log.create({ service: "note.migration" })
 
 export const migrations: Migration[] = [
+  noteVersionMigration,
+  noteTransferSnapshotMigration,
   {
     id: "20261012-note-home-scope",
     description: "Move retained ordinary Note documents into the Home scope",

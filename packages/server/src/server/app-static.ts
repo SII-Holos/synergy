@@ -1,6 +1,7 @@
 import { Hono, type Context } from "hono"
 import { Server } from "./server"
 import path from "node:path"
+import { Config } from "@ericsanchezok/synergy-harness/config/config"
 
 export type AppStaticRequest =
   { type: "file"; path: string; immutable: boolean } | { type: "missing" } | { type: "spa" }
@@ -47,9 +48,10 @@ async function appDocument(c: Context, directory: string) {
   if (!(await file.exists().catch(() => false))) return c.notFound()
   const html = await file.text()
   const reqPath = new URL(c.req.url).pathname
-  const routeTag = `<script>window.__SYNERGY_ROUTE__=${JSON.stringify(reqPath)}</script>`
+  const origins = (await Config.global()).server?.webConnectOrigins ?? []
+  const routeTag = `<script>window.__SYNERGY_ROUTE__=${JSON.stringify(reqPath)};window.__SYNERGY_WEB_CONNECT_ORIGINS__=${JSON.stringify(origins).replaceAll("<", "\\u003c")}</script>`
   c.header("Cache-Control", "no-cache")
-  c.header("Content-Security-Policy", Server.spaCsp())
+  c.header("Content-Security-Policy", Server.spaCsp(undefined, origins))
   const rendered = html.includes("<head>")
     ? html.replace("<head>", `<head>\n${routeTag}`)
     : html.includes("</head>")
@@ -90,11 +92,14 @@ export function mountApp(app: Hono, directory: string) {
     .use("/*", async (c, next) => {
       const reqPath = decodeURI(new URL(c.req.url).pathname)
 
-      const serveFile = (resolved: string, immutable?: boolean) => {
+      const serveFile = async (resolved: string, immutable?: boolean) => {
+        if (resolved === path.join(directory, "index.html")) return appDocument(c, directory)
         const file = Bun.file(resolved)
         if (immutable) c.header("Cache-Control", "public, immutable, max-age=31536000")
         else if (path.extname(resolved) === ".html") c.header("Cache-Control", "no-cache")
-        c.header("Content-Security-Policy", Server.spaCsp())
+        const origins =
+          path.extname(resolved) === ".html" ? (await Config.global()).server?.webConnectOrigins : undefined
+        c.header("Content-Security-Policy", Server.spaCsp(undefined, origins))
         return c.body(file.stream(), { headers: { "Content-Type": file.type || "application/octet-stream" } })
       }
 

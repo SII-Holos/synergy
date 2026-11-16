@@ -12,15 +12,64 @@ export interface VaultKeyProvider {
 
 const key = ["secrets", "encrypted-vault"]
 const Version = z.string().min(1).max(128)
-const Ciphertext = z
-  .object({
+
+function importVaultKey(value: Uint8Array) {
+  if (value.length !== 32) throw new StorageIntegrityError("Vault encryption requires a 256-bit key")
+  return Buffer.from(value)
+}
+
+export namespace SecretEnvelope {
+  export const Ciphertext = z.strictObject({
     keyVersion: Version,
     nonce: z.string().base64(),
     tag: z.string().base64(),
     content: z.string().base64(),
   })
-  .strict()
-const Envelope = z.object({ version: z.literal(1), entries: z.record(z.string(), Ciphertext) }).strict()
+  type Identity = { authority: readonly string[]; id: string; keyVersion: string }
+  function aad(input: Identity) {
+    if (!input.authority.length || input.authority.some((part) => !part || part.length > 1024) || !input.id)
+      throw new StorageIntegrityError("A secret envelope requires an exact authority and identity")
+    Version.parse(input.keyVersion)
+    return Buffer.from(JSON.stringify(["synergy-secret-v1", ...input.authority, input.id, input.keyVersion]))
+  }
+  export function seal(input: Identity & { key: Uint8Array; bytes: Uint8Array }) {
+    const secretKey = importVaultKey(input.key)
+    try {
+      const nonce = randomBytes(12)
+      const cipher = createCipheriv("aes-256-gcm", secretKey, nonce)
+      cipher.setAAD(aad(input))
+      const content = Buffer.concat([cipher.update(input.bytes), cipher.final()])
+      return {
+        keyVersion: input.keyVersion,
+        nonce: nonce.toString("base64"),
+        tag: cipher.getAuthTag().toString("base64"),
+        content: content.toString("base64"),
+      }
+    } finally {
+      secretKey.fill(0)
+    }
+  }
+  export function open(input: Identity & { key: Uint8Array; envelope: z.infer<typeof Ciphertext> }) {
+    const envelope = Ciphertext.parse(input.envelope)
+    const secretKey = importVaultKey(input.key)
+    try {
+      const nonce = Buffer.from(envelope.nonce, "base64")
+      const tag = Buffer.from(envelope.tag, "base64")
+      if (nonce.length !== 12 || tag.length !== 16 || envelope.keyVersion !== input.keyVersion)
+        throw new StorageIntegrityError("Invalid vault encryption envelope")
+      const decipher = createDecipheriv("aes-256-gcm", secretKey, nonce)
+      decipher.setAAD(aad(input))
+      decipher.setAuthTag(tag)
+      return Buffer.concat([decipher.update(Buffer.from(envelope.content, "base64")), decipher.final()])
+    } catch {
+      throw new StorageIntegrityError("Secret vault authentication failed")
+    } finally {
+      secretKey.fill(0)
+    }
+  }
+}
+
+const Envelope = z.object({ version: z.literal(1), entries: z.record(z.string(), SecretEnvelope.Ciphertext) }).strict()
 type Envelope = z.infer<typeof Envelope>
 
 /** Keys come from an external authority; only authenticated ciphertext enters SQL. */
@@ -32,12 +81,6 @@ export function encryptedSecretVault(options: {
     throw new Error("Encrypted vault requires a stable authority")
   const authority = [...options.authority]
   const gate = new StorageQueue("secret-vault.encrypted")
-  const aad = (id: string, version: string) =>
-    Buffer.from(JSON.stringify(["synergy-secret-v1", ...authority, id, version]))
-  const importKey = (value: Uint8Array) => {
-    if (value.length !== 32) throw new StorageIntegrityError("Vault encryption requires a 256-bit key")
-    return Buffer.from(value)
-  }
 
   const load = async () => {
     if (Storage.inTransaction()) throw new StorageConflictError("Resolve vault keys outside business transactions")
@@ -52,22 +95,16 @@ export function encryptedSecretVault(options: {
       for (const [id, encrypted] of Object.entries(envelope.entries)) {
         let secretKey = keys.get(encrypted.keyVersion)
         if (!secretKey) {
-          secretKey = importKey(await options.keys.resolve(encrypted.keyVersion))
+          secretKey = Buffer.from(await options.keys.resolve(encrypted.keyVersion))
           keys.set(encrypted.keyVersion, secretKey)
         }
-        const nonce = Buffer.from(encrypted.nonce, "base64")
-        const tag = Buffer.from(encrypted.tag, "base64")
-        if (nonce.length !== 12 || tag.length !== 16)
-          throw new StorageIntegrityError("Invalid vault encryption envelope")
-        let bytes: Buffer
-        try {
-          const decipher = createDecipheriv("aes-256-gcm", secretKey, nonce)
-          decipher.setAAD(aad(id, encrypted.keyVersion))
-          decipher.setAuthTag(tag)
-          bytes = Buffer.concat([decipher.update(Buffer.from(encrypted.content, "base64")), decipher.final()])
-        } catch {
-          throw new StorageIntegrityError("Secret vault authentication failed")
-        }
+        const bytes = SecretEnvelope.open({
+          authority,
+          id,
+          keyVersion: encrypted.keyVersion,
+          key: secretKey,
+          envelope: encrypted,
+        })
         try {
           const entry = JSON.parse(bytes.toString("utf8")) as SecretVault.Store["entries"][string]
           if (
@@ -97,23 +134,14 @@ export function encryptedSecretVault(options: {
         const { store, revision } = await load()
         const current = await options.keys.current()
         const version = Version.parse(current.version)
-        const secretKey = importKey(current.key)
+        const secretKey = importVaultKey(current.key)
         try {
           const result = await change(store)
           const envelope: Envelope = { version: 1, entries: {} }
           for (const [id, entry] of Object.entries(store.entries)) {
-            const nonce = randomBytes(12)
-            const cipher = createCipheriv("aes-256-gcm", secretKey, nonce)
-            cipher.setAAD(aad(id, version))
             const bytes = Buffer.from(JSON.stringify(entry))
             try {
-              const content = Buffer.concat([cipher.update(bytes), cipher.final()])
-              envelope.entries[id] = {
-                keyVersion: version,
-                nonce: nonce.toString("base64"),
-                tag: cipher.getAuthTag().toString("base64"),
-                content: content.toString("base64"),
-              }
+              envelope.entries[id] = SecretEnvelope.seal({ authority, id, keyVersion: version, key: secretKey, bytes })
             } finally {
               bytes.fill(0)
             }

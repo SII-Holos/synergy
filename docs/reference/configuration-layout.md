@@ -62,6 +62,25 @@ Global loading validates each canonical file against the keys owned by its domai
 
 Monolithic `synergy.json` and `synergy.jsonc` files are migration inputs. Startup migrates legacy global and project files into domain files and archives the originals once every field has a registered owner. A reduced composition defers a migration containing unregistered fields, retains the original file, and reads its core values beneath canonical domain overrides until the complete owner set is available.
 
+### Organization service settings
+
+The optional `organization` domain owns `150-organization.jsonc`. It is global-only and invalid settings prevent startup. `synergy org init` and `synergy org serve` read only this canonical file in their explicit dedicated Home, without environment or file interpolation and without loading other Runtime domains. The file accepts JSONC comments and trailing commas, has a 4 MiB format bound, and is not rewritten or quarantined on failure. The service consumes a validated snapshot at startup; changes require a restart.
+
+```jsonc
+{
+  "organization": {
+    "clientAuthentication": {
+      "clients": [
+        { "clientID": "web", "kind": "web", "redirectUri": "https://work.example.com/organization/callback" },
+        { "clientID": "desktop", "kind": "desktop", "redirectUri": "synergy://organization-auth/callback" },
+      ],
+    },
+  },
+}
+```
+
+`authentication`, `clientAuthentication`, `registration` and `connections` use the same schemas as embedded service options. Browser login lifetime cannot exceed 30 days. The [organization package reference](../../packages/organization/README.md) defines the authentication and connection defaults. The explicit CLI origin and listening port remain separate launch arguments; storing organization settings does not start the service in a personal Runtime or select the optional component.
+
 ### Assistant and Tool deadlines
 
 `timeout.invoke_sec` sets the assistant-step wall clock; its default is 21,600 seconds. `timeout.tool.default_sec` defaults to 7,200 seconds, and `timeout.tool.overrides` selects a duration by Tool name. Zero disables only the corresponding deadline. Caller cancellation, provider watchdogs, permission expiry and bounded settlement remain independent. See the [explicit deadline decision](../decisions/implemented/feature/2026-10-02-explicitly-disable-assistant-and-tool-deadlines.md).
@@ -159,6 +178,8 @@ From lowest to highest precedence, a scoped config is assembled from:
 Objects merge deeply. Later scalar values win. `plugin`, `instructions`, and `project_doc_fallback_filenames` are combined and deduplicated rather than simply replaced; plugin specs with the same identity resolve to the later definition.
 
 Remote well-known config is cached for ten minutes and acts only as a base: local config can override it. A failed remote fetch is skipped with a warning.
+
+An embedding host's `ConfigSource` replaces this discovery order with its validated snapshot. Hosts can explicitly read selected project fields through `ProjectConfig.fields(scope, keys)` from Harness `config/project-source`. It reads only the owning canonical domain files under the selected project's `.synergy/synergy.d`, without ancestor/global discovery, custom fragment scanning, legacy migration or file/environment reference expansion. Only registered project fields may be selected. Descriptor reads reject non-regular, changed, oversized or physically external files; malformed selected files fail without returning their contents in diagnostics. The host's configuration schema validates the resulting values.
 
 ## Interface language
 
