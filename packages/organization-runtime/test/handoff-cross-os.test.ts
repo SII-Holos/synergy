@@ -8,6 +8,7 @@ import { z } from "zod"
 import { createOrganizationClient } from "@ericsanchezok/synergy-sdk/organization"
 import { openOrganizationService } from "@ericsanchezok/synergy-organization/service"
 import {
+  OrganizationProtocol,
   OrganizationCommandProtocol as Command,
   OrganizationHandoffProtocol as Handoff,
   OrganizationResourceProtocol as Resource,
@@ -470,9 +471,46 @@ async function host() {
     artifactWaitMs,
     tunnelBootstrapMs: performance.now() - tunnelStarted,
   }
+  const handoffDenials = [
+    ["Handoff machine plan is invalid for this connection", "native-machine-plan"],
+    ["Handoff inspection does not match this finite connection", "native-inspection-plan"],
+    ["Resource proof is outside its validity window", "native-resource-window"],
+    ["Handoff object request is outside its finite authorization window", "object-window"],
+    ["Handoff object request belongs to another source or destination", "object-binding"],
+    ["Handoff destination signature is invalid", "object-target-signature"],
+    ["Handoff source identity changed", "object-source-identity"],
+    ["This account cannot drive this handoff participant", "service-participant-actor"],
+    ["Handoff read authority changed while its original response was pending", "service-read-authority"],
+    ["Handoff machine identity changed", "service-machine-identity"],
+    ["Handoff machine is unavailable", "service-machine-unavailable"],
+    ["Handoff machine plan belongs to another or expired signing authority", "service-plan-signing"],
+    ["Runtime is not authorized", "service-runtime-authority"],
+    ["Runtime account is not active", "service-runtime-account"],
+    ["This action is not allowed", "service-action-denied"],
+  ] as const
+  const handoffDenialReasons = new Map<string, (typeof handoffDenials)[number][1]>(handoffDenials)
+  function handoffDenialReason(error: unknown) {
+    try {
+      if (typeof error !== "object" || error === null) return "unknown"
+      const fields = Object.getOwnPropertyDescriptors(error)
+      const canonical = OrganizationProtocol.Error.safeParse({
+        code: fields.code?.value,
+        message: fields.message?.value,
+        outcome: fields.outcome?.value,
+        retryable: fields.retryable?.value,
+      })
+      return canonical.success && canonical.data.code === "PERMISSION_DENIED"
+        ? (handoffDenialReasons.get(canonical.data.message) ?? "unknown")
+        : "unknown"
+    } catch {
+      return "unknown"
+    }
+  }
   const requests: Array<{
     phase: string
     operation: string
+    driveOperation?: Handoff.Drive["operation"]
+    denialReason?: ReturnType<typeof handoffDenialReason>
     elapsedMs: number
     status?: number
     content?: string
@@ -499,6 +537,12 @@ async function host() {
     let headers: { cookie: string; "x-csrf-token": string } | undefined
     let account: { orgID: string; accountID: string } | undefined
     let bootstrapRequest: "bootstrap" | "login" | undefined
+    let activeDrive:
+      | {
+          operation: Handoff.Drive["operation"]
+          record?: (typeof requests)[number]
+        }
+      | undefined
     function requestOperation(input: Parameters<typeof fetch>[0]) {
       try {
         const pathname = new URL(input instanceof Request ? input.url : String(input)).pathname
@@ -515,6 +559,7 @@ async function host() {
       if (requests.length > 16) requests.shift()
       if ((value.failure || (value.status !== undefined && value.status >= 400)) && requestFailures.length < 4)
         requestFailures.push(value)
+      return value
     }
     const client = createOrganizationClient({
       baseUrl: connection.origin,
@@ -523,6 +568,8 @@ async function host() {
         async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
           const bootstrapPhase = bootstrapRequest
           const operation = requestOperation(input)
+          const driveObservation = operation === "handoff-drive" ? activeDrive : undefined
+          const driveOperation = driveObservation?.operation
           const requestPhase = phase
           const requestStarted = performance.now()
           try {
@@ -530,24 +577,29 @@ async function host() {
             const response = await fetch(input, init)
             if (operation) {
               const contentType = response.headers.get("content-type") ?? ""
-              recordRequest({
+              const record = recordRequest({
                 phase: requestPhase,
                 operation,
+                ...(driveOperation ? { driveOperation } : {}),
                 elapsedMs: performance.now() - requestStarted,
                 status: response.status,
                 content: contentType.includes("json") ? "json" : contentType.includes("html") ? "html" : "other",
               })
+              if (driveObservation) driveObservation.record = record
             }
             if (bootstrapPhase) await setupHTTP(`darwin-${bootstrapPhase}-body`, requestStarted, response)
             return response
           } catch (error) {
-            if (operation)
-              recordRequest({
+            if (operation) {
+              const record = recordRequest({
                 phase: requestPhase,
                 operation,
+                ...(driveOperation ? { driveOperation } : {}),
                 elapsedMs: performance.now() - requestStarted,
                 failure: safeFailure(error),
               })
+              if (driveObservation) driveObservation.record = record
+            }
             throw error
           }
         },
@@ -1028,11 +1080,14 @@ async function host() {
           async invoke(operation, requestID) {
             if (performance.now() >= end)
               throw new Error("The original machine receipt inspection did not settle within its observation window")
+            const driveObservation: NonNullable<typeof activeDrive> = { operation }
+            activeDrive = driveObservation
             try {
               return Handoff.MachineResult.parse(
                 (await client.orgHandoff.drive({ handoffID, orgHandoffDrive: { operation, requestID } }, options)).data,
               )
             } catch (error) {
+              if (driveObservation.record) driveObservation.record.denialReason = handoffDenialReason(error)
               if (
                 operation === "prepare-target" &&
                 z.object({ code: z.literal("COMMAND_OUTCOME_UNKNOWN"), outcome: z.literal("unknown") }).safeParse(error)
@@ -1042,6 +1097,8 @@ async function host() {
                 costs[handoffID + "ForegroundUnknownMs"] = foregroundUnknownMs
               }
               throw error
+            } finally {
+              if (activeDrive === driveObservation) activeDrive = undefined
             }
           },
         })

@@ -12,6 +12,8 @@ The supplementary workflow runs a real Darwin member and Linux member against on
 
 Native asset producers explicitly check out the PR source head, or the triggering commit for other events. The cross-OS consumer binds the successful original run, artifact identity and verified asset bytes to that same source head. Required repository CI separately records its tested merge revision. The fixture counts streamed request and response bytes within its original 1 MiB limit before JSON decoding and signature checks, cancels an oversized body and releases its reader. Runner-local diagnostics begin before the peer imports and name only its public run identity, finite setup phase and safe error codes. Certificate exit and tunnel readiness stay separate phases; diagnostics never publish private logs, endpoints or keys and do not replace actual roundtrip acceptance.
 
+The existing sixteen-entry request ring and four-entry failure record retain the caller’s exact Handoff drive operation. After the original generated client has decoded an error, its original caller maps only recognized canonical permission messages to fixed, body-free denial categories on that same request record. Unknown errors remain unknown and the original error is rethrown unchanged. No second body read, request, timeout or retry is introduced; these observations locate a failed authorization stage and never replace the required business result.
+
 ## Alternatives considered
 
 **Use two directories or a platform label in one process.** Neither exercises native filesystem behavior on another physical OS.
