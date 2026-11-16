@@ -4,7 +4,10 @@ import { createHash } from "node:crypto"
 import { fileURLToPath } from "node:url"
 import { z } from "zod"
 import { createOrganizationClient } from "@ericsanchezok/synergy-sdk/organization"
-import { OrganizationRuntimeProtocol as Protocol } from "@ericsanchezok/synergy-organization-protocol"
+import {
+  OrganizationRuntimeProtocol as Protocol,
+  type OrganizationIdentity,
+} from "@ericsanchezok/synergy-organization-protocol"
 import { testResources } from "@ericsanchezok/synergy-testing/resources"
 import { prepareMemberHome, prepareHostedHome, type RuntimeIdentity } from "../src/home"
 import { enrollMemberRuntime, enrollHostedRuntime } from "../src/enrollment"
@@ -223,7 +226,7 @@ test("ten authenticated clients replay a shared 10000-message history while thre
     }
     const member = await account("capacity-member")
     const reader = await account("capacity-reader")
-    const projects = []
+    const projects: OrganizationIdentity.Project[] = []
     for (const name of ["Capacity P", "Capacity Q"]) {
       const project = (await service.client.orgProjects.create({ orgProjectCreate: { name } }, owner)).data
       for (const [account, role] of [
@@ -460,7 +463,8 @@ test("ten authenticated clients replay a shared 10000-message history while thre
           }
         }),
       )
-    for (let index = 0; index < 100; index++) {
+    async function createSession(index: number, signal?: AbortSignal) {
+      signal?.throwIfAborted()
       const runtime = index % runtimes.length
       const projectID = projects[index % projects.length].projectID
       const created = (
@@ -475,33 +479,54 @@ test("ten authenticated clients replay a shared 10000-message history while thre
               creation: { operation: "create", title: `Capacity Session ${index}` },
             },
           },
-          { headers: runtimes[runtime].headers, throwOnError: true },
+          { headers: runtimes[runtime].headers, throwOnError: true, ...(signal ? { signal } : {}) },
         )
       ).data
+      signal?.throwIfAborted()
       sessions.push({ sessionID: created.effect.sessionID, projectID, runtime })
     }
-    expect(new Set(sessions.map((entry) => entry.sessionID)).size).toBe(100)
+    await createSession(0)
     const long = sessions[0]
     phase("native-append", { sessions: sessions.length, messages: 10000, runtimes: runtimes.length })
-    const produced = (
-      await Promise.all(
-        runtimes.map((runtime, index) =>
-          runtime.request(
-            {
-              operation: "append",
-              sessions: sessions
-                .filter((entry) => entry.runtime === index)
-                .map((entry) => ({
-                  sessionID: entry.sessionID,
-                  count: entry.sessionID === long.sessionID ? 10000 : 1,
-                  attachment: entry.sessionID === long.sessionID,
-                })),
-            },
-            z.array(WrittenHistory),
+    const produced = await (async () => {
+      const deadline = performance.now() + 240000
+      const controller = new AbortController()
+      const expired = new Error("Capacity native append did not settle within its original aggregate budget")
+      const timer = setTimeout(() => controller.abort(expired), 240000)
+      const remaining = () => {
+        controller.signal.throwIfAborted()
+        const value = deadline - performance.now()
+        if (value <= 0) throw expired
+        return value
+      }
+      try {
+        const initial = await runtimes[long.runtime].request(
+          { operation: "append", sessions: [{ sessionID: long.sessionID, count: 10000, attachment: true }] },
+          z.array(WrittenHistory),
+          remaining(),
+        )
+        for (let index = 1; index < 100; index++) await createSession(index, controller.signal)
+        expect(new Set(sessions.map((entry) => entry.sessionID)).size).toBe(100)
+        const short = await Promise.all(
+          runtimes.map((runtime, index) =>
+            runtime.request(
+              {
+                operation: "append",
+                sessions: sessions
+                  .filter((entry) => entry.runtime === index && entry.sessionID !== long.sessionID)
+                  .map((entry) => ({ sessionID: entry.sessionID, count: 1, attachment: false })),
+              },
+              z.array(WrittenHistory),
+              remaining(),
+            ),
           ),
-        ),
-      )
-    ).flat()
+        )
+        remaining()
+        return [...initial, ...short.flat()]
+      } finally {
+        clearTimeout(timer)
+      }
+    })()
     const history = produced.find((entry) => entry.sessionID === long.sessionID)!
     expect(history.count).toBe(10000)
     expect(history.attachment?.bytes).toBe(8 * 1024 * 1024 + 17)
