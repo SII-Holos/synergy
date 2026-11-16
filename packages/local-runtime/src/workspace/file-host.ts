@@ -544,6 +544,7 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
     return this.serial(`checkpoint:${id}`, async () => {
       let receipt = Receipt.optional().parse(await this.receipt("checkpoints", id))
       if (receipt && receipt.digest !== digest) throw new Error("Workspace operation already has different input")
+      if (receipt?.released) await this.releaseBlobs({ kind: "checkpoint", id })
       if (receipt?.failure) throw WorkspaceErrors.restore(receipt.failure)
       if (receipt?.error) throw new Error(receipt.error)
       if (receipt?.checkpoint) return receipt.checkpoint

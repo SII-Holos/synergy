@@ -7,6 +7,51 @@ import { NativeWorkspaceFiles } from "../../src/workspace/file-host"
 import { WorkspaceCoordinator } from "../../src/workspace/coordinator"
 import { RetainedWorkspaceBlobs } from "../../src/workspace/retained-blobs"
 import { createHash } from "node:crypto"
+import { WorkspaceProtocol } from "@ericsanchezok/synergy-harness/workspace/protocol"
+
+test("a rejected mutation retries interrupted cleanup while preserving its original failure", async () => {
+  await using tmp = await tmpdir()
+  class InterruptedFiles extends NativeWorkspaceFiles {
+    interrupted = false
+    override async releaseBlobs(owner: WorkspaceProtocol.BlobOwner) {
+      if (owner.kind === "checkpoint" && !this.interrupted) {
+        this.interrupted = true
+        throw new Error("cleanup interrupted")
+      }
+      await super.releaseBlobs(owner)
+    }
+  }
+  const options = {
+    directory: path.join(tmp.path, "receipts"),
+    materializationRoot: path.join(tmp.path, "views"),
+    coordinator: new WorkspaceCoordinator({ directory: path.join(tmp.path, "claims") }),
+  }
+  const host = new InterruptedFiles(options)
+  try {
+    const empty = WorkspaceTree.encode({ version: 1, entries: [] })
+    const manifest = WorkspaceTree.hash(empty)
+    await host.putBlob(manifest, empty, { kind: "mount", id: "workspace" })
+    const mount = await host.mount({
+      id: "workspace",
+      workspaceID: "workspace",
+      generation: 1,
+      readOnly: false,
+      source: { kind: "materialized", manifest },
+    })
+    const bytes = new TextEncoder().encode("retained before rejected import")
+    const hash = WorkspaceTree.hash(bytes)
+    await host.putBlob(hash, bytes, { kind: "checkpoint", id: "rejected" })
+    const input = { id: "rejected", mount, path: "missing", data: "eA==", expectedVersion: "sha256:missing" }
+    await expect(host.write(input)).rejects.toThrow("cleanup interrupted")
+    expect(await host.getBlob(hash, bytes.length)).toEqual(bytes)
+    await expect(host.write(input)).rejects.toThrow()
+    await expect(host.getBlob(hash, bytes.length)).rejects.toThrow()
+    expect(await Bun.file(path.join(mount.path, "missing")).exists()).toBe(false)
+    await host.detach(mount)
+  } finally {
+    await host.close()
+  }
+})
 
 test("interrupted last-owner cleanup cannot remove a later upload of the same bytes", async () => {
   await using tmp = await tmpdir()
