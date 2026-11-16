@@ -15,7 +15,7 @@ import {
 } from "@ericsanchezok/synergy-organization-protocol"
 import { Action, Task, Outcome, InitialBytes, LinuxBytes, createPeer, json } from "./support/cross-os-peer"
 import { createHandoffCompletion } from "./support/handoff-completion"
-import { observeDNSAfterFailedHealth } from "./support/cross-os-dns"
+import { observeDNSAfterFailedHealth, observeTemporaryName } from "./support/cross-os-dns"
 import { startCrossOSPostFailureHTTP } from "./support/cross-os-post-failure-http"
 import {
   createCrossOSTunnelObservation,
@@ -102,6 +102,9 @@ const transportFacts = {
     },
     attempts: 0,
     originalENOTFOUND: 0,
+    temporaryNameHint: undefined as Awaited<ReturnType<typeof observeTemporaryName>["result"]> | undefined,
+    temporaryNameCleanup: undefined as
+      Awaited<ReturnType<ReturnType<typeof observeTemporaryName>["close"]>> | undefined,
     afterFailureDNS: undefined as Awaited<ReturnType<typeof observeDNSAfterFailedHealth>>,
     afterFailureHTTP: undefined as Awaited<ReturnType<typeof startCrossOSPostFailureHTTP>["result"]> | undefined,
     headerResponses: 0,
@@ -444,6 +447,7 @@ async function host() {
   const tunnelStarted = performance.now()
   const connection = await setup("darwin-tunnel-bootstrap", () => tunnel(root, port))
   const capturedHostname = new URL(connection.origin).hostname
+  let temporaryNameHint: ReturnType<typeof observeTemporaryName> | undefined
   let failedPublicHealth = false
   const cleanups: Array<{ owner: CrossOSCleanupOwner; close(): Promise<unknown> }> = [
     { owner: "tunnel", close: () => connection.close() },
@@ -619,6 +623,8 @@ async function host() {
     })
     tunnelObservation.listener(server.port, port)
     cleanups.splice(1, 0, { owner: "origin-listener", close: () => server.stop(false) })
+    temporaryNameHint = observeTemporaryName(capturedHostname, bootstrapSignal)
+    transportFacts.health.temporaryNameHint = await temporaryNameHint.result
     transportFacts.health.dnsCache.before = observeDNSCache()
     await setup("darwin-public-health", () =>
       until(
@@ -1175,6 +1181,11 @@ async function host() {
       }
     }
     cleanups.length = 0
+    try {
+      transportFacts.health.temporaryNameCleanup = await temporaryNameHint?.close()
+    } catch (error) {
+      errors.push(error)
+    }
     if (errors.length) throw new AggregateError(errors, "Cross-OS actual owners did not close")
     costs.cleanupMs = performance.now() - started
     await fs.writeFile(
@@ -1264,6 +1275,18 @@ async function host() {
         postFailureCleanup = await postFailureHTTP.close()
       } catch (diagnosticCleanup) {
         errors.push(diagnosticCleanup)
+      }
+    }
+    if (temporaryNameHint) {
+      try {
+        await writeFailureReport("before-diagnostic-join")
+      } catch (checkpoint) {
+        errors.push(checkpoint)
+      }
+      try {
+        failedTransport.health.temporaryNameCleanup = await temporaryNameHint.close()
+      } catch (cleanup) {
+        errors.push(cleanup)
       }
     }
     await writeFailureReport("complete")

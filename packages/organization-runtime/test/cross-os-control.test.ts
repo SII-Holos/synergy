@@ -15,7 +15,7 @@ import {
   type HeaderFailureKindSample,
 } from "./support/cross-os-failures"
 import { readControlJSON, safeCrossOSFailure } from "./support/cross-os-transport"
-import { observeDNSAfterFailedHealth } from "./support/cross-os-dns"
+import { observeDNSAfterFailedHealth, observeTemporaryName } from "./support/cross-os-dns"
 import {
   observeCrossOSFailureHTTP,
   observeCrossOSFailureChild,
@@ -141,14 +141,16 @@ test("cross-OS failed-health DNS requires original ENOTFOUND and retains only co
               return "private-address"
             },
           },
-          { ttl: 12, address: "private-address" },
+          { ttl: 12, address: "192.0.2.17" },
           {
             get ttl() {
               getters++
               return 99
             },
-            address: "private-address",
+            address: "192.0.2.18",
           },
+          { ttl: 30, address: "2001:db8::17" },
+          { ttl: 30, address: "private-invalid-address" },
         ]
       },
       async resolve6(hostname: string, query: { ttl: true }): Promise<unknown> {
@@ -186,12 +188,21 @@ test("cross-OS failed-health DNS requires original ENOTFOUND and retains only co
     available: true,
     cancelCalled: false,
     queriesSettled: true,
-    A: { code: "OK", count: 3, ttlCount: 2, ttlMin: 12, ttlMax: 30 },
+    A: { code: "OK", count: 5, validAddressCount: 2, invalidAddressCount: 3, ttlCount: 4, ttlMin: 12, ttlMax: 30 },
     AAAA: { code: "ENODATA", count: 0 },
   })
   expect(cancels).toBe(0)
   expect(getters).toBe(0)
-  for (const privateValue of [origin, "synthetic-original", "private-address", "private-message", "headers"])
+  for (const privateValue of [
+    origin,
+    "synthetic-original",
+    "private-address",
+    "private-message",
+    "headers",
+    "192.0.2.17",
+    "192.0.2.18",
+    "2001:db8::17",
+  ])
     expect(JSON.stringify(observed)).not.toContain(privateValue)
   const unavailable = await observeDNSAfterFailedHealth(origin, 1, () => {
     throw { code: "PRIVATE_ERROR_BODY", message: "private-constructor-error" }
@@ -199,6 +210,27 @@ test("cross-OS failed-health DNS requires original ENOTFOUND and retains only co
   expect(unavailable).toMatchObject({ available: false, code: "OTHER" })
   expect(JSON.stringify(unavailable)).not.toContain("PRIVATE_ERROR_BODY")
   expect(JSON.stringify(unavailable)).not.toContain("private-constructor-error")
+  const families = await observeDNSAfterFailedHealth(origin, 1, () => ({
+    async resolve4() {
+      return [
+        { address: "2001:db8::17", ttl: 20 },
+        { address: "private-invalid-address", ttl: 30 },
+      ]
+    },
+    async resolve6() {
+      return [
+        { address: "2001:db8::17", ttl: 8 },
+        { address: "192.0.2.17", ttl: 60 },
+      ]
+    },
+    cancel() {},
+  }))
+  expect(families).toMatchObject({
+    A: { code: "OK", count: 2, validAddressCount: 0, invalidAddressCount: 2, ttlCount: 2, ttlMin: 20, ttlMax: 30 },
+    AAAA: { code: "OK", count: 2, validAddressCount: 1, invalidAddressCount: 1, ttlCount: 2, ttlMin: 8, ttlMax: 60 },
+  })
+  for (const address of ["192.0.2.17", "2001:db8::17", "private-invalid-address"])
+    expect(JSON.stringify(families)).not.toContain(address)
 })
 
 function wrappedDNSQuery(promise: Promise<unknown>) {
@@ -659,6 +691,18 @@ test("an independent raw DNS denial cannot determine the same host's actual HTTP
   }
   expect(new Set(questions.map((question) => question.type))).toEqual(new Set([1, 28]))
   expect(questions.every((question) => question.hostname === "localhost")).toBe(true)
+  let announcementFactories = 0
+  const announcement = observeTemporaryName("localhost", new AbortController().signal, (options) => {
+    announcementFactories++
+    const selected = new Resolver(options)
+    selected.setServers(["127.0.0.1:" + authority.address().port])
+    return selected
+  })
+  resources.defer("original announcement query owners", () => announcement.close())
+  const hint = await announcement.result
+  expect(hint.hint).toBe(false)
+  expect(announcementFactories).toBeGreaterThan(0)
+  expect(announcementFactories).toBeLessThanOrEqual(2)
   expect(await readHealth(AbortSignal.timeout(5000))).toBe(true)
   expect(handled).toBe(1)
   responseRun = { ...expected, sha: "b".repeat(40) }
@@ -877,4 +921,131 @@ test("post-failure cancellation joins only its real owned child", async () => {
       child.stdin.end()
     } catch {}
   }
+})
+
+test("temporary-name hints cannot veto HTTPS on constructor or cancellation errors and preserve original abort", async () => {
+  const signal = new AbortController()
+  const broken = observeTemporaryName("synthetic.test", signal.signal, () => {
+    throw { code: "private-factory-error" }
+  })
+  const constructor = await broken.result
+  expect(constructor).toMatchObject({ hint: false, reason: "constructor-error", queries: 0 })
+  expect(JSON.stringify(constructor)).not.toContain("private-")
+  await broken.close()
+  const A = Promise.withResolvers<unknown>(),
+    AAAA = Promise.withResolvers<unknown>()
+  const failingCancel = observeTemporaryName("synthetic.test", signal.signal, () => ({
+    resolve4: () => A.promise,
+    resolve6: () => AAAA.promise,
+    cancel() {
+      throw { code: "private-cancel-error" }
+    },
+  }))
+  A.resolve([{ address: "192.0.2.17", ttl: 20 }])
+  const positive = await failingCancel.result
+  expect(positive).toMatchObject({ hint: true, reason: "valid-address", cancelErrors: ["OTHER"] })
+  AAAA.resolve([])
+  expect((await failingCancel.close()).queriesSettled).toBe(true)
+  const aborted = new AbortController(),
+    reason = new Error("original-bootstrap-ended")
+  const held = Promise.withResolvers<unknown>()
+  void held.promise.catch(() => {})
+  const original = observeTemporaryName("synthetic.test", aborted.signal, () => ({
+    resolve4: () => held.promise,
+    resolve6: () => held.promise,
+    cancel() {
+      held.reject(reason)
+    },
+  }))
+  aborted.abort(reason)
+  expect(await original.result).toMatchObject({ hint: false, reason: "original-abort" })
+  expect(aborted.signal.reason).toBe(reason)
+  await original.close()
+})
+
+test("temporary-name no-op cancellation cuts off and an expired positive cannot change its returned hint", async () => {
+  const A = Promise.withResolvers<unknown>(),
+    AAAA = Promise.withResolvers<unknown>()
+  let cancels = 0
+  const original = observeTemporaryName("synthetic.test", new AbortController().signal, () => ({
+    resolve4: () => A.promise,
+    resolve6: () => AAAA.promise,
+    cancel() {
+      cancels++
+    },
+  }))
+  const hint = await original.result
+  expect(hint).toMatchObject({ hint: false, reason: "observation-cutoff", queriesSettled: false })
+  expect(cancels).toBe(1)
+  const immutable = JSON.stringify(hint)
+  expect(await original.close()).toMatchObject({ queriesSettled: false, settlement: "not-observed" })
+  A.resolve([{ address: "192.0.2.17", ttl: 20 }])
+  AAAA.resolve([])
+  await Promise.allSettled([A.promise, AAAA.promise])
+  expect(JSON.stringify(hint)).toBe(immutable)
+  expect(hint.hint).toBe(false)
+}, 2000)
+
+test("temporary-name observation cancels constructor-abort owners and never dispatches a sibling after synchronous abort", async () => {
+  const before = new AbortController(),
+    beforeReason = new Error("original-constructor-abort")
+  const beforeCalls: number[] = []
+  let beforeCancels = 0
+  const constructor = observeTemporaryName("synthetic.test", before.signal, () => {
+    before.abort(beforeReason)
+    return {
+      async resolve4() {
+        beforeCalls.push(4)
+        return []
+      },
+      async resolve6() {
+        beforeCalls.push(6)
+        return []
+      },
+      cancel() {
+        beforeCancels++
+      },
+    }
+  })
+  const constructorHint = await constructor.result
+  await constructor.close()
+  const during = new AbortController(),
+    duringReason = new Error("original-first-family-abort")
+  const duringCalls: number[] = []
+  let duringCancels = 0
+  const firstFamily = observeTemporaryName("synthetic.test", during.signal, () => ({
+    async resolve4() {
+      duringCalls.push(4)
+      during.abort(duringReason)
+      return []
+    },
+    async resolve6() {
+      duringCalls.push(6)
+      return []
+    },
+    cancel() {
+      duringCancels++
+    },
+  }))
+  const dispatchHint = await firstFamily.result
+  await firstFamily.close()
+  expect({
+    constructor: {
+      calls: beforeCalls,
+      queries: constructorHint.queries,
+      reason: constructorHint.reason,
+      cancels: beforeCancels,
+    },
+    firstFamily: {
+      calls: duringCalls,
+      queries: dispatchHint.queries,
+      reason: dispatchHint.reason,
+      cancels: duringCancels,
+    },
+  }).toEqual({
+    constructor: { calls: [], queries: 0, reason: "original-abort", cancels: 1 },
+    firstFamily: { calls: [4], queries: 1, reason: "original-abort", cancels: 1 },
+  })
+  expect(before.signal.reason).toBe(beforeReason)
+  expect(during.signal.reason).toBe(duringReason)
 })
