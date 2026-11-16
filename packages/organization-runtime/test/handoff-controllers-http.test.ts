@@ -1,6 +1,7 @@
 import { expect, spyOn, test } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"
+import { z } from "zod"
 import {
   OrganizationHandoffProtocol as Handoff,
   OrganizationCommandProtocol as Command,
@@ -109,7 +110,7 @@ for (const mode of [
           wake?.mockRestore()
         },
       }
-      await using f = await fixture()
+      await using f = await fixture({ connections: { heartbeatMs: 25 } })
       let sourceIntake: ReturnType<typeof createCommandIntake> | undefined
       let targetIntake: ReturnType<typeof createCommandIntake> | undefined
       const member = await prepareMemberHome({
@@ -214,6 +215,7 @@ for (const mode of [
       let sourceSignal: AbortSignal | undefined
       let targetSignal: AbortSignal | undefined
       let sourceFailure: unknown
+      let sourceFailureObserved: ((error: unknown) => void) | undefined
       let targetFailure: unknown
       let mappingConflict: "identity" | "receipt" = "identity"
       let targetEnvironmentID: string | undefined
@@ -289,6 +291,7 @@ for (const mode of [
               plan.operation === "prepare-source"
                 ? await sourceController.prepare(input).catch((error: unknown) => {
                     sourceFailure = error
+                    sourceFailureObserved?.(error)
                     throw error
                   })
                 : plan.operation === "cancel-source"
@@ -806,12 +809,16 @@ for (const mode of [
         let frozen: Handoff.MachineResult
         if (mode === "unknown" || mode === "workspace-unknown") {
           const arrived = Promise.withResolvers<void>()
+          sourceFailureObserved = arrived.reject
           f.interceptFrames((_socket, raw) => {
             const frame = Runtime.ClientFrame.parse(JSON.parse(String(raw)))
             if (
               frame.type === "receipt" &&
               frame.reply.kind === "handoff" &&
-              frame.reply.result.operation === "prepare-source"
+              frame.reply.result.operation === "prepare-source" &&
+              frame.reply.result.handoffID === handoffID &&
+              frame.reply.result.requestID === "source-response-lost" &&
+              frame.reply.result.runtimeID === sourceRegistration.runtimeID
             ) {
               arrived.resolve()
               return true
@@ -819,15 +826,28 @@ for (const mode of [
             return false
           })
           const signal = new AbortController()
+          const reason = new Error("Stop observing the unknown source response")
           const unknown = f.client.orgHandoff.drive(
             { handoffID, orgHandoffDrive: { operation: "prepare-source", requestID: "source-response-lost" } },
             { ...options, signal: signal.signal },
           )
-          void unknown.catch(() => {})
-          await arrived.promise
-          signal.abort(new Error("Stop observing the unknown source response"))
-          await expect(unknown).rejects.toThrow()
-          f.interceptFrames(undefined)
+          void unknown.catch((error: unknown) => {
+            if (
+              !z.object({ code: z.literal("COMMAND_OUTCOME_UNKNOWN"), outcome: z.literal("unknown") }).safeParse(error)
+                .success
+            )
+              arrived.reject(error)
+          })
+          try {
+            await arrived.promise
+            signal.abort(reason)
+            await expect(unknown).rejects.toThrow()
+          } finally {
+            sourceFailureObserved = undefined
+            signal.abort(reason)
+            await unknown.catch(() => {})
+            f.interceptFrames(undefined)
+          }
           frozen = await drive("inspect-source")
         } else if (mode === "observer") {
           const observer = new AbortController()

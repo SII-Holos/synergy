@@ -21,9 +21,11 @@ export function createHandoffCompletion(input: {
     "activate-target": "target-activated",
     "retire-target": "target-never-activate",
   }
-  async function invoke(operation: Handoff.Drive["operation"]) {
+  async function invoke(operation: Handoff.Drive["operation"], observed?: { returned: boolean }) {
     const requestID = crypto.randomUUID()
-    const result = Handoff.MachineResult.parse(await input.invoke(operation, requestID))
+    const response = await input.invoke(operation, requestID)
+    if (observed) observed.returned = true
+    const result = Handoff.MachineResult.parse(response)
     const participant = Handoff.machineRole(operation) === "source" ? source : target
     if (
       result.handoffID !== binding.handoffID ||
@@ -51,15 +53,15 @@ export function createHandoffCompletion(input: {
     const purposes = acceptedPurposes ?? (purpose ? [purpose] : [])
     let result: Handoff.MachineResult | undefined
     let dispatchError: unknown
+    const observed = { returned: false }
     try {
-      result = await invoke(operation)
+      result = await invoke(operation, observed)
     } catch (error) {
-      if (
-        !purpose ||
-        !z.object({ code: z.literal("COMMAND_OUTCOME_UNKNOWN"), outcome: z.literal("unknown") }).safeParse(error)
-          .success
-      )
-        throw error
+      if (!purpose || observed.returned) throw error
+      const uncertain =
+        typeof error === "string" ||
+        z.object({ code: z.literal("COMMAND_OUTCOME_UNKNOWN"), outcome: z.literal("unknown") }).safeParse(error).success
+      if (!uncertain) throw error
       dispatchError = error
     }
     if (!purpose) return result!
