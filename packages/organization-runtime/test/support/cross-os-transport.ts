@@ -1,5 +1,6 @@
 import fs from "node:fs/promises"
 import path from "node:path"
+import { retrySleep } from "@ericsanchezok/synergy-util/retry"
 import {
   createCipheriv,
   createDecipheriv,
@@ -33,14 +34,17 @@ export const PublicPeer = z.strictObject({
   encryption: pem,
 })
 export type PublicPeer = z.infer<typeof PublicPeer>
-export const Bootstrap = PublicPeer.extend({
+export const PublicOrigin = PublicPeer.extend({
   role: z.literal("darwin"),
   origin: z.url().refine((value) => {
     const url = new URL(value)
     return url.protocol === "https:" && url.origin === value && url.hostname.endsWith(".trycloudflare.com")
   }),
+})
+export const Bootstrap = PublicOrigin.extend({
   identity: z.strictObject({ orgID: z.string(), accountID: z.string() }),
 })
+const PeerHealth = z.strictObject({ origin: PublicOrigin.shape.origin, native: z.literal("darwin") })
 export type Bootstrap = z.infer<typeof Bootstrap>
 const Secret = z.strictObject({
   public: PublicPeer,
@@ -291,7 +295,39 @@ export async function exchange(
   return answer.value
 }
 
-async function github(url: string) {
+export async function readPublicPeerHealth(
+  origin: string,
+  expected: Run,
+  signal: AbortSignal,
+  request: (url: string, options: { signal: AbortSignal }) => Promise<Response> = fetch,
+) {
+  signal.throwIfAborted()
+  const response = await request(origin + "/__cross-os-health", {
+    signal: AbortSignal.any([signal, AbortSignal.timeout(5000)]),
+  })
+  if (!response.ok) {
+    await response.body?.cancel()
+    throw new Error("The original peer health returned HTTP " + response.status)
+  }
+  const value = z.object({ run: Run, native: z.literal("darwin") }).parse(await readControlJSON(response))
+  equalRun(value.run, expected)
+  signal.throwIfAborted()
+}
+export function acceptPeerHealth(
+  secret: Secret,
+  peer: PublicPeer,
+  origin: string,
+  value: unknown,
+  nonces: Set<string>,
+) {
+  if (secret.public.role !== "darwin" || peer.role !== "linux")
+    throw new Error("The public health receipt must come from the original Linux peer")
+  const receipt = decode(secret, peer, value, nonces)
+  if (receipt.action !== "health" || PeerHealth.parse(receipt.value).origin !== origin)
+    throw new Error("The peer health receipt belongs to another endpoint or stage")
+}
+
+async function github(url: string, signal?: AbortSignal) {
   if (!url.startsWith("https://api.github.com/")) throw new Error("Artifact discovery requires the GitHub API")
   const token = process.env.GITHUB_TOKEN
   if (!token) throw new Error("Cross-OS artifact discovery requires this workflow's read-only token")
@@ -301,7 +337,7 @@ async function github(url: string) {
       accept: "application/vnd.github+json",
       "x-github-api-version": "2022-11-28",
     },
-    signal: AbortSignal.timeout(15000),
+    signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(15000)]) : AbortSignal.timeout(15000),
   })
   if (!response.ok) throw new Error("Run-bound GitHub artifact query failed with HTTP " + response.status)
   return response
@@ -314,31 +350,36 @@ const Artifact = z.object({
   digest: z.string(),
   workflow_run: z.object({ id: z.number(), head_sha: hash }),
 })
-export function artifactName(role: PublicPeer["role"], bootstrap = false) {
+type ArtifactStage = "public" | "origin" | "health" | "bootstrap"
+export function artifactName(role: PublicPeer["role"], stage: ArtifactStage) {
   const current = run()
-  return `cross-os-${role}-${bootstrap ? "bootstrap" : "public"}-${current.id}-${current.attempt}`
+  return `cross-os-${role}-${stage}-${current.id}-${current.attempt}`
 }
 // Provenance: https://github.com/actions/upload-artifact/blob/v4/README.md#improvements — finalized public-key artifacts are available before either live peer job exits.
-export async function waitArtifact(role: PublicPeer["role"], bootstrap = false) {
+export async function waitArtifact(role: PublicPeer["role"], stage: ArtifactStage, signal: AbortSignal) {
+  signal.throwIfAborted()
+  if (((stage === "origin" || stage === "bootstrap") && role !== "darwin") || (stage === "health" && role !== "linux"))
+    throw new Error("Cross-OS rendezvous has another fixed peer stage")
   const current = run(),
-    name = artifactName(role, bootstrap),
-    deadline = Date.now() + 120000
+    name = artifactName(role, stage)
   const directory = path.join(state(), "rendezvous")
   await fs.mkdir(directory, { recursive: true, mode: 0o700 })
-  while (Date.now() < deadline) {
+  for (;;) {
+    signal.throwIfAborted()
     const listing = z
       .object({ artifacts: z.array(Artifact) })
       .parse(
         await (
           await github(
             `https://api.github.com/repos/${current.repository}/actions/runs/${current.id}/artifacts?per_page=100&name=${name}`,
+            signal,
           )
         ).json(),
       )
     const found = listing.artifacts.filter((item) => item.name === name)
     if (found.length > 1) throw new Error("Run-bound cross-OS artifact name is ambiguous")
     if (!found.length) {
-      await Bun.sleep(250)
+      await retrySleep(250, signal)
       continue
     }
     const artifact = found[0]!
@@ -351,33 +392,41 @@ export async function waitArtifact(role: PublicPeer["role"], bootstrap = false) 
       throw new Error("Cross-OS artifact has another producing run/head")
     const bytes = new Uint8Array(
       await (
-        await github(`https://api.github.com/repos/${current.repository}/actions/artifacts/${artifact.id}/zip`)
+        await github(`https://api.github.com/repos/${current.repository}/actions/artifacts/${artifact.id}/zip`, signal)
       ).arrayBuffer(),
     )
     if ("sha256:" + createHash("sha256").update(bytes).digest("hex") !== artifact.digest)
       throw new Error("Cross-OS public artifact digest changed")
     const filename = path.join(directory, name + ".zip")
-    await fs.writeFile(filename, bytes, { mode: 0o600, flag: "wx" })
-    const wanted = bootstrap ? "bootstrap.json" : "public.json"
+    await fs.writeFile(filename, bytes, { mode: 0o600, flag: "wx", signal })
+    const wanted = stage + ".json"
     const listingProcess = Bun.spawn(["unzip", "-Z1", filename], {
       stdout: "pipe",
-      stderr: "pipe",
+      stderr: "ignore",
+      signal,
     })
-    const names = (await new Response(listingProcess.stdout).text()).trim().split("\n")
+    const names = (await new Response(listingProcess.stdout).text().finally(() => listingProcess.exited))
+      .trim()
+      .split("\n")
+    signal.throwIfAborted()
     if ((await listingProcess.exited) || JSON.stringify(names) !== JSON.stringify([wanted]))
       throw new Error("Cross-OS public artifact contains unexpected files")
     const read = Bun.spawn(["unzip", "-p", filename, wanted], {
       stdout: "pipe",
-      stderr: "pipe",
+      stderr: "ignore",
+      signal,
     })
-    const text = await new Response(read.stdout).text()
+    const text = await new Response(read.stdout).text().finally(() => read.exited)
+    signal.throwIfAborted()
     if ((await read.exited) || text.length > 32768) throw new Error("Cross-OS public metadata is unavailable")
-    const value = (bootstrap ? Bootstrap : PublicPeer).parse(JSON.parse(text))
+    if (stage === "health") return Envelope.parse(JSON.parse(text))
+    const value = (stage === "bootstrap" ? Bootstrap : stage === "origin" ? PublicOrigin : PublicPeer).parse(
+      JSON.parse(text),
+    )
     equalRun(value.run)
     if (value.role !== role) throw new Error("The actual peer role differs from its public artifact")
     return value
   }
-  throw new Error("Cross-OS infrastructure rendezvous did not produce the peer's public artifact within 120 seconds")
 }
 export async function verifyNativeRun() {
   const id = process.env.SYNERGY_CROSS_OS_NATIVE_RUN

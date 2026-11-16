@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test"
 import assert from "node:assert/strict"
+import { generateKeyPairSync } from "node:crypto"
 import { z } from "zod"
 import { cert, key } from "@ericsanchezok/synergy-testing/organization-tls"
 import { testResources } from "@ericsanchezok/synergy-testing/resources"
@@ -15,7 +16,15 @@ import {
   type HeaderFailureSample,
   type HeaderFailureKindSample,
 } from "./support/cross-os-failures"
-import { readControlJSON, safeCrossOSFailure } from "./support/cross-os-transport"
+import {
+  readControlJSON,
+  safeCrossOSFailure,
+  readPublicPeerHealth,
+  acceptPeerHealth,
+  encode,
+  PublicPeer,
+  waitArtifact,
+} from "./support/cross-os-transport"
 import {
   observeDNSAfterFailedHealth,
   observeTemporaryName,
@@ -1302,4 +1311,118 @@ test("post-cleanup configuration observation parses a real bounded child and con
     comparisonAvailable: false,
     firstGeneralServerSetEqual: null,
   })
+})
+
+test("the original Linux peer verifies real strict HTTPS identity before its fixed health receipt", async () => {
+  await using resources = testResources()
+  const expected = { repository: "synthetic/acceptance", id: "1", attempt: "1", sha: "a".repeat(40) }
+  let responseRun = expected,
+    native = "darwin",
+    handled = 0
+  const server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    tls: { cert, key },
+    fetch(request) {
+      assert.equal(new URL(request.url).hostname, "localhost")
+      assert.equal(new URL(request.url).pathname, "/__cross-os-health")
+      handled++
+      return Response.json({ run: responseRun, native })
+    },
+  })
+  resources.defer("original peer HTTPS preparation listener", () => server.stop(true))
+  const origin = `https://localhost:${server.port}`
+  const request = (url: string, options: { signal: AbortSignal }) =>
+    fetch(url, {
+      ...options,
+      tls: { ca: cert, rejectUnauthorized: true },
+    })
+  await readPublicPeerHealth(origin, expected, AbortSignal.timeout(5000), request)
+  expect(handled).toBe(1)
+  responseRun = { ...expected, sha: "b".repeat(40) }
+  const wrongRun = await readPublicPeerHealth(origin, expected, AbortSignal.timeout(5000), request).then(
+    () => undefined,
+    (error: unknown) => error,
+  )
+  expect(wrongRun).toBeInstanceOf(Error)
+  expect(handled).toBe(2)
+  responseRun = expected
+  native = "linux"
+  const wrongNative = await readPublicPeerHealth(origin, expected, AbortSignal.timeout(5000), request).then(
+    () => undefined,
+    (error: unknown) => error,
+  )
+  expect(wrongNative).toBeInstanceOf(z.ZodError)
+  expect(handled).toBe(3)
+  native = "darwin"
+  await readPublicPeerHealth(origin, expected, AbortSignal.timeout(5000), request)
+  expect(handled).toBe(4)
+  const stopped = new AbortController(),
+    reason = new Error("Original bootstrap deadline")
+  stopped.abort(reason)
+  expect(await readPublicPeerHealth(origin, expected, stopped.signal, request).catch((error: unknown) => error)).toBe(
+    reason,
+  )
+  expect(handled).toBe(4)
+  expect(await waitArtifact("darwin", "origin", stopped.signal).catch((error: unknown) => error)).toBe(reason)
+}, 15000)
+
+test("the fixed peer health receipt is sealed, signed and bound to its original endpoint, stage and run", () => {
+  const run = { repository: "synthetic/acceptance", id: "1", attempt: "1", sha: "a".repeat(40) }
+  function peer(role: "darwin" | "linux") {
+    const signing = generateKeyPairSync("ed25519"),
+      encryption = generateKeyPairSync("x25519")
+    return {
+      public: PublicPeer.parse({
+        version: 1,
+        run,
+        role,
+        signing: signing.publicKey.export({ type: "spki", format: "pem" }).toString(),
+        encryption: encryption.publicKey.export({ type: "spki", format: "pem" }).toString(),
+      }),
+      signing: signing.privateKey.export({ type: "pkcs8", format: "pem" }).toString(),
+      encryption: encryption.privateKey.export({ type: "pkcs8", format: "pem" }).toString(),
+    }
+  }
+  const darwin = peer("darwin"),
+    linux = peer("linux"),
+    foreign = peer("linux")
+  const origin = "https://synthetic.trycloudflare.com"
+  const receipt = encode(linux, darwin.public, "health", { origin, native: "darwin" })
+  const nonces = new Set<string>()
+  acceptPeerHealth(darwin, linux.public, origin, receipt, nonces)
+  expect(nonces.size).toBe(1)
+  expect(() => acceptPeerHealth(darwin, linux.public, origin, receipt, nonces)).toThrow("replay")
+  expect(() => acceptPeerHealth(darwin, foreign.public, origin, receipt, new Set())).toThrow("signature")
+  expect(() => acceptPeerHealth(darwin, linux.public, "https://another.trycloudflare.com", receipt, new Set())).toThrow(
+    "endpoint or stage",
+  )
+  expect(() =>
+    acceptPeerHealth(
+      darwin,
+      linux.public,
+      origin,
+      encode(linux, darwin.public, "ready", { origin, native: "darwin" }),
+      new Set(),
+    ),
+  ).toThrow("endpoint or stage")
+  expect(() =>
+    acceptPeerHealth(
+      darwin,
+      linux.public,
+      origin,
+      encode(linux, darwin.public, "health", { origin, native: "linux" }),
+      new Set(),
+    ),
+  ).toThrow()
+  expect(() =>
+    acceptPeerHealth(darwin, { ...linux.public, run: { ...run, attempt: "2" } }, origin, receipt, new Set()),
+  ).toThrow("another run or head")
+  acceptPeerHealth(
+    darwin,
+    linux.public,
+    origin,
+    encode(linux, darwin.public, "health", { origin, native: "darwin" }),
+    new Set(),
+  )
 })

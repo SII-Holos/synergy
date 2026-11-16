@@ -182,7 +182,7 @@ jobs:
         shell: bash
         run: |
           python3 - <<'PY_REPORT'
-          import json, os, pathlib, re
+          import json, os, pathlib, re, time
           try:
             run = {
               'repository': os.environ['GITHUB_REPOSITORY'],
@@ -200,6 +200,7 @@ jobs:
             directory = pathlib.Path(os.environ['SYNERGY_CROSS_OS_STATE'])
             if not directory.is_absolute() or not directory.is_dir():
               raise ValueError('Task-owned peer state is unavailable')
+            (directory / 'bootstrap-deadline').write_text(str(time.monotonic() + 120))
             (directory / 'report.json').write_text(json.dumps({
               'version': 1, 'run': run, 'role': role, 'passed': False,
               'phase': 'peer-import', 'status': 'pending',
@@ -215,23 +216,55 @@ jobs:
             printf '%s' "$result" > "$SYNERGY_CROSS_OS_STATE/exit-code"
           ) &
           printf '%s' "$!" > "$SYNERGY_CROSS_OS_STATE/owner-pid"
-          if [ "$SYNERGY_CROSS_OS_ROLE" = darwin ]; then
-            deadline=$((SECONDS + 120))
-            while :; do
-              if [ -f "$SYNERGY_CROSS_OS_STATE/exit-code" ] || [ "$SECONDS" -ge "$deadline" ]; then
-                cleanup_deadline=$((SECONDS + 10))
-                until [ -f "$SYNERGY_CROSS_OS_STATE/exit-code" ] || [ "$SECONDS" -ge "$cleanup_deadline" ]; do
-                  sleep 0.2
-                done
-                echo 'Darwin Service/tunnel bootstrap failed before any cross-OS acceptance'
-                exit 1
-              fi
-              if [ -f "$SYNERGY_CROSS_OS_STATE/bootstrap.json" ]; then
-                break
-              fi
-              sleep 0.2
-            done
-          fi
+          python3 - <<'PY_WAIT'
+          import os, pathlib, time
+          root = pathlib.Path(os.environ['SYNERGY_CROSS_OS_STATE'])
+          deadline = float((root / 'bootstrap-deadline').read_text())
+          wanted = 'origin.json' if os.environ['SYNERGY_CROSS_OS_ROLE'] == 'darwin' else 'health.json'
+          while True:
+            if (root / 'exit-code').exists() or time.monotonic() >= deadline:
+              cleanup_deadline = time.monotonic() + 10
+              while not (root / 'exit-code').exists() and time.monotonic() < cleanup_deadline:
+                time.sleep(0.2)
+              raise SystemExit('Original native peer failed before public preparation completed')
+            if (root / wanted).exists():
+              break
+            time.sleep(0.2)
+          PY_WAIT
+      - name: Publish only the early public origin
+        if: matrix.role == 'darwin'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cross-os-darwin-origin-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.SYNERGY_CROSS_OS_STATE }}/origin.json
+          if-no-files-found: error
+          retention-days: 1
+      - name: Publish the original Linux peer's sealed HTTPS health receipt
+        if: matrix.role == 'linux'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cross-os-linux-health-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.SYNERGY_CROSS_OS_STATE }}/health.json
+          if-no-files-found: error
+          retention-days: 1
+      - name: Wait for original Darwin bootstrap within its remaining original budget
+        if: matrix.role == 'darwin'
+        shell: bash
+        run: |
+          python3 - <<'PY_WAIT'
+          import os, pathlib, time
+          root = pathlib.Path(os.environ['SYNERGY_CROSS_OS_STATE'])
+          deadline = float((root / 'bootstrap-deadline').read_text())
+          while True:
+            if (root / 'exit-code').exists() or time.monotonic() >= deadline:
+              cleanup_deadline = time.monotonic() + 10
+              while not (root / 'exit-code').exists() and time.monotonic() < cleanup_deadline:
+                time.sleep(0.2)
+              raise SystemExit('Darwin bootstrap failed before original cross-OS acceptance')
+            if (root / 'bootstrap.json').exists():
+              break
+            time.sleep(0.2)
+          PY_WAIT
       - name: Publish the public TLS endpoint while both native owners remain alive
         if: matrix.role == 'darwin'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

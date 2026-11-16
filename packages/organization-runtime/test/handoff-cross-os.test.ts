@@ -37,7 +37,10 @@ import {
 } from "./support/cross-os-failures"
 import {
   Bootstrap,
+  PublicOrigin,
   PublicPeer,
+  readPublicPeerHealth,
+  acceptPeerHealth,
   decode,
   encode,
   equalRun,
@@ -441,7 +444,7 @@ async function host() {
   const secret = await setup("darwin-identity", identity)
   const rendezvousStarted = performance.now()
   const linuxPublic = await setup("darwin-public-peer-rendezvous", async () =>
-    PublicPeer.parse(await waitArtifact("linux")),
+    PublicPeer.parse(await waitArtifact("linux", "public", bootstrapSignal)),
   )
   const artifactWaitMs = performance.now() - rendezvousStarted
   const root = await setup("darwin-temporary-root", () =>
@@ -634,6 +637,19 @@ async function host() {
     })
     tunnelObservation.listener(server.port, port)
     cleanups.splice(1, 0, { owner: "origin-listener", close: () => server.stop(false) })
+    const publicOrigin = PublicOrigin.parse({ ...secret.public, role: "darwin", origin: connection.origin })
+    await setup("darwin-public-origin-publication", () =>
+      fs.writeFile(path.join(state(), "origin.json"), JSON.stringify(publicOrigin), {
+        mode: 0o600,
+        flag: "wx",
+        signal: bootstrapSignal,
+      }),
+    )
+    await setup("darwin-linux-health-rendezvous", async () => {
+      const receipt = await waitArtifact("linux", "health", bootstrapSignal)
+      acceptPeerHealth(secret, linuxPublic, connection.origin, receipt, nonces)
+      bootstrapSignal.throwIfAborted()
+    })
     temporaryNameHint = observeTemporaryName(capturedHostname, bootstrapSignal)
     transportFacts.health.temporaryNameHint = await temporaryNameHint.result
     transportFacts.health.dnsCache.before = observeDNSCache()
@@ -1347,10 +1363,49 @@ async function host() {
 
 async function linux() {
   assert.equal(process.platform, "linux")
-  const secret = await setup("linux-identity", identity),
-    bootstrap = await setup("linux-bootstrap-rendezvous", async () =>
-      Bootstrap.parse(await waitArtifact("darwin", true)),
+  const bootstrapSignal = AbortSignal.timeout(Math.max(0, Math.ceil(120000 - process.uptime() * 1000)))
+  const secret = await setup("linux-identity", identity)
+  const publicOrigin = await setup("linux-public-origin-rendezvous", async () =>
+    PublicOrigin.parse(await waitArtifact("darwin", "origin", bootstrapSignal)),
+  )
+  await setup("linux-original-public-health", () =>
+    until(
+      async () => {
+        try {
+          await readPublicPeerHealth(publicOrigin.origin, secret.public.run, bootstrapSignal)
+          return true
+        } catch (error) {
+          bootstrapSignal.throwIfAborted()
+          return undefined
+        }
+      },
+      Math.max(0, Math.ceil(120000 - process.uptime() * 1000)),
+      "The original Linux peer could not verify the same public HTTPS origin",
+    ),
+  )
+  await setup("linux-public-health-publication", () =>
+    fs.writeFile(
+      path.join(state(), "health.json"),
+      JSON.stringify(encode(secret, publicOrigin, "health", { origin: publicOrigin.origin, native: "darwin" })),
+      { mode: 0o600, flag: "wx", signal: bootstrapSignal },
+    ),
+  )
+  const bootstrap = await setup("linux-bootstrap-rendezvous", async () => {
+    const value = Bootstrap.parse(await waitArtifact("darwin", "bootstrap", bootstrapSignal))
+    assert.deepEqual(
+      {
+        version: value.version,
+        run: value.run,
+        role: value.role,
+        signing: value.signing,
+        encryption: value.encryption,
+        origin: value.origin,
+      },
+      publicOrigin,
     )
+    bootstrapSignal.throwIfAborted()
+    return value
+  })
   const nonces = new Set<string>(),
     root = await setup("linux-temporary-root", () =>
       fs.mkdtemp(path.join(process.env.SYNERGY_TEST_ROOT!, "cross-os-linux-")),
