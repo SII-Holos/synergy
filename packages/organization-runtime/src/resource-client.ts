@@ -69,7 +69,8 @@ export interface MemberResourceClient {
   handoffObject(
     reference: HandoffObjectReference,
     range: z.infer<typeof Handoff.ObjectRange>,
-    signal?: AbortSignal,
+    signal: AbortSignal | undefined,
+    authorityNow: () => number,
   ): Promise<z.infer<typeof Handoff.ObjectChunk>>
   handoffInventory(
     proof: Execution.HandoffInventoryProof,
@@ -248,7 +249,7 @@ export function createMemberResourceClient(options: {
       { preconnect() {} },
     ),
   })
-  function current(proof: Proof) {
+  function current(proof: Proof, now: () => number) {
     lifetime.throwIfAborted()
     if (
       proof.orgID !== connection.orgID ||
@@ -257,7 +258,7 @@ export function createMemberResourceClient(options: {
       proof.connectionEpoch !== connection.connectionEpoch
     )
       throw failure("STALE_CONNECTION", "Resource proof does not match this member connection", "not_dispatched")
-    if (proof.issuedAt > Date.now() || proof.expiresAt <= Date.now())
+    if (proof.issuedAt > now() || proof.expiresAt <= now())
       throw failure("PERMISSION_DENIED", "Resource proof is outside its validity window", "not_dispatched")
   }
   async function acquire(signal: AbortSignal) {
@@ -292,17 +293,18 @@ export function createMemberResourceClient(options: {
     request: (signal: AbortSignal) => Promise<{ data?: unknown; error?: unknown }>,
     verify: (result: T) => void | Promise<void>,
     signal?: AbortSignal,
+    now: () => number = () => Date.now(),
   ): Promise<T> {
-    current(proof)
+    current(proof, now)
     const cancellation = AbortSignal.any([
       lifetime,
       ...(signal ? [signal] : []),
-      AbortSignal.timeout(Math.max(0, Math.min(15_000, proof.expiresAt - Date.now()))),
+      AbortSignal.timeout(Math.max(0, Math.min(15_000, proof.expiresAt - now()))),
     ])
     const pending = (async () => {
       await acquire(cancellation)
       try {
-        current(proof)
+        current(proof, now)
         const response = await request(cancellation)
         cancellation.throwIfAborted()
         if (!response.data) {
@@ -827,8 +829,8 @@ export function createMemberResourceClient(options: {
         signal,
       )
     },
-    async handoffObject(reference, range, signal) {
-      const issuedAt = Date.now()
+    async handoffObject(reference, range, signal, authorityNow) {
+      const issuedAt = authorityNow()
       const proof = Objects.Proof.parse({
         ...reference,
         purpose: "handoff-object-read",
@@ -858,6 +860,7 @@ export function createMemberResourceClient(options: {
             throw failure("PROTOCOL_MISMATCH", "Handoff object response changed its immutable range")
         },
         signal,
+        authorityNow,
       )
     },
     async activateKnowledge(value, selection, signal) {

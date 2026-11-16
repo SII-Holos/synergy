@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0225](0225-handoff-object-proofs-compared-unrelated-clocks.md)
+
 - [0223](0223-independent-dns-prerequisite-blocked-original-https-readiness.md)
 - [0224](0224-continuation-origins-retained-absent-native-binding-branches.md)
 

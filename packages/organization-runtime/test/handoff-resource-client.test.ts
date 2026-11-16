@@ -26,6 +26,9 @@ test("the connection privately signs a fresh bounded handoff range for every gen
     ca: f.ca,
     buildVersion: "object-read-client",
   })
+  const authorityIssuedAt = Date.now() - 60_000
+  const authorityObservedAt = performance.now()
+  const authorityNow = () => authorityIssuedAt + Math.floor(performance.now() - authorityObservedAt)
   const content = Buffer.alloc(128 * 1024 + 17, 37)
   const hash = createHash("sha256").update(content).digest("hex")
   const reference = {
@@ -48,6 +51,9 @@ test("the connection privately signs a fresh bounded handoff range for every gen
     if (!request.url.endsWith("/runtime/v1/handoffs/object")) return
     const signed = Objects.Request.parse(await request.json())
     expect(await Objects.verify(signed.proof, signed.signature, member.publicKey)).toBe(true)
+    expect(signed.proof.issuedAt).toBeGreaterThanOrEqual(authorityIssuedAt)
+    expect(signed.proof.issuedAt).toBeLessThanOrEqual(authorityNow())
+    expect(signed.proof.expiresAt - signed.proof.issuedAt).toBe(15_000)
     expect(request.headers.get("cookie")).toBeNull()
     expect(request.headers.get("origin")).toBeNull()
     expect(signed.proof).toMatchObject({
@@ -72,12 +78,23 @@ test("the connection privately signs a fresh bounded handoff range for every gen
       complete: nextOffset === content.length,
     })
   })
-  const first = await connection.resources.handoffObject(reference, { hash, offset: 0, length: 128 * 1024 })
+  const first = await connection.resources.handoffObject(
+    reference,
+    { hash, offset: 0, length: 128 * 1024 },
+    undefined,
+    authorityNow,
+  )
   expect(Buffer.from(first.data, "base64url")).toEqual(content.subarray(0, 128 * 1024))
   expect(first.complete).toBe(false)
   expect(
-    (await connection.resources.handoffObject(reference, { hash, offset: first.nextOffset, length: 128 * 1024 }))
-      .complete,
+    (
+      await connection.resources.handoffObject(
+        reference,
+        { hash, offset: first.nextOffset, length: 128 * 1024 },
+        undefined,
+        authorityNow,
+      )
+    ).complete,
   ).toBe(true)
   expect(proofs).toHaveLength(2)
   expect(proofs[0].requestID).not.toBe(proofs[1].requestID)
@@ -86,18 +103,24 @@ test("the connection privately signs a fresh bounded handoff range for every gen
     connection.resources.handoffObject(
       { ...reference, targetRuntimeID: "another-machine" },
       { hash, offset: 0, length: 1 },
+      undefined,
+      authorityNow,
     ),
   ).rejects.toThrow()
   await expect(
-    connection.resources.handoffObject(reference, { hash, offset: 0, length: 128 * 1024 + 1 }),
+    connection.resources.handoffObject(reference, { hash, offset: 0, length: 128 * 1024 + 1 }, undefined, authorityNow),
   ).rejects.toThrow()
   expect(proofs).toHaveLength(2)
   mode = "changed"
-  await expect(connection.resources.handoffObject(reference, { hash, offset: 0, length: 1 })).rejects.toMatchObject({
+  await expect(
+    connection.resources.handoffObject(reference, { hash, offset: 0, length: 1 }, undefined, authorityNow),
+  ).rejects.toMatchObject({
     data: { code: "PROTOCOL_MISMATCH" },
   })
   mode = "denied"
-  await expect(connection.resources.handoffObject(reference, { hash, offset: 0, length: 1 })).rejects.toMatchObject({
+  await expect(
+    connection.resources.handoffObject(reference, { hash, offset: 0, length: 1 }, undefined, authorityNow),
+  ).rejects.toMatchObject({
     data: { code: "PERMISSION_DENIED", outcome: "rejected" },
   })
 }, 15000)

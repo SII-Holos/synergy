@@ -177,6 +177,7 @@ test("the destination controller prepares actual private owner partitions and re
       paused: true,
       drained: true,
     })
+    const planIssuedAt = Date.now() - 1000
     const plan = Handoff.MachinePlan.parse({
       ...tuple,
       purpose: "handoff-machine",
@@ -197,8 +198,8 @@ test("the destination controller prepares actual private owner partitions and re
         clientKind: "web",
         requestID: "target-prepare",
       },
-      issuedAt: Date.now(),
-      expiresAt: Date.now() + 15000,
+      issuedAt: planIssuedAt,
+      expiresAt: planIssuedAt + 15000,
       manifestHash: captured.prepared.manifestHash,
       frozen: { proof: frozen, signature: await Handoff.signProof(frozen, keys.privateKey) },
     })
@@ -209,7 +210,13 @@ test("the destination controller prepares actual private owner partitions and re
       async handoffObject(
         reference: { manifestHash: string },
         range: { hash: string; offset: number; length: number },
+        _signal: AbortSignal | undefined,
+        authorityNow: () => number,
       ) {
+        expect(typeof authorityNow).toBe("function")
+        const issuedAt = authorityNow()
+        expect(issuedAt).toBeGreaterThanOrEqual(planIssuedAt)
+        expect(issuedAt).toBeLessThanOrEqual(Date.now() - 500)
         rangeReads++
         return source.run(() =>
           captured.objects.range({
@@ -280,7 +287,12 @@ test("the destination controller prepares actual private owner partitions and re
       }
       const interrupted = controller.prepare(mutable)
       void interrupted.catch(() => {})
-      await entered.promise
+      await Promise.race([
+        entered.promise,
+        interrupted.then(() => {
+          throw new Error("Destination preparation completed before its original mapping")
+        }),
+      ])
       mutable.signal = new AbortController().signal
       original.abort(reason)
       resume.resolve()

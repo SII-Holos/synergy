@@ -258,7 +258,17 @@ export namespace OrganizationHandoffTarget {
       manifestHash: string,
       frozen: Extract<Handoff.Proof, { purpose: "source-frozen" }>,
       read: MemberResourceClient["handoffObject"],
+      authorityObservedAt: number,
     ) {
+      const authorityNow = () => {
+        const elapsed = performance.now() - authorityObservedAt
+        if (!Number.isFinite(elapsed) || elapsed < 0)
+          fail("Destination object authorization requires monotonic elapsed time")
+        const issuedAt = plan.issuedAt + Math.floor(elapsed)
+        if (!Number.isSafeInteger(issuedAt) || !Number.isSafeInteger(issuedAt + 15_000))
+          fail("Destination object authorization requires a finite safe time window")
+        return issuedAt
+      }
       const objects = await Objects.open(
         {
           orgID: plan.orgID,
@@ -291,6 +301,7 @@ export namespace OrganizationHandoffTarget {
             },
             range,
             input.signal,
+            authorityNow,
           ),
       })
       const root = await receiver.root()
@@ -619,6 +630,7 @@ export namespace OrganizationHandoffTarget {
         const input = snapshot(value),
           read = value.resources.handoffObject.bind(value.resources)
         const { plan, manifestHash, frozen } = await authorize(input, "preview-target")
+        const authorityObservedAt = performance.now()
         if (
           !plan.workspacePlan ||
           !Handoff.isNativeTargetMapping(plan.workspacePlan.mapping) ||
@@ -638,7 +650,7 @@ export namespace OrganizationHandoffTarget {
         const abort = new AbortController()
         input.signal = AbortSignal.any([input.signal, abort.signal])
         const promise = (async () => {
-          await receive(input, plan, manifestHash, frozen, read)
+          await receive(input, plan, manifestHash, frozen, read, authorityObservedAt)
           await reserve(plan, manifestHash, input.signal)
           const summary = await WorkspaceTarget.preview(plan, input.resources, input.signal)
           const difference = Handoff.Difference.strip().parse({
@@ -687,6 +699,7 @@ export namespace OrganizationHandoffTarget {
         const input = snapshot(value)
         const read = value.resources.handoffObject.bind(value.resources)
         const { plan, manifestHash, frozen } = await authorize(input, "prepare-target")
+        const authorityObservedAt = performance.now()
         if (
           closing.has(plan.handoffID) ||
           (await receipt(plan, "retired")) ||
@@ -708,7 +721,7 @@ export namespace OrganizationHandoffTarget {
         const abort = new AbortController()
         input.signal = AbortSignal.any([input.signal, abort.signal])
         const promise = (async () => {
-          const { root, aggregate } = await receive(input, plan, manifestHash, frozen, read)
+          const { root, aggregate } = await receive(input, plan, manifestHash, frozen, read, authorityObservedAt)
           if (frozen.fileClosureHash !== null)
             await WorkspaceTarget.run(plan, input.resources, input.signal, () =>
               Files.prepareTarget({
