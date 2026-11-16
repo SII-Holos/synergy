@@ -394,16 +394,21 @@ test("a lost established Home marker blocks startup before reconciling pending c
 test("a fresh interruption before durable owner publication never initializes signing and can reopen", async () => {
   const { AtomicFile } = await import("@ericsanchezok/synergy-util/atomic-file")
   const { spyOn } = await import("bun:test")
-  const home = await fs.mkdtemp(path.join(process.env.SYNERGY_TEST_ROOT!, "service-before-owner-"))
+  const home = await fs.realpath(await fs.mkdtemp(path.join(process.env.SYNERGY_TEST_ROOT!, "service-before-owner-")))
   const filename = path.join(home, ".synergy", "home-ownership.json")
   const write = AtomicFile.writeJsonAtomic
+  let interrupted = 0
   const failure = spyOn(AtomicFile, "writeJsonAtomic").mockImplementation(async (...args) => {
-    if (args[0] === filename) throw new Error("interrupted before owner publication")
+    if (args[0] === filename) {
+      interrupted++
+      throw new Error("interrupted before owner publication")
+    }
     return write(...args)
   })
   try {
     try {
       await expect(openOrganizationService({ home })).rejects.toThrow("before owner publication")
+      expect(interrupted).toBe(1)
     } finally {
       failure.mockRestore()
     }
