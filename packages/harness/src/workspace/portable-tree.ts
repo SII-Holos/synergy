@@ -14,7 +14,8 @@ export namespace WorkspacePortableTree {
     z.strictObject({
       version: z.literal(1),
       kind: z.literal("symlink"),
-      mode: Mode,
+      // Linux fixes ordinary symlink permissions at 0777: https://man7.org/linux/man-pages/man7/symlink.7.html
+      mode: z.literal(0o777),
       target: z.string().min(1).max(4096),
     }),
   ])
@@ -31,7 +32,7 @@ export namespace WorkspacePortableTree {
   export function reference(entry: Entry, chunks: Stream.Reference["chunks"]): Stream.Reference {
     const metadata = Metadata.parse(
       entry.kind === "symlink"
-        ? { version: 1, kind: entry.kind, mode: entry.mode, target: entry.target }
+        ? { version: 1, kind: entry.kind, mode: 0o777, target: entry.target }
         : { version: 1, kind: entry.kind, mode: entry.mode },
     )
     return {

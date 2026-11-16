@@ -54,7 +54,7 @@ export namespace NativeWorkspacePortableTree {
     const mode = Number(stat.mode & 0o777n)
     if (stat.isDirectory()) return { version: 1, kind: "directory", mode }
     if (stat.isFile()) return { version: 1, kind: "file", mode }
-    if (stat.isSymbolicLink()) return { version: 1, kind: "symlink", mode, target: await fs.readlink(file) }
+    if (stat.isSymbolicLink()) return { version: 1, kind: "symlink", mode: 0o777, target: await fs.readlink(file) }
     throw new Error("Portable Workspace cannot preserve a special file")
   }
   async function* content(file: string, expected: string, signal?: AbortSignal) {
@@ -300,6 +300,7 @@ export namespace NativeWorkspacePortableTree {
         else if (value.kind === "symlink") {
           await fs.symlink(value.target, file)
           if (owner) await fs.lchown(file, owner.uid, owner.gid)
+          if (process.platform === "darwin") await fs.lchmod(file, value.mode)
         } else {
           const handle = await fs.open(file, "wx", 0o600)
           try {

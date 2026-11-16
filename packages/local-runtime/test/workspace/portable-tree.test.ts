@@ -7,6 +7,60 @@ import { SessionTransferStream as Stream } from "@ericsanchezok/synergy-harness/
 import type { BlobStore } from "@ericsanchezok/synergy-harness/storage/blobs"
 import { NativeWorkspacePortableTree as Portable } from "../../src/workspace/portable-tree"
 
+test.skipIf(process.platform !== "darwin")(
+  "portable verification restores contained links with another native symlink permission mode",
+  async () => {
+    await using runtime = await testRuntime()
+    await using tmp = await tmpdir()
+    await runtime.run(async () => {
+      const source = path.join(tmp.path, "source")
+      await fs.mkdir(source)
+      await fs.chmod(source, 0o750)
+      const file = path.join(source, "file")
+      const link = path.join(source, "link")
+      await Bun.write(file, "contained original bytes")
+      await fs.chmod(file, 0o640)
+      await fs.symlink("file", link)
+      const defaultMode = (await fs.lstat(link)).mode & 0o777
+      const sourceMode = defaultMode ^ 0o200
+      await fs.lchmod(link, sourceMode)
+      expect((await fs.lstat(link)).mode & 0o777).toBe(sourceMode)
+      expect((await fs.stat(file)).mode & 0o777).toBe(0o640)
+      const objects = new Map<string, Uint8Array>()
+      const store: BlobStore = {
+        async put(hash, value) {
+          objects.set(hash, value.slice())
+        },
+        async get(hash, limit) {
+          const value = objects.get(hash)
+          if (!value || value.byteLength > limit) throw new Error("Missing bounded object")
+          return value.slice()
+        },
+      }
+      const captured = await Portable.capture({ root: source, directory: path.join(tmp.path, "capture"), store })
+      const destination = path.join(tmp.path, "destination")
+      await Portable.materialize({ root: destination, directory: path.join(tmp.path, "reader"), captured, store })
+      await Portable.verify({ root: destination, directory: path.join(tmp.path, "verify"), captured })
+      expect((await fs.lstat(link)).mode & 0o777).toBe(sourceMode)
+      expect((await fs.lstat(path.join(destination, "link"))).mode & 0o777).toBe(0o777)
+      expect((await fs.stat(destination)).mode & 0o777).toBe(0o750)
+      expect(await fs.readlink(path.join(destination, "link"))).toBe("file")
+      expect(await Bun.file(path.join(destination, "link")).text()).toBe("contained original bytes")
+      expect((await fs.stat(path.join(destination, "file"))).mode & 0o777).toBe(0o640)
+      await fs.chmod(path.join(destination, "file"), 0o600)
+      await expect(
+        Portable.verify({ root: destination, directory: path.join(tmp.path, "changed-mode"), captured }),
+      ).rejects.toThrow("changed after materialization")
+      await fs.chmod(path.join(destination, "file"), 0o640)
+      await fs.unlink(path.join(destination, "link"))
+      await fs.symlink("missing", path.join(destination, "link"))
+      await expect(
+        Portable.verify({ root: destination, directory: path.join(tmp.path, "changed-link"), captured }),
+      ).rejects.toThrow("changed after materialization")
+    })
+  },
+)
+
 test("paged native Workspace files restore after the source disappears without retaining a whole tree or file", async () => {
   await using runtime = await testRuntime()
   await using tmp = await tmpdir()
@@ -37,12 +91,14 @@ test("paged native Workspace files restore after the source disappears without r
     await fs.rm(source, { recursive: true })
     const destination = path.join(tmp.path, "destination")
     await Portable.materialize({ root: destination, directory: path.join(tmp.path, "reader"), captured, store })
+    await Portable.verify({ root: destination, directory: path.join(tmp.path, "verify"), captured })
     expect(await Bun.file(path.join(destination, "nested", "binary")).bytes()).toEqual(new Uint8Array(bytes))
     expect(await Bun.file(path.join(destination, ".ignored")).text()).toBe("actual ignored file")
     expect((await fs.stat(path.join(destination, "nested", "empty"))).isDirectory()).toBe(true)
     if (process.platform !== "win32") {
       expect((await fs.stat(path.join(destination, "nested", "binary"))).mode & 0o777).toBe(0o755)
       expect(await fs.readlink(path.join(destination, "link"))).toBe("nested/binary")
+      expect((await fs.lstat(path.join(destination, "link"))).mode & 0o777).toBe(0o777)
     }
     await expect(
       Portable.materialize({ root: destination, directory: path.join(tmp.path, "second"), captured, store }),

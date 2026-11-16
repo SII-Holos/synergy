@@ -152,6 +152,14 @@ test("late child cursors seek bounded metadata and retain their original directo
   expect(f.bodyReads()).toBe(0)
 })
 
+test("portable references canonicalize link permissions without changing the retained legacy header", () => {
+  const link: WorkspaceTree.Entry = { path: "link", kind: "symlink", mode: 0o555, target: "file" }
+  const reference = Portable.reference(link, empty())
+  expect(reference.metadata).toEqual({ version: 1, kind: "symlink", mode: 0o777, target: "file" })
+  expect(link.mode).toBe(0o555)
+  expect(Portable.Metadata.safeParse({ ...reference.metadata, mode: 0o555 }).success).toBe(false)
+})
+
 test.each(["paged", "legacy"] as const)(
   "%s Workspace callbacks forward child cursors and retire their iterators",
   async (kind) => {

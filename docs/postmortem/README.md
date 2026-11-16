@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0228](0228-portable-links-retained-host-specific-permissions.md)
+
 - [0227](0227-cross-os-receipt-polling-lost-original-target-rejection.md)
 
 - [0226](0226-cross-os-bootstrap-counted-peer-runner-allocation.md)
