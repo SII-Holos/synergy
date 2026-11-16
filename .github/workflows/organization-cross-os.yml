@@ -70,7 +70,7 @@ jobs:
       matrix:
         include:
           - role: darwin
-            runner: macos-15
+            runner: macos-26
           - role: linux
             runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.runner }}

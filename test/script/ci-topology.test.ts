@@ -12,7 +12,12 @@ interface Job {
   if?: string
   needs?: string[]
   "timeout-minutes"?: number | string
-  strategy?: { "max-parallel": number; "fail-fast": boolean }
+  "runs-on"?: string
+  strategy?: {
+    "max-parallel": number
+    "fail-fast": boolean
+    matrix?: { include?: Array<{ role: string; runner: string }> }
+  }
   steps?: { name?: string; if?: string | boolean; run?: string; uses?: string; with?: Record<string, unknown> }[]
 }
 const workflow = Bun.YAML.parse(await readFile(path.join(root, ".github/workflows/ci.yml"), "utf8")) as {
@@ -170,6 +175,11 @@ describe("required CI topology", () => {
       await readFile(path.join(root, ".github/workflows/organization-cross-os.yml"), "utf8"),
     ) as { jobs: Record<string, Job> }
     const peer = cross.jobs.peer!
+    expect(workflow.jobs.macos?.["runs-on"]).toBe("macos-26")
+    expect(peer.strategy?.matrix?.include).toEqual([
+      { role: "darwin", runner: workflow.jobs.macos?.["runs-on"] },
+      { role: "linux", runner: "ubuntu-24.04-arm" },
+    ])
     const steps = peer.steps!
     const publish = steps.findIndex((step) => step.with?.path === "${{ env.SYNERGY_CROSS_OS_STATE }}/public.json")
     const ready = steps.findIndex((step) => step.run?.includes("cross-os-transport.ts peer-ready"))
