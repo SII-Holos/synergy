@@ -63,6 +63,8 @@ For work across personal computers, connect to their Synergy services and use ap
 
 Enrolled organization Runtimes can explicitly hand off a paused conversation with separate Workspace and Environment choices. A return can keep shared cloud files and execution or download a new private native copy with an explicit execution choice. Activation stays paused; continuing work requires a separate authorized action. See [organization handoff](docs/architecture/organization.md#handoff-coordination-facts).
 
+Organization backup retains validated shared history after sharing is stopped, while current Session visibility remains private. Existing Service Homes advance their reader through explicit native maintenance; recovery preserves original signed history and requires its own native publication. See [organization upgrade and recovery](docs/operations/organization-service.md#upgrade-and-recovery).
+
 The separation also provides an integration point for additional Environment providers. A cloud Runtime driving arbitrary native laptops through one built-in coordinator is not a packaged deployment mode. Native Browser and Computer Use remain Desktop-local.
 
 ## Work that continues

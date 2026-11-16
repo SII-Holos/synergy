@@ -45,6 +45,7 @@ export namespace OrganizationCurrentAuthority {
           directory: string
           expected: StorageCheckpoint.Manifest
           resources?: Parameters<typeof Native.verify>[0]["resources"]
+          archive: Native.ArchiveInspection
         }
         keys: VaultKeyProvider
         signal?: AbortSignal
@@ -74,6 +75,7 @@ export namespace OrganizationCurrentAuthority {
         directory: string
         expected: StorageCheckpoint.Manifest
         resources?: Parameters<typeof Native.verify>[0]["resources"]
+        archive: Native.ArchiveInspection
       }
       keys: VaultKeyProvider
       signal?: AbortSignal
@@ -94,6 +96,7 @@ export namespace OrganizationCurrentAuthority {
         native: {
           directory: captured.native.directory,
           expected: StorageCheckpoint.Manifest.parse(captured.native.expected),
+          archive: captured.native.archive,
           resources: captured.native.resources && {
             ...captured.native.resources,
             expected: StorageCheckpoint.Manifest.parse(captured.native.resources.expected),
@@ -169,14 +172,21 @@ export namespace OrganizationCurrentAuthority {
     const after = input.after && AuthorityJournal.Checkpoint.parse(structuredClone(input.after))
     const signal = input.signal
     const provider = input.keys
-    const keys = Object.freeze({ current: provider.current.bind(provider), resolve: provider.resolve.bind(provider) })
+    const keys = Object.freeze({
+      current: provider.current.bind(provider),
+      resolve: provider.resolve.bind(provider),
+    })
     const runtime = RuntimeContext.current()
     const handle = Storage.current()
     const store = handle.store
     const configuration = hash(store.options)
     const artifacts = handle.artifactDirectory
     const objects = handle.artifactObjects
-    const ports = objects && { blobs: objects.blobs, writerID: objects.writerID, now: objects.now }
+    const ports = objects && {
+      blobs: objects.blobs,
+      writerID: objects.writerID,
+      now: objects.now,
+    }
     if (!path.isAbsolute(directory)) fail("capture destination must be absolute")
     const assertOwner = () => {
       signal?.throwIfAborted()
@@ -241,7 +251,12 @@ export namespace OrganizationCurrentAuthority {
                 fail("incomplete native facets require their original preparation owner")
             }
             const archive = records
-              ? await capture.reopenSourcePreparationArchive({ lease, directory: recordsDirectory, keys, signal })
+              ? await capture.reopenSourcePreparationArchive({
+                  lease,
+                  directory: recordsDirectory,
+                  keys,
+                  signal,
+                })
               : await capture.exportArchive({
                   directory: path.join(directory, "records"),
                   archiveID: crypto.randomUUID(),
@@ -304,16 +319,22 @@ export namespace OrganizationCurrentAuthority {
                   Native.serviceNamespaceID(fixed.identity) !== archive.namespace.namespaceID
                 )
                   fail("native settings belong to another namespace")
-                return hash(fixed.startup.settings.clientAuthentication.clients)
+                return {
+                  clientDefinitionsHash: hash(fixed.startup.settings.clientAuthentication.clients),
+                  archive: Native.archiveInspection(fixed),
+                }
               } finally {
                 fixed.rawConfiguration?.fill(0)
               }
             }
             try {
-              const clientDefinitionsHash = await verify()
+              const originalArchive = await verify()
+              const clientDefinitionsHash = originalArchive.clientDefinitionsHash
               await NativeNamespaceIdentity.verify(proof)
               assertOwner()
-              const source: Source = Object.freeze({ kind: "organization-current-authority" })
+              const source: Source = Object.freeze({
+                kind: "organization-current-authority",
+              })
               sources.set(source, {
                 info: Info.parse({
                   checkpoint,
@@ -326,8 +347,16 @@ export namespace OrganizationCurrentAuthority {
                 assert,
                 lease,
                 captured: {
-                  namespace: { directory: archive.directory, expected: archive.namespace },
-                  native: { directory: native.directory, expected: native.namespace, resources: native.resources },
+                  namespace: {
+                    directory: archive.directory,
+                    expected: archive.namespace,
+                  },
+                  native: {
+                    directory: native.directory,
+                    expected: native.namespace,
+                    resources: native.resources,
+                    archive: originalArchive.archive,
+                  },
                   keys,
                   signal,
                   assertLive() {
@@ -354,7 +383,13 @@ export namespace OrganizationCurrentAuthority {
                   return work
                 },
                 async verify() {
-                  if ((await verify()) !== clientDefinitionsHash) fail("native client definitions changed")
+                  const current = await verify()
+                  if (
+                    current.clientDefinitionsHash !== clientDefinitionsHash ||
+                    hash(Native.inspectArchive(current.archive)) !==
+                      hash(Native.inspectArchive(originalArchive.archive))
+                  )
+                    fail("native client definitions or original archive changed")
                 },
               })
               const outcome = await body(source).then(

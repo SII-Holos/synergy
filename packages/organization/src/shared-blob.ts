@@ -128,6 +128,7 @@ export namespace OrganizationSharedBlobs {
       first(group: string[], value: unknown): boolean
       binary(key: string[], maximum: number): Promise<Uint8Array>
     },
+    generations: ReadonlySet<string>,
   ) {
     const equal = (left: unknown, right: unknown) => JSON.stringify(left) === JSON.stringify(right)
     function invalid(): never {
@@ -142,7 +143,6 @@ export namespace OrganizationSharedBlobs {
       if (String(generation) !== rawGeneration) invalid()
       const key = Keys.sharedBlob(sessionID, generation, Protocol.Digest.parse(hash))
       const manifest = source.read(Record.SharedBlob, key)
-      const state = source.read(Record.SharedState, Keys.sharedState(sessionID))
       if (
         manifest.sessionID !== sessionID ||
         manifest.shareGeneration !== generation ||
@@ -150,9 +150,7 @@ export namespace OrganizationSharedBlobs {
         !manifest.complete ||
         manifest.nextOffset !== manifest.bytes ||
         manifest.receivedBytes !== manifest.bytes ||
-        state.sessionID !== sessionID ||
-        state.shareGeneration !== generation ||
-        state.syncState !== "synced"
+        !generations.has(JSON.stringify([sessionID, generation]))
       )
         invalid()
       if (!source.first(["shared-blob", ...key], manifest)) continue

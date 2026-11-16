@@ -20,7 +20,7 @@ import { prepareMemberHome } from "../../src/home"
 import { enrollMemberRuntime } from "../../src/enrollment"
 import type { openMemberRuntime } from "../../src/runtime"
 import { OrganizationExecutionLeases } from "../../src/execution-leases"
-import { completedHostedTask } from "./hosted-task"
+import { completedHostedTask, failedHostedTask } from "./hosted-task"
 import { createHandoffCompletion } from "./handoff-completion"
 
 type Target = Parameters<typeof completedHostedTask>[0] & {
@@ -28,7 +28,11 @@ type Target = Parameters<typeof completedHostedTask>[0] & {
   workspaceCoordinator: WorkspaceCoordinator
 }
 
-export async function memberTaskToHosted(selected: Target, openMember: typeof openMemberRuntime) {
+export async function memberTaskToHosted(
+  selected: Target,
+  openMember: typeof openMemberRuntime,
+  outcome: "completed" | "failed" = "completed",
+) {
   const f = selected.service
   const options = { headers: f.headers, throwOnError: true as const }
   const home = await prepareMemberHome({
@@ -81,7 +85,7 @@ export async function memberTaskToHosted(selected: Target, openMember: typeof op
       expect(workers.minIdle).toBeGreaterThan(0)
       expect(workers.ready).toBeGreaterThanOrEqual(workers.minIdle)
     })
-    task = await completedHostedTask({ service: f, registration, runtime })
+    task = await (outcome === "failed" ? failedHostedTask : completedHostedTask)({ service: f, registration, runtime })
     const original = task
     const baseline = original.calls.length
     const owner = { kind: "session" as const, scopeID: original.info.scope.id, sessionID: original.sessionID }
@@ -91,11 +95,16 @@ export async function memberTaskToHosted(selected: Target, openMember: typeof op
     const originalRun = await runtime.run(() => RolloutLedger.getRun(owner, original.nativeRelease.rootID))
     const originalCalls = await runtime.run(() => RolloutLedger.calls(owner, original.nativeRelease.rootID))
     expect(originalRoot.info.role).toBe("user")
-    expect(originalRun).toMatchObject({
-      id: original.accepted.effect.messageID,
-      status: "completed",
-      recording: "complete",
-    })
+    if (outcome === "completed")
+      expect(originalRun).toMatchObject({
+        id: original.accepted.effect.messageID,
+        status: "completed",
+        recording: "complete",
+      })
+    else {
+      expect(originalRun).toMatchObject({ id: original.accepted.effect.messageID, status: "failed" })
+      expect(originalRun.recording).not.toBe("failed")
+    }
     expect(await runtime.run(() => OrganizationExecutionLeases.pendingForCapture())).toBe(false)
     const inspected = Handoff.Options.parse(
       (
@@ -230,6 +239,7 @@ export async function memberTaskToHosted(selected: Target, openMember: typeof op
     expect(targetEpoch).toMatchObject({ role: "target", phase: "activated" })
     return {
       ...original,
+      target: { ...original.target, runtimeID: selected.registration.runtimeID },
       info,
       handoffHistory: {
         handoffID: prepared.handoffID,

@@ -22,6 +22,8 @@ import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context
 import { ResourceHost } from "@ericsanchezok/synergy-harness/resources/host"
 import { AgentTurn } from "@ericsanchezok/synergy-harness/session/agent-turn"
 import { ModelExecution } from "@ericsanchezok/synergy-harness/execution/model-execution"
+import { ProviderRequestSource } from "@ericsanchezok/synergy-harness/provider/request-source"
+import { ObservabilityRedaction } from "@ericsanchezok/synergy-harness/observability/redaction"
 import { SnapshotMaintenance } from "@ericsanchezok/synergy-harness/session/snapshot-maintenance"
 import { StorageCheckpoint } from "@ericsanchezok/synergy-harness/storage/checkpoint"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
@@ -30,9 +32,13 @@ import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
 import { TransactionalStore } from "@ericsanchezok/synergy-harness/storage/transactional-store"
 import { testRuntime } from "@ericsanchezok/synergy-harness/test/support/runtime"
-import { OrganizationRuntimeProtocol as Protocol } from "@ericsanchezok/synergy-organization-protocol"
+import {
+  OrganizationProtocol,
+  OrganizationRuntimeProtocol as Protocol,
+} from "@ericsanchezok/synergy-organization-protocol"
 import { OrganizationHostedRecovery, openHostedRecovery, openHostedSourceRetirement } from "../../src/backup/recovery"
 import { OrganizationRuntimeNative as Native } from "../../src/backup/native"
+import { OrganizationKnowledgeNative as KnowledgeNative } from "../../src/backup/knowledge"
 import { prepareHostedHome, readHostedHome, runtimeIdentityDigest, NativeHomeReaderContract } from "../../src/home"
 import { enrollHostedRuntime } from "../../src/enrollment"
 import { readRuntimeRegistration } from "../../src/registration"
@@ -44,6 +50,7 @@ import {
   completedHostedTask,
   failedHostedTask,
   continueRestoredHostedTask,
+  verifyRecoveredHandoffTaskHistory,
   queuedHostedTask,
   pausedHostedTask,
   appendCompletedHostedTask,
@@ -52,6 +59,7 @@ import {
 } from "../support/hosted-task"
 import { openHostedRuntime, openMemberRuntime } from "../../src/runtime"
 import { memberTaskToHosted } from "../support/member-handoff-task"
+import { failedKnowledgeActivation } from "../support/failed-knowledge-activation"
 import {
   OrganizationBackupCohort as Cohort,
   OrganizationRecoveryArchive as Archive,
@@ -71,6 +79,8 @@ import { terminalHostedCancel, settledHostedQuestion } from "../support/hosted-c
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Question } from "@ericsanchezok/synergy-local-runtime/question"
 import { recoveryContinuationAuthority } from "../support/recovery-continuation-authority"
+import { shareAckUnshareHostedTask } from "../support/hosted-shared-history"
+import { captureHostedRepeatHistory } from "../support/hosted-repeat-history"
 
 type CloudResources = Awaited<ReturnType<typeof hostedCloudResourceFixture>>
 
@@ -130,6 +140,77 @@ async function openNativeFixture(
     throw new Error("The original Hosted fixture did not register its selected resource observations")
   }
   return runtime
+}
+
+function createHostedRecoveryCapture(
+  runtime: { run<T>(body: () => Promise<T>): Promise<T> },
+  directory: string,
+  captureActor = actor,
+) {
+  let lease: RuntimeMaintenance.Lease | undefined
+  const releaseCapture = async () => {
+    const active = lease
+    if (!active) return
+    await runtime.run(async () => {
+      if (!(await RuntimeMaintenance.retirement(active.maintenanceID))) await RuntimeMaintenance.release(active)
+    })
+    lease = undefined
+  }
+  return {
+    releaseCapture,
+    capture(
+      signal?: AbortSignal,
+      before?: () => Promise<void>,
+      after?: (input: {
+        archive: SnapshotMaintenance.ArchiveEvidence
+        native: Awaited<ReturnType<typeof Native.capture>>
+        lease: RuntimeMaintenance.Lease
+        segment: Awaited<
+          ReturnType<Parameters<Parameters<typeof SnapshotMaintenance.withCapture>[0]>[0]["exportSnapshots"]>
+        >
+      }) => Promise<void>,
+    ) {
+      return runtime.run(async () => {
+        lease = await RuntimeMaintenance.begin({
+          purpose: "organization-backup",
+          requestID: captureActor.requestID,
+          actor: captureActor,
+        })
+        await RuntimeMaintenance.freeze(lease, await RuntimeMaintenance.drain(lease))
+        return RuntimeMaintenance.withFrozen(lease, () =>
+          SnapshotMaintenance.withCapture(async (capture) => {
+            const archive = await capture.exportArchive({
+              directory: path.join(directory, "records"),
+              archiveID: "hosted",
+              namespaceID: "hosted",
+              buildVersion: "fixture",
+              keys,
+              protect: () => true,
+            })
+            const evidence = await capture.validateArchive(archive)
+            await before?.()
+            const native = await Native.capture({
+              archive: evidence,
+              lease: lease!,
+              directory: path.join(directory, "native"),
+              keys,
+              signal,
+            })
+            const held = lease
+            if (!held) throw new Error("Missing actual source maintenance")
+            if (after) {
+              const segment = await capture.exportSnapshots({
+                archive,
+                directory: path.join(directory, "snapshot-segment"),
+              })
+              await after({ archive: evidence, native, lease: held, segment })
+            }
+            return { archive, native }
+          }),
+        )
+      })
+    },
+  }
 }
 
 async function source(
@@ -237,16 +318,8 @@ async function source(
         clearTimeout(timer)
       }
     }
-    let lease: RuntimeMaintenance.Lease | undefined
+    const { capture, releaseCapture } = createHostedRecoveryCapture(runtime, service.root)
     let closed = false
-    const releaseCapture = async () => {
-      const active = lease
-      if (!active) return
-      await runtime.run(async () => {
-        if (!(await RuntimeMaintenance.retirement(active.maintenanceID))) await RuntimeMaintenance.release(active)
-      })
-      lease = undefined
-    }
     const close = async () => {
       if (closed) return
       await releaseCapture()
@@ -282,54 +355,7 @@ async function source(
       },
       close,
       releaseCapture,
-      capture(
-        signal?: AbortSignal,
-        before?: () => Promise<void>,
-        after?: (input: {
-          archive: SnapshotMaintenance.ArchiveEvidence
-          native: Awaited<ReturnType<typeof Native.capture>>
-          lease: RuntimeMaintenance.Lease
-          segment: Awaited<
-            ReturnType<Parameters<Parameters<typeof SnapshotMaintenance.withCapture>[0]>[0]["exportSnapshots"]>
-          >
-        }) => Promise<void>,
-      ) {
-        return runtime.run(async () => {
-          lease = await RuntimeMaintenance.begin({ purpose: "organization-backup", requestID: actor.requestID, actor })
-          await RuntimeMaintenance.freeze(lease, await RuntimeMaintenance.drain(lease))
-          return RuntimeMaintenance.withFrozen(lease, () =>
-            SnapshotMaintenance.withCapture(async (capture) => {
-              const archive = await capture.exportArchive({
-                directory: path.join(service.root, "records"),
-                archiveID: "hosted",
-                namespaceID: "hosted",
-                buildVersion: "fixture",
-                keys,
-                protect: () => true,
-              })
-              const evidence = await capture.validateArchive(archive)
-              await before?.()
-              const native = await Native.capture({
-                archive: evidence,
-                lease: lease!,
-                directory: path.join(service.root, "native"),
-                keys,
-                signal,
-              })
-              const held = lease
-              if (!held) throw new Error("Missing actual source maintenance")
-              if (after) {
-                const segment = await capture.exportSnapshots({
-                  archive,
-                  directory: path.join(service.root, "snapshot-segment"),
-                })
-                await after({ archive: evidence, native, lease: held, segment })
-              }
-              return { archive, native }
-            }),
-          )
-        })
-      },
+      capture,
       async [Symbol.asyncDispose]() {
         await close()
         await service[Symbol.asyncDispose]()
@@ -815,19 +841,122 @@ async function rejectChangedQueuedTargetInbox(
   throw failure.error
 }
 
+type HostedRecoveryHistory =
+  | "queued-continue"
+  | "terminal-cancel"
+  | "settled-question"
+  | "failed-root-continue"
+  | "paused-queued-capture"
+  | "paused-queued-recovery"
+  | "member-handoff"
+  | "member-handoff-failed-root"
+  | "failed-knowledge-activation"
+  | "failed-knowledge-nonempty"
+  | "share-ack-unshare"
+  | "paused-queued-repeat"
+
+type HostedRecoverySource = Pick<
+  Awaited<ReturnType<typeof source>>,
+  "home" | "registration" | "service" | "runtime" | "workspaceCoordinator" | "close" | "releaseCapture" | "capture"
+>
+type HostedRecoveryCohort = { directory: string; report: Awaited<ReturnType<typeof Cohort.capture>> }
+type ReopenedHostedRecovery = {
+  runtime: HostedRecoverySource["runtime"]
+  service: Awaited<ReturnType<typeof openOrganizationService>>
+  home: Awaited<ReturnType<typeof readHostedHome>>
+  registration: Protocol.HostedRegistrationRecord
+  installationID: string
+  headers?: Awaited<ReturnType<typeof fixture>>["headers"]
+  cohort?: HostedRecoveryCohort
+  sourceNamespace: { directory: string; expected: StorageCheckpoint.Manifest }
+  stopListener(): Promise<void>
+}
+
+function observeRepeatedHostedRecoveryFailure(
+  stage: "provider-preparation" | "recovery",
+  error: unknown,
+  context?: { sourceRuntimeMatches: boolean; sourceHomeMatches: boolean; runtimeAvailable: boolean },
+) {
+  try {
+    const seen = new Set<object>()
+    const field = (value: unknown, name: string, inherited = false): unknown => {
+      try {
+        let current = value
+        for (let index = 0; index < (inherited ? 4 : 1); index++) {
+          if (typeof current !== "object" || current === null) return
+          const descriptor = Object.getOwnPropertyDescriptor(current, name)
+          if (descriptor) return "value" in descriptor ? descriptor.value : undefined
+          current = Object.getPrototypeOf(current)
+        }
+      } catch {}
+    }
+    const text = (value: string) => {
+      const bounded = value.slice(0, 2048)
+      const input = value.length > 2048 ? bounded.replace(/\S+$/, "[truncated-token]") : bounded
+      return ObservabilityRedaction.text(input, Number.POSITIVE_INFINITY)
+        .replace(/https?:\/\/[^\s"'<>]+/gi, "[url]")
+        .replace(/(?:\/[A-Za-z._~-][^\s"'<>]*|\b[A-Za-z]:\\[^\s"'<>]+)/g, "[path]")
+        .replace(/\b(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?\b/g, "[ip]")
+        .replace(/\[[0-9a-f:.]+(?:%[a-z0-9_.-]+)?\](?::\d+)?/gi, "[ip]")
+        .replace(/\b(?:[0-9a-f]{0,4}:){2,}[0-9a-f:.]+(?:%[a-z0-9_.-]+)?/gi, "[ip]")
+        .replace(/::[0-9a-f][0-9a-f:.]*(?:%[a-z0-9_.-]+)?/gi, "[ip]")
+        .replace(/\b(?:[a-z0-9-]+\.)+[a-z][a-z0-9-]{1,62}\b/gi, "[hostname]")
+        .replace(/\b[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\b/gi, "[identity]")
+        .replace(/\b[0-9a-f]{64}\b/gi, "[hash]")
+        .replace(/\b(?:ses|msg|prt|org|prj|scp|run|req|grt|tkt|acc|env|rtm)_[A-Za-z0-9_-]+\b/g, "[identity]")
+        .slice(0, 512)
+    }
+    const describe = (value: unknown, depth = 0): unknown => {
+      if (value === null || typeof value !== "object")
+        return {
+          thrownType: value === null ? "null" : typeof value,
+          ...(typeof value === "string" ? { message: text(value) } : {}),
+        }
+      if (depth >= 8 || seen.size >= 32) return { truncated: true }
+      if (seen.has(value)) return { repeated: true }
+      seen.add(value)
+      const name = field(value, "name", true)
+      const data = field(value, "data")
+      const message = field(value, "message") ?? field(data, "message")
+      const code = OrganizationProtocol.ErrorCode.safeParse(field(value, "code") ?? field(data, "code"))
+      const outcome = field(value, "outcome") ?? field(data, "outcome")
+      const result: Record<string, unknown> = {
+        name: typeof name === "string" ? text(name).slice(0, 128) : "UnknownError",
+        ...(typeof message === "string" ? { message: text(message) } : {}),
+        ...(code.success ? { code: code.data } : {}),
+        ...(outcome === "not_dispatched" || outcome === "rejected" || outcome === "unknown" ? { outcome } : {}),
+      }
+      for (const key of ["cause", "error", "suppressed"]) {
+        const nested = field(value, key)
+        if (nested !== undefined) result[key] = describe(nested, depth + 1)
+      }
+      const errors = field(value, "errors")
+      if (Array.isArray(errors)) {
+        const length = field(errors, "length")
+        if (typeof length === "number") {
+          const children: unknown[] = []
+          for (let index = 0; index < Math.min(length, 8); index++)
+            children.push(describe(field(errors, String(index)), depth + 1))
+          result.errors = children
+          if (length > 8) result.errorsTruncated = length - 8
+        }
+      }
+      return result
+    }
+    console.error("R9_SECOND_HOSTED_ORIGINAL_FAILURE", JSON.stringify({ stage, ...context, error: describe(error) }))
+  } catch {
+    try {
+      console.error("R9_SECOND_HOSTED_ORIGINAL_FAILURE", JSON.stringify({ stage, observation: "unavailable" }))
+    } catch {}
+  }
+}
+
 async function recoverHostedWriter(
   withTask = false,
   late?: "session" | "input",
   artifact?: "published" | "late",
   cloud?: CloudResources,
-  history?:
-    | "queued-continue"
-    | "terminal-cancel"
-    | "settled-question"
-    | "failed-root-continue"
-    | "paused-queued-capture"
-    | "paused-queued-recovery"
-    | "member-handoff",
+  history?: HostedRecoveryHistory,
   queuedFault?: QueuedTargetInboxFault,
 ) {
   const started = performance.now()
@@ -848,184 +977,204 @@ async function recoverHostedWriter(
   using sourceScopeEnd = { [Symbol.dispose]: () => phase("source-scope-end") }
   await using selected = await source(true, withTask, {
     warmWorker: withTask,
-    ...(history === "member-handoff" ? { handoff: true as const } : {}),
+    ...(history === "member-handoff" || history === "member-handoff-failed-root" ? { handoff: true as const } : {}),
     ...(cloud ? { cloud: cloud.sourceCloud } : {}),
   })
   using sourceDisposal = { [Symbol.dispose]: () => phase("source-disposal-enter") }
   phase("source-ready")
+  using preparationObservation =
+    history === "paused-queued-repeat"
+      ? (() => {
+          const expected = selected.runtime.run(() => RuntimeContext.current())
+          const prepare = ProviderRequestSource.prepare
+          return spyOn(ProviderRequestSource, "prepare").mockImplementation(async (...args) => {
+            const actual = RuntimeContext.tryCurrent()
+            try {
+              return await prepare(...args)
+            } catch (error) {
+              if (error instanceof ProviderRequestSource.PreparationError)
+                observeRepeatedHostedRecoveryFailure("provider-preparation", error, {
+                  sourceRuntimeMatches: actual === expected,
+                  sourceHomeMatches: actual?.host.home === expected.host.home,
+                  runtimeAvailable: actual !== undefined,
+                })
+              throw error
+            }
+          })
+        })()
+      : undefined
   using taskScopeEnd = { [Symbol.dispose]: () => phase("task-scope-end") }
   const handedOff =
-    withTask && history === "member-handoff" ? await memberTaskToHosted(selected, openNativeFixture) : undefined
+    withTask && (history === "member-handoff" || history === "member-handoff-failed-root")
+      ? await memberTaskToHosted(
+          selected,
+          openNativeFixture,
+          history === "member-handoff-failed-root" ? "failed" : "completed",
+        )
+      : undefined
   await using task = withTask
     ? (handedOff ??
       (history === "failed-root-continue" ? await failedHostedTask(selected) : await completedHostedTask(selected)))
     : undefined
   using taskDisposal = { [Symbol.dispose]: () => phase("task-disposal-enter") }
   phase("task-ready")
-  const artifactHistory = artifact && task ? await publishArtifactHistory(selected.service, task) : undefined
-  if (task && !late)
-    await verifyClosedTaskHistory(selected, task, history === "failed-root-continue" ? "failed" : "completed")
-  if (history && (!task || late || artifact || cloud))
-    throw new Error("Closed control history requires its original plain task fixture")
-  const queuedHistory =
-    history === "queued-continue" && task
-      ? await continueQueuedHostedTask(selected, task, "before-recovery-queued-input")
-      : undefined
-  const terminalCancel = history === "terminal-cancel" && task ? await terminalHostedCancel(selected, task) : undefined
-  const settledQuestion =
-    history === "settled-question" && task ? await settledHostedQuestion(selected, task) : undefined
-  const queuedCapture =
-    (history === "paused-queued-capture" || history === "paused-queued-recovery") && task
-      ? await queuedHostedTask(selected, task, "before-capture-saved-queued-input")
-      : undefined
-  const originalCalls = task?.calls.length ?? 0
-  if (cloud && !task) throw new Error("Selected cloud recovery requires its original completed Hosted task")
-  const cloudSelection = cloud && task ? await cloud.select(selected.service, task) : undefined
-  if (cloud && task) {
-    expect(task.calls).toHaveLength(originalCalls)
-    expect(await selected.runtime.run(() => SessionManager.isRunning(task.sessionID))).toBe(false)
-  }
-  const originalInput = task
-    ? await selected.runtime.run(() =>
-        MessageV2.get({ sessionID: task.sessionID, messageID: task.accepted.effect.messageID }),
+  const runRound = async (
+    selected: HostedRecoverySource,
+    history?: HostedRecoveryHistory,
+    round = 1,
+    previous?: HostedRecoveryCohort,
+    after?: (reopened: ReopenedHostedRecovery) => Promise<void>,
+  ) => {
+    const roundID = (value: string) => (round === 1 ? value : `${value}-second`)
+    let secondCohort: HostedRecoveryCohort | undefined
+    let sourceNamespace: ReopenedHostedRecovery["sourceNamespace"] | undefined
+    let ordinaryHeaders: ReopenedHostedRecovery["headers"]
+    const artifactHistory = artifact && task ? await publishArtifactHistory(selected.service, task) : undefined
+    if (task && !late && round === 1)
+      await verifyClosedTaskHistory(
+        selected,
+        task,
+        history === "failed-root-continue" || history === "member-handoff-failed-root" ? "failed" : "completed",
       )
-    : undefined
-  let retiredReference: NamespaceRetirement.Reference | undefined
-  let originalTarget:
-    | {
-        installation: HomeRestoration.Target
-        checkpoint: ReturnType<typeof OrganizationRecoveryAuthority.describe>["checkpoint"]
-      }
-    | undefined
-  let hostedMaterial: { native: StorageCheckpoint.Manifest; snapshot: StorageCheckpoint.Manifest } | undefined
-  let queuedFacts: Parameters<typeof OrganizationRecovery.reconstruct>[0]["queued"]
-  let queuedEntries: OrganizationExecutionLeases.Entry[] | undefined
-  const bytes = Buffer.from("actual Hosted private history bytes")
-  await selected.runtime.run(() => Storage.writeBinary(["recovery", "proof"], bytes))
-  const directory = path.join(selected.service.root, "retirement-original")
-  const report = await Cohort.capture({
-    service: Cohort.service(selected.service.service.maintenance),
-    async resolve() {
-      return Cohort.hosted(selected.runtime, { native: Native.capture })
-    },
-    directory,
-    archiveID: "hosted-retirement-original",
-    buildVersion: "fixture",
-    keys,
-    actor,
-  })
-  if (queuedCapture) {
-    expect(report.namespaces).toBe(2)
-    expect(report.namespaceCheckpointsComplete).toBe(true)
-    await queuedCapture.verifyUnchanged()
-    expect((await selected.runtime.run(() => RuntimeMaintenance.status()))?.phase).toBe("released")
-    expect((await selected.service.service.maintenance.run(() => RuntimeMaintenance.status()))?.phase).toBe("released")
-    if (history === "paused-queued-capture") return
-  }
-  if (history === "member-handoff") expect(report.namespaces).toBe(2)
-  const opened = path.join(selected.service.root, "retirement-original-open")
-  await Archive.open({ directory, outputDirectory: opened, keys })
-  const inventory = Cohort.NamespaceInventory.parse(
-    await Bun.file(path.join(opened, "namespaces", "0000000000000000", "namespace.json")).json(),
-  )
-  await using target = await openOrganizationRecovery({
-    home: path.join(await fs.realpath(selected.service.root), "retirement-service-target"),
-    ...(cloud ? { cloud: cloud.targetCloud } : {}),
-  })
-  if (!inventory.native) throw new Error("Missing actual original service native material")
-  const serviceBase = path.join(opened, "namespaces", "0000000000000000")
-  const serviceResources = inventory.resources && {
-    directory: path.join(serviceBase, "resources"),
-    expected: inventory.resources,
-    namespaceDirectory: path.join(serviceBase, "records"),
-  }
-  if (cloud) {
-    expect(report).toMatchObject({ namespaceCheckpointsComplete: true, namespaces: 2 })
-    expect(serviceResources).toBeDefined()
-    const hostedInventory = Cohort.NamespaceInventory.parse(
-      await Bun.file(path.join(opened, "namespaces", "0000000000000001", "namespace.json")).json(),
-    )
-    expect(hostedInventory.identity).toMatchObject({ kind: "hosted", runtimeID: selected.registration.runtimeID })
-    expect(hostedInventory.hostedNative).toBeDefined()
-    expect(hostedInventory.segment.namespace).toBeDefined()
-  }
-  const request = OrganizationServiceNative.installationRequest({
-    restoreID: "hosted-retirement-original-target",
-    source: inventory.namespace,
-    expected: inventory.native,
-    ...(inventory.resources ? { resources: inventory.resources } : {}),
-    snapshot: inventory.segment.namespace,
-    cohort: {
-      archiveID: report.archiveID,
-      pagesHash: report.pagesHash,
-      ordinal: inventory.ordinal,
-      source: { orgID: inventory.identity.orgID, deploymentIncarnation: inventory.identity.deploymentIncarnation },
-    },
-  })
-  const original = await target.run(async () => {
-    const installation = await HomeRestoration.begin(request)
-    return HomeRestoration.withTarget(installation, (permit) =>
-      OrganizationServiceNative.withInstalled(
-        {
-          permit,
-          request,
-          directory: path.join(serviceBase, "native"),
-          expected: inventory.native!,
-          source: inventory.namespace,
-          ...(serviceResources ? { resources: serviceResources } : {}),
-          keys,
+    if (history && (!task || late || artifact || cloud))
+      throw new Error("Closed control history requires its original plain task fixture")
+    const queuedHistory =
+      history === "queued-continue" && task
+        ? await continueQueuedHostedTask(selected, task, "before-recovery-queued-input")
+        : undefined
+    const terminalCancel =
+      history === "terminal-cancel" && task ? await terminalHostedCancel(selected, task) : undefined
+    const settledQuestion =
+      history === "settled-question" && task ? await settledHostedQuestion(selected, task) : undefined
+    const queuedCapture =
+      (history === "paused-queued-capture" || history === "paused-queued-recovery") && task
+        ? await queuedHostedTask(selected, task, "before-capture-saved-queued-input")
+        : undefined
+    const beforeSharingCalls = task?.calls.length ?? 0
+    const sharedHistory =
+      history === "share-ack-unshare" && task ? await shareAckUnshareHostedTask(selected, task) : undefined
+    if (sharedHistory && task) {
+      expect(task.calls).toHaveLength(beforeSharingCalls)
+      console.error(
+        "HOSTED_UNSHARED_HISTORY_READY",
+        JSON.stringify({
+          sharedGeneration: sharedHistory.shared.shareGeneration,
+          privateGeneration: sharedHistory.unshared.shareGeneration,
+          privateState: sharedHistory.unshared.syncState,
+          watermark: sharedHistory.watermark,
+          ackNextSeq: sharedHistory.acknowledgement.ack.nextSeq,
+          committedFirstSeq: sharedHistory.committedBatch.firstSeq,
+          committedLastSeq: sharedHistory.committedBatch.lastSeq,
+          batchPayloadHash: sharedHistory.committedBatch.payloadHash,
+          nativeProjectionVersion: sharedHistory.nativeCheckpoint.projectionVersion,
+          nativeSyncState: sharedHistory.nativeCheckpoint.syncState,
+          sharedDataHash: sharedHistory.sharedDataHash,
+          nativeDataHash: sharedHistory.nativeDataHash,
+          retained: sharedHistory.retained,
+          modelCallDelta: task.calls.length - beforeSharingCalls,
+        }),
+      )
+    }
+    const failedKnowledge =
+      (history === "failed-knowledge-activation" || history === "failed-knowledge-nonempty") && task
+        ? await failedKnowledgeActivation(selected, task, history === "failed-knowledge-nonempty")
+        : undefined
+    const originalCalls = task?.calls.length ?? 0
+    if (cloud && !task) throw new Error("Selected cloud recovery requires its original completed Hosted task")
+    const cloudSelection = cloud && task ? await cloud.select(selected.service, task) : undefined
+    if (cloud && task) {
+      expect(task.calls).toHaveLength(originalCalls)
+      expect(await selected.runtime.run(() => SessionManager.isRunning(task.sessionID))).toBe(false)
+    }
+    const originalInput = task
+      ? await selected.runtime.run(() =>
+          MessageV2.get({ sessionID: task.sessionID, messageID: task.accepted.effect.messageID }),
+        )
+      : undefined
+    let retiredReference: NamespaceRetirement.Reference | undefined
+    let originalTarget:
+      | {
+          installation: HomeRestoration.Target
+          checkpoint: ReturnType<typeof OrganizationRecoveryAuthority.describe>["checkpoint"]
+        }
+      | undefined
+    let hostedMaterial: { native: StorageCheckpoint.Manifest; snapshot: StorageCheckpoint.Manifest } | undefined
+    let knowledgeMaterial: Awaited<ReturnType<typeof KnowledgeNative.capture>> | undefined
+    let queuedFacts: Parameters<typeof OrganizationRecovery.reconstruct>[0]["queued"]
+    let queuedEntries: OrganizationExecutionLeases.Entry[] | undefined
+    const bytes = Buffer.from("actual Hosted private history bytes")
+    if (round === 1) await selected.runtime.run(() => Storage.writeBinary(["recovery", "proof"], bytes))
+    else expect(Buffer.from(await selected.runtime.run(() => Storage.readBinary(["recovery", "proof"])))).toEqual(bytes)
+    const directory = previous?.directory ?? path.join(selected.service.root, "retirement-original")
+    const report =
+      previous?.report ??
+      (await Cohort.capture({
+        service: Cohort.service(selected.service.service.maintenance),
+        async resolve() {
+          return Cohort.hosted(selected.runtime, {
+            native: Native.capture,
+            ...(failedKnowledge?.nonempty ? { knowledge: KnowledgeNative.capture } : {}),
+          })
         },
-        (native) =>
-          SnapshotMaintenance.withInstalledSegment(
-            {
-              permit,
-              request,
-              namespaceDirectory: path.join(serviceBase, "records"),
-              directory: path.join(serviceBase, "snapshots"),
-              source: inventory.namespace,
-              expected: inventory.segment.namespace,
-              keys,
-            },
-            async (snapshot) => {
-              await StorageCheckpoint.restoreArchive({
-                directory: path.join(serviceBase, "records"),
-                expected: inventory.namespace,
-                keys,
-                restoreID: request.restoreID,
-                async finalize(tx, archive) {
-                  await OrganizationServiceNative.adoptRestoration(tx, { permit, request, native, snapshot, archive })
-                },
-              })
-              const prepared = await OrganizationRecoveryAuthority.prepare({
-                permit,
-                request,
-                native,
-                namespaceDirectory: path.join(serviceBase, "records"),
-                keys,
-              })
-              const original = OrganizationRecoveryAuthority.describe(prepared).reference
-              originalTarget = {
-                installation,
-                checkpoint: OrganizationRecoveryAuthority.describe(prepared).checkpoint,
-              }
-              expect(original.installationID).toBe(HomeRestoration.describe(permit).installationID)
-              return original
-            },
-          ),
-      ),
+        directory,
+        archiveID: "hosted-retirement-original",
+        buildVersion: "fixture",
+        keys,
+        actor,
+      }))
+    if (queuedCapture) {
+      expect(report.namespaces).toBe(2)
+      expect(report.namespaceCheckpointsComplete).toBe(true)
+      await queuedCapture.verifyUnchanged()
+      expect((await selected.runtime.run(() => RuntimeMaintenance.status()))?.phase).toBe("released")
+      expect((await selected.service.service.maintenance.run(() => RuntimeMaintenance.status()))?.phase).toBe(
+        "released",
+      )
+      if (history === "paused-queued-capture") return
+    }
+    if (history === "member-handoff" || history === "member-handoff-failed-root") expect(report.namespaces).toBe(2)
+    const opened = path.join(selected.service.root, "retirement-original-open")
+    await Archive.open({ directory, outputDirectory: opened, keys })
+    const inventory = Cohort.NamespaceInventory.parse(
+      await Bun.file(path.join(opened, "namespaces", "0000000000000000", "namespace.json")).json(),
     )
-  })
-  await using lateTask = late === "session" ? await completedHostedTask(selected) : undefined
-  if (late === "input") {
-    if (!task) throw new Error("Expected the original completed task")
-    await appendCompletedHostedTask(selected, task)
-  }
-  if (artifact === "late" && task) await publishArtifactHistory(selected.service, task, 3, 3)
-  if (!originalTarget) throw new Error("Missing original target preparation")
-  const h0 = originalTarget
-  const withPolicyTarget = <T>(body: (evidence: OrganizationRecovery.Target) => Promise<T>) =>
-    target.run(() =>
-      HomeRestoration.withTarget(h0.installation, (permit) =>
+    await using target = await openOrganizationRecovery({
+      home: path.join(await fs.realpath(selected.service.root), "retirement-service-target"),
+      ...(cloud ? { cloud: cloud.targetCloud } : {}),
+    })
+    if (!inventory.native) throw new Error("Missing actual original service native material")
+    const serviceBase = path.join(opened, "namespaces", "0000000000000000")
+    const serviceResources = inventory.resources && {
+      directory: path.join(serviceBase, "resources"),
+      expected: inventory.resources,
+      namespaceDirectory: path.join(serviceBase, "records"),
+    }
+    if (cloud) {
+      expect(report).toMatchObject({ namespaceCheckpointsComplete: true, namespaces: 2 })
+      expect(serviceResources).toBeDefined()
+      const hostedInventory = Cohort.NamespaceInventory.parse(
+        await Bun.file(path.join(opened, "namespaces", "0000000000000001", "namespace.json")).json(),
+      )
+      expect(hostedInventory.identity).toMatchObject({ kind: "hosted", runtimeID: selected.registration.runtimeID })
+      expect(hostedInventory.hostedNative).toBeDefined()
+      expect(hostedInventory.segment.namespace).toBeDefined()
+    }
+    const request = OrganizationServiceNative.installationRequest({
+      restoreID: roundID("hosted-retirement-original-target"),
+      source: inventory.namespace,
+      expected: inventory.native,
+      ...(inventory.resources ? { resources: inventory.resources } : {}),
+      snapshot: inventory.segment.namespace,
+      cohort: {
+        archiveID: report.archiveID,
+        pagesHash: report.pagesHash,
+        ordinal: inventory.ordinal,
+        source: { orgID: inventory.identity.orgID, deploymentIncarnation: inventory.identity.deploymentIncarnation },
+      },
+    })
+    const original = await target.run(async () => {
+      const installation = await HomeRestoration.begin(request)
+      return HomeRestoration.withTarget(installation, (permit) =>
         OrganizationServiceNative.withInstalled(
           {
             permit,
@@ -1036,671 +1185,913 @@ async function recoverHostedWriter(
             ...(serviceResources ? { resources: serviceResources } : {}),
             keys,
           },
-          async (native) => {
-            const prepared = await OrganizationRecoveryAuthority.reopen({
+          (native) =>
+            SnapshotMaintenance.withInstalledSegment(
+              {
+                permit,
+                request,
+                namespaceDirectory: path.join(serviceBase, "records"),
+                directory: path.join(serviceBase, "snapshots"),
+                source: inventory.namespace,
+                expected: inventory.segment.namespace,
+                keys,
+              },
+              async (snapshot) => {
+                await StorageCheckpoint.restoreArchive({
+                  directory: path.join(serviceBase, "records"),
+                  expected: inventory.namespace,
+                  keys,
+                  restoreID: request.restoreID,
+                  async finalize(tx, archive) {
+                    await OrganizationServiceNative.adoptRestoration(tx, { permit, request, native, snapshot, archive })
+                  },
+                })
+                const prepared = await OrganizationRecoveryAuthority.prepare({
+                  permit,
+                  request,
+                  native,
+                  namespaceDirectory: path.join(serviceBase, "records"),
+                  keys,
+                })
+                const original = OrganizationRecoveryAuthority.describe(prepared).reference
+                originalTarget = {
+                  installation,
+                  checkpoint: OrganizationRecoveryAuthority.describe(prepared).checkpoint,
+                }
+                expect(original.installationID).toBe(HomeRestoration.describe(permit).installationID)
+                return original
+              },
+            ),
+        ),
+      )
+    })
+    await using lateTask = late === "session" ? await completedHostedTask(selected) : undefined
+    if (late === "input") {
+      if (!task) throw new Error("Expected the original completed task")
+      await appendCompletedHostedTask(selected, task)
+    }
+    if (artifact === "late" && task) await publishArtifactHistory(selected.service, task, 3, 3)
+    if (!originalTarget) throw new Error("Missing original target preparation")
+    const h0 = originalTarget
+    const withPolicyTarget = <T>(body: (evidence: OrganizationRecovery.Target) => Promise<T>) =>
+      target.run(() =>
+        HomeRestoration.withTarget(h0.installation, (permit) =>
+          OrganizationServiceNative.withInstalled(
+            {
               permit,
               request,
-              native,
-              namespaceDirectory: path.join(serviceBase, "records"),
+              directory: path.join(serviceBase, "native"),
+              expected: inventory.native!,
+              source: inventory.namespace,
+              ...(serviceResources ? { resources: serviceResources } : {}),
               keys,
-            })
-            return OrganizationRecovery.withTarget({ permit, request, native, prepared }, body)
-          },
-        ),
-      ),
-    )
-  let serviceLease: RuntimeMaintenance.Lease | undefined
-  await selected.service.service.maintenance.run(async () => {
-    serviceLease = await RuntimeMaintenance.begin({
-      purpose: "organization-backup",
-      requestID: "actual-hosted-recovery-publication",
-      actor: { ...actor, requestID: "actual-hosted-recovery-publication" },
-    })
-    await RuntimeMaintenance.freeze(serviceLease, await RuntimeMaintenance.drain(serviceLease))
-    return OrganizationCurrentAuthority.withSource(
-      {
-        lease: serviceLease,
-        after: h0.checkpoint,
-        directory: path.join(selected.service.root, "service-current"),
-        buildVersion: "fixture",
-        keys,
-      },
-      async (current) => {
-        if (late || artifact === "late") {
-          await selected.capture()
-          const outcome = await withPolicyTarget((policyTarget) =>
-            selected.service.service.maintenance.run(() =>
-              OrganizationRecovery.reconstruct({ source: current, target: policyTarget }),
-            ),
-          ).then(
-            () => ({ kind: "resolved" as const }),
-            (error: unknown) => ({ kind: "rejected" as const, error }),
-          )
-          const sourceState = await selected.service.service.maintenance.run(async () => ({
-            schemaVersion: (
-              await HomeOwnershipFile.open({
-                root: path.join(selected.service.service.home, ".synergy"),
-                env: { SYNERGY_TEST_HOME: selected.service.service.home },
-              }).read()
-            )?.schemaVersion,
-            reserved: serviceLease
-              ? (await RuntimeMaintenance.retirement(serviceLease.maintenanceID)) !== undefined
-              : true,
-          }))
-          expect(sourceState).toEqual({ schemaVersion: 2, reserved: false })
-          if (outcome.kind !== "rejected") throw new Error("Direct reconstruction accepted unsupported H0 task facts")
-          expect(outcome.error).toBeInstanceOf(RuntimeMaintenance.Blocked)
-          return
-        }
-        await selected.capture(undefined, undefined, async (captured) => {
-          hostedMaterial = { native: captured.native.namespace, snapshot: captured.segment.namespace }
-          const preflight = () =>
-            withPolicyTarget((policyTarget) =>
-              selected.service.service.maintenance.run(() =>
-                OrganizationRecovery.preflightWriters({ source: current, target: policyTarget, queued: queuedFacts }),
-              ),
-            )
-          if (!queuedCapture) await preflight()
-          await NamespaceRetirement.withSource(
-            {
-              archive: captured.archive,
-              lease: captured.lease,
-              native: captured.native,
-              target: { request, installationID: original.installationID, incarnation: original.incarnation },
             },
-            async (current) => {
-              const capturedReference = NamespaceRetirement.describeSource(current)
-              retiredReference = capturedReference
-              const reference = capturedReference
-              if (queuedCapture) {
-                queuedFacts = await Native.withMaterial(
-                  {
-                    directory: captured.native.directory,
-                    expected: captured.native.namespace,
-                    source: reference.archive,
-                    keys,
-                  },
-                  async (material) => {
-                    const proof = Native.inspectMaterial(material).queued
-                    if (!proof) throw new Error("The real queued capture lacks its signed native roster")
-                    return [{ source: reference, ...proof }]
-                  },
-                )
-                queuedEntries = await selected.runtime.run(async () =>
-                  (await OrganizationExecutionLeases.captureEntries()).filter(
-                    (entry) =>
-                      entry.authority.sessionID === queuedCapture.accepted.permit.sessionID &&
-                      entry.authority.rootID === queuedCapture.accepted.effect.messageID,
-                  ),
-                )
-                await preflight()
-              }
-              expect(reference.namespace.identity).toMatchObject({
-                kind: "hosted",
-                orgID: selected.registration.orgID,
-                runtimeID: selected.registration.runtimeID,
-                publicKey: selected.registration.publicKey,
+            async (native) => {
+              const prepared = await OrganizationRecoveryAuthority.reopen({
+                permit,
+                request,
+                native,
+                namespaceDirectory: path.join(serviceBase, "records"),
+                keys,
               })
-              expect(reference.target.request).toEqual(request)
-              const hostedRequest = OrganizationHostedRecovery.request({
-                restoreID: "restored-hosted",
-                source: reference,
-                snapshot: captured.segment.namespace,
-              })
-              await using restored = await openHostedRecovery({
-                request: hostedRequest,
-                home: path.join(selected.service.root, "hosted-target"),
-                identity: selected.home.identity,
-              })
-              const receipt = await NamespaceRetirement.retire(current)
-              const marker = await HomeOwnershipFile.open({
-                root: selected.home.root,
-                env: { SYNERGY_TEST_HOME: selected.home.home },
-              }).read()
-              expect(marker).toMatchObject({
-                schemaVersion: 4,
-                maintenanceID: captured.lease.maintenanceID,
-                source: { schemaVersion: 2, owner: "organization-runtime" },
-              })
-              await expect(readHostedHome(selected.home.home, selected.home.identity)).rejects.toThrow()
-              await NamespaceRetirement.withVerified(receipt, (inspection) =>
-                target.run(async () => {
-                  expect(NamespaceRetirement.inspect(inspection)).toEqual(reference)
-                }),
-              )
-              expect(NamespaceRetirement.describe(await NamespaceRetirement.complete(reference))).toEqual(reference)
-              await NamespaceRetirement.withVerified(receipt, (inspection) =>
-                restored.run(async () => {
-                  const request = OrganizationHostedRecovery.request({
-                    restoreID: "restored-hosted",
-                    source: reference,
-                    snapshot: captured.segment.namespace,
-                  })
-                  await HomeRestoration.withTarget(restored.target, async (permit) => {
-                    const restore = () =>
-                      restored.withRestorationBase((base) =>
-                        OrganizationHostedRecovery.restore({
-                          base,
-                          permit,
-                          request,
-                          source: inspection,
-                          namespaceDirectory: path.join(selected.service.root, "records"),
-                          native: { directory: captured.native.directory, expected: captured.native.namespace },
-                          snapshot: { directory: captured.segment.directory, expected: captured.segment.namespace },
-                          keys,
-                        }),
-                      )
-                    if (queuedFault) {
-                      if (!queuedCapture || !task || history !== "paused-queued-recovery")
-                        throw new Error("Queued Target fault requires its actual complete recovery fixture")
-                      await rejectChangedQueuedTargetInbox(
-                        {
-                          fault: queuedFault,
-                          permit,
-                          request,
-                          scopeID: task.info.scope.id,
-                          sessionID: task.sessionID,
-                          itemID: queuedCapture.accepted.effect.itemID,
-                          sourceFiles: [
-                            path.join(selected.home.root, "home-ownership.json"),
-                            path.join(captured.native.directory, "manifest.json"),
-                            path.join(selected.service.root, "records", "manifest.json"),
-                          ],
-                          calls: () => task.calls.length,
-                        },
-                        restore,
-                      )
-                    } else await restore()
-                    expect(Buffer.from(await Storage.readBinary(["recovery", "proof"]))).toEqual(bytes)
-                    expect(await RuntimeMaintenance.status()).toMatchObject({
-                      phase: "recovery-held",
-                      purpose: "organization-restore",
-                    })
-                  })
-                }),
-              )
-              await expect(
-                readHostedHome(path.join(selected.service.root, "hosted-target"), selected.home.identity),
-              ).rejects.toThrow()
-              await restored.close()
-              await using cold = await openHostedRecovery({
-                request: hostedRequest,
-                home: path.join(selected.service.root, "hosted-target"),
-                identity: selected.home.identity,
-              })
-              await cold.run(async () => {
-                expect(Buffer.from(await Storage.readBinary(["recovery", "proof"]))).toEqual(bytes)
-              })
+              return OrganizationRecovery.withTarget({ permit, request, native, prepared }, body)
             },
-          )
-        })
-        await selected.runtime.run(async () => {
-          const info = await RuntimeMaintenance.status()
-          if (!info) throw new Error("Missing retired writer hold")
-          expect(info.phase).toBe("frozen")
-        })
-        if (!retiredReference) throw new Error("Missing original permanent reference")
-        const reference = retiredReference
-        if (!originalTarget || !hostedMaterial) throw new Error("Missing original installed target or native material")
-        const material = hostedMaterial
-        await selected.close()
-        await using coldSource = await openHostedSourceRetirement({
-          home: selected.home.home,
-          identity: selected.home.identity,
-          reference,
-        })
-        await coldSource.run(async () => {
-          expect(() => NamespaceRetirement.complete(reference)).toThrow("writable")
-          await expect(Storage.write(["unauthorized", "writer"], true)).rejects.toThrow()
-          const receipt = await NamespaceRetirement.read(reference)
-          await NamespaceRetirement.withVerified(receipt, (inspection) =>
-            withPolicyTarget((policyTarget) =>
-              selected.service.service.maintenance.run(() =>
-                OrganizationCurrentAuthority.withCaptured(current, async (captured) => {
-                  const policy = await OrganizationRecovery.reconstruct({
-                    source: current,
-                    target: policyTarget,
-                    queued: queuedFacts,
-                  })
-                  const physical = await OrganizationSourceRetirement.complete(policy.source)
-                  await OrganizationRecovery.publishReconciled({
-                    source: physical,
-                    target: policyTarget,
-                    namespace: captured.namespace,
-                    native: captured.native,
-                    keys,
-                    writers: [inspection],
-                    queued: queuedFacts,
-                    publicOrigin: "https://organization.example",
-                  })
-                }),
-              ),
-            ),
-          )
-        })
-      },
-    )
-  })
-  if (late || artifact === "late") {
-    expect(retiredReference).toBeUndefined()
-    expect(
-      await HomeOwnershipFile.open({ root: selected.home.root, env: { SYNERGY_TEST_HOME: selected.home.home } }).read(),
-    ).toMatchObject({ schemaVersion: 2 })
-    expect(
-      await HomeOwnershipFile.open({
-        root: path.join(selected.service.service.home, ".synergy"),
-        env: { SYNERGY_TEST_HOME: selected.service.service.home },
-      }).read(),
-    ).toMatchObject({ schemaVersion: 2 })
-    const held = await selected.runtime.run(() => RuntimeMaintenance.status())
-    const serviceHold = serviceLease
-    if (!held || !serviceHold) throw new Error("Expected original unreleased native holds")
-    expect(await selected.runtime.run(() => RuntimeMaintenance.retirement(held.maintenanceID))).toBeUndefined()
-    expect(
-      await selected.service.service.maintenance.run(() => RuntimeMaintenance.retirement(serviceHold.maintenanceID)),
-    ).toBeUndefined()
-    await selected.releaseCapture()
-    await selected.service.service.maintenance.run(() => RuntimeMaintenance.release(serviceHold))
-    expect((await selected.runtime.run(() => RuntimeMaintenance.status()))?.phase).toBe("released")
-    expect((await selected.service.service.maintenance.run(() => RuntimeMaintenance.status()))?.phase).toBe("released")
-    phase("all-assertions-complete")
-    return
-  }
-  await target.run(() => OrganizationRecovery.completeServicePublication(original.installationID))
-  if (!retiredReference || !hostedMaterial) throw new Error("Missing original retired Hosted material")
-  const reference = retiredReference
-  const material = hostedMaterial
-  const hostedRequest = OrganizationHostedRecovery.request({
-    restoreID: "restored-hosted",
-    source: reference,
-    snapshot: material.snapshot,
-  })
-  await using publishing = await openHostedRecovery({
-    home: path.join(selected.service.root, "hosted-target"),
-    identity: selected.home.identity,
-    request: hostedRequest,
-  })
-  await target.run(() =>
-    OrganizationRecoveryPublication.withPublishedHosted(
-      { installationID: original.installationID, runtimeID: selected.registration.runtimeID },
-      (service) =>
-        publishing.run(() =>
-          HomeRestoration.withTarget(publishing.target, (permit) =>
-            OrganizationHostedRecovery.publish({
-              permit,
-              request: hostedRequest,
-              service,
-              native: { directory: path.join(selected.service.root, "native"), expected: material.native },
-              keys,
-            }),
           ),
         ),
-    ),
-  )
-  const enteredCompletion = Promise.withResolvers<void>()
-  const finishCompletion = Promise.withResolvers<void>()
-  const writeFile = FileAtomicWrite.write
-  using heldCompletion = spyOn(FileAtomicWrite, "write").mockImplementation(async (...args) => {
-    if (args[1].at(-1) === "organization-registration.json") {
-      enteredCompletion.resolve()
-      await finishCompletion.promise
-    }
-    return writeFile(...args)
-  })
-  const acceptedCompletion = await publishing.run(async () => {
-    const work = OrganizationHostedRecovery.complete((await HomeRestoration.inspect(publishing.target)).installationID)
-    void work.catch(() => {})
-    return { work }
-  })
-  await enteredCompletion.promise
-  let closed = false
-  const closing = publishing.close().then(() => {
-    closed = true
-  })
-  try {
-    await new Promise<void>((resolve) => setImmediate(resolve))
-    expect(closed).toBe(false)
-  } finally {
-    finishCompletion.resolve()
-  }
-  await closing
-  await acceptedCompletion.work
-  expect(closed).toBe(true)
-  phase("hosted-completion-verified")
-  await target.close()
-  phase("target-closed")
-  await selected.service.service.close()
-  phase("source-service-closed")
-  if (cloud) await cloud.removeOriginalObjects()
-  await selected.service.stopListener()
-  phase("source-listener-stopped")
-  const normalService = await openOrganizationService({
-    home: path.join(await fs.realpath(selected.service.root), "retirement-service-target"),
-    ...(cloud ? { cloud: cloud.targetCloud } : {}),
-  })
-  phase("restored-service-opened")
-  await using serviceCleanup = {
-    async [Symbol.asyncDispose]() {
-      phase("restored-service-disposal-enter")
-      try {
-        await normalService.close()
-      } finally {
-        phase("restored-service-disposal-settled")
-      }
-    },
-  }
-  const connected = Promise.withResolvers<void>()
-  let verifyRecoveryRequest: ((request: Request) => Promise<void>) | undefined
-  const restoredServer = Bun.serve({
-    hostname: "127.0.0.1",
-    port: Number(new URL(selected.service.origin).port),
-    tls: { cert, key: certificateKey },
-    websocket: {
-      ...normalService.websocket,
-      message(socket, frame) {
-        if (Protocol.ClientFrame.parse(JSON.parse(String(frame))).type === "heartbeat") connected.resolve()
-        return normalService.websocket.message(socket, frame)
-      },
-    },
-    fetch:
-      history === "failed-root-continue"
-        ? async (request, server) => {
-            if (verifyRecoveryRequest) await verifyRecoveryRequest(request)
-            return normalService.fetch(request, server)
+      )
+    let serviceLease: RuntimeMaintenance.Lease | undefined
+    await selected.service.service.maintenance.run(async () => {
+      serviceLease = await RuntimeMaintenance.begin({
+        purpose: "organization-backup",
+        requestID: roundID("actual-hosted-recovery-publication"),
+        actor: { ...actor, requestID: roundID("actual-hosted-recovery-publication") },
+      })
+      await RuntimeMaintenance.freeze(serviceLease, await RuntimeMaintenance.drain(serviceLease))
+      return OrganizationCurrentAuthority.withSource(
+        {
+          lease: serviceLease,
+          after: h0.checkpoint,
+          directory: path.join(selected.service.root, "service-current"),
+          buildVersion: "fixture",
+          keys,
+        },
+        async (current) => {
+          if (late || artifact === "late") {
+            await selected.capture()
+            const outcome = await withPolicyTarget((policyTarget) =>
+              selected.service.service.maintenance.run(() =>
+                OrganizationRecovery.reconstruct({ source: current, target: policyTarget }),
+              ),
+            ).then(
+              () => ({ kind: "resolved" as const }),
+              (error: unknown) => ({ kind: "rejected" as const, error }),
+            )
+            const sourceState = await selected.service.service.maintenance.run(async () => ({
+              schemaVersion: (
+                await HomeOwnershipFile.open({
+                  root: path.join(selected.service.service.home, ".synergy"),
+                  env: { SYNERGY_TEST_HOME: selected.service.service.home },
+                }).read()
+              )?.schemaVersion,
+              reserved: serviceLease
+                ? (await RuntimeMaintenance.retirement(serviceLease.maintenanceID)) !== undefined
+                : true,
+            }))
+            expect(sourceState).toEqual({ schemaVersion: 2, reserved: false })
+            if (outcome.kind !== "rejected") throw new Error("Direct reconstruction accepted unsupported H0 task facts")
+            expect(outcome.error).toBeInstanceOf(RuntimeMaintenance.Blocked)
+            return
           }
-        : normalService.fetch,
-  })
-  await using listenerCleanup = {
-    async [Symbol.asyncDispose]() {
-      phase("restored-listener-disposal-enter")
-      try {
-        await restoredServer.stop(true)
-      } finally {
-        phase("restored-listener-disposal-settled")
-      }
-    },
-  }
-  if (artifactHistory) {
-    phase("artifact-history-enter")
-    await verifyArtifactHistory(selected.service, normalService, artifactHistory)
-    phase("artifact-history-verified")
-  }
-  const probe = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() })
-  const port = probe.port!
-  await probe.stop(true)
-  using ordinaryScopeEnd = { [Symbol.dispose]: () => phase("ordinary-scope-end") }
-  await using ordinary = await (
-    history === "failed-root-continue" || history === "paused-queued-recovery" ? openNativeFixture : openHostedRuntime
-  )({
-    home: path.join(selected.service.root, "hosted-target"),
-    identity: selected.home.identity,
-    ca: selected.service.ca,
-    workspaceCoordinator: selected.workspaceCoordinator,
-    listen: { port, token: "e".repeat(64) },
-  })
-  using ordinaryDisposal = { [Symbol.dispose]: () => phase("ordinary-disposal-enter") }
-  phase("ordinary-opened")
-  const timer = setTimeout(() => connected.reject(new Error("Restored Hosted writer did not reconnect")), 3000)
-  try {
-    await connected.promise
-  } finally {
-    clearTimeout(timer)
-  }
-  expect(
-    (await readRuntimeRegistration(path.join(selected.service.root, "hosted-target"), selected.home.identity))
-      ?.runtimeID,
-  ).toBe(selected.registration.runtimeID)
-  expect(
-    (await readHostedHome(path.join(selected.service.root, "hosted-target"), selected.home.identity)).publicKey,
-  ).toBe(selected.home.publicKey)
-  expect(Buffer.from(await ordinary.run(() => Storage.readBinary(["recovery", "proof"])))).toEqual(bytes)
-  if (task) {
-    const recovered = await ordinary.run(() => Session.get(task.sessionID))
-    expect(recovered.paused).toBeDefined()
-    expect(recovered.organization).toEqual(task.info.organization)
-    const original = await ordinary.run(() =>
-      RolloutLedger.getRun(
-        { kind: "session", scopeID: recovered.scope.id, sessionID: recovered.id },
-        task.nativeRelease.rootID,
+          await selected.capture(undefined, undefined, async (captured) => {
+            hostedMaterial = { native: captured.native.namespace, snapshot: captured.segment.namespace }
+            if (failedKnowledge?.nonempty)
+              knowledgeMaterial = await KnowledgeNative.capture({
+                archive: captured.archive,
+                lease: captured.lease,
+                directory: path.join(selected.service.root, "hosted-knowledge-current"),
+                keys,
+              })
+            const preflight = () =>
+              withPolicyTarget((policyTarget) =>
+                selected.service.service.maintenance.run(() =>
+                  OrganizationRecovery.preflightWriters({ source: current, target: policyTarget, queued: queuedFacts }),
+                ),
+              )
+            if (!queuedCapture) await preflight()
+            await NamespaceRetirement.withSource(
+              {
+                archive: captured.archive,
+                lease: captured.lease,
+                native: captured.native,
+                target: { request, installationID: original.installationID, incarnation: original.incarnation },
+              },
+              async (current) => {
+                const capturedReference = NamespaceRetirement.describeSource(current)
+                retiredReference = capturedReference
+                const reference = capturedReference
+                if (queuedCapture) {
+                  queuedFacts = await Native.withMaterial(
+                    {
+                      directory: captured.native.directory,
+                      expected: captured.native.namespace,
+                      source: reference.archive,
+                      keys,
+                    },
+                    async (material) => {
+                      const proof = Native.inspectMaterial(material).queued
+                      if (!proof) throw new Error("The real queued capture lacks its signed native roster")
+                      return [{ source: reference, ...proof }]
+                    },
+                  )
+                  queuedEntries = await selected.runtime.run(async () =>
+                    (await OrganizationExecutionLeases.captureEntries()).filter(
+                      (entry) =>
+                        entry.authority.sessionID === queuedCapture.accepted.permit.sessionID &&
+                        entry.authority.rootID === queuedCapture.accepted.effect.messageID,
+                    ),
+                  )
+                  await preflight()
+                }
+                expect(reference.namespace.identity).toMatchObject({
+                  kind: "hosted",
+                  orgID: selected.registration.orgID,
+                  runtimeID: selected.registration.runtimeID,
+                  publicKey: selected.registration.publicKey,
+                })
+                expect(reference.target.request).toEqual(request)
+                const hostedRequest = OrganizationHostedRecovery.request({
+                  restoreID: roundID("restored-hosted"),
+                  source: reference,
+                  snapshot: captured.segment.namespace,
+                })
+                await using restored = await openHostedRecovery({
+                  request: hostedRequest,
+                  home: path.join(selected.service.root, "hosted-target"),
+                  identity: selected.home.identity,
+                })
+                const receipt = await NamespaceRetirement.retire(current)
+                if (failedKnowledge?.nonempty) await failedKnowledge.removeOriginalCache()
+                const marker = await HomeOwnershipFile.open({
+                  root: selected.home.root,
+                  env: { SYNERGY_TEST_HOME: selected.home.home },
+                }).read()
+                expect(marker).toMatchObject({
+                  schemaVersion: 4,
+                  maintenanceID: captured.lease.maintenanceID,
+                  source: { schemaVersion: round === 1 ? 2 : 3, owner: "organization-runtime" },
+                })
+                await expect(readHostedHome(selected.home.home, selected.home.identity)).rejects.toThrow()
+                await NamespaceRetirement.withVerified(receipt, (inspection) =>
+                  target.run(async () => {
+                    expect(NamespaceRetirement.inspect(inspection)).toEqual(reference)
+                  }),
+                )
+                expect(NamespaceRetirement.describe(await NamespaceRetirement.complete(reference))).toEqual(reference)
+                await NamespaceRetirement.withVerified(receipt, (inspection) =>
+                  restored.run(async () => {
+                    const request = OrganizationHostedRecovery.request({
+                      restoreID: roundID("restored-hosted"),
+                      source: reference,
+                      snapshot: captured.segment.namespace,
+                    })
+                    await HomeRestoration.withTarget(restored.target, async (permit) => {
+                      const restore = () =>
+                        restored.withRestorationBase((base) =>
+                          OrganizationHostedRecovery.restore({
+                            base,
+                            permit,
+                            request,
+                            source: inspection,
+                            namespaceDirectory: path.join(selected.service.root, "records"),
+                            native: { directory: captured.native.directory, expected: captured.native.namespace },
+                            snapshot: { directory: captured.segment.directory, expected: captured.segment.namespace },
+                            keys,
+                          }),
+                        )
+                      if (queuedFault) {
+                        if (!queuedCapture || !task || history !== "paused-queued-recovery")
+                          throw new Error("Queued Target fault requires its actual complete recovery fixture")
+                        await rejectChangedQueuedTargetInbox(
+                          {
+                            fault: queuedFault,
+                            permit,
+                            request,
+                            scopeID: task.info.scope.id,
+                            sessionID: task.sessionID,
+                            itemID: queuedCapture.accepted.effect.itemID,
+                            sourceFiles: [
+                              path.join(selected.home.root, "home-ownership.json"),
+                              path.join(captured.native.directory, "manifest.json"),
+                              path.join(selected.service.root, "records", "manifest.json"),
+                            ],
+                            calls: () => task.calls.length,
+                          },
+                          restore,
+                        )
+                      } else await restore()
+                      if (failedKnowledge?.nonempty) {
+                        const knowledge = knowledgeMaterial
+                        if (!knowledge) throw new Error("Missing the original fixed nonempty Knowledge facet")
+                        await KnowledgeNative.withRestored(
+                          {
+                            directory: knowledge.directory,
+                            expected: knowledge.namespace,
+                            source: reference.archive,
+                            keys,
+                          },
+                          async (prepared) => {
+                            expect(prepared.manifest.identity).toEqual(reference.namespace)
+                            expect(prepared.manifest.files).toBeGreaterThan(0)
+                            await RuntimeMaintenance.restorationTransaction(
+                              { permit, request },
+                              (tx) => prepared.relocate(tx),
+                              { commitGuard: prepared.assertCurrent },
+                            )
+                          },
+                        )
+                      }
+                      expect(Buffer.from(await Storage.readBinary(["recovery", "proof"]))).toEqual(bytes)
+                      expect(await RuntimeMaintenance.status()).toMatchObject({
+                        phase: "recovery-held",
+                        purpose: "organization-restore",
+                      })
+                    })
+                  }),
+                )
+                await expect(
+                  readHostedHome(path.join(selected.service.root, "hosted-target"), selected.home.identity),
+                ).rejects.toThrow()
+                await restored.close()
+                await using cold = await openHostedRecovery({
+                  request: hostedRequest,
+                  home: path.join(selected.service.root, "hosted-target"),
+                  identity: selected.home.identity,
+                })
+                await cold.run(async () => {
+                  expect(Buffer.from(await Storage.readBinary(["recovery", "proof"]))).toEqual(bytes)
+                })
+              },
+            )
+          })
+          await selected.runtime.run(async () => {
+            const info = await RuntimeMaintenance.status()
+            if (!info) throw new Error("Missing retired writer hold")
+            expect(info.phase).toBe("frozen")
+          })
+          if (!retiredReference) throw new Error("Missing original permanent reference")
+          const reference = retiredReference
+          if (!originalTarget || !hostedMaterial)
+            throw new Error("Missing original installed target or native material")
+          const material = hostedMaterial
+          await selected.close()
+          await using coldSource = await openHostedSourceRetirement({
+            home: selected.home.home,
+            identity: selected.home.identity,
+            reference,
+          })
+          await coldSource.run(async () => {
+            expect(() => NamespaceRetirement.complete(reference)).toThrow("writable")
+            await expect(Storage.write(["unauthorized", "writer"], true)).rejects.toThrow()
+            const receipt = await NamespaceRetirement.read(reference)
+            await NamespaceRetirement.withVerified(receipt, (inspection) =>
+              withPolicyTarget((policyTarget) =>
+                selected.service.service.maintenance.run(() =>
+                  OrganizationCurrentAuthority.withCaptured(current, async (captured) => {
+                    sourceNamespace = {
+                      directory: captured.namespace.directory,
+                      expected: StorageCheckpoint.Manifest.parse(captured.namespace.expected),
+                    }
+                    const policy = await OrganizationRecovery.reconstruct({
+                      source: current,
+                      target: policyTarget,
+                      queued: queuedFacts,
+                    })
+                    const physical = await OrganizationSourceRetirement.complete(policy.source)
+                    await OrganizationRecovery.publishReconciled({
+                      source: physical,
+                      target: policyTarget,
+                      namespace: captured.namespace,
+                      native: captured.native,
+                      keys,
+                      writers: [inspection],
+                      queued: queuedFacts,
+                      publicOrigin: "https://organization.example",
+                    })
+                  }),
+                ),
+              ),
+            )
+          })
+        },
+      )
+    })
+    if (late || artifact === "late") {
+      expect(retiredReference).toBeUndefined()
+      expect(
+        await HomeOwnershipFile.open({
+          root: selected.home.root,
+          env: { SYNERGY_TEST_HOME: selected.home.home },
+        }).read(),
+      ).toMatchObject({ schemaVersion: 2 })
+      expect(
+        await HomeOwnershipFile.open({
+          root: path.join(selected.service.service.home, ".synergy"),
+          env: { SYNERGY_TEST_HOME: selected.service.service.home },
+        }).read(),
+      ).toMatchObject({ schemaVersion: 2 })
+      const held = await selected.runtime.run(() => RuntimeMaintenance.status())
+      const serviceHold = serviceLease
+      if (!held || !serviceHold) throw new Error("Expected original unreleased native holds")
+      expect(await selected.runtime.run(() => RuntimeMaintenance.retirement(held.maintenanceID))).toBeUndefined()
+      expect(
+        await selected.service.service.maintenance.run(() => RuntimeMaintenance.retirement(serviceHold.maintenanceID)),
+      ).toBeUndefined()
+      await selected.releaseCapture()
+      await selected.service.service.maintenance.run(() => RuntimeMaintenance.release(serviceHold))
+      expect((await selected.runtime.run(() => RuntimeMaintenance.status()))?.phase).toBe("released")
+      expect((await selected.service.service.maintenance.run(() => RuntimeMaintenance.status()))?.phase).toBe(
+        "released",
+      )
+      phase("all-assertions-complete")
+      return
+    }
+    await target.run(() => OrganizationRecovery.completeServicePublication(original.installationID))
+    if (!retiredReference || !hostedMaterial) throw new Error("Missing original retired Hosted material")
+    const reference = retiredReference
+    const material = hostedMaterial
+    const hostedRequest = OrganizationHostedRecovery.request({
+      restoreID: roundID("restored-hosted"),
+      source: reference,
+      snapshot: material.snapshot,
+    })
+    await using publishing = await openHostedRecovery({
+      home: path.join(selected.service.root, "hosted-target"),
+      identity: selected.home.identity,
+      request: hostedRequest,
+    })
+    await target.run(() =>
+      OrganizationRecoveryPublication.withPublishedHosted(
+        { installationID: original.installationID, runtimeID: selected.registration.runtimeID },
+        (service) =>
+          publishing.run(() =>
+            HomeRestoration.withTarget(publishing.target, (permit) =>
+              OrganizationHostedRecovery.publish({
+                permit,
+                request: hostedRequest,
+                service,
+                native: { directory: path.join(selected.service.root, "native"), expected: material.native },
+                keys,
+              }),
+            ),
+          ),
       ),
     )
-    expect(original.status).toBe(history === "failed-root-continue" ? "failed" : "completed")
-    expect(original.id).toBe(task.accepted.effect.messageID)
-    if (!originalInput || originalInput.info.role !== "user")
-      throw new Error("Expected the original accepted native user input")
-    expect(originalInput.info.actor).toMatchObject({ kind: "account", subjectID: task.accepted.permit.actor.subjectID })
-    const input = await ordinary.run(() => MessageV2.get({ sessionID: recovered.id, messageID: original.id }))
-    if (input.info.role !== "user") throw new Error("Restored root changed its original input role")
-    expect(input.info.actor).toEqual(originalInput.info.actor)
-    expect(task.calls.length).toBe(originalCalls)
-  }
-  if (cloud) {
-    if (!cloudSelection || !task) throw new Error("Missing original selected cloud recovery history")
-    await cloud.verify(selected.service, normalService, cloudSelection)
-    expect(await ordinary.run(() => SessionManager.isRunning(task.sessionID))).toBe(false)
-    expect(task.calls.length).toBe(originalCalls)
-  }
-  if (queuedHistory && task) {
-    const owner = { kind: "session" as const, scopeID: task.info.scope.id, sessionID: task.sessionID }
-    expect(
-      await ordinary.run(() => RolloutLedger.getRun(owner, queuedHistory.accepted.effect.messageID)),
-    ).toMatchObject({
-      id: queuedHistory.accepted.effect.messageID,
-      status: "completed",
-      recording: "complete",
+    {
+      const enteredCompletion = Promise.withResolvers<void>()
+      const finishCompletion = Promise.withResolvers<void>()
+      const writeFile = FileAtomicWrite.write
+      using heldCompletion = spyOn(FileAtomicWrite, "write").mockImplementation(async (...args) => {
+        if (args[1].at(-1) === "organization-registration.json") {
+          enteredCompletion.resolve()
+          await finishCompletion.promise
+        }
+        return writeFile(...args)
+      })
+      const acceptedCompletion = await publishing.run(async () => {
+        const work = OrganizationHostedRecovery.complete(
+          (await HomeRestoration.inspect(publishing.target)).installationID,
+        )
+        void work.catch(() => {})
+        return { work }
+      })
+      await enteredCompletion.promise
+      let closed = false
+      const closing = publishing.close().then(() => {
+        closed = true
+      })
+      try {
+        await new Promise<void>((resolve) => setImmediate(resolve))
+        expect(closed).toBe(false)
+      } finally {
+        finishCompletion.resolve()
+      }
+      await closing
+      await acceptedCompletion.work
+      expect(closed).toBe(true)
+    }
+    phase("hosted-completion-verified")
+    await target.close()
+    phase("target-closed")
+    await selected.service.service.close()
+    phase("source-service-closed")
+    if (cloud) await cloud.removeOriginalObjects()
+    await selected.service.stopListener()
+    phase("source-listener-stopped")
+    const normalService = await openOrganizationService({
+      home: path.join(await fs.realpath(selected.service.root), "retirement-service-target"),
+      ...(cloud ? { cloud: cloud.targetCloud } : {}),
     })
-    const retained = await ordinary.run(() =>
-      MessageV2.get({ sessionID: task.sessionID, messageID: queuedHistory.accepted.effect.messageID }),
-    )
-    if (retained.info.role !== "user") throw new Error("Restored queued task lost its original input")
-    expect(retained.info.actor).toMatchObject({
-      kind: "account",
-      subjectID: queuedHistory.accepted.permit.actor.subjectID,
-      requestID: queuedHistory.accepted.permit.requestID,
+    phase("restored-service-opened")
+    await using serviceCleanup = {
+      async [Symbol.asyncDispose]() {
+        phase("restored-service-disposal-enter")
+        try {
+          await normalService.close()
+        } finally {
+          phase("restored-service-disposal-settled")
+        }
+      },
+    }
+    const connected = Promise.withResolvers<void>()
+    let verifyRecoveryRequest: ((request: Request) => Promise<void>) | undefined
+    const restoredServer = Bun.serve({
+      hostname: "127.0.0.1",
+      port: Number(new URL(selected.service.origin).port),
+      tls: { cert, key: certificateKey },
+      websocket: {
+        ...normalService.websocket,
+        message(socket, frame) {
+          if (Protocol.ClientFrame.parse(JSON.parse(String(frame))).type === "heartbeat") connected.resolve()
+          return normalService.websocket.message(socket, frame)
+        },
+      },
+      fetch:
+        history === "failed-root-continue"
+          ? async (request, server) => {
+              if (verifyRecoveryRequest) await verifyRecoveryRequest(request)
+              return normalService.fetch(request, server)
+            }
+          : normalService.fetch,
     })
-    expect(await ordinary.run(() => RolloutLedger.tools(owner, queuedHistory.accepted.effect.messageID))).toEqual([])
-    expect(task.calls).toHaveLength(originalCalls)
-    expect(await ordinary.run(() => SessionManager.isRunning(task.sessionID))).toBe(false)
-  }
-  if (terminalCancel && task) {
-    const owner = { kind: "session" as const, scopeID: task.info.scope.id, sessionID: task.sessionID }
-    const run = await ordinary.run(() => RolloutLedger.getRun(owner, terminalCancel.runID))
-    expect(run).toMatchObject({ id: terminalCancel.runID, status: "completed", recording: "complete" })
-    expect(run.cancelRequestedAt).toBeUndefined()
-    expect(await ordinary.run(() => RolloutLedger.tools(owner, terminalCancel.runID))).toEqual([])
-    expect(task.calls).toHaveLength(terminalCancel.baseline)
-    expect(await ordinary.run(() => SessionManager.isRunning(task.sessionID))).toBe(false)
-  }
-  if (settledQuestion && task) {
-    const receipt = await ordinary.run(() =>
-      ScopeContext.provide({
-        scope: task.info.scope,
-        workspace: null,
-        fn: () => Question.reconcile({ sessionID: task.sessionID, requestID: settledQuestion.requestID }),
-      }),
-    )
-    expect(receipt).toEqual(settledQuestion.receipt)
-    const owner = { kind: "session" as const, scopeID: task.info.scope.id, sessionID: task.sessionID }
-    expect(await ordinary.run(() => RolloutLedger.tools(owner, task.nativeRelease.rootID))).toEqual([])
-    const pending = await ordinary.run(() =>
-      ScopeContext.provide({ scope: task.info.scope, workspace: null, fn: () => Question.list() }),
-    )
-    expect(pending.some((item) => item.id === settledQuestion.requestID)).toBe(false)
-    expect(task.calls).toHaveLength(settledQuestion.baseline)
-    expect(await ordinary.run(() => SessionManager.isRunning(task.sessionID))).toBe(false)
-  }
-  if (history === "member-handoff" && task) {
-    if (!handedOff) throw new Error("Missing the actual completed Member Handoff history")
-    const proof = handedOff.handoffHistory
+    await using listenerCleanup = {
+      async [Symbol.asyncDispose]() {
+        phase("restored-listener-disposal-enter")
+        try {
+          await restoredServer.stop(true)
+        } finally {
+          phase("restored-listener-disposal-settled")
+        }
+      },
+    }
+    if (artifactHistory) {
+      phase("artifact-history-enter")
+      await verifyArtifactHistory(selected.service, normalService, artifactHistory)
+      phase("artifact-history-verified")
+    }
+    const probe = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() })
+    const port = probe.port!
+    await probe.stop(true)
+    using ordinaryScopeEnd = { [Symbol.dispose]: () => phase("ordinary-scope-end") }
+    await using ordinary = await (
+      history === "failed-root-continue" ||
+        history === "paused-queued-recovery" ||
+        history === "member-handoff-failed-root"
+        ? openNativeFixture
+        : openHostedRuntime
+    )({
+      home: path.join(selected.service.root, "hosted-target"),
+      identity: selected.home.identity,
+      ca: selected.service.ca,
+      workspaceCoordinator: selected.workspaceCoordinator,
+      listen: { port, token: "e".repeat(64) },
+    })
+    using ordinaryDisposal = { [Symbol.dispose]: () => phase("ordinary-disposal-enter") }
+    phase("ordinary-opened")
+    const timer = setTimeout(() => connected.reject(new Error("Restored Hosted writer did not reconnect")), 3000)
+    try {
+      await connected.promise
+    } finally {
+      clearTimeout(timer)
+    }
     expect(
-      await normalService.maintenance.run(() => Storage.read(["organization", "handoffs", proof.handoffID])),
-    ).toEqual(proof.serviceRecord)
-    expect(await ordinary.run(() => proof.inspectEpoch())).toEqual(proof.targetEpoch)
-    expect(task.calls).toHaveLength(originalCalls)
-    expect(await ordinary.run(() => SessionManager.isRunning(task.sessionID))).toBe(false)
-  }
-  if ((history === "failed-root-continue" || history === "paused-queued-recovery") && task) {
-    if (queuedCapture) {
-      if (!queuedEntries) throw new Error("Missing the actual captured queued cleanup roster")
-      const actual = await ordinary.run(async () =>
-        (await OrganizationExecutionLeases.captureEntries()).filter(
-          (entry) =>
-            entry.authority.sessionID === task.sessionID &&
-            entry.authority.rootID === queuedCapture.accepted.effect.messageID,
+      (await readRuntimeRegistration(path.join(selected.service.root, "hosted-target"), selected.home.identity))
+        ?.runtimeID,
+    ).toBe(selected.registration.runtimeID)
+    expect(
+      (await readHostedHome(path.join(selected.service.root, "hosted-target"), selected.home.identity)).publicKey,
+    ).toBe(selected.home.publicKey)
+    expect(Buffer.from(await ordinary.run(() => Storage.readBinary(["recovery", "proof"])))).toEqual(bytes)
+    if (task) {
+      const recovered = await ordinary.run(() => Session.get(task.sessionID))
+      expect(recovered.paused).toBeDefined()
+      expect(recovered.organization).toEqual(task.info.organization)
+      const original = await ordinary.run(() =>
+        RolloutLedger.getRun(
+          { kind: "session", scopeID: recovered.scope.id, sessionID: recovered.id },
+          task.nativeRelease.rootID,
         ),
       )
-      expect(actual).toEqual(queuedEntries)
-    }
-    expect(task.calls).toHaveLength(originalCalls)
-    expect(await ordinary.run(() => SessionManager.isRunning(task.sessionID))).toBe(false)
-    await ordinary.run(async () => {
-      expect(ModelExecution.mode()).toBe("worker")
-      await AgentTurn.prewarm()
-      const workers = AgentTurn.stats()
-      expect(workers.minIdle).toBeGreaterThan(0)
-      expect(workers.ready).toBeGreaterThanOrEqual(workers.minIdle)
-    })
-    expect(task.calls).toHaveLength(originalCalls)
-    const login = await selected.service.client.orgAuth.login(
-      { orgLoginInput: { loginName: "owner", password: "a long integration password" } },
-      { throwOnError: true },
-    )
-    const cookie = login.response.headers.get("set-cookie")?.split(";")[0]
-    if (!cookie) throw new Error("The restored Continue lacks its original current account login")
-    expect(login.data.account.accountID).toBe(task.accepted.permit.actor.subjectID)
-    await using authority =
-      history === "failed-root-continue"
-        ? recoveryContinuationAuthority({
-            service: normalService,
-            origin: selected.service.origin,
-            ca: selected.service.ca,
-            root: path.join(selected.service.root, "hosted-target", ".synergy"),
-            publicKey: selected.home.publicKey,
-            sessionID: task.sessionID,
-            rootID: task.nativeRelease.rootID,
-            modelCalls: () => task.calls.length,
-          })
-        : undefined
-    if (authority) verifyRecoveryRequest = authority.before
-    try {
-      await continueRestoredHostedTask(
-        {
-          ...selected,
-          runtime: ordinary,
-          service: {
-            ...selected.service,
-            service: normalService,
-            headers: { cookie, "x-csrf-token": login.data.csrfToken },
-          },
-        },
-        task,
-        queuedCapture,
+      expect(original.status).toBe(
+        history === "failed-root-continue" || history === "member-handoff-failed-root" ? "failed" : "completed",
       )
-    } catch (error) {
-      if (authority) {
-        try {
-          await authority.assertQualified()
-        } catch (qualification) {
-          throw new AggregateError(
-            [error, qualification],
-            "Restored Continue and original machine authority controls failed",
+      expect(original.id).toBe(task.accepted.effect.messageID)
+      if (!originalInput || originalInput.info.role !== "user")
+        throw new Error("Expected the original accepted native user input")
+      expect(originalInput.info.actor).toMatchObject({
+        kind: "account",
+        subjectID: task.accepted.permit.actor.subjectID,
+      })
+      const input = await ordinary.run(() => MessageV2.get({ sessionID: recovered.id, messageID: original.id }))
+      if (input.info.role !== "user") throw new Error("Restored root changed its original input role")
+      expect(input.info.actor).toEqual(originalInput.info.actor)
+      expect(task.calls.length).toBe(originalCalls)
+    }
+    if (cloud) {
+      if (!cloudSelection || !task) throw new Error("Missing original selected cloud recovery history")
+      await cloud.verify(selected.service, normalService, cloudSelection)
+      expect(await ordinary.run(() => SessionManager.isRunning(task.sessionID))).toBe(false)
+      expect(task.calls.length).toBe(originalCalls)
+    }
+    if (sharedHistory) {
+      await sharedHistory.verifyService(normalService)
+      await sharedHistory.verifyNative(ordinary)
+      phase("restored-unshared-generation-verified")
+    }
+    if (queuedHistory && task) {
+      const owner = { kind: "session" as const, scopeID: task.info.scope.id, sessionID: task.sessionID }
+      expect(
+        await ordinary.run(() => RolloutLedger.getRun(owner, queuedHistory.accepted.effect.messageID)),
+      ).toMatchObject({
+        id: queuedHistory.accepted.effect.messageID,
+        status: "completed",
+        recording: "complete",
+      })
+      const retained = await ordinary.run(() =>
+        MessageV2.get({ sessionID: task.sessionID, messageID: queuedHistory.accepted.effect.messageID }),
+      )
+      if (retained.info.role !== "user") throw new Error("Restored queued task lost its original input")
+      expect(retained.info.actor).toMatchObject({
+        kind: "account",
+        subjectID: queuedHistory.accepted.permit.actor.subjectID,
+        requestID: queuedHistory.accepted.permit.requestID,
+      })
+      expect(await ordinary.run(() => RolloutLedger.tools(owner, queuedHistory.accepted.effect.messageID))).toEqual([])
+      expect(task.calls).toHaveLength(originalCalls)
+      expect(await ordinary.run(() => SessionManager.isRunning(task.sessionID))).toBe(false)
+    }
+    if (terminalCancel && task) {
+      const owner = { kind: "session" as const, scopeID: task.info.scope.id, sessionID: task.sessionID }
+      const run = await ordinary.run(() => RolloutLedger.getRun(owner, terminalCancel.runID))
+      expect(run).toMatchObject({ id: terminalCancel.runID, status: "completed", recording: "complete" })
+      expect(run.cancelRequestedAt).toBeUndefined()
+      expect(await ordinary.run(() => RolloutLedger.tools(owner, terminalCancel.runID))).toEqual([])
+      expect(task.calls).toHaveLength(terminalCancel.baseline)
+      expect(await ordinary.run(() => SessionManager.isRunning(task.sessionID))).toBe(false)
+    }
+    if (failedKnowledge)
+      await failedKnowledge.verify({
+        ...selected,
+        runtime: ordinary,
+        service: { ...selected.service, service: normalService },
+      })
+    if (settledQuestion && task) {
+      const receipt = await ordinary.run(() =>
+        ScopeContext.provide({
+          scope: task.info.scope,
+          workspace: null,
+          fn: () => Question.reconcile({ sessionID: task.sessionID, requestID: settledQuestion.requestID }),
+        }),
+      )
+      expect(receipt).toEqual(settledQuestion.receipt)
+      const owner = { kind: "session" as const, scopeID: task.info.scope.id, sessionID: task.sessionID }
+      expect(await ordinary.run(() => RolloutLedger.tools(owner, task.nativeRelease.rootID))).toEqual([])
+      const pending = await ordinary.run(() =>
+        ScopeContext.provide({ scope: task.info.scope, workspace: null, fn: () => Question.list() }),
+      )
+      expect(pending.some((item) => item.id === settledQuestion.requestID)).toBe(false)
+      expect(task.calls).toHaveLength(settledQuestion.baseline)
+      expect(await ordinary.run(() => SessionManager.isRunning(task.sessionID))).toBe(false)
+    }
+    if ((history === "member-handoff" || history === "member-handoff-failed-root") && task) {
+      if (!handedOff) throw new Error("Missing the actual completed Member Handoff history")
+      const proof = handedOff.handoffHistory
+      expect(
+        await normalService.maintenance.run(() => Storage.read(["organization", "handoffs", proof.handoffID])),
+      ).toEqual(proof.serviceRecord)
+      expect(await ordinary.run(() => proof.inspectEpoch())).toEqual(proof.targetEpoch)
+      expect(task.calls).toHaveLength(originalCalls)
+      expect(await ordinary.run(() => SessionManager.isRunning(task.sessionID))).toBe(false)
+    }
+    if (
+      (history === "failed-root-continue" ||
+        history === "paused-queued-recovery" ||
+        history === "member-handoff-failed-root") &&
+      task
+    ) {
+      if (queuedCapture) {
+        if (!queuedEntries) throw new Error("Missing the actual captured queued cleanup roster")
+        const actual = await ordinary.run(async () =>
+          (await OrganizationExecutionLeases.captureEntries()).filter(
+            (entry) =>
+              entry.authority.sessionID === task.sessionID &&
+              entry.authority.rootID === queuedCapture.accepted.effect.messageID,
+          ),
+        )
+        expect(actual).toEqual(queuedEntries)
+      }
+      expect(task.calls).toHaveLength(originalCalls)
+      expect(await ordinary.run(() => SessionManager.isRunning(task.sessionID))).toBe(false)
+      await ordinary.run(async () => {
+        expect(ModelExecution.mode()).toBe("worker")
+        await AgentTurn.prewarm()
+        const workers = AgentTurn.stats()
+        expect(workers.minIdle).toBeGreaterThan(0)
+        expect(workers.ready).toBeGreaterThanOrEqual(workers.minIdle)
+      })
+      expect(task.calls).toHaveLength(originalCalls)
+      const login = await selected.service.client.orgAuth.login(
+        { orgLoginInput: { loginName: "owner", password: "a long integration password" } },
+        { throwOnError: true },
+      )
+      const cookie = login.response.headers.get("set-cookie")?.split(";")[0]
+      if (!cookie) throw new Error("The restored Continue lacks its original current account login")
+      expect(login.data.account.accountID).toBe(task.accepted.permit.actor.subjectID)
+      ordinaryHeaders = { cookie, "x-csrf-token": login.data.csrfToken }
+      await using authority =
+        history === "failed-root-continue"
+          ? recoveryContinuationAuthority({
+              service: normalService,
+              origin: selected.service.origin,
+              ca: selected.service.ca,
+              root: path.join(selected.service.root, "hosted-target", ".synergy"),
+              publicKey: selected.home.publicKey,
+              sessionID: task.sessionID,
+              rootID: task.nativeRelease.rootID,
+              modelCalls: () => task.calls.length,
+            })
+          : undefined
+      if (authority) verifyRecoveryRequest = authority.before
+      try {
+        const continued = await continueRestoredHostedTask(
+          {
+            ...selected,
+            runtime: ordinary,
+            service: {
+              ...selected.service,
+              service: normalService,
+              headers: { cookie, "x-csrf-token": login.data.csrfToken },
+            },
+          },
+          task,
+          queuedCapture,
+        )
+        if (history === "member-handoff-failed-root") {
+          if (!handedOff) throw new Error("Missing actual recovered Native Handoff task")
+          await verifyRecoveredHandoffTaskHistory(
+            {
+              ...selected,
+              runtime: ordinary,
+              service: { ...selected.service, service: normalService },
+            },
+            task,
+            continued,
+            handedOff.handoffHistory.handoffID,
           )
         }
+      } catch (error) {
+        if (authority) {
+          try {
+            await authority.assertQualified()
+          } catch (qualification) {
+            throw new AggregateError(
+              [error, qualification],
+              "Restored Continue and original machine authority controls failed",
+            )
+          }
+        }
+        throw error
+      } finally {
+        verifyRecoveryRequest = undefined
       }
-      throw error
-    } finally {
-      verifyRecoveryRequest = undefined
-    }
-    if (authority) await authority.assertQualified()
-    if (history === "paused-queued-recovery") {
-      if (!queuedCapture) throw new Error("Second capture requires the actual recovered queued input")
-      const closedCalls = task.calls.length
-      const closedEntries = await ordinary.run(() => OrganizationExecutionLeases.captureEntries())
-      expect(closedEntries.every((entry) => entry.state === "settled")).toBe(true)
-      expect(await ordinary.run(() => OrganizationExecutionLeases.pendingForCapture())).toBe(false)
-      const recovered = closedEntries.filter(
-        (entry) =>
-          entry.authority.sessionID === task.sessionID &&
-          entry.authority.rootID === queuedCapture.accepted.effect.messageID &&
-          entry.settlement?.kind === "recovered",
-      )
-      expect(recovered).toHaveLength(1)
-      const linkage = recovered[0]!.settlement
-      if (linkage?.kind !== "recovered")
-        throw new Error("Second capture lost its actual original queued cleanup bridge")
-      const firstSuccessor = closedEntries.find((entry) => entry.entryID === linkage.entryID)
-      if (!firstSuccessor) throw new Error("Second capture lost its actual current cleanup entry")
-      let successor: OrganizationExecutionLeases.Entry = firstSuccessor
-      const authority = successor.authority
-      const visited = new Set<string>()
-      while (successor.settlement?.kind === "linked") {
-        if (visited.has(successor.entryID)) throw new Error("Second capture found a cleanup linkage cycle")
-        visited.add(successor.entryID)
+      if (authority) await authority.assertQualified()
+      if (history === "paused-queued-recovery") {
+        if (!queuedCapture) throw new Error("Second capture requires the actual recovered queued input")
+        const closedCalls = task.calls.length
+        const closedEntries = await ordinary.run(() => OrganizationExecutionLeases.captureEntries())
+        expect(closedEntries.every((entry) => entry.state === "settled")).toBe(true)
+        expect(await ordinary.run(() => OrganizationExecutionLeases.pendingForCapture())).toBe(false)
+        const recovered = closedEntries.filter(
+          (entry) =>
+            entry.authority.sessionID === task.sessionID &&
+            entry.authority.rootID === queuedCapture.accepted.effect.messageID &&
+            entry.settlement?.kind === "recovered",
+        )
+        expect(recovered).toHaveLength(1)
+        const linkage = recovered[0]!.settlement
+        if (linkage?.kind !== "recovered")
+          throw new Error("Second capture lost its actual original queued cleanup bridge")
+        const firstSuccessor = closedEntries.find((entry) => entry.entryID === linkage.entryID)
+        if (!firstSuccessor) throw new Error("Second capture lost its actual current cleanup entry")
+        let successor: OrganizationExecutionLeases.Entry = firstSuccessor
+        const authority = successor.authority
+        const visited = new Set<string>()
+        while (successor.settlement?.kind === "linked") {
+          if (visited.has(successor.entryID)) throw new Error("Second capture found a cleanup linkage cycle")
+          visited.add(successor.entryID)
+          expect(successor.authority).toEqual(authority)
+          const linkedEntryID = successor.settlement.entryID
+          const next = closedEntries.find((entry) => entry.entryID === linkedEntryID)
+          if (!next) throw new Error("Second capture lost an original generation link")
+          successor = next
+        }
         expect(successor.authority).toEqual(authority)
-        const linkedEntryID = successor.settlement.entryID
-        const next = closedEntries.find((entry) => entry.entryID === linkedEntryID)
-        if (!next) throw new Error("Second capture lost an original generation link")
-        successor = next
+        expect(successor).toMatchObject({
+          state: "settled",
+          authority: { rootID: queuedCapture.accepted.effect.messageID },
+          settlement: {
+            kind: "terminal",
+            receipt: { outcome: "completed", rootID: queuedCapture.accepted.effect.messageID },
+          },
+        })
+        const marker = () =>
+          HomeOwnershipFile.open({
+            root: RuntimeContext.current().host.root,
+            env: RuntimeContext.current().host.env,
+          }).read()
+        const [serviceOwner, hostedOwner] = await Promise.all([
+          normalService.maintenance.run(marker),
+          ordinary.run(marker),
+        ])
+        expect(serviceOwner).toMatchObject({ schemaVersion: 3, owner: "organization" })
+        expect(hostedOwner).toMatchObject({
+          schemaVersion: 3,
+          owner: "organization-runtime",
+          readerContract: NativeHomeReaderContract,
+        })
+        let participants = 0
+        phase("restored-queued-second-capture-enter")
+        const second = await Cohort.capture({
+          service: Cohort.service(normalService.maintenance),
+          async resolve(identity) {
+            expect(identity.runtimeID).toBe(selected.registration.runtimeID)
+            participants++
+            return Cohort.hosted(ordinary, { native: Native.capture })
+          },
+          directory: path.join(selected.service.root, "restored-queued-second-cohort"),
+          archiveID: "restored-queued-second-cohort",
+          buildVersion: "fixture",
+          keys,
+          actor: { ...actor, requestID: "restored-queued-second-capture" },
+        })
+        secondCohort = { directory: path.join(selected.service.root, "restored-queued-second-cohort"), report: second }
+        expect(second).toMatchObject({ namespaceCheckpointsComplete: true, namespaces: 2 })
+        expect(participants).toBe(1)
+        expect((await normalService.maintenance.run(() => RuntimeMaintenance.status()))?.phase).toBe("released")
+        expect((await ordinary.run(() => RuntimeMaintenance.status()))?.phase).toBe("released")
+        expect(await ordinary.run(() => OrganizationExecutionLeases.captureEntries())).toEqual(closedEntries)
+        expect(await ordinary.run(() => OrganizationExecutionLeases.pendingForCapture())).toBe(false)
+        expect(await normalService.maintenance.run(marker)).toEqual(serviceOwner)
+        expect(await ordinary.run(marker)).toEqual(hostedOwner)
+        expect(task.calls).toHaveLength(closedCalls)
+        expect(await ordinary.run(() => SessionManager.isRunning(task.sessionID))).toBe(false)
+        phase("restored-queued-second-capture-complete")
       }
-      expect(successor.authority).toEqual(authority)
-      expect(successor).toMatchObject({
-        state: "settled",
-        authority: { rootID: queuedCapture.accepted.effect.messageID },
-        settlement: {
-          kind: "terminal",
-          receipt: { outcome: "completed", rootID: queuedCapture.accepted.effect.messageID },
+    }
+    phase("all-assertions-complete")
+    if (after) {
+      if (!sourceNamespace) throw new Error("The original recovery lacks its actual fixed H1 namespace")
+      const home = await readHostedHome(path.join(selected.service.root, "hosted-target"), selected.home.identity)
+      const registration = Protocol.HostedRegistrationRecord.parse(
+        await readRuntimeRegistration(home.home, home.identity),
+      )
+      await after({
+        runtime: ordinary,
+        service: normalService,
+        home,
+        registration,
+        installationID: original.installationID,
+        headers: ordinaryHeaders,
+        cohort: secondCohort,
+        sourceNamespace,
+        async stopListener() {
+          await restoredServer.stop(true)
         },
       })
-      const marker = () =>
-        HomeOwnershipFile.open({
-          root: RuntimeContext.current().host.root,
-          env: RuntimeContext.current().host.env,
-        }).read()
-      const [serviceOwner, hostedOwner] = await Promise.all([
-        normalService.maintenance.run(marker),
-        ordinary.run(marker),
-      ])
-      expect(serviceOwner).toMatchObject({ schemaVersion: 3, owner: "organization" })
-      expect(hostedOwner).toMatchObject({
-        schemaVersion: 3,
-        owner: "organization-runtime",
-        readerContract: NativeHomeReaderContract,
-      })
-      let participants = 0
-      phase("restored-queued-second-capture-enter")
-      const second = await Cohort.capture({
-        service: Cohort.service(normalService.maintenance),
-        async resolve(identity) {
-          expect(identity.runtimeID).toBe(selected.registration.runtimeID)
-          participants++
-          return Cohort.hosted(ordinary, { native: Native.capture })
-        },
-        directory: path.join(selected.service.root, "restored-queued-second-cohort"),
-        archiveID: "restored-queued-second-cohort",
-        buildVersion: "fixture",
-        keys,
-        actor: { ...actor, requestID: "restored-queued-second-capture" },
-      })
-      expect(second).toMatchObject({ namespaceCheckpointsComplete: true, namespaces: 2 })
-      expect(participants).toBe(1)
-      expect((await normalService.maintenance.run(() => RuntimeMaintenance.status()))?.phase).toBe("released")
-      expect((await ordinary.run(() => RuntimeMaintenance.status()))?.phase).toBe("released")
-      expect(await ordinary.run(() => OrganizationExecutionLeases.captureEntries())).toEqual(closedEntries)
-      expect(await ordinary.run(() => OrganizationExecutionLeases.pendingForCapture())).toBe(false)
-      expect(await normalService.maintenance.run(marker)).toEqual(serviceOwner)
-      expect(await ordinary.run(marker)).toEqual(hostedOwner)
-      expect(task.calls).toHaveLength(closedCalls)
-      expect(await ordinary.run(() => SessionManager.isRunning(task.sessionID))).toBe(false)
-      phase("restored-queued-second-capture-complete")
     }
   }
-  phase("all-assertions-complete")
+  if (history !== "paused-queued-repeat") return await runRound(selected, history)
+  if (!task) throw new Error("Repeated Hosted recovery requires its actual original task")
+  await runRound(selected, "paused-queued-recovery", 1, undefined, async (reopened) => {
+    if (!reopened.cohort || !reopened.headers || !reopened.home.restoration)
+      throw new Error("Second recovery requires the actual B cohort, current login and completed native installation")
+    const retained = await captureHostedRepeatHistory({
+      service: reopened.service,
+      runtime: reopened.runtime,
+      task,
+      installationID: reopened.installationID,
+      hostedInstallationID: reopened.home.restoration.installationID,
+      runtimeID: reopened.registration.runtimeID,
+    })
+    const root = path.join(selected.service.root, "queued-second-round")
+    await fs.mkdir(root, { recursive: true })
+    const capture = createHostedRecoveryCapture(reopened.runtime, root, { ...actor, requestID: "hosted-native-second" })
+    let closed = false
+    const actualB: HostedRecoverySource = {
+      ...selected,
+      home: reopened.home,
+      registration: reopened.registration,
+      runtime: reopened.runtime,
+      service: {
+        ...selected.service,
+        root,
+        service: reopened.service,
+        headers: reopened.headers,
+        stopListener: reopened.stopListener,
+      },
+      ...capture,
+      async close() {
+        if (closed) return
+        await capture.releaseCapture()
+        await reopened.runtime.close()
+        closed = true
+      },
+    }
+    await using actualBCleanup = {
+      async [Symbol.asyncDispose]() {
+        await actualB.close()
+      },
+    }
+    phase("second-hosted-recovery-enter")
+    await runRound(actualB, undefined, 2, reopened.cohort, async (current) => {
+      await retained.verify({ ...current, keys })
+      expect(task.calls).toHaveLength(retained.modelCalls)
+      phase("second-hosted-ordinary-history-verified")
+    })
+    phase("second-hosted-recovery-complete")
+  })
 }
 
 test(
   "a real Member task reaches the sole Hosted writer by native Handoff and survives recovery without replay",
   () => recoverHostedWriter(true, undefined, undefined, undefined, "member-handoff"),
   90_000,
+)
+
+test(
+  "a failed Member root moves by native Handoff, restores without replay and continues once through its current driver",
+  () => recoverHostedWriter(true, undefined, undefined, undefined, "member-handoff-failed-root"),
+  90_000,
+)
+
+test("a recovered queued input completes and survives a second Service and Hosted recovery without replay", async () => {
+  try {
+    await recoverHostedWriter(true, undefined, undefined, undefined, "paused-queued-repeat")
+  } catch (error) {
+    observeRepeatedHostedRecoveryFailure("recovery", error)
+    throw error
+  }
+}, 60_000)
+
+test(
+  "a failed knowledge activation retains its original selection and immutable release through full recovery without replay",
+  () => recoverHostedWriter(true, undefined, undefined, undefined, "failed-knowledge-activation"),
+  60_000,
+)
+
+test(
+  "a failed desired Knowledge update restores the original nonempty cache through its native facet without Source files",
+  () => recoverHostedWriter(true, undefined, undefined, undefined, "failed-knowledge-nonempty"),
+  60_000,
 )
 
 test(
@@ -1897,3 +2288,9 @@ test("a signed queued roster rejects changed actual Target Inbox before publicat
   if (outcome.ok) throw new Error("Changed Target Inbox was accepted")
   expect(outcome.error).toBe(fault.failure)
 }, 60_000)
+
+test(
+  "an actually ACKed then unshared Hosted transcript survives full native recovery while remaining private",
+  () => recoverHostedWriter(true, undefined, undefined, undefined, "share-ack-unshare"),
+  60_000,
+)

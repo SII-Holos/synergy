@@ -122,7 +122,22 @@ export namespace OrganizationPendingSource {
       signal?.throwIfAborted()
       assertNative()
     }
-    const verifyTarget = (inventory = true) =>
+    const verifyInventory = (sourceArchive: Native.ArchiveInspection) =>
+      targetRuntime.run(async () => {
+        assert()
+        await Writers.preflight({
+          permit: target.permit,
+          request: target.request,
+          target: reference.target,
+          base: target.native.manifest.source,
+          namespace,
+          sourceArchive,
+          keys,
+          signal,
+        })
+        assert()
+      })
+    const verifyTarget = (sourceArchive?: Native.ArchiveInspection) =>
       targetRuntime.run(async () => {
         assert()
         HomeRestoration.assertRequest(target.permit, target.request)
@@ -136,16 +151,7 @@ export namespace OrganizationPendingSource {
           hash(prepared.checkpoint) !== hash(reference.current.after)
         )
           fail("another original Target or H0 anchor")
-        if (inventory)
-          await Writers.preflight({
-            permit: target.permit,
-            request: target.request,
-            target: reference.target,
-            base: target.native.manifest.source,
-            namespace,
-            keys,
-            signal,
-          })
+        if (sourceArchive) await verifyInventory(sourceArchive)
         assert()
       })
     let completed: Retirement.Receipt | undefined
@@ -161,6 +167,8 @@ export namespace OrganizationPendingSource {
           assert()
           const fixed = await Native.verify({ ...native, source: namespace.expected, keys, signal })
           try {
+            const sourceArchive = Native.archiveInspection(fixed)
+            await verifyInventory(sourceArchive)
             const configuration = await readOrganizationConfigurationSnapshot(source.runtime.host.home, { signal })
             try {
               if (
@@ -195,7 +203,7 @@ export namespace OrganizationPendingSource {
               return completed
             }
             await compareNamespace(namespace, keys, assert, signal)
-            await verifyTarget()
+            await verifyTarget(sourceArchive)
             const admission = Object.freeze({ kind: "verified-pending-source" })
             admissions.set(admission, { reference, assert: assertNative })
             return RuntimeMaintenance.withRetirementSource({ evidence: admission, signal }, (lease) =>
@@ -210,12 +218,13 @@ export namespace OrganizationPendingSource {
                         target: reference.target,
                         base: target.native.manifest.source,
                         namespace,
+                        sourceArchive,
                         keys,
                         signal,
                       },
                       () =>
                         source.runtime.run(async () => {
-                          await verifyTarget(false)
+                          await verifyTarget()
                           const actual = await Retirement.reference(reference.current, reference.target)
                           if (hash(actual) !== hash(reference)) fail("original physical Source reference changed")
                           assert()

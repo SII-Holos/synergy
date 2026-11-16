@@ -31,7 +31,10 @@ export namespace OrganizationRuntimeHistory {
       invalid()
     return runtime
   }
-  export function forPermit(source: Record.HistoricalReader, permit: Command.Permit) {
+  function registrationAt(
+    source: Record.HistoricalReader,
+    permit: Pick<Command.Permit, "runtimeID" | "orgID" | "deploymentIncarnation">,
+  ) {
     let runtime = source.read(Record.RuntimeRegistration, Keys.runtime(permit.runtimeID))
     if (runtime.runtimeID !== permit.runtimeID || runtime.orgID !== permit.orgID) invalid()
     if (runtime.runtimeKind === "member") {
@@ -63,6 +66,45 @@ export namespace OrganizationRuntimeHistory {
       if (runtime.deploymentIncarnation === permit.deploymentIncarnation) return runtime
     }
     return invalid()
+  }
+  export function forPermit(source: Record.HistoricalReader, permit: Command.Permit) {
+    return registrationAt(source, permit)
+  }
+  export function enrollment(source: Record.HistoricalReader, ticket: ReturnType<typeof Record.RuntimeTicket.parse>) {
+    const consumed = ticket.consumed
+    if (!consumed || consumed.runtimeKind !== "hosted") invalid()
+    const runtime = registrationAt(source, consumed)
+    const current = source.read(Record.RuntimeRegistration, Keys.runtime(ticket.runtimeID))
+    if (runtime.runtimeKind !== "hosted" || current.runtimeKind !== "hosted") invalid()
+    if (
+      current.state === "pending" ||
+      !equal(ticket, source.read(Record.RuntimeTicket, Keys.runtimeTicket(ticket.tokenHash))) ||
+      ticket.runtimeID !== consumed.runtimeID ||
+      ticket.accountID !== consumed.createdBy ||
+      consumed.state !== "active" ||
+      consumed.revision !== ticket.registrationRevision + 1 ||
+      consumed.revision > runtime.revision ||
+      consumed.connectionEpoch > runtime.connectionEpoch ||
+      (consumed.lastSeen !== undefined && (runtime.lastSeen === undefined || consumed.lastSeen > runtime.lastSeen)) ||
+      (
+        [
+          "runtimeID",
+          "orgID",
+          "deploymentIncarnation",
+          "runtimeKind",
+          "publicKey",
+          "name",
+          "createdBy",
+          "createdAt",
+        ] as const
+      ).some(
+        (field) =>
+          consumed[field] !== runtime[field] ||
+          (field !== "deploymentIncarnation" && consumed[field] !== current[field]),
+      )
+    )
+      fail("PROTOCOL_MISMATCH", "Historical Hosted enrollment has another original registration")
+    return runtime
   }
   export function validate(source: Record.HistoricalReader, key: string[], value: unknown) {
     if (key[0] !== "organization") return false

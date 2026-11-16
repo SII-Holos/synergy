@@ -18,6 +18,7 @@ import { loadSigningAuthority } from "./signing"
 import { digest } from "./auth/secret"
 import { WorkspaceContent } from "@ericsanchezok/synergy-harness/workspace/content"
 import { Environment } from "@ericsanchezok/synergy-harness/environment"
+import { OrganizationSharedGeneration } from "./shared-generation"
 import { EnvironmentExecution } from "@ericsanchezok/synergy-harness/environment/execution"
 
 const domain = "organization-service-home"
@@ -25,13 +26,47 @@ const selected = Object.freeze({
   schemaVersion: 2 as const,
   owner: "organization",
   identity: digest("synergy.organization.service.v1"),
-  readerContract: "native-organization-service-ownership-v1",
+  readerContract: "native-organization-service-shared-generations-v1",
 })
-const environmentReader = "native-organization-service-environments-v1"
-const recoveryReader = "native-organization-service-recovery-v1"
-const environmentRecoveryReader = "native-organization-service-environments-recovery-v1"
-type Reader = typeof selected.readerContract | typeof environmentReader
-const readers = RuntimeContext.state<{ current: Reader; target?: Reader }>(() => ({ current: selected.readerContract }))
+const previousReader = "native-organization-service-ownership-v1"
+const previousEnvironmentReader = "native-organization-service-environments-v1"
+const previousRecoveryReader = "native-organization-service-recovery-v1"
+const previousEnvironmentRecoveryReader = "native-organization-service-environments-recovery-v1"
+const environmentReader = "native-organization-service-environments-shared-generations-v1"
+const recoveryReader = "native-organization-service-shared-generations-recovery-v1"
+const environmentRecoveryReader = "native-organization-service-environments-shared-generations-recovery-v1"
+const Reader = z.enum([
+  selected.readerContract,
+  environmentReader,
+  previousReader,
+  previousEnvironmentReader,
+  recoveryReader,
+  environmentRecoveryReader,
+  previousRecoveryReader,
+  previousEnvironmentRecoveryReader,
+])
+type Reader = z.infer<typeof Reader>
+const readers = RuntimeContext.state<{
+  current: Reader
+  target?: Reader
+  source?: HomeOwnershipFile.RestorationInfo
+}>(() => ({ current: selected.readerContract }))
+function environments(reader: string) {
+  return [
+    environmentReader,
+    previousEnvironmentReader,
+    environmentRecoveryReader,
+    previousEnvironmentRecoveryReader,
+  ].some((value) => value === reader)
+}
+function reader(value: string): Reader {
+  return Reader.parse(value)
+}
+function currentReader(reader: string) {
+  return [selected.readerContract, environmentReader, recoveryReader, environmentRecoveryReader].some(
+    (value) => value === reader,
+  )
+}
 const request = RuntimeContext.createAsyncContext<{
   home: string
   lease: RuntimeMaintenance.Lease
@@ -43,7 +78,13 @@ function fail(message: string): never {
   throw new HomeOwnershipFile.Error(message)
 }
 function ordinaryReader(value: string): Reader {
-  if (value === selected.readerContract || value === environmentReader) return value
+  if (
+    value === selected.readerContract ||
+    value === environmentReader ||
+    value === previousReader ||
+    value === previousEnvironmentReader
+  )
+    return value
   fail("Service Home reader contract is unsupported")
 }
 function assertReaderOwner(current: Extract<HomeOwnershipFile.Info, { schemaVersion: 2 | 3 }>) {
@@ -53,7 +94,11 @@ function assertReaderOwner(current: Extract<HomeOwnershipFile.Info, { schemaVers
     ordinaryReader(current.readerContract)
     return
   }
-  if (current.readerContract !== recoveryReader && current.readerContract !== environmentRecoveryReader)
+  if (
+    ![recoveryReader, environmentRecoveryReader, previousRecoveryReader, previousEnvironmentRecoveryReader].some(
+      (value) => value === current.readerContract,
+    )
+  )
     fail("Service Home recovery reader contract is unsupported")
 }
 function owner(target = false) {
@@ -65,7 +110,10 @@ function owner(target = false) {
     files: HomeOwnershipFile.open({
       root: host.root,
       env: host.env,
-      selected: { ...selected, readerContract: target ? (readers().target ?? readers().current) : readers().current },
+      selected: {
+        ...(readers().source ?? selected),
+        readerContract: target ? (readers().target ?? readers().current) : readers().current,
+      },
     }),
   }
 }
@@ -109,7 +157,7 @@ const migration: Migration = {
   execution: "maintenance",
   dependsOn: ["organization/20261111-organization-authority-history"],
   async isApplied() {
-    return (await records()).ownership.schemaVersion === 2
+    return [2, 3].includes((await records()).ownership.schemaVersion)
   },
   async up(progress) {
     const current = await assertRequest()
@@ -124,7 +172,11 @@ const migration: Migration = {
         await assertRequest()
         const retained = await records()
         await retained.files.upgrade(
-          { schemaVersion: 1, owner: selected.owner, identity: selected.identity },
+          {
+            schemaVersion: 1,
+            owner: selected.owner,
+            identity: selected.identity,
+          },
           { signal: current.signal },
         )
         await assertRequest()
@@ -133,24 +185,74 @@ const migration: Migration = {
     )
   },
 }
-const migrations = [migration]
-const environmentMigration: Migration = {
-  id: "20261113-organization-service-environment-reader",
-  description: "Fence released Service readers before accepting native Environment effects",
+const sharedGenerationMigration: Migration = {
+  id: "20261116-organization-service-shared-generations-reader",
+  description: "Seal retained shared generations under frozen maintenance before fencing previous writers",
   scope: "global",
   execution: "maintenance",
   dependsOn: [migration.id],
   async isApplied() {
     const { ownership } = await records()
-    return ownership.schemaVersion === 2 && ownership.readerContract === environmentReader
+    return (
+      (ownership.schemaVersion === 2 || ownership.schemaVersion === 3) &&
+      currentReader(ownership.readerContract) &&
+      (await OrganizationSharedGeneration.initialized())
+    )
+  },
+  async up(progress) {
+    const held = await assertRequest()
+    const original = (await records()).ownership
+    if (original.schemaVersion !== 2 && original.schemaVersion !== 3)
+      fail("Sharing history requires its original native Service owner")
+    await OrganizationSharedGeneration.upgrade(() => {
+      held.assert()
+      held.signal?.throwIfAborted()
+    }, progress)
+    const native = owner(true)
+    await withFileLock(
+      {
+        directory: path.join(native.host.root, "state", ".locks"),
+        key: "organization-service-home-format",
+        signal: held.signal,
+      },
+      async () => {
+        await assertRequest()
+        if (JSON.stringify((await records()).ownership) !== JSON.stringify(original))
+          fail("Service owner changed before sharing history advancement")
+        await native.files.advanceReader(original, { signal: held.signal })
+        await assertRequest()
+        const after = (await records()).ownership
+        if (
+          (after.schemaVersion !== 2 && after.schemaVersion !== 3) ||
+          after.readerContract !== (readers().target ?? readers().current)
+        )
+          fail("Sharing history advancement has another reader")
+        progress(1, 1)
+      },
+    )
+  },
+}
+const migrations = [migration, sharedGenerationMigration]
+const environmentMigration: Migration = {
+  id: "20261113-organization-service-environment-reader",
+  description: "Fence released Service readers before accepting native Environment effects",
+  scope: "global",
+  execution: "maintenance",
+  dependsOn: [sharedGenerationMigration.id],
+  async isApplied() {
+    const { ownership } = await records()
+    return (ownership.schemaVersion === 2 || ownership.schemaVersion === 3) && environments(ownership.readerContract)
   },
   async up(progress) {
     const current = await assertRequest()
-    if (readers().target !== environmentReader)
+    if (!environments(readers().target ?? readers().current))
       fail("Environment reader upgrade requires its explicit infrastructure target")
     await OrganizationServiceHome.assertEnvironmentUpgradeIdle()
     const original = (await records()).ownership
-    if (original.schemaVersion !== 2 || ordinaryReader(original.readerContract) !== selected.readerContract)
+    if (
+      original.schemaVersion !== 2 ||
+      ![previousReader, selected.readerContract].some((value) => value === ordinaryReader(original.readerContract))
+    )
       fail("Environment reader upgrade requires its original ordinary Service Home")
     const native = owner(true)
     await withFileLock(
@@ -166,7 +268,7 @@ const environmentMigration: Migration = {
         await native.files.advanceReader(original, { signal: current.signal })
         await assertRequest()
         const after = (await records()).ownership
-        if (after.schemaVersion !== 2 || after.readerContract !== environmentReader)
+        if (after.schemaVersion !== 2 || !environments(after.readerContract))
           fail("Environment reader advancement did not retain its original target")
         progress(1, 1)
       },
@@ -195,6 +297,9 @@ export namespace OrganizationServiceHome {
   export const environmentReaderContract = environmentReader
   export const recoveryReaderContract = recoveryReader
   export const environmentRecoveryReaderContract = environmentRecoveryReader
+  export function needsRetainedSharedGenerations(value: unknown) {
+    return !currentReader(archivedOwner(value).readerContract)
+  }
   export function archivedOwner(value: unknown) {
     const current = ArchiveOwner.parse(value)
     assertReaderOwner(current)
@@ -214,10 +319,7 @@ export namespace OrganizationServiceHome {
     const source = archivedOwner(archivedSourceOwner)
     return HomeRestoration.installOwner(permit, {
       identity: selected.identity,
-      readerContract:
-        source.readerContract === environmentReader || source.readerContract === environmentRecoveryReader
-          ? environmentRecoveryReader
-          : recoveryReader,
+      readerContract: environments(source.readerContract) ? environmentRecoveryReader : recoveryReader,
     })
   }
   export const initialization = initializationMigration
@@ -236,6 +338,12 @@ export namespace OrganizationServiceHome {
       fail("Missing established service Home ownership requires native recovery")
     if ((await Storage.queryKeys({ prefix: Keys.signingIdentity(), limit: 1 })).length)
       fail("Unknown service initialization history requires native recovery")
+    if (
+      MigrationRegistry.list()
+        .get("organization")
+        ?.some((migration) => migration.id === OrganizationSharedGeneration.initialization.id)
+    )
+      await OrganizationSharedGeneration.initializeEmpty()
   }
   export function select() {
     HomeOwnership.select({
@@ -261,7 +369,11 @@ export namespace OrganizationServiceHome {
       const info = await fs.lstat(directory)
       if (!info.isDirectory() || info.isSymbolicLink()) fail("Service retirement requires its independent native Home")
     }
-    const files = HomeOwnershipFile.open({ root: host.root, env: host.env, selected: marker })
+    const files = HomeOwnershipFile.open({
+      root: host.root,
+      env: host.env,
+      selected: marker,
+    })
     const status = await files.inspectRetirement(source)
     return { files, status, marker }
   }
@@ -272,17 +384,18 @@ export namespace OrganizationServiceHome {
   export async function selectForStartup(options: { environments?: boolean } = {}) {
     RuntimeContext.assertCompositionOpen("Service Home reader selection")
     const current = await owner().files.read()
+    if (current?.schemaVersion === 2 || current?.schemaVersion === 3) {
+      assertReaderOwner(current)
+      if (!currentReader(current.readerContract)) fail("Service sharing history requires explicit migration")
+    }
     if (current?.schemaVersion !== 3) {
-      if (current?.schemaVersion === 2) assertReaderOwner(current)
       readers().current =
-        (current?.schemaVersion === 2 && ordinaryReader(current.readerContract) === environmentReader) ||
-        options.environments
+        (current?.schemaVersion === 2 && environments(current.readerContract)) || options.environments
           ? environmentReader
           : selected.readerContract
       select()
       return false
     }
-    assertReaderOwner(current)
     if (options.environments && current.readerContract !== environmentRecoveryReader)
       fail("Environment activation for a restored Home requires its verified reader upgrade owner")
     await HomeRestoration.inspectCompleted()
@@ -305,24 +418,41 @@ export namespace OrganizationServiceHome {
   export async function selectForUpgrade(options: { environments?: boolean } = {}) {
     RuntimeContext.assertCompositionOpen("Service Home reader upgrade selection")
     const { ownership } = await retainedOwner()
-    if (ownership.schemaVersion === 3 && options.environments)
+    if (ownership.schemaVersion === 3 && options.environments && !environments(ownership.readerContract))
       fail("Environment activation for a restored Home requires its verified reader upgrade owner")
     if (ownership.schemaVersion === 2) readers().current = ordinaryReader(ownership.readerContract)
+    if (ownership.schemaVersion === 3) {
+      await HomeRestoration.inspectCompleted()
+      readers().source = ownership
+      readers().current = reader(ownership.readerContract)
+    }
+    const environment =
+      ((ownership.schemaVersion === 2 || ownership.schemaVersion === 3) && environments(ownership.readerContract)) ||
+      options.environments
     readers().target =
-      readers().current === environmentReader || options.environments ? environmentReader : selected.readerContract
-    HomeOwnership.select({
-      owner: selected.owner,
-      identity: selected.identity,
-      ...(ownership.schemaVersion === 2 ? { readerContract: readers().current } : {}),
-    })
+      ownership.schemaVersion === 3
+        ? environment
+          ? environmentRecoveryReader
+          : recoveryReader
+        : environment
+          ? environmentReader
+          : selected.readerContract
+    HomeOwnership.select(
+      ownership.schemaVersion === 3
+        ? ownership
+        : {
+            owner: selected.owner,
+            identity: selected.identity,
+            ...(ownership.schemaVersion === 2 ? { readerContract: readers().current } : {}),
+          },
+    )
     await HomeOwnership.assert({ required: true })
+    return ownership.schemaVersion === 3
   }
   export function registerMigration() {
     MigrationRegistry.register(
       domain,
-      readers().target === environmentReader || readers().current === environmentReader
-        ? environmentMigrations
-        : migrations,
+      environments(readers().target ?? readers().current) ? environmentMigrations : migrations,
     )
   }
   export async function assertEnvironmentReader() {
@@ -337,7 +467,7 @@ export namespace OrganizationServiceHome {
       fail("Native Environment recovery reader changed after completed publication inspection")
   }
   export async function assertEnvironmentUpgradeIdle() {
-    if (readers().target !== environmentReader || readers().current === environmentReader) return
+    if (!environments(readers().target ?? readers().current) || environments(readers().current)) return
     await assertUpgradeIdle()
   }
   async function assertUpgradeIdle() {
@@ -355,8 +485,8 @@ export namespace OrganizationServiceHome {
       async capture(signal) {
         const assert = WorkspaceContent.captureOwner(signal)
         const { ownership, deployment } = await records()
-        const source = HomeOwnershipFile.FencedInfo.parse(ownership)
-        const target = HomeOwnershipFile.FencedInfo.parse({
+        const source = ArchiveOwner.parse(ownership)
+        const target = ArchiveOwner.parse({
           ...source,
           readerContract: readers().target ?? readers().current,
         })
@@ -365,18 +495,18 @@ export namespace OrganizationServiceHome {
         await assertUpgradeIdle()
         await NativeNamespaceIdentity.verify(proof)
         assert()
-        return {
-          version: 1,
+        return RuntimeMaintenance.HomeUpgradeSelection.parse({
+          version: source.schemaVersion === 3 ? 2 : 1,
           source,
           target,
           namespace: NativeNamespaceIdentity.inspect(proof),
           signingHash: digest(JSON.stringify(signing.identity)),
-        }
+        })
       },
       async verify(selection, signal) {
         const assert = WorkspaceContent.captureOwner(signal)
         const { ownership, deployment } = await records()
-        const current = HomeOwnershipFile.FencedInfo.parse(ownership)
+        const current = ArchiveOwner.parse(ownership)
         const expected = readers().target ?? readers().current
         if (
           selection.source.owner !== selected.owner ||
@@ -418,7 +548,7 @@ export namespace OrganizationServiceHome {
     if (
       !status ||
       status.pending.length ||
-      current.schemaVersion !== 2 ||
+      (current.schemaVersion !== 2 && current.schemaVersion !== 3) ||
       current.readerContract !== (readers().target ?? readers().current)
     )
       fail("Home upgrade requires its complete selected reader and original central migration receipts")
@@ -428,7 +558,11 @@ export namespace OrganizationServiceHome {
       owner: selected.owner,
       async read() {
         const { deployment } = await records()
-        return { kind: "service", orgID: deployment.orgID, deploymentIncarnation: deployment.deploymentIncarnation }
+        return {
+          kind: "service",
+          orgID: deployment.orgID,
+          deploymentIncarnation: deployment.deploymentIncarnation,
+        }
       },
     })
   }
@@ -452,10 +586,19 @@ export namespace OrganizationServiceHome {
         () =>
           request.run({ home, lease, signal, writer, assert }, async () => {
             await assertRequest()
-            const result = await runMigrations({ targetDomain: domain, maintenance: true, output: "silent", signal })
+            await OrganizationSharedGeneration.assertCoverage(assert)
+            const result = await runMigrations({
+              targetDomain: domain,
+              maintenance: true,
+              output: "silent",
+              signal,
+            })
             await assertRequest()
             const { ownership } = await records()
-            if (ownership.schemaVersion !== 2 || ownership.readerContract !== targetReader)
+            if (
+              (ownership.schemaVersion !== 2 && ownership.schemaVersion !== 3) ||
+              ownership.readerContract !== targetReader
+            )
               fail("Service Home migration receipt does not match its canonical ownership")
             return result
           }),

@@ -32,6 +32,47 @@ import { OrganizationRecoveryDatabase as Database } from "./database"
 import { OrganizationResourceNative as Resources } from "./resources"
 
 export namespace OrganizationServiceNative {
+  export interface ArchiveInspection {
+    readonly kind: "original-service-native-archive"
+  }
+  type ArchiveFacts = {
+    source: StorageCheckpoint.Manifest
+    native: StorageCheckpoint.Manifest
+    owner: z.infer<typeof Manifest>["owner"]
+  }
+  const verifiedArchives = new WeakMap<object, ArchiveFacts>()
+  const archiveInspections = new WeakMap<ArchiveInspection, ArchiveFacts>()
+  function verifiedArchive<T extends Manifest>(
+    value: T,
+    source: StorageCheckpoint.Manifest,
+    native: StorageCheckpoint.Manifest,
+  ): T {
+    verifiedArchives.set(value, {
+      source: StorageCheckpoint.Manifest.parse(source),
+      native: StorageCheckpoint.Manifest.parse(native),
+      owner: OrganizationServiceHome.archivedOwner(value.owner),
+    })
+    return value
+  }
+  export function archiveInspection(value: Manifest): ArchiveInspection {
+    const original = verifiedArchives.get(value)
+    if (!original) fail("requires an originally verified native archive")
+    const proof: ArchiveInspection = Object.freeze({
+      kind: "original-service-native-archive",
+    })
+    archiveInspections.set(proof, original)
+    return proof
+  }
+  export function inspectArchive(proof: ArchiveInspection) {
+    const original = archiveInspections.get(proof)
+    if (!original) fail("requires its original native archive inspection")
+    return {
+      source: StorageCheckpoint.Manifest.parse(original.source),
+      native: StorageCheckpoint.Manifest.parse(original.native),
+      owner: OrganizationServiceHome.archivedOwner(original.owner),
+    }
+  }
+
   const Settings = z.strictObject({
     authentication: AuthenticationSettings,
     clientAuthentication: ClientAuthenticationSettings,
@@ -45,7 +86,10 @@ export namespace OrganizationServiceNative {
     requirements: z.array(z.enum(["database-target", "cloud-composition"])),
     database: Database.Descriptor.optional(),
   })
-  const Identity = z.strictObject({ orgID: OrganizationIdentity.ID, deploymentIncarnation: OrganizationIdentity.ID })
+  const Identity = z.strictObject({
+    orgID: OrganizationIdentity.ID,
+    deploymentIncarnation: OrganizationIdentity.ID,
+  })
   export const Manifest = z
     .strictObject({
       format: z.literal("synergy-organization-service-native"),
@@ -79,7 +123,9 @@ export namespace OrganizationServiceNative {
       "Service native manifests require their original versioned Home and deployment",
     )
   export type Manifest = z.infer<typeof Manifest>
-  const state = RuntimeContext.state(() => ({ startup: undefined as z.infer<typeof Startup> | undefined }))
+  const state = RuntimeContext.state(() => ({
+    startup: undefined as z.infer<typeof Startup> | undefined,
+  }))
   const key = ["service-native", "manifest"]
   const configurationKey = ["service-native", "configuration"]
   const hash = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex")
@@ -127,7 +173,10 @@ export namespace OrganizationServiceNative {
       lease: input.lease,
       directory: input.directory,
       signal: input.signal,
-      keys: Object.freeze({ current: provider.current.bind(provider), resolve: provider.resolve.bind(provider) }),
+      keys: Object.freeze({
+        current: provider.current.bind(provider),
+        resolve: provider.resolve.bind(provider),
+      }),
     }
     return withStorageQueueOptions({ signal: original.signal }, () => captureNative(original))
   }
@@ -138,7 +187,10 @@ export namespace OrganizationServiceNative {
     const directory = input.directory
     const signal = input.signal
     const provider = input.keys
-    const keys = Object.freeze({ current: provider.current.bind(provider), resolve: provider.resolve.bind(provider) })
+    const keys = Object.freeze({
+      current: provider.current.bind(provider),
+      resolve: provider.resolve.bind(provider),
+    })
     if (!path.isAbsolute(directory)) fail("destination must be absolute")
     const startup = state().startup
     if (!startup) fail("requires the actual composition's startup snapshot")
@@ -199,7 +251,12 @@ export namespace OrganizationServiceNative {
           present: configuration.present,
           settings: configuration.settings,
           ...(configuration.present
-            ? { raw: { bytes: configuration.bytes.byteLength, sha256: hash(configuration.bytes) } }
+            ? {
+                raw: {
+                  bytes: configuration.bytes.byteLength,
+                  sha256: hash(configuration.bytes),
+                },
+              }
             : {}),
         },
         startup,
@@ -232,7 +289,11 @@ export namespace OrganizationServiceNative {
         }
         try {
           assertExisting()
-          const namespace = await StorageCheckpoint.verifyArchive({ directory, keys, signal })
+          const namespace = await StorageCheckpoint.verifyArchive({
+            directory,
+            keys,
+            signal,
+          })
           const fixed = await verify({
             directory,
             expected: namespace,
@@ -269,7 +330,10 @@ export namespace OrganizationServiceNative {
           filename: path.join(temporary, "segment.sqlite"),
         })
         assert()
-        const handle = { store, artifactDirectory: path.join(temporary, "artifacts") }
+        const handle = {
+          store,
+          artifactDirectory: path.join(temporary, "artifacts"),
+        }
         if (configuration.present)
           await Storage.provide(handle, () => Storage.writeBinary(configurationKey, configuration.bytes))
         await Storage.provide(handle, () => Storage.write(key, manifest))
@@ -305,7 +369,11 @@ export namespace OrganizationServiceNative {
     source: StorageCheckpoint.Manifest
     keys: VaultKeyProvider
     signal?: AbortSignal
-    resources?: { directory: string; expected: StorageCheckpoint.Manifest; namespaceDirectory: string }
+    resources?: {
+      directory: string
+      expected: StorageCheckpoint.Manifest
+      namespaceDirectory: string
+    }
   }): Promise<Manifest & { rawConfiguration?: Uint8Array }> {
     const directory = input.directory
     const expected = StorageCheckpoint.Manifest.parse(input.expected)
@@ -317,10 +385,18 @@ export namespace OrganizationServiceNative {
       namespaceDirectory: input.resources.namespaceDirectory,
     }
     const provider = input.keys
-    const keys = Object.freeze({ current: provider.current.bind(provider), resolve: provider.resolve.bind(provider) })
+    const keys = Object.freeze({
+      current: provider.current.bind(provider),
+      resolve: provider.resolve.bind(provider),
+    })
     let manifest: Manifest | undefined
     let configuration: { sha256: string; size: number } | undefined
-    for await (const entry of StorageCheckpoint.entries({ directory, expected, keys, signal })) {
+    for await (const entry of StorageCheckpoint.entries({
+      directory,
+      expected,
+      keys,
+      signal,
+    })) {
       if (
         entry.type === "artifact" &&
         JSON.stringify(entry.key) === JSON.stringify(configurationKey) &&
@@ -348,7 +424,7 @@ export namespace OrganizationServiceNative {
       await Resources.verify({ ...resources, source, keys, signal })
     } else if (resources) fail("segment contains an undeclared resource facet")
     if (manifest.configuration.present !== !!configuration) fail("configuration bytes are missing or undeclared")
-    if (!configuration) return manifest
+    if (!configuration) return verifiedArchive(manifest, source, expected)
     if (
       !manifest.configuration.raw ||
       configuration.size !== manifest.configuration.raw.bytes ||
@@ -357,7 +433,11 @@ export namespace OrganizationServiceNative {
       fail("configuration artifact changed")
     const rawConfiguration = new Uint8Array(configuration.size)
     let offset = 0
-    for await (const bytes of StorageCheckpoint.streamArtifact({ directory, location: configuration, signal })) {
+    for await (const bytes of StorageCheckpoint.streamArtifact({
+      directory,
+      location: configuration,
+      signal,
+    })) {
       rawConfiguration.set(bytes, offset)
       offset += bytes.byteLength
     }
@@ -366,13 +446,16 @@ export namespace OrganizationServiceNative {
       JSON.stringify(manifest.configuration.settings)
     )
       fail("configuration meaning changed")
-    return { ...manifest, rawConfiguration }
+    return verifiedArchive({ ...manifest, rawConfiguration }, source, expected)
   }
   export function sourceHash(value: StorageCheckpoint.Manifest) {
     return hash(Buffer.from(JSON.stringify(StorageCheckpoint.Manifest.parse(value))))
   }
   export function serviceNamespaceID(value: z.infer<typeof Identity>) {
-    const identity = Identity.parse({ orgID: value.orgID, deploymentIncarnation: value.deploymentIncarnation })
+    const identity = Identity.parse({
+      orgID: value.orgID,
+      deploymentIncarnation: value.deploymentIncarnation,
+    })
     return hash(Buffer.from(JSON.stringify({ kind: "service", ...identity })))
   }
   const CohortMapping = z.strictObject({
@@ -445,7 +528,12 @@ export namespace OrganizationServiceNative {
   }
   const installations = new WeakMap<
     Installed,
-    { assert(): void; verify(): Promise<void>; manifest: Manifest; namespace: StorageCheckpoint.Manifest }
+    {
+      assert(): void
+      verify(): Promise<void>
+      manifest: Manifest
+      namespace: StorageCheckpoint.Manifest
+    }
   >()
   export function assertInstalled(installed: Installed) {
     const current = installations.get(installed)
@@ -470,7 +558,13 @@ export namespace OrganizationServiceNative {
   }
   const publicationSettings = new WeakMap<
     PublicationSettings,
-    { manifest: Manifest; namespace: StorageCheckpoint.Manifest; resources?: Resources.Manifest; assert(): void }
+    {
+      manifest: Manifest
+      archive: ArchiveInspection
+      namespace: StorageCheckpoint.Manifest
+      resources?: Resources.Manifest
+      assert(): void
+    }
   >()
   export function assertReconstruction(value: PublicationSettings) {
     const original = publicationSettings.get(value)
@@ -491,6 +585,7 @@ export namespace OrganizationServiceNative {
     return {
       manifest: Manifest.parse(original.manifest),
       namespace: StorageCheckpoint.Manifest.parse(original.namespace),
+      archive: original.archive,
     }
   }
   export async function withPublicationSettings<T>(
@@ -501,7 +596,10 @@ export namespace OrganizationServiceNative {
     const selected = {
       directory: input.directory,
       signal: input.signal,
-      keys: Object.freeze({ current: provider.current.bind(provider), resolve: provider.resolve.bind(provider) }),
+      keys: Object.freeze({
+        current: provider.current.bind(provider),
+        resolve: provider.resolve.bind(provider),
+      }),
       expected: StorageCheckpoint.Manifest.parse(input.expected),
       source: StorageCheckpoint.Manifest.parse(input.source),
       resources: input.resources && {
@@ -515,7 +613,11 @@ export namespace OrganizationServiceNative {
     const store = primary.store
     const artifacts = primary.artifactDirectory
     const objects = primary.artifactObjects
-    const ports = objects && { blobs: objects.blobs, writerID: objects.writerID, now: objects.now }
+    const ports = objects && {
+      blobs: objects.blobs,
+      writerID: objects.writerID,
+      now: objects.now,
+    }
     const config = JSON.stringify(store.options)
     let open = true
     let database: Database.Descriptor | undefined
@@ -555,10 +657,13 @@ export namespace OrganizationServiceNative {
             })
           : undefined
       assert()
-      const settings: PublicationSettings = Object.freeze({ kind: "organization-recovery-native-settings" })
+      const settings: PublicationSettings = Object.freeze({
+        kind: "organization-recovery-native-settings",
+      })
       const { rawConfiguration: _, ...manifest } = verified
       publicationSettings.set(settings, {
         manifest: Manifest.parse(manifest),
+        archive: archiveInspection(verified),
         namespace: selected.expected,
         resources: resourceMaterial,
         assert,
@@ -626,12 +731,19 @@ export namespace OrganizationServiceNative {
     )
       fail("adoption belongs to another original namespace or native facet")
     StorageCheckpoint.guardImport(archive, tx, assert)
-    const result = await RuntimeMaintenance.adoptRestoration(tx, { permit, request, archive })
+    const result = await RuntimeMaintenance.adoptRestoration(tx, {
+      permit,
+      request,
+      archive,
+    })
     assert()
     return result
   }
   export async function withInstalled<T>(
-    input: Parameters<typeof verify>[0] & { permit: HomeRestoration.InstallPermit; request: InstallationRequest },
+    input: Parameters<typeof verify>[0] & {
+      permit: HomeRestoration.InstallPermit
+      request: InstallationRequest
+    },
     body: (installed: Installed) => Promise<T>,
   ): Promise<T> {
     FileAtomicWrite.assertSupported()
@@ -646,7 +758,10 @@ export namespace OrganizationServiceNative {
       namespaceDirectory: input.resources.namespaceDirectory,
     }
     const provider = input.keys
-    const keys = Object.freeze({ current: provider.current.bind(provider), resolve: provider.resolve.bind(provider) })
+    const keys = Object.freeze({
+      current: provider.current.bind(provider),
+      resolve: provider.resolve.bind(provider),
+    })
     const request = InstallationRequest.parse(structuredClone(input.request))
     const selected = HomeRestoration.describe(permit)
     if (selected.owner !== "organization" || selected.sourceHash !== sourceHash(source))
@@ -670,7 +785,14 @@ export namespace OrganizationServiceNative {
       if (verifiedBackend) Database.assertTarget(database)
     }
     try {
-      const verified = await verify({ directory, expected, source, keys, signal, resources })
+      const verified = await verify({
+        directory,
+        expected,
+        source,
+        keys,
+        signal,
+        resources,
+      })
       assert()
       const { rawConfiguration, ...metadata } = verified
       const manifest = Manifest.parse(metadata)
@@ -687,7 +809,9 @@ export namespace OrganizationServiceNative {
         fail("installation belongs to another original cohort participant")
       const ownership = await OrganizationServiceHome.installOwner(permit, manifest.owner)
       assert()
-      let current = await readOrganizationConfigurationSnapshot(home, { signal })
+      let current = await readOrganizationConfigurationSnapshot(home, {
+        signal,
+      })
       assert()
       const matches = (value: typeof current) =>
         value.present === manifest.configuration.present &&
@@ -712,7 +836,11 @@ export namespace OrganizationServiceNative {
         assert()
         await HomeRestoration.verifyCurrent(permit)
         assert()
-        await HomeOwnershipFile.open({ root: runtime.host.root, env: runtime.host.env, selected: ownership }).assert({
+        await HomeOwnershipFile.open({
+          root: runtime.host.root,
+          env: runtime.host.env,
+          selected: ownership,
+        }).assert({
           required: true,
         })
         assert()

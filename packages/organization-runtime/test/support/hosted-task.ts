@@ -1,15 +1,18 @@
 import { expect } from "bun:test"
+import { isDeepStrictEqual } from "node:util"
 import { OrganizationCommandProtocol as Command } from "@ericsanchezok/synergy-organization-protocol"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { SessionHistory } from "@ericsanchezok/synergy-harness/session/history"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
+import { SessionTransferEpochs as Epochs } from "@ericsanchezok/synergy-harness/session/transfer"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/ledger"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { OrganizationCommandHistory } from "../../../organization/src/command-history"
 import { OrganizationExecutionGrants } from "../../../organization/src/execution-grants"
+import { OrganizationHandoffRecord } from "../../../organization/src/handoff-record"
 import { OrganizationGatewayHistory } from "../../../organization/src/gateway-calls"
 import { OrganizationStoragePath as ServiceKeys } from "../../../organization/src/storage/path"
 import { OrganizationRecord } from "../../../organization/src/storage/records"
@@ -874,6 +877,169 @@ export async function continueRestoredHostedTask(
   expect(await selected.runtime.run(() => RolloutLedger.calls(owner, run.id))).toEqual(recorded)
   expect(await selected.runtime.run(() => RolloutLedger.segments(owner, run.id))).toEqual(segments)
   return { continued, settled, run }
+}
+
+export async function verifyRecoveredHandoffTaskHistory(
+  selected: HostedTaskRuntime,
+  task: Awaited<ReturnType<typeof completedHostedTask>>,
+  continued: Awaited<ReturnType<typeof continueRestoredHostedTask>>,
+  handoffID: string,
+) {
+  const terminal = continued.settled.settlement
+  if (terminal?.kind !== "terminal") throw new Error("The actual restored Continue has no terminal receipt")
+  const grantID = terminal.receipt.grantID
+  const rows = await selected.service.service.maintenance.run(async () => {
+    const values = new Map<string, unknown>()
+    for (const prefix of [["organization"], ["organization-recovery", "publication"]])
+      for await (const row of Storage.records({ prefix, limit: 128 })) values.set(JSON.stringify(row.key), row.value)
+    return values
+  })
+  const reader: OrganizationRecord.HistoricalReader = {
+    read(schema, key) {
+      return schema.parse(rows.get(JSON.stringify(key)))
+    },
+    *entries(prefix) {
+      for (const [encoded, value] of [...rows].sort(([a], [b]) => a.localeCompare(b))) {
+        const key: string[] = JSON.parse(encoded)
+        if (prefix.every((part, index) => key[index] === part)) yield { key, value }
+      }
+    },
+  }
+  const actual = await OrganizationExecutionGrants.closedHistory(reader, grantID)
+  expect(actual.provenance?.recovery).toBeDefined()
+  expect(actual).toMatchObject({
+    grantID,
+    runtimeID: selected.registration.runtimeID,
+    rootID: task.nativeRelease.rootID,
+    provenance: {
+      predecessorGrantID: task.nativeRelease.grantID,
+      control: continued.continued,
+    },
+    retention: { state: "released", outcome: "completed" },
+  })
+  expect(await OrganizationGatewayHistory.grant(reader, actual)).toBeGreaterThan(0)
+  expect(
+    reader.read(OrganizationRecord.SessionDirectory, ServiceKeys.session(task.sessionID)).retainedExecutionGrants,
+  ).toBe(0)
+  const original = reader.read(
+    OrganizationRecord.ExecutionGrant,
+    ServiceKeys.executionGrant(task.nativeRelease.grantID),
+  )
+  if (original.state !== "bound") throw new Error("The actual failed source lost its original bound grant")
+  const recordKey = ["organization", "handoffs", handoffID]
+  const record = reader.read(OrganizationHandoffRecord.RawStored, recordKey)
+  const activation = record.activated
+  if (!activation) throw new Error("The actual Native Handoff lacks its original activation")
+  async function change(key: string[], value: unknown) {
+    const address = JSON.stringify(key),
+      before = rows.get(address)
+    if (before === undefined) throw new Error("Missing original successor history control")
+    if (value === undefined) rows.delete(address)
+    else rows.set(address, value)
+    try {
+      await expect(OrganizationExecutionGrants.closedHistory(reader, grantID)).rejects.toThrow()
+    } finally {
+      rows.set(address, before)
+    }
+  }
+  await change(ServiceKeys.rootGrant(task.sessionID, original.bindingEpoch, task.nativeRelease.rootID), undefined)
+  await change(ServiceKeys.executionRelease(original.grantID, original.retention.generation), undefined)
+  await change(
+    ["organization", "session-handoff-epochs", task.sessionID, String(record.toEpoch).padStart(16, "0")],
+    undefined,
+  )
+  await change(
+    recordKey,
+    OrganizationHandoffRecord.RawStored.parse({
+      ...record,
+      activated: {
+        ...activation,
+        signature: (activation.signature[0] === "0" ? "1" : "0") + activation.signature.slice(1),
+      },
+    }),
+  )
+  expect((await OrganizationExecutionGrants.closedHistory(reader, grantID)).grantID).toBe(grantID)
+  await selected.runtime.run(async () => {
+    const address = Keys.release(
+      task.accepted.permit.orgID,
+      task.accepted.permit.actor.subjectID,
+      task.accepted.permit.requestID,
+    )
+    const release = Records.Release.parse(await Storage.read(address))
+    expect(isDeepStrictEqual(release, task.nativeRelease)).toBe(true)
+    expect(release.reconciledAt).toBeDefined()
+    if (!release.receipt) throw new Error("The actual transferred failed Root lacks its original terminal receipt")
+    const before = await OrganizationExecutionLeases.captureEntries()
+    let queuedCommits = 0
+    const reconcile = () =>
+      OrganizationExecutionLeases.recoverQueuedOriginal(continued.settled, actual, async () => {
+        queuedCommits++
+        throw new Error("An originally released transferred Root cannot commit local queued cleanup")
+      })
+    await Storage.transaction(reconcile)
+    expect(queuedCommits).toBe(0)
+    expect(await OrganizationExecutionLeases.captureEntries()).toEqual(before)
+    for (const changed of [
+      undefined,
+      { ...release, state: "pending", receipt: undefined },
+      { ...release, receipt: undefined },
+      { ...release, receipt: { ...release.receipt, rootID: "another-original-root" } },
+    ]) {
+      await Storage.transaction(async () => {
+        try {
+          if (changed === undefined) await Storage.remove(address)
+          else await Storage.write(address, changed)
+          await expect(reconcile()).rejects.toMatchObject({ data: { code: "PROTOCOL_MISMATCH" } })
+          expect(queuedCommits).toBe(0)
+        } finally {
+          await Storage.write(address, release)
+        }
+      })
+      expect(isDeepStrictEqual(await Storage.read(address), release)).toBe(true)
+      expect(await OrganizationExecutionLeases.captureEntries()).toEqual(before)
+    }
+    await Storage.transaction(reconcile)
+    expect(queuedCommits).toBe(0)
+    expect(await OrganizationExecutionLeases.captureEntries()).toEqual(before)
+    const binding = await Epochs.inspectOwnerBinding({ sessionID: task.sessionID, rootSessionID: task.sessionID })
+    if (!binding) throw new Error("The actual restored Root lacks its completed Native Handoff owner")
+    const originalEpoch = await Epochs.inspect(binding)
+    expect(originalEpoch.role).toBe("target")
+    expect(originalEpoch.phase).toBe("activated")
+    const epochKey = ["session_transfer_epochs", binding.sessionID, String(binding.fromEpoch), binding.handoffID]
+    const pointerKey = ["session_transfer_epoch_current", binding.sessionID]
+    const originalPointer = await Storage.read<Record<string, unknown>>(pointerKey)
+    await Storage.transaction(async () => {
+      try {
+        await Storage.write(epochKey, { ...originalEpoch, role: "source", phase: "cancelled" })
+        await Storage.write(pointerKey, { ...originalPointer, epoch: binding.fromEpoch })
+        expect(
+          isDeepStrictEqual(
+            await Epochs.inspectOwnerBinding({ sessionID: task.sessionID, rootSessionID: task.sessionID }),
+            binding,
+          ),
+        ).toBe(true)
+        const cancelledSource = await Epochs.inspect(binding)
+        expect(cancelledSource.role).toBe("source")
+        expect(cancelledSource.phase).toBe("cancelled")
+        const outcome = await reconcile().then(
+          () => ({ kind: "resolved" as const }),
+          (error: unknown) => ({ kind: "rejected" as const, error }),
+        )
+        if (outcome.kind !== "rejected") throw new Error("Transferred cleanup accepted a corrupted cancelled Source")
+        expect(outcome.error).toMatchObject({ data: { code: "PROTOCOL_MISMATCH" } })
+        expect(queuedCommits).toBe(0)
+      } finally {
+        await Storage.write(epochKey, originalEpoch)
+        await Storage.write(pointerKey, originalPointer)
+      }
+    })
+    expect(isDeepStrictEqual(await Epochs.inspect(binding), originalEpoch)).toBe(true)
+    expect(isDeepStrictEqual(await Storage.read(pointerKey), originalPointer)).toBe(true)
+    await Storage.transaction(reconcile)
+    expect(queuedCommits).toBe(0)
+    expect(await OrganizationExecutionLeases.captureEntries()).toEqual(before)
+  })
 }
 
 export async function queuedHostedTask(

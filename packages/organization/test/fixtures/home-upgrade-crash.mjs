@@ -1,6 +1,7 @@
 import fs from "node:fs/promises"
 import path from "node:path"
 import { RuntimeMaintenance } from "@ericsanchezok/synergy-harness/storage/runtime-maintenance"
+import { OrganizationServiceHome } from "../../src/service-home.ts"
 import { upgradeOrganizationServiceHome } from "../../src/home-upgrade.ts"
 
 const home = process.env.SYNERGY_HOME
@@ -50,7 +51,7 @@ fs.open = new Proxy(open, {
       file.sync = async () => {
         await sync()
         const marker = JSON.parse(await fs.readFile(filename, "utf8"))
-        if (phase === "frozen" && marker.readerContract === "native-organization-service-environments-v1")
+        if (phase === "frozen" && marker.readerContract === OrganizationServiceHome.environmentReaderContract)
           await barrier()
       }
     }

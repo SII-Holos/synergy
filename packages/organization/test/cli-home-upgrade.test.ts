@@ -1,11 +1,21 @@
-import { expect, test } from "bun:test"
+import { expect, spyOn, test } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { createIsolatedTestEnv } from "@ericsanchezok/synergy-testing/env"
 import { HomeOwnershipFile } from "@ericsanchezok/synergy-harness/lifecycle/home-ownership-file"
 import { RuntimeMaintenance } from "@ericsanchezok/synergy-harness/storage/runtime-maintenance"
+import { TransactionalStore } from "@ericsanchezok/synergy-harness/storage/transactional-store"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
-import { openOrganizationService } from "../src/service"
+import { OrganizationServiceHome } from "../src/service-home"
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
+import { HomeOwnership } from "@ericsanchezok/synergy-harness/lifecycle/home-ownership"
+import { MigrationRegistry } from "@ericsanchezok/synergy-harness/migration/registry"
+import { createHash } from "node:crypto"
+import { HomeRestoration } from "@ericsanchezok/synergy-harness/lifecycle/home-restoration"
+import { OrganizationRecoveryAdministration as Recovery } from "../src/backup/administration-recovery"
+import { OrganizationRecoveryPublication as Publication } from "../src/backup/publication"
+import { preparedFixture } from "./support/recovery-administration"
+import { openOrganizationService, openOrganizationRecovery, openOrganizationServiceHomeUpgrade } from "../src/service"
 import { OrganizationStoragePath as Keys } from "../src/storage/path"
 import { fixture } from "./support/organization"
 
@@ -112,11 +122,11 @@ test("the public upgrade command advances an established Service reader and rele
     restartRequired: true,
     executesAgents: false,
     schemaVersion: 2,
-    readerContract: "native-organization-service-environments-v1",
+    readerContract: OrganizationServiceHome.environmentReaderContract,
   })
   expect(HomeOwnershipFile.FencedInfo.parse(await Bun.file(marker).json())).toEqual({
     ...original,
-    readerContract: "native-organization-service-environments-v1",
+    readerContract: OrganizationServiceHome.environmentReaderContract,
   })
   const duplicate = await invoke(env, ["upgrade", "--request-id", requestID], true)
   expect(duplicate.code, duplicate.stderr).toBe(0)
@@ -196,3 +206,121 @@ for (const phase of ["draining", "frozen", "releasing", "released"] as const)
       await RuntimeMaintenance.assertAdmission()
     })
   }, 30_000)
+
+test("the public CLI advances a completed prior-reader restored Service without replacing its publication or physical identity", async () => {
+  const f = await (async () => {
+    const register = MigrationRegistry.register
+    using previousCatalog = spyOn(MigrationRegistry, "register").mockImplementation((domain, migrations, tracking) =>
+      register(
+        domain,
+        migrations
+          .filter(
+            (migration) =>
+              migration.id !== "20261116-organization-service-shared-generations-reader" &&
+              migration.id !== "20261116-organization-shared-generation-registration",
+          )
+          .map((migration) => ({
+            ...migration,
+            dependsOn: migration.dependsOn?.filter(
+              (id) => !id.endsWith("20261116-organization-shared-generation-registration"),
+            ),
+          })),
+        tracking,
+      ),
+    )
+    using previousReader = spyOn(OrganizationServiceHome, "selectForStartup").mockImplementation(
+      async (options = {}) => {
+        if (options.environments) throw new Error("The prior-catalog fixture has no Environment owner")
+        const { host } = RuntimeContext.current()
+        const identity = createHash("sha256").update("synergy.organization.service.v1").digest("hex")
+        const actual = await HomeOwnershipFile.open({ root: host.root, env: host.env }).read()
+        if (actual?.schemaVersion === 3) {
+          if (
+            actual.owner !== "organization" ||
+            actual.identity !== identity ||
+            actual.readerContract !== "native-organization-service-recovery-v1"
+          )
+            throw new Error("The prior selector cannot adopt another restored Home")
+          await HomeRestoration.inspectCompleted()
+          HomeOwnership.select(actual)
+          return true
+        }
+        if (
+          actual &&
+          (actual.schemaVersion !== 2 ||
+            actual.owner !== "organization" ||
+            actual.identity !== identity ||
+            actual.readerContract !== "native-organization-service-ownership-v1")
+        )
+          throw new Error("The prior selector cannot adopt another original Home")
+        HomeOwnership.select({
+          owner: "organization",
+          identity,
+          readerContract: "native-organization-service-ownership-v1",
+        })
+        return false
+      },
+    )
+    const install = HomeRestoration.installOwner
+    using previousInstaller = spyOn(HomeRestoration, "installOwner").mockImplementation((permit, input) =>
+      install(
+        permit,
+        HomeRestoration.describe(permit).owner === "organization" &&
+          input.readerContract === OrganizationServiceHome.recoveryReaderContract
+          ? { ...input, readerContract: "native-organization-service-recovery-v1" }
+          : input,
+      ),
+    )
+    const prepared = await preparedFixture()
+    await Recovery.recover(prepared.input)
+    return prepared
+  })()
+  await using retained = f
+  const root = path.join(f.input.home, ".synergy")
+  const marker = path.join(root, "home-ownership.json")
+  const original = HomeOwnershipFile.RestorationInfo.parse(await Bun.file(marker).json())
+  expect(original.readerContract).toBe("native-organization-service-recovery-v1")
+  expect(original.installationID).toBe(f.target.installationID)
+  const completed = await fs.readFile(path.join(root, "home-restoration.json"))
+  const env = { ...process.env, SYNERGY_HOME: f.input.home, SYNERGY_TEST_HOME: f.input.home }
+  const physical = await HomeOwnershipFile.open({ root, env, selected: original }).physicalHash()
+  try {
+    const first = completed.indexOf(10) + 1
+    if (first <= 0 || completed.byteLength <= first + 4)
+      throw new Error("The real completed native frame lacks its original suffix")
+    await fs.truncate(path.join(root, "home-restoration.json"), first + 4)
+    using opened = spyOn(TransactionalStore, "open")
+    await expect(openOrganizationServiceHomeUpgrade({ home: f.input.home })).rejects.toThrow()
+    expect(opened).toHaveBeenCalledTimes(0)
+    expect(HomeOwnershipFile.RestorationInfo.parse(await Bun.file(marker).json())).toEqual(original)
+  } finally {
+    await fs.writeFile(path.join(root, "home-restoration.json"), completed)
+  }
+  expect(await fs.readFile(path.join(root, "home-restoration.json"))).toEqual(completed)
+  await using before = await openOrganizationRecovery({ home: f.input.home })
+  const publication = await before.run(() => Publication.read(f.target.installationID))
+  const signing = await before.run(() => Storage.read(Keys.signingIdentity()))
+  await before.close()
+  await expect(openOrganizationService({ home: f.input.home })).rejects.toThrow("explicit migration")
+  expect(HomeOwnershipFile.RestorationInfo.parse(await Bun.file(marker).json())).toEqual(original)
+  const first = await invoke(env, ["upgrade", "--request-id", "restored-sharing-history-reader"])
+  expect(first.code, first.stderr).toBe(0)
+  expect(JSON.parse(first.stdout)).toMatchObject({
+    state: "upgrade-complete",
+    schemaVersion: 3,
+    readerContract: OrganizationServiceHome.recoveryReaderContract,
+  })
+  const expected = { ...original, readerContract: OrganizationServiceHome.recoveryReaderContract }
+  expect(HomeOwnershipFile.RestorationInfo.parse(await Bun.file(marker).json())).toEqual(expected)
+  expect(await HomeOwnershipFile.open({ root, env, selected: expected }).physicalHash()).toBe(physical)
+  expect(await fs.readFile(path.join(root, "home-restoration.json"))).toEqual(completed)
+  const retry = await invoke(env, ["upgrade", "--request-id", "restored-sharing-history-reader"], true)
+  expect(retry.code, retry.stderr).toBe(0)
+  expect(JSON.parse(retry.stdout)).toEqual(JSON.parse(first.stdout))
+  await using ordinary = await openOrganizationService({ home: f.input.home })
+  await ordinary.maintenance.run(async () => {
+    expect(await Publication.read(f.target.installationID)).toEqual(publication)
+    expect(await Storage.read(Keys.signingIdentity())).toEqual(signing)
+    await RuntimeMaintenance.assertAdmission()
+  })
+}, 30_000)

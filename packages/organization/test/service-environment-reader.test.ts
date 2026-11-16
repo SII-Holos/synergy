@@ -1,6 +1,8 @@
-import { expect, test } from "bun:test"
+import { expect, spyOn, test } from "bun:test"
 import path from "node:path"
 import { createHash } from "node:crypto"
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
+import { HomeOwnership } from "@ericsanchezok/synergy-harness/lifecycle/home-ownership"
 import { HomeOwnershipFile } from "@ericsanchezok/synergy-harness/lifecycle/home-ownership-file"
 import { NativeNamespaceIdentity } from "@ericsanchezok/synergy-harness/lifecycle/namespace-identity"
 import { MigrationRegistry } from "@ericsanchezok/synergy-harness/migration/registry"
@@ -12,7 +14,6 @@ import { openOrganizationService, openOrganizationServiceHomeUpgrade } from "../
 import { OrganizationStoragePath as Keys } from "../src/storage/path"
 import { fixture } from "./support/organization"
 
-const oldOrdinaryReader = "native-organization-service-ownership-v1"
 async function oldVersionTwoStartup(home: string) {
   // Keep the released selector independent of the new ServiceHome implementation.
   const program = `
@@ -107,24 +108,27 @@ test("fresh Environment-capable service fences the released format-two reader be
   expect(configuration.effects()).toBe(0)
 })
 
-test("a service without Environment configuration retains its released reader and migration catalog", async () => {
+test("a fresh service without Environment configuration fences released readers with generation ownership", async () => {
   await using f = await fixture()
   const home = f.service.home
   const owner = HomeOwnershipFile.FencedInfo.parse(
     await Bun.file(path.join(home, ".synergy", "home-ownership.json")).json(),
   )
-  expect(owner.readerContract).toBe(oldOrdinaryReader)
+  expect(owner.readerContract).toBe(OrganizationServiceHome.readerContract)
   expect(
     await f.service.maintenance.run(async () =>
       MigrationRegistry.list()
         .get("organization-service-home")
         ?.map((migration) => migration.id),
     ),
-  ).toEqual(["20261112-organization-service-home-reader-fence-v2"])
+  ).toEqual([
+    "20261112-organization-service-home-reader-fence-v2",
+    "20261116-organization-service-shared-generations-reader",
+  ])
   await f.service.close()
   const previous = await oldVersionTwoStartup(home)
-  expect(previous.exit).toBe(0)
-  expect(previous.stdout).toBe("sql-opened\nready")
+  expect(previous.exit).not.toBe(0)
+  expect(previous.stdout).toBe("")
   await f.restart()
   expect(
     HomeOwnershipFile.FencedInfo.parse(await Bun.file(path.join(home, ".synergy", "home-ownership.json")).json()),
@@ -187,4 +191,100 @@ test("an established Service advances its Environment reader only through its or
   })
   expect(await f.service.deployment()).toEqual(deployment)
   expect(configuration.effects()).toBe(0)
+})
+
+test("an established prior-catalog Service upgrades sharing ownership only through its original frozen public owner", async () => {
+  const retained = await (async () => {
+    const select = HomeOwnership.select
+    const register = MigrationRegistry.register
+    using previousSelector = spyOn(HomeOwnership, "select").mockImplementation((input) =>
+      select(
+        input.owner === "organization" &&
+          "readerContract" in input &&
+          input.readerContract === OrganizationServiceHome.readerContract
+          ? { ...input, readerContract: "native-organization-service-ownership-v1" }
+          : input,
+      ),
+    )
+    using previousCatalog = spyOn(MigrationRegistry, "register").mockImplementation((domain, migrations, tracking) =>
+      register(
+        domain,
+        migrations
+          .filter(
+            (migration) =>
+              migration.id !== "20261116-organization-service-shared-generations-reader" &&
+              migration.id !== "20261116-organization-shared-generation-registration",
+          )
+          .map((migration) => ({
+            ...migration,
+            dependsOn: migration.dependsOn?.filter(
+              (id) => !id.endsWith("20261116-organization-shared-generation-registration"),
+            ),
+          })),
+        tracking,
+      ),
+    )
+    return await fixture()
+  })()
+  await using f = retained
+  await f.initialize()
+  const home = f.service.home
+  const marker = path.join(home, ".synergy", "home-ownership.json")
+  const before = HomeOwnershipFile.FencedInfo.parse(await Bun.file(marker).json())
+  expect(before.readerContract).toBe("native-organization-service-ownership-v1")
+  const physical = await f.service.maintenance.run(() =>
+    HomeOwnershipFile.open({
+      root: path.join(home, ".synergy"),
+      env: RuntimeContext.current().host.env,
+      selected: before,
+    }).physicalHash(),
+  )
+  const deployment = await f.service.deployment()
+  const signing = await f.service.maintenance.run(() => Storage.read(Keys.signingIdentity()))
+  await f.service.close()
+  await expect(openOrganizationService({ home })).rejects.toThrow("explicit migration")
+  expect(HomeOwnershipFile.FencedInfo.parse(await Bun.file(marker).json())).toEqual(before)
+  await using upgrade = await openOrganizationServiceHomeUpgrade({ home })
+  await upgrade.maintenance.run(async () => {
+    const lease = await RuntimeMaintenance.begin({
+      purpose: "organization-home-upgrade",
+      requestID: "sharing-history-reader",
+      actor: {
+        kind: "system",
+        subjectID: "operator",
+        displayName: "Host operator",
+        clientKind: "system",
+        requestID: "sharing-history-reader",
+      },
+    })
+    await expect(upgrade.upgrade({ lease })).rejects.toThrow("frozen")
+    expect(HomeOwnershipFile.FencedInfo.parse(await Bun.file(marker).json())).toEqual(before)
+    await RuntimeMaintenance.freeze(lease, await RuntimeMaintenance.drain(lease))
+    await upgrade.upgrade({ lease })
+    await upgrade.upgrade({ lease })
+    expect(HomeOwnershipFile.FencedInfo.parse(await Bun.file(marker).json())).toEqual({
+      ...before,
+      readerContract: OrganizationServiceHome.readerContract,
+    })
+    expect(
+      await HomeOwnershipFile.open({
+        root: path.join(home, ".synergy"),
+        env: RuntimeContext.current().host.env,
+        selected: { ...before, readerContract: OrganizationServiceHome.readerContract },
+      }).physicalHash(),
+    ).toBe(physical)
+    expect(await Storage.read(Keys.signingIdentity())).toEqual(signing)
+    expect(await Storage.read(Keys.deployment())).toEqual(deployment)
+    await RuntimeMaintenance.release(lease)
+  })
+  await upgrade.close()
+  const old = await oldVersionTwoStartup(home)
+  expect(old.exit).not.toBe(0)
+  expect(old.stdout).toBe("")
+  await f.restart()
+  expect(await f.service.deployment()).toEqual(deployment)
+  expect(HomeOwnershipFile.FencedInfo.parse(await Bun.file(marker).json())).toEqual({
+    ...before,
+    readerContract: OrganizationServiceHome.readerContract,
+  })
 })

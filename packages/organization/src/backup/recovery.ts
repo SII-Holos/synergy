@@ -99,8 +99,15 @@ export namespace OrganizationRecovery {
     }
     try {
       await verify()
-      const cap: PreparationTarget = Object.freeze({ kind: "organization-source-preparation-target" })
-      preparations.set(cap, { assert, verify, reference: selected.reference, checkpoint: selected.checkpoint })
+      const cap: PreparationTarget = Object.freeze({
+        kind: "organization-source-preparation-target",
+      })
+      preparations.set(cap, {
+        assert,
+        verify,
+        reference: selected.reference,
+        checkpoint: selected.checkpoint,
+      })
       const result = await body(cap)
       await verify()
       return result
@@ -174,7 +181,11 @@ export namespace OrganizationRecovery {
     const configuration = hash(store.options)
     const artifacts = primary.artifactDirectory
     const objects = primary.artifactObjects
-    const ports = objects && { blobs: objects.blobs, writerID: objects.writerID, now: objects.now }
+    const ports = objects && {
+      blobs: objects.blobs,
+      writerID: objects.writerID,
+      now: objects.now,
+    }
     let open = true
     const assertLive = () => {
       if (!open) fail("target callback has ended")
@@ -231,7 +242,9 @@ export namespace OrganizationRecovery {
         request.payload.nativeHash !== reference.nativeHash
       )
         fail("requires the same original installed target and prepared signer")
-      const target: Target = Object.freeze({ kind: "organization-recovery-policy-target" })
+      const target: Target = Object.freeze({
+        kind: "organization-recovery-policy-target",
+      })
       targets.set(target, {
         assert,
         assertLive,
@@ -289,6 +302,7 @@ export namespace OrganizationRecovery {
             target: target.reference,
             base: target.base,
             namespace: captured.namespace,
+            sourceArchive: captured.native.archive,
             queued: input.queued,
             keys: captured.keys,
             signal: cancellation,
@@ -296,7 +310,12 @@ export namespace OrganizationRecovery {
           async () => {
             assert()
             return AuthorityJournal.withAdoption(
-              { ...captured.namespace, keys: captured.keys, after: target.checkpoint, signal: cancellation },
+              {
+                ...captured.namespace,
+                keys: captured.keys,
+                after: target.checkpoint,
+                signal: cancellation,
+              },
               async (evidence) => {
                 assert()
                 const checkpoint = AuthorityJournal.describeAdoption(evidence)
@@ -351,6 +370,7 @@ export namespace OrganizationRecovery {
           target: target.reference,
           base: target.base,
           namespace: captured.namespace,
+          sourceArchive: captured.native.archive,
           queued: input.queued,
           keys: captured.keys,
           signal: cancellation,
@@ -398,8 +418,19 @@ export namespace OrganizationRecovery {
       },
     }
     const provider = input.keys
-    const keys = Object.freeze({ current: provider.current.bind(provider), resolve: provider.resolve.bind(provider) })
-    await reconstructCold({ source, target: input.target, namespace, native, queued: input.queued, keys, signal })
+    const keys = Object.freeze({
+      current: provider.current.bind(provider),
+      resolve: provider.resolve.bind(provider),
+    })
+    await reconstructCold({
+      source,
+      target: input.target,
+      namespace,
+      native,
+      queued: input.queued,
+      keys,
+      signal,
+    })
     return Retirement.withVerified(
       source,
       (inspection) =>
@@ -439,7 +470,10 @@ export namespace OrganizationRecovery {
                       )
                         fail("requires its committed final current policy")
                       if (evidence) await OrganizationRecoveryWriters.assertReconciled(evidence)
-                      else await OrganizationRecoveryWriters.assertServiceOnly({ signal })
+                      else
+                        await OrganizationRecoveryWriters.assertServiceOnly({
+                          signal,
+                        })
                       assert()
                       const receipt = await Publication.write(tx, {
                         activation,
@@ -464,12 +498,12 @@ export namespace OrganizationRecovery {
                     sources: writers,
                     queued: input.queued,
                     namespace,
+                    sourceArchive: verified.archive,
                     keys,
                     signal,
                   },
                   complete,
                 )
-              await OrganizationRecoveryWriters.assertServiceOnly({ signal })
               assert()
               return OrganizationRecoveryWriters.withPreflight(
                 {
@@ -479,10 +513,15 @@ export namespace OrganizationRecovery {
                   base: target.base,
                   queued: input.queued,
                   namespace,
+                  sourceArchive: verified.archive,
                   keys,
                   signal,
                 },
-                () => complete(),
+                async () => {
+                  await OrganizationRecoveryWriters.assertServiceOnly({ signal })
+                  assert()
+                  return complete()
+                },
               )
             },
           )
@@ -518,7 +557,10 @@ export namespace OrganizationRecovery {
       },
     }
     const provider = input.keys
-    const keys = Object.freeze({ current: provider.current.bind(provider), resolve: provider.resolve.bind(provider) })
+    const keys = Object.freeze({
+      current: provider.current.bind(provider),
+      resolve: provider.resolve.bind(provider),
+    })
     const signal = input.signal
     const sourceRuntime = RuntimeContext.current()
     if (!target) fail("requires its original target evidence")
@@ -543,7 +585,12 @@ export namespace OrganizationRecovery {
           Native.sourceHash(native.expected) !== current.nativeHash
         )
           fail("cold archives do not match the original retired source hashes")
-        const verified = await Native.verify({ ...native, source: namespace.expected, keys, signal })
+        const verified = await Native.verify({
+          ...native,
+          source: namespace.expected,
+          keys,
+          signal,
+        })
         try {
           if (
             verified.identity.orgID !== current.checkpoint.namespaceID ||
@@ -565,6 +612,7 @@ export namespace OrganizationRecovery {
               base: target.base,
               queued: input.queued,
               namespace,
+              sourceArchive: Native.archiveInspection(verified),
               keys,
               signal,
             },

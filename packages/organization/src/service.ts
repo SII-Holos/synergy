@@ -269,7 +269,7 @@ async function openOrganizationNamespace(
       RuntimeMaintenance.registerProtection()
       if (mode === "source-preparation") restored = await OrganizationSourcePreparation.selectOwner()
       else if (mode === "upgrade")
-        await OrganizationServiceHome.selectForUpgrade({ environments: environmentsRequested })
+        restored = await OrganizationServiceHome.selectForUpgrade({ environments: environmentsRequested })
       else if (mode === "recovery") await OrganizationServiceHome.selectForRecovery()
       else if (mode === "retirement" || mode === "pending-retirement") {
         if (!retirement) throw new Error("Source retirement requires its original reference")

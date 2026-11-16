@@ -10,6 +10,7 @@ import path from "node:path"
 import { createHash } from "node:crypto"
 import { z } from "zod"
 import { HomeRestoration } from "@ericsanchezok/synergy-harness/lifecycle/home-restoration"
+import { HomeOwnership } from "@ericsanchezok/synergy-harness/lifecycle/home-ownership"
 import { NamespaceRetirement } from "@ericsanchezok/synergy-harness/lifecycle/namespace-retirement"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { StorageCheckpoint } from "@ericsanchezok/synergy-harness/storage/checkpoint"
@@ -28,6 +29,10 @@ import { OrganizationGatewayHistory } from "../gateway-calls"
 import { OrganizationKnowledge } from "../knowledge"
 import { OrganizationPublications } from "../publications"
 import { OrganizationArtifacts } from "../artifacts"
+import type { OrganizationSharedHistory } from "../shared-history"
+import { OrganizationServiceNative as Native } from "./service-native"
+import { OrganizationSharedGeneration as SharedGeneration } from "../shared-generation"
+import { OrganizationServiceHome } from "../service-home"
 import { OrganizationSharing } from "../sharing"
 import { OrganizationRuntimeHistory } from "../runtime-history"
 import { OrganizationSessionResources } from "../session-resources"
@@ -51,7 +56,13 @@ type Inventory = {
   database: Database
   target?: Reference
   kind: "preflight" | "publication"
-  sources: Map<string, { proof: NamespaceRetirement.Inspection; reference: NamespaceRetirement.Reference }>
+  sources: Map<
+    string,
+    {
+      proof: NamespaceRetirement.Inspection
+      reference: NamespaceRetirement.Reference
+    }
+  >
   assertTarget(): void
   assert(): void
   checkpoint?: Storage.ArtifactCheckpoint
@@ -59,8 +70,9 @@ type Inventory = {
   historyComplete?: boolean
   publicationIncarnation?: string
   queued?: QueuedHistory.Facts
+  sharedArchiveOrigin?: SharedGeneration.ArchiveOrigin
 }
-type HistoryIndex = Pick<Inventory, "database" | "assertTarget" | "historyComplete">
+type HistoryIndex = Pick<Inventory, "database" | "assertTarget" | "historyComplete" | "sharedArchiveOrigin">
 type Frame = Inventory & { target: Reference; namespaceHash: string }
 const inspections = new WeakMap<OrganizationRecoveryWriters.Inspection, Frame>()
 const preflights = RuntimeContext.createAsyncContext<Frame>()
@@ -228,10 +240,11 @@ async function classify(selected: Inventory, key: string[], value: unknown): Pro
       !ticket.consumed ||
       ticket.consumed.runtimeID !== registration.runtimeID ||
       ticket.consumed.publicKey !== registration.publicKey ||
-      ticket.consumed.orgID !== registration.orgID ||
-      ticket.consumed.deploymentIncarnation !== registration.deploymentIncarnation
+      ticket.consumed.orgID !== registration.orgID
     )
       blocked("unsettled Runtime enrollment")
+    if (ticket.consumed.deploymentIncarnation !== registration.deploymentIncarnation)
+      OrganizationRuntimeHistory.enrollment(historicalReader(selected), ticket)
     return "metadata"
   }
   if (kind === "sessions") {
@@ -401,7 +414,7 @@ function inventoryDatabase(filename: string) {
   initializeSqliteEngine()
   const database = new Database(filename)
   database.exec(
-    "PRAGMA journal_mode=OFF; PRAGMA temp_store=FILE; PRAGMA cache_size=-2048; CREATE TABLE records(key TEXT PRIMARY KEY,value TEXT NOT NULL,mode TEXT NOT NULL); CREATE TABLE artifacts(key TEXT PRIMARY KEY,sha256 TEXT NOT NULL,size INTEGER NOT NULL,location TEXT NOT NULL); CREATE TABLE blobs(sha256 TEXT PRIMARY KEY,size INTEGER NOT NULL); CREATE TABLE verified(key TEXT PRIMARY KEY,location TEXT NOT NULL,pack TEXT NOT NULL); CREATE TABLE target_blobs(location TEXT PRIMARY KEY); CREATE TABLE history(key TEXT PRIMARY KEY); CREATE TABLE history_groups(key TEXT PRIMARY KEY,digest TEXT NOT NULL); CREATE TABLE history_artifacts(key TEXT PRIMARY KEY); CREATE TABLE history_appends(key TEXT PRIMARY KEY); CREATE TABLE present_artifacts(key TEXT PRIMARY KEY); CREATE TABLE missing_artifacts(key TEXT PRIMARY KEY)",
+    "PRAGMA journal_mode=OFF; PRAGMA temp_store=FILE; PRAGMA cache_size=-2048; CREATE TABLE records(key TEXT PRIMARY KEY,value TEXT NOT NULL,mode TEXT NOT NULL); CREATE TABLE artifacts(key TEXT PRIMARY KEY,sha256 TEXT NOT NULL,size INTEGER NOT NULL,location TEXT NOT NULL); CREATE TABLE blobs(sha256 TEXT PRIMARY KEY,size INTEGER NOT NULL); CREATE TABLE verified(key TEXT PRIMARY KEY,location TEXT NOT NULL,pack TEXT NOT NULL); CREATE TABLE target_blobs(location TEXT PRIMARY KEY); CREATE TABLE history(key TEXT PRIMARY KEY); CREATE TABLE history_groups(key TEXT PRIMARY KEY,digest TEXT NOT NULL); CREATE TABLE history_artifacts(key TEXT PRIMARY KEY); CREATE TABLE history_appends(key TEXT PRIMARY KEY); CREATE TABLE transient_history_appends(key TEXT PRIMARY KEY); CREATE TABLE present_artifacts(key TEXT PRIMARY KEY); CREATE TABLE missing_artifacts(key TEXT PRIMARY KEY)",
   )
   return database
 }
@@ -421,7 +434,7 @@ async function validatePublishedHistory(selected: HistoryIndex, stream: (key: st
   )
   using acceptedArtifact = selected.database.query("INSERT OR IGNORE INTO history_artifacts VALUES(?)")
   using appended = selected.database.query("INSERT OR IGNORE INTO history_appends VALUES(?)")
-  const history: OrganizationPublications.HistoricalSource = {
+  const history: OrganizationPublications.HistoricalSource & OrganizationSharedHistory.Source = {
     ...reader,
     accept(key) {
       selected.assertTarget()
@@ -432,6 +445,10 @@ async function validatePublishedHistory(selected: HistoryIndex, stream: (key: st
       selected.assertTarget()
       if (!sourceRow(selected, key)) blocked("missing original immutable publication row")
       appended.run(JSON.stringify(key))
+    },
+    retainedOrigin(origin) {
+      selected.assertTarget()
+      return selected.sharedArchiveOrigin !== undefined && hash(origin) === hash(selected.sharedArchiveOrigin)
     },
     first(key, value) {
       selected.assertTarget()
@@ -515,6 +532,20 @@ async function withCurrentHistory<T>(body: (selected: HistoryIndex) => Promise<T
       blocked("changed historical native Store")
   }
   assert()
+  const owner = await HomeOwnership.assert()
+  const retainedOwner =
+    owner?.owner === "organization" &&
+    (owner.schemaVersion === 2 || owner.schemaVersion === 3) &&
+    OrganizationServiceHome.needsRetainedSharedGenerations(owner)
+      ? OrganizationServiceHome.archivedOwner(owner)
+      : undefined
+  const verifyRetainedOwner = async () => {
+    assert()
+    if (retainedOwner && hash(await HomeOwnership.assert({ required: true })) !== hash(retainedOwner))
+      blocked("changed original retained-history Home owner")
+    assert()
+  }
+  await verifyRetainedOwner()
   const temporary = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-current-history-"))
   const database = inventoryDatabase(path.join(temporary, "history.sqlite"))
   const selected: HistoryIndex = { database, assertTarget: assert }
@@ -522,6 +553,7 @@ async function withCurrentHistory<T>(body: (selected: HistoryIndex) => Promise<T
     return await Storage.withArtifactCheckpoint(
       async (checkpoint) => {
         using insert = database.query("INSERT INTO records VALUES(?,?,'metadata')")
+        using transient = database.query("INSERT INTO transient_history_appends VALUES(?)")
         using artifact = database.query("INSERT INTO artifacts VALUES(?,?,?,?)")
         await Storage.snapshot(async (tx) => {
           for await (const entry of tx.exportEntries()) {
@@ -536,6 +568,34 @@ async function withCurrentHistory<T>(body: (selected: HistoryIndex) => Promise<T
               )
           }
         })
+        if (retainedOwner) {
+          await verifyRetainedOwner()
+          await SharedGeneration.observe({
+            observedAt: Date.now(),
+            source: historicalReader(selected),
+            read(key) {
+              return sourceRow(selected, key)?.value
+            },
+            append(key, value) {
+              assert()
+              if (
+                key[0] !== "organization" ||
+                !["shared-generations", "shared-generation-empty-ranges"].includes(key[1]!)
+              )
+                blocked("another transient retained-history metadata owner")
+              const previous = sourceRow(selected, key)
+              if (previous) {
+                if (hash(previous.value) !== hash(value)) blocked("changed transient retained-history metadata")
+              } else {
+                const address = JSON.stringify(key)
+                insert.run(address, JSON.stringify(value))
+                transient.run(address)
+              }
+            },
+            assert,
+          })
+          await verifyRetainedOwner()
+        }
         await validatePublishedHistory(selected, (key) =>
           (async function* () {
             assert()
@@ -543,7 +603,11 @@ async function withCurrentHistory<T>(body: (selected: HistoryIndex) => Promise<T
               .query<{ location: string }, [string]>("SELECT location FROM artifacts WHERE key=?")
               .get(JSON.stringify(key))
             if (!row) blocked("missing historical native artifact")
-            const entry = StorageEntry.parse({ type: "artifact", key, location: JSON.parse(row.location) })
+            const entry = StorageEntry.parse({
+              type: "artifact",
+              key,
+              location: JSON.parse(row.location),
+            })
             if (entry.type !== "artifact") blocked("another historical native artifact")
             yield* checkpoint.stream(entry.location)
           })(),
@@ -562,7 +626,10 @@ async function withCurrentHistory<T>(body: (selected: HistoryIndex) => Promise<T
           if (mode === "runtime") blocked("unproved Hosted writer")
           if (mode === "exact") accept.run(row.key)
         }
-        return body(selected)
+        await verifyRetainedOwner()
+        const result = await body(selected)
+        await verifyRetainedOwner()
+        return result
       },
       { signal },
     )
@@ -579,6 +646,7 @@ const schemaMarkers = new Map([
   ["transcript-schema", { schemaVersion: 1 }],
   ["transcript-window-schema", { schemaVersion: 3 }],
   ["task-projection-schema", { schemaVersion: 1 }],
+  ["shared-generation-schema", { schemaVersion: 1 }],
 ])
 const serviceRecords = new Set([
   "deployment",
@@ -598,7 +666,9 @@ const serviceRecords = new Set([
   "project-access",
 ])
 function blocked(category: string): never {
-  throw new RuntimeMaintenance.Blocked({ message: "Organization recovery requires reconciliation for " + category })
+  throw new RuntimeMaintenance.Blocked({
+    message: "Organization recovery requires reconciliation for " + category,
+  })
 }
 
 export namespace OrganizationRecoveryWriters {
@@ -612,13 +682,16 @@ export namespace OrganizationRecoveryWriters {
     base: StorageCheckpoint.Manifest
     sources: readonly NamespaceRetirement.Inspection[]
     queued?: readonly QueuedHistory.Source[]
+    sourceArchive?: Native.ArchiveInspection
     namespace: { directory: string; expected: StorageCheckpoint.Manifest }
     keys: VaultKeyProvider
     signal?: AbortSignal
   }
   export function withReconciled<T>(input: Input, body: (evidence: Inspection) => Promise<T>) {
     return withInventory(input, "publication", async (selected) => {
-      const evidence: Inspection = Object.freeze({ kind: "organization-recovery-writers" })
+      const evidence: Inspection = Object.freeze({
+        kind: "organization-recovery-writers",
+      })
       inspections.set(evidence, selected)
       await assertReconciled(evidence)
       return body(evidence)
@@ -629,7 +702,10 @@ export namespace OrganizationRecoveryWriters {
   }
   export function withPreflight<T>(input: Omit<Input, "sources">, body: () => Promise<T>) {
     return withInventory({ ...input, sources: [] }, "preflight", async (selected) => {
-      await assertInventoryMatches(selected, { allowMissingKnowledge: true, allowMissingArtifacts: true })
+      await assertInventoryMatches(selected, {
+        allowMissingKnowledge: true,
+        allowMissingArtifacts: true,
+      })
       return preflights.run(selected, body)
     })
   }
@@ -640,7 +716,12 @@ export namespace OrganizationRecoveryWriters {
     selected.assert()
     const previous = preflightSeals.get(tx)
     if (previous && (previous.frame !== selected || previous.failed)) blocked("changed artifact preflight transaction")
-    const seal = previous ?? { frame: selected, complete: false, failed: false, sealed: false }
+    const seal = previous ?? {
+      frame: selected,
+      complete: false,
+      failed: false,
+      sealed: false,
+    }
     if (!previous) preflightSeals.set(tx, seal)
     await Storage.transaction(async () => {}, {
       commitGuard() {
@@ -654,7 +735,10 @@ export namespace OrganizationRecoveryWriters {
     const { selected, seal } = await preflightTransaction(tx)
     try {
       if (seal.sealed) blocked("knowledge publication after final preflight")
-      await assertInventoryMatches(selected, { allowMissingKnowledge: true, allowMissingArtifacts: true })
+      await assertInventoryMatches(selected, {
+        allowMissingKnowledge: true,
+        allowMissingArtifacts: true,
+      })
       if (selected.prepared) await StorageCheckpoint.publishPreparedArtifacts(selected.prepared, tx)
       using rows = selected.database.query<{ key: string; value: string }, [string]>(
         "SELECT records.key,records.value FROM history_appends JOIN records USING(key) WHERE key>? ORDER BY key LIMIT 128",
@@ -742,7 +826,10 @@ export namespace OrganizationRecoveryWriters {
         blocked("foreign original installation")
       sources.set(identity.runtimeID, { proof, reference })
     }
+    let sharedOwnerHash: string | undefined
     const assertTarget = () => {
+      if (sharedOwnerHash !== undefined && hash(HomeRestoration.assertInstalledOwner(permit)) !== sharedOwnerHash)
+        blocked("changed original shared metadata target reader")
       signal?.throwIfAborted()
       if (!open) blocked("writer callback has ended")
       HomeRestoration.assertRequest(permit, request)
@@ -797,7 +884,11 @@ export namespace OrganizationRecoveryWriters {
       using blob = database.query<{ size: number }, [string]>("SELECT size FROM blobs WHERE sha256=?")
       using verifiedBlob = database.query("INSERT INTO blobs VALUES(?,?)")
       let unsafe: string | undefined
-      for await (const entry of StorageCheckpoint.entries({ ...namespace, keys, signal })) {
+      for await (const entry of StorageCheckpoint.entries({
+        ...namespace,
+        keys,
+        signal,
+      })) {
         assertTarget()
         if (entry.type === "record") insert.run(JSON.stringify(entry.key), JSON.stringify(entry.value))
         else if (entry.type === "artifact") {
@@ -828,6 +919,58 @@ export namespace OrganizationRecoveryWriters {
       }
       assert()
       if (unsafe) blocked(unsafe)
+      if (input.sourceArchive) {
+        const archived = Native.inspectArchive(input.sourceArchive)
+        if (Native.sourceHash(archived.source) !== Native.sourceHash(namespace.expected))
+          blocked("another original shared inventory namespace")
+        if (OrganizationServiceHome.needsRetainedSharedGenerations(archived.owner)) {
+          const origin = SharedGeneration.RetainedOrigin.parse({
+            kind: "archive-inventory",
+            installationID: target.installationID,
+            incarnation: target.incarnation,
+            namespaceHash: Native.sourceHash(archived.source),
+            nativeHash: Native.sourceHash(archived.native),
+            sourceOwner: archived.owner,
+          })
+          if (origin.kind !== "archive-inventory") blocked("another shared archive observation")
+          selected.sharedArchiveOrigin = origin
+          const installedOwner = HomeRestoration.assertInstalledOwner(permit)
+          const currentReader = !OrganizationServiceHome.needsRetainedSharedGenerations(installedOwner)
+          using generated = database.query("INSERT INTO records VALUES(?,?,'exact')")
+          using appended = database.query("INSERT OR IGNORE INTO history_appends VALUES(?)")
+          using exact = database.query("INSERT OR IGNORE INTO history VALUES(?)")
+          await SharedGeneration.archived({
+            origin,
+            observedAt: archived.source.createdAt,
+            source: historicalReader(selected),
+            read(key) {
+              return sourceRow(selected, key)?.value
+            },
+            append(key, value) {
+              assert()
+              if (!currentReader) blocked("shared retained metadata requires its current installed reader")
+              sharedOwnerHash = hash(installedOwner)
+              assertTarget()
+              const address = JSON.stringify(key)
+              if (
+                key[0] !== "organization" ||
+                !["shared-generations", "shared-generation-empty-ranges", "shared-generation-schema"].includes(key[1]!)
+              )
+                blocked("another retained metadata owner")
+              const previous = sourceRow(selected, key)
+              if (previous) {
+                if (hash(previous.value) !== hash(value)) blocked("changed original retained metadata")
+              } else generated.run(address, JSON.stringify(value))
+              if (hash(key) === hash(SharedGeneration.registrationKey)) {
+                SharedGeneration.Registration.parse(value)
+                exact.run(address)
+              }
+              appended.run(address)
+            },
+            assert,
+          })
+        }
+      }
       await validatePublishedHistory(selected, (key) =>
         (async function* () {
           assert()
@@ -835,7 +978,11 @@ export namespace OrganizationRecoveryWriters {
             .query<{ sha256: string; size: number }, [string]>("SELECT sha256,size FROM artifacts WHERE key=?")
             .get(JSON.stringify(key))
           if (!row) blocked("missing fixed H1 publication chunk")
-          yield* StorageCheckpoint.streamArtifact({ directory: namespace.directory, location: row, signal })
+          yield* StorageCheckpoint.streamArtifact({
+            directory: namespace.directory,
+            location: row,
+            signal,
+          })
         })(),
       )
       selected.queued = await QueuedHistory.inspect(
@@ -855,7 +1002,10 @@ export namespace OrganizationRecoveryWriters {
         update.run(mode, row.key)
         if (mode === "exact") accepted.run(row.key)
       }
-      await assertInventoryMatches(selected, { allowMissingKnowledge: true, recordsOnly: true })
+      await assertInventoryMatches(selected, {
+        allowMissingKnowledge: true,
+        recordsOnly: true,
+      })
       using present = database.query("INSERT OR IGNORE INTO present_artifacts VALUES(?)")
       await Storage.snapshot(async (tx) => {
         for await (const entry of tx.artifacts()) {
@@ -882,7 +1032,15 @@ export namespace OrganizationRecoveryWriters {
         }
       }
       return await RuntimeMaintenance.withRestorationArtifacts(
-        { permit, request, base, namespace, keys, references: references(), signal },
+        {
+          permit,
+          request,
+          base,
+          namespace,
+          keys,
+          references: references(),
+          signal,
+        },
         (prepared) => {
           selected.prepared = prepared
           return Storage.withArtifactCheckpoint(
@@ -966,7 +1124,11 @@ export namespace OrganizationRecoveryWriters {
   }
   async function assertInventoryMatches(
     selected: Frame,
-    options: { allowMissingKnowledge?: boolean; allowMissingArtifacts?: boolean; recordsOnly?: boolean } = {},
+    options: {
+      allowMissingKnowledge?: boolean
+      allowMissingArtifacts?: boolean
+      recordsOnly?: boolean
+    } = {},
   ) {
     return Storage.snapshot(async (tx) => {
       selected.database.exec("DELETE FROM present_artifacts")
@@ -1233,9 +1395,19 @@ export namespace OrganizationRecoveryWriters {
     const present = await Storage.snapshot(
       async (tx) =>
         (await tx.queryKeys({ prefix: ["organization-knowledge"], limit: 1 })).length ||
-        (await tx.queryKeys({ prefix: ["organization-publications"], limit: 1 })).length ||
+        (
+          await tx.queryKeys({
+            prefix: ["organization-publications"],
+            limit: 1,
+          })
+        ).length ||
         (await tx.queryKeys({ prefix: ["organization-artifacts"], limit: 1 })).length ||
-        (await tx.queryKeys({ prefix: ["organization", "shared-state"], limit: 1 })).length ||
+        (
+          await tx.queryKeys({
+            prefix: ["organization", "shared-state"],
+            limit: 1,
+          })
+        ).length ||
         (await tx.queryKeys({ prefix: ["organization", "cloud"], limit: 1 })).length,
     )
     if (present) return withCurrentHistory((selected) => scanServiceOnly(selected, signal), signal)
@@ -1279,7 +1451,9 @@ export namespace OrganizationRecoveryWriters {
         } else if (!root || !safeRoots.has(root)) blocked("native " + (root ?? "owner"))
       }
       if (history) {
-        using count = history.database.query<{ count: number }, []>("SELECT COUNT(*) AS count FROM history")
+        using count = history.database.query<{ count: number }, []>(
+          "SELECT COUNT(*) AS count FROM history WHERE NOT EXISTS (SELECT 1 FROM transient_history_appends WHERE transient_history_appends.key = history.key)",
+        )
         const expected = count.get()
         if (!expected || expected.count !== accepted) blocked("incomplete historical publication closure")
         history.assertTarget()

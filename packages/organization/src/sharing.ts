@@ -1,5 +1,6 @@
 import { OrganizationSharedBlobs } from "./shared-blob"
 import { OrganizationSharedHistory } from "./shared-history"
+import { OrganizationSharedGeneration } from "./shared-generation"
 import { createHash } from "node:crypto"
 import {
   OrganizationIdentity as Identity,
@@ -831,6 +832,7 @@ export namespace OrganizationSharing {
         (runtime.runtimeKind === "member" && runtime.accountID !== account.accountID)
       )
         fail("HANDOFF_BLOCKED", "The current Session driver must be the creator before sharing is revoked")
+      await OrganizationSharedGeneration.revoke(session)
       const updated = Record.SessionDirectory.parse({
         ...session,
         shareState: "private",

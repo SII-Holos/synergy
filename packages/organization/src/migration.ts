@@ -15,6 +15,7 @@ import { sharedProjectionMigration, sharedWindowMigration, sharedWindowHistoryMi
 import { publicationMigration, publicationLifecycleMigration } from "./publications"
 import { inviteCatalogMigration } from "./auth/invite-migration"
 import { knowledgeSelectionMigration } from "./knowledge-selection"
+import { OrganizationSharedGeneration } from "./shared-generation"
 import { sharedBlobMigration } from "./shared-blob"
 import { organizationAuthorityMigration } from "./authority-history"
 import { sharedTaskMigration } from "./shared-tasks"
@@ -48,6 +49,7 @@ const migrations: Migration[] = [
   inviteCatalogMigration,
   knowledgeSelectionMigration,
   sharedBlobMigration,
+  OrganizationSharedGeneration.initialization,
   {
     id: "20261108-organization-deployment",
     description: "Establish independent organization deployment identity",
