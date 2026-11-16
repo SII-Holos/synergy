@@ -138,6 +138,60 @@ async function fixture() {
   }
 }
 
+test("namespace retirement marker DTO keeps restored installation identity only in its complete nested source", async () => {
+  await using source = await fixture()
+  const reference = await source.capture(async (current) => Retirement.describeSource(current))
+  const original = JSON.stringify(reference)
+  expect(Retirement.marker(reference)).toEqual({
+    ...reference.owner,
+    schemaVersion: 4,
+    maintenanceID: reference.maintenance.maintenanceID,
+    referenceHash: digest(reference),
+    physicalHash: reference.physicalHash,
+    source: reference.owner,
+  })
+  const owner = HomeOwnershipFile.RestorationInfo.parse({
+    ...reference.owner,
+    schemaVersion: 3,
+    installationID: crypto.randomUUID(),
+    incarnation: crypto.randomUUID(),
+  })
+  const restored = Retirement.Reference.parse({ ...reference, owner })
+  const encoded = JSON.stringify(restored)
+  const marker = Retirement.marker(restored)
+  expect(marker).toEqual({
+    owner: owner.owner,
+    identity: owner.identity,
+    readerContract: owner.readerContract,
+    schemaVersion: 4,
+    maintenanceID: restored.maintenance.maintenanceID,
+    referenceHash: digest(restored),
+    physicalHash: restored.physicalHash,
+    source: owner,
+  })
+  expect(HomeOwnershipFile.RetirementInfo.safeParse({ ...marker, installationID: owner.installationID }).success).toBe(
+    false,
+  )
+  expect(HomeOwnershipFile.RetirementInfo.safeParse({ ...marker, incarnation: owner.incarnation }).success).toBe(false)
+  expect(
+    HomeOwnershipFile.RetirementInfo.safeParse({ ...marker, source: { ...owner, identity: "f".repeat(64) } }).success,
+  ).toBe(false)
+  expect(Retirement.Reference.safeParse({ ...restored, owner: { ...owner, installationID: "invalid" } }).success).toBe(
+    false,
+  )
+  expect(Retirement.Reference.safeParse({ ...restored, owner: { ...owner, incarnation: "invalid" } }).success).toBe(
+    false,
+  )
+  expect(
+    Retirement.marker({ ...restored, owner: { ...owner, installationID: crypto.randomUUID() } }).referenceHash,
+  ).not.toBe(marker.referenceHash)
+  expect(
+    Retirement.marker({ ...restored, owner: { ...owner, incarnation: crypto.randomUUID() } }).referenceHash,
+  ).not.toBe(marker.referenceHash)
+  expect(JSON.stringify(restored)).toBe(encoded)
+  expect(JSON.stringify(reference)).toBe(original)
+})
+
 test("native namespace retirement issues only original callback-bound physical proof and preserves its permanent intent", async () => {
   await using source = await fixture()
   await using foreign = await testRuntime()

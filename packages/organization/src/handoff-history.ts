@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto"
 import { z } from "zod"
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import {
   OrganizationHandoffProtocol as Handoff,
   OrganizationSyncProtocol as Sync,
@@ -386,7 +388,7 @@ export namespace OrganizationHandoffHistory {
     }
     return { runtimeID, bindingEpoch }
   }
-  export async function binding(source: Record.HistoricalReader, session: Record.SessionDirectory, input: Binding) {
+  async function bindingStart(source: Record.HistoricalReader, session: Record.SessionDirectory, input: Binding) {
     let incoming: HandoffRecord.RawStored | undefined
     for (const row of source.entries(["organization", "session-handoffs", session.sessionID])) {
       const index = Index.parse(row.value)
@@ -399,12 +401,32 @@ export namespace OrganizationHandoffHistory {
     }
     if (incoming) await terminal(source, session, incoming.handoffID)
     else if (input.bindingEpoch !== 1) invalid()
-    return chain(source, session, input)
+  }
+  export async function binding(source: Record.HistoricalReader, session: Record.SessionDirectory, input: Binding) {
+    await bindingStart(source, session, input)
+    await chain(source, session, input)
+  }
+  export async function recoveryPath(
+    source: Record.HistoricalReader,
+    session: Record.SessionDirectory,
+    input: Binding,
+    commandSeq: number,
+  ) {
+    await bindingStart(source, session, input)
+    const path = await chain(source, session, input)
+    if (
+      !Number.isSafeInteger(commandSeq) ||
+      commandSeq <= input.commandSeq ||
+      path.some((record) => commandSeq <= record.commandSeq)
+    )
+      invalid()
+    return path
   }
   async function chain(source: Record.HistoricalReader, session: Record.SessionDirectory, input: Binding) {
     let runtimeID = input.runtimeID,
       bindingEpoch = input.bindingEpoch
     let watermark = input.commandSeq
+    const path: HandoffRecord.RawStored[] = []
     if (session.handoffID || bindingEpoch > session.bindingEpoch) invalid()
     while (runtimeID !== session.driverRuntimeID || bindingEpoch !== session.bindingEpoch) {
       let selected: HandoffRecord.RawStored | undefined
@@ -429,7 +451,88 @@ export namespace OrganizationHandoffHistory {
       runtimeID = selected.targetRuntimeID
       bindingEpoch = selected.toEpoch
       watermark = selected.commandSeq
+      path.push(selected)
     }
+    return path
+  }
+  export async function currentRecoveryPath(session: Record.SessionDirectory, input: Binding, commandSeq: number) {
+    if (!Storage.inWriteTransaction()) invalid()
+    const runtime = RuntimeContext.current()
+    const selected = Storage.current(),
+      store = selected.store
+    const transaction = selected.transaction
+    const configuration = JSON.stringify(store.options)
+    const artifacts = selected.artifactDirectory,
+      objects = selected.artifactObjects
+    const assert = () => {
+      if (
+        RuntimeContext.current() !== runtime ||
+        Storage.current() !== selected ||
+        !Storage.inWriteTransaction() ||
+        selected.transaction !== transaction ||
+        selected.store !== store ||
+        JSON.stringify(store.options) !== configuration ||
+        selected.artifactDirectory !== artifacts ||
+        selected.artifactObjects !== objects
+      )
+        invalid()
+    }
+    const rows = new Map<string, { key: string[]; value: unknown }>()
+    const capture = async (keys: string[][]) => {
+      assert()
+      const values = await Storage.readMany(keys)
+      assert()
+      for (const [index, address] of keys.entries()) {
+        const value = values[index]
+        if (value === undefined) invalid()
+        rows.set(JSON.stringify(address), { key: address, value })
+      }
+    }
+    await capture([Keys.session(session.sessionID), Keys.signingIdentity()])
+    for await (const row of Storage.records({
+      prefix: ["organization", "session-handoffs", session.sessionID],
+      limit: 128,
+    })) {
+      assert()
+      const index = Index.parse(row.value)
+      if (!HandoffRecord.same(row.key, sessionIndex(session.sessionID, index.handoffID))) invalid()
+      rows.set(JSON.stringify(row.key), row)
+      await capture([key(index.handoffID)])
+      const record = HandoffRecord.RawStored.parse(rows.get(JSON.stringify(key(index.handoffID)))!.value)
+      if (record.handoffID !== index.handoffID || record.sessionID !== session.sessionID) invalid()
+      await capture([epochIndex(record), ...(record.target.runtimeKind === "member" ? [targetIndex(record)] : [])])
+      const batch =
+        record.version === 5 && record.frozen?.proof.purpose === "source-frozen"
+          ? record.frozen.proof.syncCheckpoint?.pendingBatch
+          : undefined
+      if (batch) await capture([Keys.sharedBatch(batch.sessionID, batch.shareGeneration, batch.firstSeq)])
+    }
+    let after: string | undefined
+    do {
+      const page = await Storage.childKeys({ prefix: ["organization-recovery", "publication"], after, limit: 128 })
+      assert()
+      await capture(page.keys)
+      after = page.after
+    } while (after)
+    const reader: Record.HistoricalReader = {
+      read(schema, address) {
+        assert()
+        const row = rows.get(JSON.stringify(address))
+        if (!row) invalid()
+        return schema.parse(row.value)
+      },
+      *entries(prefix) {
+        assert()
+        for (const row of rows.values()) if (prefix.every((part, index) => row.key[index] === part)) yield row
+      },
+    }
+    if (!HandoffRecord.same(reader.read(Record.SessionDirectory, Keys.session(session.sessionID)), session)) invalid()
+    const path = await recoveryPath(reader, session, input, commandSeq)
+    assert()
+    if (!HandoffRecord.same(await Record.read(Record.SessionDirectory, Keys.session(session.sessionID)), session))
+      invalid()
+    assert()
+    return path
   }
   export async function validate(source: Record.HistoricalReader, address: string[], value: unknown) {
     if (

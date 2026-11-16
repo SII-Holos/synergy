@@ -26,6 +26,7 @@ import type { createHandoffs } from "./handoff"
 import { OrganizationAuthorityHistory as History } from "./authority-history"
 import { isDeepStrictEqual as same } from "node:util"
 import { OrganizationHandoffExecution } from "./handoff"
+import { OrganizationHandoffHistory } from "./handoff-history"
 import { OrganizationExecutionIndex as Index } from "./execution-index"
 import { assertApiExecutionActor } from "./auth/api-token-session"
 
@@ -533,17 +534,31 @@ export function createExecutionGrants(options: {
           fail("PERMISSION_DENIED", "Restoration continuation has another original publication or machine")
         const address = Keys.rootGrant(session.sessionID, session.bindingEpoch, rootID)
         const pointer = await Record.read(Record.RootGrant, address)
+        let predecessorPointer = pointer
+        if (
+          !predecessorPointer &&
+          (permit.runtimeID !== runtime.runtimeID || permit.bindingEpoch !== session.bindingEpoch)
+        ) {
+          const path = await OrganizationHandoffHistory.currentRecoveryPath(session, permit, control.permit.commandSeq)
+          for (const edge of path.toReversed()) {
+            const original = await Record.read(
+              Record.RootGrant,
+              Keys.rootGrant(session.sessionID, edge.fromEpoch, rootID),
+            )
+            if (!original) continue
+            predecessorPointer = original
+            break
+          }
+        }
         const predecessor = await Record.read(
           Record.ExecutionGrant,
-          Keys.executionGrant(pointer?.grantID ?? permit.provisionalGrantID!),
+          Keys.executionGrant(predecessorPointer?.grantID ?? permit.provisionalGrantID!),
         )
         if (
           !predecessor ||
           predecessor.orgID !== permit.orgID ||
           predecessor.sessionID !== permit.sessionID ||
           predecessor.projectID !== permit.projectID ||
-          predecessor.runtimeID !== runtime.runtimeID ||
-          predecessor.bindingEpoch !== session.bindingEpoch ||
           predecessor.admissionID !== permit.admissionID ||
           predecessor.attemptID !== permit.attemptID ||
           !same(predecessor.actor, permit.actor) ||
@@ -551,6 +566,26 @@ export function createExecutionGrants(options: {
           (predecessor.state === "bound" && predecessor.rootID !== rootID)
         )
           fail("PERMISSION_DENIED", "Restoration continuation has another original root predecessor")
+        if (predecessor.runtimeID !== runtime.runtimeID || predecessor.bindingEpoch !== session.bindingEpoch) {
+          if (pointer || predecessor.state === "provisional")
+            fail("PERMISSION_DENIED", "Restoration predecessor has another current root pointer")
+          const path = await OrganizationHandoffHistory.currentRecoveryPath(
+            session,
+            {
+              runtimeID: predecessor.runtimeID,
+              bindingEpoch: predecessor.bindingEpoch,
+              commandSeq: predecessor.provenance?.control.permit.commandSeq ?? permit.commandSeq,
+            },
+            control.permit.commandSeq,
+          )
+          if (!path.length) fail("PERMISSION_DENIED", "Restoration predecessor lacks its completed native transfer")
+          const sourcePointer = await Record.read(
+            Record.RootGrant,
+            Keys.rootGrant(session.sessionID, predecessor.bindingEpoch, rootID),
+          )
+          if (sourcePointer?.grantID !== predecessor.grantID)
+            fail("PERMISSION_DENIED", "Restoration predecessor is not its latest original root")
+        }
         await currentActor(session, predecessor, proof, "session.execute")
         if (control.permit.actor.clientKind === "api" || control.permit.actor.tokenID)
           await assertApiExecutionActor(control.permit)

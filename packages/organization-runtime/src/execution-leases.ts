@@ -7,6 +7,7 @@ import {
 } from "@ericsanchezok/synergy-organization-protocol"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { SessionTransferEpochs as Epochs } from "@ericsanchezok/synergy-harness/session/transfer"
 import { MigrationRegistry } from "@ericsanchezok/synergy-harness/migration/registry"
 import { UpgradeWork } from "@ericsanchezok/synergy-harness/storage/upgrade-work"
 import { OrganizationCommandRecords as Records } from "./command-records"
@@ -445,6 +446,49 @@ export namespace OrganizationExecutionLeases {
     const entries = await captureEntries()
     const roots = entries.filter((entry) => JSON.stringify(entry.authority) === JSON.stringify(authority))
     if (roots.length && roots.every((entry) => entry.state === "settled")) return
+    if (permit.runtimeID !== grant.runtimeID || permit.bindingEpoch !== grant.bindingEpoch) {
+      const [raw] = await Storage.readMany([Keys.release(permit.orgID, permit.actor.subjectID, permit.requestID)])
+      const parsed = Records.Release.safeParse(raw)
+      const release = parsed.success ? parsed.data : undefined
+      const receipt = release?.receipt
+      const binding = await Epochs.inspectOwnerBinding({ sessionID: permit.sessionID, rootSessionID: permit.sessionID })
+      const actual = binding ? await Epochs.inspect(binding) : undefined
+      if (
+        roots.length ||
+        !binding ||
+        actual?.role !== "target" ||
+        actual.phase !== "activated" ||
+        binding.targetID !== grant.runtimeID ||
+        binding.toEpoch !== grant.bindingEpoch ||
+        binding.sessionID !== permit.sessionID ||
+        permit.bindingEpoch >= binding.toEpoch ||
+        !release ||
+        release.state !== "released" ||
+        !receipt ||
+        release.orgID !== permit.orgID ||
+        release.subjectID !== permit.actor.subjectID ||
+        release.requestID !== permit.requestID ||
+        release.sessionID !== permit.sessionID ||
+        release.projectID !== permit.projectID ||
+        release.runtimeID !== permit.runtimeID ||
+        release.bindingEpoch !== permit.bindingEpoch ||
+        release.rootID !== input.effect.messageID ||
+        release.grantID !== permit.provisionalGrantID ||
+        release.admissionID !== permit.admissionID ||
+        release.attemptID !== permit.attemptID ||
+        release.acceptedAt !== input.acceptedAt ||
+        JSON.stringify(release.actor) !== JSON.stringify(permit.actor) ||
+        receipt.orgID !== permit.orgID ||
+        receipt.deploymentIncarnation !== permit.deploymentIncarnation ||
+        receipt.runtimeID !== permit.runtimeID ||
+        receipt.sessionID !== permit.sessionID ||
+        receipt.bindingEpoch !== permit.bindingEpoch ||
+        receipt.rootID !== input.effect.messageID ||
+        receipt.grantID !== permit.provisionalGrantID
+      )
+        fail("Transferred cleanup requires its original released intake and actual activated destination")
+      return
+    }
     const pending = roots.filter((entry) => entry.state === "pending")
     if (pending.length !== 1 || !queuedOriginal(roots, pending[0]!, input) || !restoredLink(pending[0]!, target))
       fail("Restoration cannot replace an original dispatch or generation")

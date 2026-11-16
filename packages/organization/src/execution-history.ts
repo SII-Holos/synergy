@@ -114,12 +114,45 @@ export namespace OrganizationExecutionHistory {
           ? previous.provenance.originGrantID !== originID ||
             previous.provenance.control.permit.commandSeq >= control.permit.commandSeq
           : previous.grantID !== originID) ||
-        !(
-          (handoff && previous.runtimeID === handoff.sourceRuntimeID && previous.bindingEpoch === handoff.fromEpoch) ||
-          (previous.runtimeID === grant.runtimeID && previous.bindingEpoch === grant.bindingEpoch)
-        )
+        (!handoff &&
+          !provenance.recovery &&
+          (previous.runtimeID !== grant.runtimeID || previous.bindingEpoch !== grant.bindingEpoch)) ||
+        (handoff &&
+          !(previous.runtimeID === handoff.sourceRuntimeID && previous.bindingEpoch === handoff.fromEpoch) &&
+          !(previous.runtimeID === grant.runtimeID && previous.bindingEpoch === grant.bindingEpoch))
       )
         invalid()
+      if (
+        !handoff &&
+        provenance.recovery &&
+        (previous.runtimeID !== grant.runtimeID || previous.bindingEpoch !== grant.bindingEpoch)
+      ) {
+        const target = await Handoffs.bindingAtEpoch(reader, session, grant.bindingEpoch)
+        if (target.runtimeID !== grant.runtimeID) invalid()
+        const path = await Handoffs.recoveryPath(
+          reader,
+          {
+            ...session,
+            driverRuntimeID: target.runtimeID,
+            bindingEpoch: target.bindingEpoch,
+          },
+          {
+            runtimeID: previous.runtimeID,
+            bindingEpoch: previous.bindingEpoch,
+            commandSeq: previous.provenance?.control.permit.commandSeq ?? accepted.permit.commandSeq,
+          },
+          control.permit.commandSeq,
+        )
+        if (
+          !path.length ||
+          previous.state === "provisional" ||
+          reader.read(
+            Record.RootGrant,
+            Keys.rootGrant(previous.sessionID, previous.bindingEpoch, accepted.effect.messageID),
+          ).grantID !== previous.grantID
+        )
+          invalid()
+      }
       if (!handoff && previous.state === "closed" && previous.controlClosure) {
         const item = recoveredItems?.find((item) => item.grantID === previous.grantID)
         if (

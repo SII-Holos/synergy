@@ -225,7 +225,9 @@ export namespace NamespaceRetirement {
   export function marker(value: Reference) {
     const reference = Reference.parse(value)
     return HomeOwnershipFile.RetirementInfo.parse({
-      ...reference.owner,
+      owner: reference.owner.owner,
+      identity: reference.owner.identity,
+      readerContract: reference.owner.readerContract,
       schemaVersion: 4,
       maintenanceID: reference.maintenance.maintenanceID,
       referenceHash: hash(reference),

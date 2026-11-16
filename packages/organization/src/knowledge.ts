@@ -189,6 +189,15 @@ export namespace OrganizationKnowledge {
   export async function history(reader: Publications.HistoricalSource, append?: (key: string[]) => void) {
     const bad = (message: string): never => fail("PROTOCOL_MISMATCH", "Historical knowledge " + message)
     const currentOrgID = reader.read(Protocol.Deployment, OrganizationKeys.deployment()).orgID
+    const observationID = crypto.randomUUID()
+    const desiredKey = (pointer: string[], header: Selections.Header, manifestHash = header.manifestHash) => [
+      "knowledge-desired-selection",
+      observationID,
+      header.orgID,
+      header.projectID,
+      ...pointer,
+      manifestHash,
+    ]
     const account = (orgID: string, accountID: string) => {
       const value = reader.read(OrganizationRecord.Account, OrganizationKeys.account(accountID))
       if (orgID !== currentOrgID || value.orgID !== orgID || value.accountID !== accountID)
@@ -371,6 +380,7 @@ export namespace OrganizationKnowledge {
         count++
       }
       if (count !== update.nextSequence) bad("selection pages are incomplete")
+      reader.first(desiredKey(pointer, header), true)
       reader.accept(row.key)
     }
     for (const kind of ["applied", "sessions", "activated"] as const) {
@@ -396,6 +406,7 @@ export namespace OrganizationKnowledge {
             bad("Session selection changed its original owner")
         }
         await Selections.history(reader, header, (value) => reference(header, value))
+        if (kind !== "activated") reader.first(desiredKey(row.key, header), true)
         reader.accept(row.key)
       }
     }
@@ -405,12 +416,26 @@ export namespace OrganizationKnowledge {
       const status = ActivationStatus.parse(row.value)
       const activated = status.activated
       if (!activated) fail("PROTOCOL_MISMATCH", "Historical knowledge activation has no original completed selection")
-      if (digest(row.key) !== digest(keys.status(sessionID)) || status.failedManifestHash)
-        bad("activation has no original completed selection")
-      if (status.bindingEpoch !== session.bindingEpoch)
-        await OrganizationHandoffHistory.bindingAtEpoch(reader, session, status.bindingEpoch)
+      if (digest(row.key) !== digest(keys.status(sessionID))) bad("activation has no original completed selection")
+      const binding =
+        status.bindingEpoch === session.bindingEpoch
+          ? { runtimeID: session.driverRuntimeID, bindingEpoch: session.bindingEpoch }
+          : await OrganizationHandoffHistory.bindingAtEpoch(reader, session, status.bindingEpoch)
       const header = reader.read(Selection, keys.activated(sessionID, activated.manifestHash))
       if (digest(Selections.summary(header)) !== digest(activated)) bad("activation summary changed")
+      if (status.failedManifestHash !== undefined) {
+        if (!Protocol.Digest.safeParse(status.failedManifestHash).success) bad("failed activation hash changed")
+        const runtime = reader.read(OrganizationRecord.RuntimeRegistration, OrganizationKeys.runtime(binding.runtimeID))
+        if (runtime.runtimeID !== binding.runtimeID || runtime.orgID !== session.orgID)
+          bad("failed activation has another original Runtime")
+        const pointer =
+          runtime.runtimeKind === "member"
+            ? keys.applied(session.orgID, runtime.accountID, session.projectID)
+            : keys.session(sessionID)
+        if (status.failedManifestHash === header.manifestHash) reader.first(desiredKey(pointer, header), true)
+        if (reader.first(desiredKey(pointer, header, status.failedManifestHash), true))
+          bad("failed activation has no original completed desired selection")
+      }
       reader.accept(row.key)
     }
   }

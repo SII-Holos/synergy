@@ -695,6 +695,53 @@ for (const mode of ["cancel", "transfer"] as const)
             if (reservedEpoch.state === "rejected")
               expect(reservedEpoch.error).toMatchObject({ data: { code: "PROTOCOL_MISMATCH" } })
             if (mode === "transfer") {
+              const origin = f.binding.proof.receipt.accepted
+              const fresh = nextControl.accepted
+              if (!origin || !fresh) throw new Error("Expected the original accepted root and current Continue")
+              const original = {
+                runtimeID: view.sourceRuntimeID,
+                bindingEpoch: view.fromEpoch,
+                commandSeq: origin.permit.commandSeq,
+              }
+              const expectedPath = [view.handoffID]
+              expect(
+                (
+                  await OrganizationHandoffHistory.recoveryPath(
+                    complete,
+                    currentDirectory,
+                    original,
+                    fresh.permit.commandSeq,
+                  )
+                ).map((edge) => edge.handoffID),
+              ).toEqual(expectedPath)
+              const actual = await Storage.transaction(() =>
+                OrganizationHandoffHistory.currentRecoveryPath(currentDirectory, original, fresh.permit.commandSeq),
+              )
+              expect(actual.map((edge) => edge.handoffID)).toEqual(expectedPath)
+              const outside = await refused(
+                OrganizationHandoffHistory.currentRecoveryPath(currentDirectory, original, fresh.permit.commandSeq),
+              )
+              if (outside.state === "rejected")
+                expect(outside.error).toMatchObject({ data: { code: "PROTOCOL_MISMATCH" } })
+              await refused(
+                OrganizationHandoffHistory.recoveryPath(complete, currentDirectory, original, view.commandSeq),
+              )
+              await refused(
+                OrganizationHandoffHistory.recoveryPath(
+                  complete,
+                  currentDirectory,
+                  { ...original, commandSeq: view.commandSeq + 1 },
+                  fresh.permit.commandSeq,
+                ),
+              )
+              await refused(
+                OrganizationHandoffHistory.recoveryPath(
+                  historical(missingIndex),
+                  currentDirectory,
+                  original,
+                  fresh.permit.commandSeq,
+                ),
+              )
               await refused(
                 OrganizationHandoffHistory.bindingAtEpoch(historical(missingIndex), currentDirectory, view.fromEpoch),
               )
@@ -717,6 +764,14 @@ for (const mode of ["cancel", "transfer"] as const)
                 ),
               ).toBe(false)
               badActivation.set(JSON.stringify(address), changed)
+              await refused(
+                OrganizationHandoffHistory.recoveryPath(
+                  historical(badActivation),
+                  currentDirectory,
+                  original,
+                  fresh.permit.commandSeq,
+                ),
+              )
               const badSignature = await refused(
                 OrganizationHandoffHistory.bindingAtEpoch(historical(badActivation), currentDirectory, view.fromEpoch),
               )
@@ -732,6 +787,9 @@ for (const mode of ["cancel", "transfer"] as const)
               )
               const foreign = historical(foreignTarget)
               const foreignDirectory = foreign.read(Record.SessionDirectory, Keys.session(f.sessionID))
+              await refused(
+                OrganizationHandoffHistory.recoveryPath(foreign, foreignDirectory, original, fresh.permit.commandSeq),
+              )
               const mismatchedTarget = await refused(
                 OrganizationHandoffHistory.bindingAtEpoch(foreign, foreignDirectory, view.fromEpoch),
               )
