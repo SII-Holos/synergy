@@ -61,9 +61,11 @@ export class RemoteWorkspaceFiles implements WorkspaceFileHost {
   async mutate(input: WorkspaceProtocol.ChangeInput) {
     return WorkspaceProtocol.Checkpoint.parse(await this.request({ action: "mutate", input }))
   }
-  async putBlob(hash: string, bytes: Uint8Array) {
+  async putBlob(hash: string, bytes: Uint8Array, owner: WorkspaceProtocol.BlobOwner) {
     WorkspaceTree.verify(hash, bytes, WorkspaceTree.manifestBytes)
-    if (!(await this.connection.send("PUT", `/v1/workspace-objects/${hash}`, bytes, true)))
+    const retention = WorkspaceProtocol.BlobOwner.parse(owner)
+    const query = new URLSearchParams(retention)
+    if (!(await this.connection.send("PUT", `/v1/workspace-objects/${hash}?${query}`, bytes, true)))
       throw new Error("Workspace blob transport is unavailable")
   }
   async getBlob(hash: string, maximumBytes: number) {
