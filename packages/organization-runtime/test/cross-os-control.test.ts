@@ -16,6 +16,12 @@ import {
 } from "./support/cross-os-failures"
 import { readControlJSON, safeCrossOSFailure } from "./support/cross-os-transport"
 import { observeDNSAfterFailedHealth } from "./support/cross-os-dns"
+import {
+  observeCrossOSFailureHTTP,
+  observeCrossOSFailureChild,
+  crossOSFailureBunScript,
+  crossOSLibinfoFlag,
+} from "./support/cross-os-post-failure-http"
 import { createCrossOSTunnelObservation, readCrossOSTunnelStderr } from "./support/cross-os-tunnel"
 
 test("cross-OS JSON transport counts streamed bytes before decoding and cancels an oversized unsigned body", async () => {
@@ -675,3 +681,200 @@ test("an independent raw DNS denial cannot determine the same host's actual HTTP
   expect(handled).toBe(2)
   expect(JSON.stringify(getServers())).toBe(defaults)
 }, 30_000)
+
+test("post-failure HTTP observations validate the actual run/body and bound retained data", async () => {
+  const run = { repository: "synthetic/repository", id: "1", attempt: "1", sha: "1".repeat(40) }
+  expect(crossOSLibinfoFlag(undefined)).toBe("unset")
+  for (const value of ["", "0", "false", "FaLsE", "NO", "Off"]) expect(crossOSLibinfoFlag(value)).toBe("falsy")
+  for (const value of ["1", "true", " false ", "00", "false\n"]) expect(crossOSLibinfoFlag(value)).toBe("truthy")
+  const input = { url: "https://synthetic.invalid/__cross-os-health", run, deadline: Date.now() + 1000 }
+  const response = (body: unknown, status = 200) =>
+    Object.assign(async () => Response.json(body, { status }), { preconnect() {} }) as typeof fetch
+  const original = new Error("original-private-failure")
+  const observed = await observeCrossOSFailureHTTP(input, response({ run, native: "darwin" }))
+  expect(observed.code).toBe("OK")
+  expect(observed.runMatches).toBe(true)
+  expect(observed.nativeMatches).toBe(true)
+  expect((await observeCrossOSFailureHTTP(input, response({ run: { ...run, id: "2" }, native: "darwin" }))).code).toBe(
+    "WRONG_RUN",
+  )
+  expect((await observeCrossOSFailureHTTP(input, response({ run, native: "linux" }))).code).toBe("WRONG_NATIVE")
+  expect((await observeCrossOSFailureHTTP(input, response({ run, native: "darwin" }, 503))).code).toBe("HTTP_STATUS")
+  let cancelled = false
+  const bounded = await observeCrossOSFailureHTTP(
+    input,
+    Object.assign(
+      async () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(new Uint8Array(8193))
+            },
+            cancel() {
+              cancelled = true
+            },
+          }),
+        ),
+      { preconnect() {} },
+    ) as typeof fetch,
+  )
+  expect(bounded.code).toBe("BODY_LIMIT")
+  expect(cancelled).toBe(true)
+  let getters = 0
+  const failure = Object.defineProperty({}, "code", {
+    get() {
+      getters++
+      throw original
+    },
+  })
+  const failed = await observeCrossOSFailureHTTP(
+    input,
+    Object.assign(
+      async () => {
+        throw failure
+      },
+      { preconnect() {} },
+    ) as typeof fetch,
+  )
+  expect(failed.code).toBe("OTHER")
+  const hostile = new Proxy(
+    {},
+    {
+      getPrototypeOf() {
+        throw original
+      },
+      getOwnPropertyDescriptor() {
+        throw original
+      },
+    },
+  )
+  const hostileFailure = await observeCrossOSFailureHTTP(
+    input,
+    Object.assign(
+      async () => {
+        throw hostile
+      },
+      { preconnect() {} },
+    ) as typeof fetch,
+  )
+  expect(hostileFailure.code).toBe("OTHER")
+  expect(getters).toBe(0)
+  expect(JSON.stringify([observed, bounded, failed, hostileFailure])).not.toContain("synthetic.invalid")
+  expect(JSON.stringify([observed, bounded, failed, hostileFailure])).not.toContain(original.message)
+})
+
+test("post-failure child observation drains real native pipes and never retains their secret text", async () => {
+  const expected = { repository: "synthetic/repository", id: "1", attempt: "1", sha: "1".repeat(40) }
+  const body = JSON.stringify({ run: expected, native: "darwin" })
+  const inheritedFlag = process.env.BUN_FEATURE_FLAG_DISABLE_DNS_CACHE_LIBINFO
+  const inheritedInput = process.env.SYNERGY_CROSS_OS_FAILURE_INPUT
+  const child = Bun.spawn(
+    [
+      process.execPath,
+      "--eval",
+      crossOSFailureBunScript() + `; await Bun.write(Bun.stderr, "private-endpoint-and-token");`,
+    ],
+    {
+      env: {
+        ...process.env,
+        BUN_FEATURE_FLAG_DISABLE_DNS_CACHE_LIBINFO: "0",
+        SYNERGY_CROSS_OS_FAILURE_INPUT: JSON.stringify({
+          url: "data:application/json," + encodeURIComponent(body),
+          run: expected,
+          deadline: Date.now() + 1500,
+        }),
+      },
+      stdin: "ignore",
+      stdout: "pipe",
+      stderr: "pipe",
+    },
+  )
+  const owned = observeCrossOSFailureChild(child, "fresh-bun", expected)
+  try {
+    const observed = await owned.done
+    expect(observed.code).toBe("OK")
+    expect(observed.http?.bodyBytes).toBe(Buffer.byteLength(body))
+    expect(observed.http?.runMatches).toBe(true)
+    expect(observed.http?.nativeMatches).toBe(true)
+    expect(observed.context?.libinfoFlag).toBe("falsy")
+    expect(typeof observed.context?.pinnedBun).toBe("boolean")
+    expect(observed.exited).toBe(true)
+    expect(observed.exitCode).toBe(0)
+    expect(observed.stdoutEOF).toBe(true)
+    expect(observed.stderrEOF).toBe(true)
+    expect(observed.stderrBytes).toBeGreaterThan(0)
+    expect(JSON.stringify(observed)).not.toContain("private-endpoint-and-token")
+  } finally {
+    owned.cancel()
+    await owned.done
+  }
+  const flaggedChild = Bun.spawn([process.execPath, "--eval", crossOSFailureBunScript()], {
+    env: {
+      ...process.env,
+      SYNERGY_CROSS_OS_FAILURE_INPUT: JSON.stringify({
+        url: "data:application/json," + encodeURIComponent(body),
+        run: expected,
+        deadline: Date.now() + 1500,
+      }),
+      BUN_FEATURE_FLAG_DISABLE_DNS_CACHE_LIBINFO: "1",
+    },
+    stdin: "ignore",
+    stdout: "pipe",
+    stderr: "pipe",
+  })
+  const flagged = observeCrossOSFailureChild(flaggedChild, "fresh-bun", expected)
+  try {
+    const observed = await flagged.done
+    expect(observed.code).toBe("OK")
+    expect(observed.context?.libinfoFlag).toBe("truthy")
+    expect(observed.http?.bodyBytes).toBe(Buffer.byteLength(body))
+    expect(observed.exited && observed.stdoutEOF && observed.stderrEOF).toBe(true)
+    expect(process.env.BUN_FEATURE_FLAG_DISABLE_DNS_CACHE_LIBINFO === inheritedFlag).toBe(true)
+    expect(process.env.SYNERGY_CROSS_OS_FAILURE_INPUT === inheritedInput).toBe(true)
+  } finally {
+    flagged.cancel()
+    await flagged.done
+  }
+  const oversized = Bun.spawn(
+    [process.execPath, "--eval", `await Bun.write(Bun.stdout, "private-token".repeat(5000));`],
+    { stdin: "ignore", stdout: "pipe", stderr: "pipe" },
+  )
+  const limited = observeCrossOSFailureChild(oversized, "fresh-bun", expected)
+  try {
+    const observed = await limited.done
+    expect(observed.code).toBe("OUTPUT_LIMIT")
+    expect(observed.outputLimit).toBe(true)
+    expect(observed.stdoutEOF).toBe(true)
+    expect(observed.stderrEOF).toBe(true)
+    expect(observed.exited).toBe(true)
+    expect(JSON.stringify(observed)).not.toContain("private-token")
+  } finally {
+    limited.cancel()
+    await limited.done
+  }
+})
+
+test("post-failure cancellation joins only its real owned child", async () => {
+  const expected = { repository: "synthetic/repository", id: "1", attempt: "1", sha: "1".repeat(40) }
+  const child = Bun.spawn([process.execPath, "--eval", `await Bun.stdin.text();`], {
+    stdin: "pipe",
+    stdout: "pipe",
+    stderr: "pipe",
+  })
+  const owned = observeCrossOSFailureChild(child, "fresh-bun", expected)
+  try {
+    owned.cancel()
+    const observed = await owned.done
+    expect(observed.killCalled).toBe(true)
+    expect(observed.killFailed).toBe(false)
+    expect(observed.exited).toBe(true)
+    expect(observed.stdoutEOF).toBe(true)
+    expect(observed.stderrEOF).toBe(true)
+  } finally {
+    owned.cancel()
+    await owned.done
+    try {
+      child.stdin.end()
+    } catch {}
+  }
+})

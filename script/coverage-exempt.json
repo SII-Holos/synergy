@@ -3285,7 +3285,12 @@
         "lines": 80,
         "functions": 75
       },
-      "exempt": []
+      "exempt": [
+        {
+          "glob": "src/entry.ts",
+          "reason": "Executable composition-only CLI launcher; test/entry.test.ts runs real source and installed children to verify machine-only help, rejected private input and unknown commands, and no ambient Home writes. script/organization-runtime-install-check.ts reuses that test outside the checkout. Bun does not merge child-process coverage; cli-adapter and command owners remain measured."
+        }
+      ]
     }
   }
 }

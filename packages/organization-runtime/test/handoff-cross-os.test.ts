@@ -16,6 +16,7 @@ import {
 import { Action, Task, Outcome, InitialBytes, LinuxBytes, createPeer, json } from "./support/cross-os-peer"
 import { createHandoffCompletion } from "./support/handoff-completion"
 import { observeDNSAfterFailedHealth } from "./support/cross-os-dns"
+import { startCrossOSPostFailureHTTP } from "./support/cross-os-post-failure-http"
 import {
   createCrossOSTunnelObservation,
   readCrossOSTunnelStderr,
@@ -102,6 +103,7 @@ const transportFacts = {
     attempts: 0,
     originalENOTFOUND: 0,
     afterFailureDNS: undefined as Awaited<ReturnType<typeof observeDNSAfterFailedHealth>>,
+    afterFailureHTTP: undefined as Awaited<ReturnType<typeof startCrossOSPostFailureHTTP>["result"]> | undefined,
     headerResponses: 0,
     headerFailures: 0,
     headerTimeouts: 0,
@@ -442,6 +444,7 @@ async function host() {
   const tunnelStarted = performance.now()
   const connection = await setup("darwin-tunnel-bootstrap", () => tunnel(root, port))
   const capturedHostname = new URL(connection.origin).hostname
+  let failedPublicHealth = false
   const cleanups: Array<{ owner: CrossOSCleanupOwner; close(): Promise<unknown> }> = [
     { owner: "tunnel", close: () => connection.close() },
   ]
@@ -675,11 +678,8 @@ async function host() {
         transportFacts.health.dnsCache.final = final
         transportFacts.health.dnsCache.delta = dnsCacheDelta(transportFacts.health.dnsCache.before, final)
       }),
-    ).catch(async (error: unknown) => {
-      transportFacts.health.afterFailureDNS = await observeDNSAfterFailedHealth(
-        connection.origin,
-        transportFacts.health.originalENOTFOUND,
-      )
+    ).catch((error: unknown) => {
+      failedPublicHealth = true
       throw error
     })
     const setupToken = await setup("darwin-bootstrap-token", async () => {
@@ -1196,6 +1196,54 @@ async function host() {
     const failedTransport = transportSnapshot()
     const failedRequests = { recent: [...requests], failures: [...requestFailures] }
     const errors: unknown[] = [error]
+    const failedPhase = phase === "service-bootstrap" ? (setupStage ?? phase) : phase
+    const failedHTTPStatus = phase === "service-bootstrap" ? setupHTTPStatus : undefined
+    let postFailureHTTP: ReturnType<typeof startCrossOSPostFailureHTTP> | undefined
+    let postFailureCleanup: Awaited<ReturnType<ReturnType<typeof startCrossOSPostFailureHTTP>["close"]>> | undefined
+    async function writeFailureReport(cleanupStage: "before-original-cleanup" | "before-diagnostic-join" | "complete") {
+      await fs.writeFile(
+        path.join(state(), "report.json"),
+        JSON.stringify({
+          version: 1,
+          run: run(),
+          passed: false,
+          cleanupPending: cleanupStage !== "complete",
+          cleanupStage,
+          phase: failedPhase,
+          ...(failedHTTPStatus === undefined ? {} : { httpStatus: failedHTTPStatus }),
+          costs,
+          errors: errors.map(safeFailure),
+          requests: failedRequests,
+          transport: failedTransport,
+          postFailureOriginHandled: Math.max(
+            0,
+            transportFacts.health.originHandled - failedTransport.health.originHandled,
+          ),
+          ...(postFailureCleanup ? { postFailureHTTPCleanup: postFailureCleanup } : {}),
+          cleanupTransport: tunnelObservation.snapshot(),
+        }),
+      )
+    }
+    if (failedPublicHealth) {
+      const dns = observeDNSAfterFailedHealth(connection.origin, failedTransport.health.originalENOTFOUND)
+      try {
+        if (bootstrapSignal.aborted && failedTransport.health.originalENOTFOUND > 0)
+          postFailureHTTP = startCrossOSPostFailureHTTP(connection.origin, run())
+        const [afterFailureDNS, afterFailureHTTP] = await Promise.all([dns, postFailureHTTP?.result])
+        failedTransport.health.afterFailureDNS = afterFailureDNS
+        failedTransport.health.afterFailureHTTP = afterFailureHTTP
+      } catch (diagnostic) {
+        errors.push(diagnostic)
+      } finally {
+        if (postFailureHTTP) {
+          try {
+            await writeFailureReport("before-original-cleanup")
+          } catch (checkpoint) {
+            errors.push(checkpoint)
+          }
+        }
+      }
+    }
     for (const owned of cleanups.toReversed()) {
       tunnelObservation.cleanup(owned.owner, "started")
       try {
@@ -1206,21 +1254,19 @@ async function host() {
         errors.push(cleanup)
       }
     }
-    await fs.writeFile(
-      path.join(state(), "report.json"),
-      JSON.stringify({
-        version: 1,
-        run: run(),
-        passed: false,
-        phase: phase === "service-bootstrap" ? (setupStage ?? phase) : phase,
-        ...(phase === "service-bootstrap" && setupHTTPStatus !== undefined ? { httpStatus: setupHTTPStatus } : {}),
-        costs,
-        errors: errors.map(safeFailure),
-        requests: failedRequests,
-        transport: failedTransport,
-        cleanupTransport: tunnelObservation.snapshot(),
-      }),
-    )
+    if (postFailureHTTP) {
+      try {
+        await writeFailureReport("before-diagnostic-join")
+      } catch (checkpoint) {
+        errors.push(checkpoint)
+      }
+      try {
+        postFailureCleanup = await postFailureHTTP.close()
+      } catch (diagnosticCleanup) {
+        errors.push(diagnosticCleanup)
+      }
+    }
+    await writeFailureReport("complete")
     throw new Error("Actual cross-OS acceptance failed at " + phase + "; original failure retained in the runner", {
       cause: error,
     })

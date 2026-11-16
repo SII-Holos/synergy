@@ -21,6 +21,14 @@ The fixture promoted an independent Resolver result into a necessary condition f
 
 This finding does not identify an operating-system negative cache, upstream nonpublication, public address-family failure or the cause of the older approximately 83-second error transition. Removing the prerequisite restores observation of the intended route; only a new actual run can accept that route and the later native handoff.
 
+## Subsequent transport evidence
+
+The two actual HTTPS attempts at revision `42fb7bb78bf5dcb9b8bf9414f2281f5d0bc20702` issued 3585 and 3697 original fetch calls, respectively. Every call failed with `ENOTFOUND`, without response headers or an origin-handled request. Passive Bun counters recorded the same number of cache misses and errors, with no completed or in-flight hits. The independent DNS observations obtained positive answers only after the original failure; those non-simultaneous answers cannot explain the earlier window or establish a cache owner. Both original cleanup sequences completed. No additional identical retry is treated as a repair.
+
+Failure-only comparison preserves that original failed result and its counters before any additional request. It compares the current Bun process, a fresh minimal Bun CLI, system curl and a pinned, fresh diagnostic child requesting Bun's libc miss path. Only that last child's environment changes; it is labeled as a requested flag, not an attested backend or production fallback. All clients share OS DNS state and their start times differ, so their late-window observations cannot establish the cause of the original 120-second failure. Original cleanup precedes the diagnostic children’s final join, with truthful pending checkpoints before either join can stall.
+
+The complete local control file passed 15 cases and 201 assertions. Injected Responses qualify identity, bounded data and safe exception handling; real child processes with data URLs qualify program serialization, child-only flag values and pipe drainage. These controls do not constitute a public HTTPS comparison or dynamic proof of the outer failure path. Current-head public business acceptance remains separate.
+
 ## Guardrails
 
 - [x] Machine check: `packages/organization-runtime/test/cross-os-control.test.ts` — real independent A/AAAA `ENOTFOUND` for the same hostname whose trusted ordinary HTTPS health succeeds, with run-mismatch refusal and original abort identity.
