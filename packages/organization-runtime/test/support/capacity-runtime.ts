@@ -469,25 +469,34 @@ async function main() {
                     const writeOriginalWindow = async () => {
                       await Storage.transaction(async (tx) => {
                         nativeOrder.transaction(tx)
-                        for (let index = offset; index < end; index++) {
-                          const messageID = Identifier.ascending("message")
-                          lastMessageID = messageID
-                          checksum ^= messageChecksum(messageID)
-                          await Session.updateMessage({
-                            id: messageID,
-                            sessionID: session.id,
-                            role: "user",
-                            agent: "general",
-                            model: { providerID: "capacity-fixture", modelID: "canonical-producer" },
-                            time: { created: Date.now() },
-                          })
-                          await Session.updatePart({
-                            id: Identifier.ascending("part"),
-                            sessionID: session.id,
-                            messageID,
-                            type: "text",
-                            text: `Capacity message ${index}: retained canonical history`,
-                          })
+                        const parts: Promise<unknown>[] = []
+                        try {
+                          for (let index = offset; index < end; index++) {
+                            const messageID = Identifier.ascending("message")
+                            lastMessageID = messageID
+                            checksum ^= messageChecksum(messageID)
+                            await Session.updateMessage({
+                              id: messageID,
+                              sessionID: session.id,
+                              role: "user",
+                              agent: "general",
+                              model: { providerID: "capacity-fixture", modelID: "canonical-producer" },
+                              time: { created: Date.now() },
+                            })
+                            const part = Session.updatePart({
+                              id: Identifier.ascending("part"),
+                              sessionID: session.id,
+                              messageID,
+                              type: "text",
+                              text: `Capacity message ${index}: retained canonical history`,
+                            })
+                            parts.push(part)
+                            void part.catch(() => {})
+                          }
+                          await Promise.all(parts)
+                        } catch (error) {
+                          await Promise.allSettled(parts)
+                          throw error
                         }
                       })
                       await Session.flushPartWrites(session.id)
