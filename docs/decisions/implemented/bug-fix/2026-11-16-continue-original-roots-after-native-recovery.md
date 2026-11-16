@@ -10,6 +10,8 @@ An independently restored Hosted Home preserves its original failed or paused Ro
 
 Represent continuation provenance as exactly one original Handoff or completed recovery publication. Recovery provenance binds the original installation and Source reference hash. Service admission verifies the actual published Hosted mapping, current machine connection, accepted Continue, actor, API access, binding and current resource selection before creating a fresh execution grant. Preserve the original input, actor, Root and predecessor history. Original completed commands and credentials do not authorize execution in the fresh deployment.
 
+The canonical `continuationOrigin` helper validates the exclusive Handoff-or-recovery origin before emitting only its present branch. A missing optional property must remain absent in Native persisted bindings; an own property containing `undefined` is not JSON data. Canonical signed and cleanup-identity JSON bytes remain unchanged, because their original serialization already omits that property. Retain the existing strict DTOs and record validation rather than coercing complete authority objects.
+
 For a Root originally driven by another Runtime, resolve its historical Handoff path under the actual current Service write transaction. Retain the same Runtime, primary Store, transaction, dataset configuration and artifact owners around every read. The existing historical validator proves the original binding, completed Native facts, exact indexes, signatures and command barriers through the current Directory. Select the current Root pointer first; if it is absent, resolve the latest matching pointer along that verified predecessor path. The original released intake, current recovery publication and current explicit Continue still have separate owners. The resulting grant and later historical validation preserve the same original Root and predecessor rather than substituting a new input or treating a historical binding as current authorization.
 
 Use a pure completed-restoration inspection during live execution. Retain the real process lock, primary Store, artifact owner, both storage-context pointers and canonical physical installation identities through inspection. Do not invoke the startup procedure that changes blocked admission state. Native publication supplies recovery provenance only after its actual completion, committed publication and released maintenance hold agree.
@@ -35,6 +37,8 @@ Historical activated Knowledge can retain its original binding after a completed
 **Assume every worker Home uses the initial format.** The foreground process can become ready while its actual Agent and Policy workers reject the restored installation.
 
 **Rewrite archived native files to make an upgrade appear complete.** Original maintenance and migration receipts must establish advancement; mismatched files and completed receipts remain invalid.
+
+**Coerce complete authority objects through JSON before storage.** That hides the incorrect canonical projection and can erase other invalid values. Correct the owning origin helper while retaining strict Native record validation.
 
 ## Consequences
 

@@ -15,7 +15,7 @@ import {
 } from "@ericsanchezok/synergy-organization-protocol"
 import { Action, Task, Outcome, InitialBytes, LinuxBytes, createPeer, json } from "./support/cross-os-peer"
 import { createHandoffCompletion } from "./support/handoff-completion"
-import { observeDNSAfterFailedHealth, waitForPublicDNS, createPublicDNSObservation } from "./support/cross-os-dns"
+import { observeDNSAfterFailedHealth } from "./support/cross-os-dns"
 import {
   createCrossOSTunnelObservation,
   readCrossOSTunnelStderr,
@@ -102,8 +102,6 @@ const transportFacts = {
     attempts: 0,
     originalENOTFOUND: 0,
     afterFailureDNS: undefined as Awaited<ReturnType<typeof observeDNSAfterFailedHealth>>,
-    dnsReadiness: undefined as Awaited<ReturnType<typeof waitForPublicDNS>> | undefined,
-    dnsPrerequisite: createPublicDNSObservation(),
     headerResponses: 0,
     headerFailures: 0,
     headerTimeouts: 0,
@@ -618,9 +616,6 @@ async function host() {
     })
     tunnelObservation.listener(server.port, port)
     cleanups.splice(1, 0, { owner: "origin-listener", close: () => server.stop(false) })
-    transportFacts.health.dnsReadiness = await setup("darwin-public-dns-readiness", () =>
-      waitForPublicDNS(connection.origin, bootstrapSignal, undefined, transportFacts.health.dnsPrerequisite),
-    )
     transportFacts.health.dnsCache.before = observeDNSCache()
     await setup("darwin-public-health", () =>
       until(

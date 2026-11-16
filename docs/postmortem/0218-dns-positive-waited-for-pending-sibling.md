@@ -21,12 +21,12 @@ The readiness decision was downstream of `allSettled`, while the cleanup that co
 
 The correction races the original pair's settlement against a positive notification and the original abort signal. A positive notification only wakes cleanup: it does not authorize HTTP. Cleanup cancels once, drains the same pair and then rechecks the original signal and both outcomes. Unknown query errors remain the original objects; a cancellation error follows the original failure in the aggregate. No additional query, Resolver override, resolved-address routing or deadline is introduced.
 
-## Guardrails
+## Historical controls
 
-- [x] Machine check: `packages/organization-runtime/test/cross-os-control.test.ts` — real A and AAAA positives with a held native sibling, exact cancelled-query count and no pending query when HTTP starts.
-- [x] Machine check: the same file — unknown query failure, additional cancellation failure, original abort identity, exhausted-window refusal and original HTTP error preservation.
-- [x] Machine check: the same file — passive per-family invocation and settlement facts, finite codes, bounded samples, return-kind and valid-IP counts, zero accessor reads and no retained secret values.
-- The [DNS prerequisite decision](../decisions/implemented/testing/2026-11-15-qualify-temporary-tunnel-dns-within-bootstrap.md) preserves default Resolver servers, ordinary HTTP/TLS/proxy/family selection, the shared bootstrap signal and existing per-request deadline.
+- Historical machine check (retired with the prerequisite): `packages/organization-runtime/test/cross-os-control.test.ts` — real A and AAAA positives with a held native sibling, exact cancelled-query count and no pending query when HTTP starts.
+- Historical machine check (retired with the prerequisite): the same file — unknown query failure, additional cancellation failure, original abort identity, exhausted-window refusal and original HTTP error preservation.
+- Historical machine check (retired with the prerequisite): the same file — passive per-family invocation and settlement facts, finite codes, bounded samples, return-kind and valid-IP counts, zero accessor reads and no retained secret values.
+- The [archived DNS prerequisite decision](../decisions/archived/testing/2026-11-15-qualify-temporary-tunnel-dns-within-bootstrap.md) records that implementation and its local controls. The prerequisite and those controls are retired; their recorded results remain historical evidence. The [original HTTPS readiness decision](../decisions/implemented/testing/2026-11-16-qualify-cross-os-readiness-through-original-https.md) owns the current fixture and preserves the ordinary transport and bootstrap budgets.
 
 Public-network acceptance remains separate. The original 348e zero-HTTP failure is retained; later query facts can distinguish stages but cannot retroactively identify that run's cause.
 

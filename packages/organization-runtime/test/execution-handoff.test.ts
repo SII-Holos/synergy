@@ -25,6 +25,9 @@ import { createCommandIntake } from "../src/command-intake"
 import { registerSessionSchema } from "../src/session-schema"
 import { registerOrganizationTransferOwner } from "../src/session-transfer"
 import { OrganizationSessionAdoption as Adoption } from "../src/session-adoption"
+import { OrganizationExecutionLeases as Leases } from "../src/execution-leases"
+import { EnvironmentExecutionSource } from "@ericsanchezok/synergy-harness/environment/execution-source"
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 
 test.each(["source-cancel", "target-activate"] as const)(
   "an independent Continue after %s retains its control alongside the original native task",
@@ -261,6 +264,18 @@ test.each(["source-cancel", "target-activate"] as const)(
               receipt: { accepted },
               continuation: { handoffID: transfer.handoffID, receipt: controlReceipt },
             })
+            const authority = Leases.reference(rootProof)
+            const saved = EnvironmentExecutionSource.Record.parse({
+              version: 1,
+              provider: "organization",
+              target: { environmentID: "retained-environment", allocationID: "retained-allocation", generation: 1 },
+              binding: { authority },
+            })
+            const savedKey = ["continuation-source-record", native.id, driverRuntimeID]
+            await Storage.write(savedKey, saved)
+            expect(EnvironmentExecutionSource.Record.parse(await Storage.read(savedKey))).toEqual(saved)
+            expect(authority.control?.handoffID).toBe(transfer.handoffID)
+            expect(Object.hasOwn(authority.control!, "recovery")).toBe(false)
             expect(
               (
                 await MessageV2.readInfo({

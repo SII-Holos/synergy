@@ -13,6 +13,7 @@ import { enrollMemberRuntime } from "../src/enrollment"
 import { openMemberRuntime } from "../src/runtime"
 import { fixture } from "./support/organization"
 import { createHandoffCompletion } from "./support/handoff-completion"
+import { observeHandoffCleanupFailure } from "./support/handoff-cleanup-failure"
 
 async function availablePort() {
   const probe = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() })
@@ -95,9 +96,13 @@ test("an explicit native-to-none Environment handoff commits an originally empty
         listen: { port, token },
         workspaceCoordinator: coordinator,
       })
-      resources.defer(`${deviceID} native Runtime`, () => {
+      resources.defer(`${deviceID} native Runtime`, async () => {
         phase("member-close", { participant })
-        return runtime.close()
+        try {
+          await runtime.close()
+        } catch (error) {
+          throw observeHandoffCleanupFailure(error, participant)
+        }
       })
       timer = setTimeout(() => online.reject(new Error("The enrolled native Runtime did not connect")), 5000)
       phase("member-online", { participant })

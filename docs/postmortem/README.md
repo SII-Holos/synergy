@@ -19,6 +19,9 @@
 
 ## Index
 
+- [0223](0223-independent-dns-prerequisite-blocked-original-https-readiness.md)
+- [0224](0224-continuation-origins-retained-absent-native-binding-branches.md)
+
 - [0222](0222-closed-control-history-and-restored-homes-blocked-backup.md)
 
 - [0221](0221-cloud-catalog-routes-forwarded-resource-selectors-into-strict-pages.md)

@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test"
+import { JsonValue } from "@ericsanchezok/synergy-util/json-value"
 import {
   OrganizationCommandProtocol as Command,
   OrganizationExecutionProtocol as Execution,
@@ -177,4 +178,21 @@ test("resource release proofs bind the accepted root and retention generation in
   expect(
     Execution.ReleaseProof.safeParse({ ...original, generation: 0, outcome: "completed", materialized: true }).success,
   ).toBeTrue()
+})
+
+test("exclusive continuation origins remain JSON data without an absent branch or changed wire bytes", () => {
+  const recovery = { installationID: "11111111-1111-4111-8111-111111111111", sourceReferenceHash: "a".repeat(64) }
+  const handoff = { handoffID: "original-handoff" }
+  for (const input of [handoff, { recovery }]) {
+    const origin = Execution.continuationOrigin(input)
+    expect(JsonValue.safeParse({ binding: { authority: { control: origin } } }).success).toBe(true)
+    expect(Object.keys(origin)).toEqual(Object.keys(input))
+    expect(JSON.stringify(origin)).toBe(JSON.stringify(input))
+    expect(Execution.sameContinuationOrigin(origin, input)).toBe(true)
+  }
+  for (const invalid of [{}, { handoffID: handoff.handoffID, recovery }])
+    expect(() => Execution.continuationOrigin(invalid)).toThrow()
+  const extra = { ...handoff, ignored: "not an origin field" }
+  expect(Execution.ContinuationOrigin.safeParse(extra).success).toBe(false)
+  expect(Execution.continuationOrigin(extra)).toEqual(handoff)
 })

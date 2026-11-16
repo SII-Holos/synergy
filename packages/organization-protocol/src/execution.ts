@@ -124,7 +124,8 @@ export namespace OrganizationExecutionProtocol {
       "Continuation requires exactly one original Handoff or recovery publication",
     )
   export function continuationOrigin(value: z.infer<typeof ContinuationOrigin>) {
-    return ContinuationOrigin.parse({ handoffID: value.handoffID, recovery: value.recovery })
+    const origin = ContinuationOrigin.parse({ handoffID: value.handoffID, recovery: value.recovery })
+    return origin.handoffID !== undefined ? { handoffID: origin.handoffID } : { recovery: origin.recovery! }
   }
   export function sameContinuationOrigin(left: unknown, right: unknown) {
     const a = ContinuationOrigin.strip().safeParse(left),

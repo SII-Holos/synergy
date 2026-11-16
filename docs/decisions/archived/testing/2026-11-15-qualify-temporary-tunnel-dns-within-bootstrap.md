@@ -1,6 +1,7 @@
 # Decision Record: Qualify temporary tunnel DNS within bootstrap
 
 Status: implemented
+Archived: 2026-11-16
 
 ## Problem
 
