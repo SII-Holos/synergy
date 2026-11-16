@@ -50,7 +50,7 @@ test("ten authenticated clients replay a shared 10000-message history while thre
   }
   phase("setup")
   try {
-    const service = await fixture({ connections: { heartbeatMs: 25 } })
+    const service = await fixture({ connections: {} })
     resources.defer("capacity organization service", () => service[Symbol.asyncDispose]())
     using serviceMetrics = measureCapacity()
     const owner = { headers: service.headers, throwOnError: true as const }
@@ -68,7 +68,7 @@ test("ten authenticated clients replay a shared 10000-message history while thre
     type Socket = Parameters<typeof service.service.websocket.message>[0]
     type Frame = Parameters<typeof service.service.websocket.message>[1]
     const sockets = new Map<Socket, string>()
-    const online = new Set<string>()
+    const acknowledged = new WeakMap<Socket, boolean>()
     const activity = new Map<
       string,
       { handshakes: number; heartbeats: number; states: number; batches: number; at: number; epoch: number }
@@ -155,10 +155,6 @@ test("ten authenticated clients replay a shared 10000-message history while thre
         }
         if (frame.type === "sync-state") current.states++
         if (frame.type === "sync-batch") current.batches++
-      }
-      if (frame.type === "heartbeat") {
-        const runtimeID = sockets.get(socket)
-        if (runtimeID) online.add(runtimeID)
       }
       if (frame.type === "blob-chunk") {
         wire.blobFrames++
@@ -332,8 +328,27 @@ test("ten authenticated clients replay a shared 10000-message history while thre
       const timer = setTimeout(() => ready.reject(new Error("Enrolled capacity Runtime did not open")), 30000)
       const pid = await ready.promise.finally(() => clearTimeout(timer))
       await eventually(
-        "The Service did not accept the enrolled Runtime heartbeat",
-        async () => online.has(runtimeID),
+        "The Service did not accept the enrolled Runtime connection",
+        async () =>
+          [...sockets.keys()].some((socket) => {
+            if (
+              socket.data.handshake?.runtimeID !== runtimeID ||
+              socket.data.closed ||
+              socket.readyState !== 1 ||
+              socket.data.deadline <= Date.now()
+            )
+              return false
+            if (!acknowledged.has(socket)) {
+              acknowledged.set(socket, false)
+              void socket.data.pending.then(
+                () => {
+                  acknowledged.set(socket, true)
+                },
+                () => {},
+              )
+            }
+            return acknowledged.get(socket) === true
+          }),
         Boolean,
         10000,
       )
@@ -810,6 +825,10 @@ test("ten authenticated clients replay a shared 10000-message history while thre
         attachmentBytes: attachment.bytes,
       },
       timings,
+      connections: {
+        policy: "production-default",
+        activity: runtimes.map((runtime, index) => ({ runtime: index, ...connectionActivity(runtime.runtimeID) })),
+      },
       backlog: { queuedDrafts: queued.drafts, queuedBatches: queued.pendingBatches, finalDrafts: finalBacklog.drafts },
       wire: { ...wire, blobOffsets: [...wire.blobOffsets] },
       firstScreen,

@@ -1,6 +1,8 @@
 import { expect, test } from "bun:test"
 import path from "node:path"
 import { z } from "zod"
+import { createSynergyClient } from "@ericsanchezok/synergy-sdk"
+import { Features } from "@ericsanchezok/synergy-harness/lifecycle/features"
 import { Agent } from "@ericsanchezok/synergy-harness/agent/agent"
 import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import type { Provider } from "@ericsanchezok/synergy-harness/provider/provider"
@@ -77,6 +79,11 @@ test("the actual Hosted catalog and execution gate reject unowned global tools w
     clearTimeout(timer)
     service.interceptFrames(undefined)
   }
+  const runtimeClient = createSynergyClient({
+    baseUrl: `http://127.0.0.1:${port}`,
+    headers: { authorization: `Bearer ${"e".repeat(64)}` },
+  })
+  const capabilities = (await runtimeClient.global.capabilities({ throwOnError: true })).data
   const project = (
     await service.client.orgProjects.create({ orgProjectCreate: { name: "Tool boundary", description: "" } }, options)
   ).data
@@ -96,6 +103,15 @@ test("the actual Hosted catalog and execution gate reject unowned global tools w
     )
   ).data
   await runtime.run(async () => {
+    expect(capabilities.components.map((component) => component.id)).toContain("organization-runtime")
+    for (const id of ["note", "plugin-host"]) {
+      expect(capabilities.components.map((component) => component.id)).not.toContain(id)
+      expect(capabilities.features).not.toContain(id)
+      expect(Features.enabled(id)).toBe(false)
+      expect(Features.catalog().some((feature) => feature.id === id && (feature.available || feature.enabled))).toBe(
+        false,
+      )
+    }
     const session = await Session.get(created.effect.sessionID)
     await ScopeContext.provide({
       scope: session.scope,
@@ -138,6 +154,24 @@ test("the actual Hosted catalog and execution gate reject unowned global tools w
         ])
           expect(visible).toContain(id)
         expect(ProcessAccessSource.has()).toBe(true)
+        for (const id of ["note_list", "note_read", "note_search"]) {
+          expect(registered).not.toContain(id)
+          expect(visible).not.toContain(id)
+          const outcome = await ToolPolicySource.authorize({
+            toolID: id,
+            sessionID: session.id,
+            messageID: "msg_unsupported_note_attempt",
+            callID: `call_${id}`,
+            args: { noteIds: ["unshared-note"] },
+            signal: new AbortController().signal,
+          }).then(
+            () => ({ accepted: true as const }),
+            (error: unknown) => ({ accepted: false as const, error }),
+          )
+          expect(outcome.accepted).toBe(false)
+          if (outcome.accepted) throw new Error("An unavailable Note entry was authorized")
+          expect(outcome.error).toBeInstanceOf(ToolPolicySource.DeniedError)
+        }
         const blocked = [
           "session_list",
           "session_search",
