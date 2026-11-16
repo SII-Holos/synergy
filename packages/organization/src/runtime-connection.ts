@@ -310,6 +310,7 @@ export function createRuntimeConnections(input: {
     send(socket, {
       type: "handshake",
       protocolVersion: Protocol.version,
+      issuedAt: Date.now(),
       orgID: handshake.orgID,
       deploymentIncarnation: handshake.deploymentIncarnation,
       runtimeID: handshake.runtimeID,
@@ -472,7 +473,7 @@ export function createRuntimeConnections(input: {
       assertCurrent()
       write.lastSeen = Date.now()
       lease(socket, settings.offlineMs)
-      send(socket, heartbeat)
+      send(socket, { ...heartbeat, issuedAt: Date.now() })
       const pending = presenceWrites.get(socket)
       if (pending) {
         pending.lastSeen = write.lastSeen

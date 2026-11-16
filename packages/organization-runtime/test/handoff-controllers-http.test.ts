@@ -246,6 +246,7 @@ for (const mode of [
           : {}),
         commands(connection, signal, resources) {
           const intake = createCommandIntake({
+            authorityNow: resources.authorityNow,
             identity: connection.signingIdentity,
             runtimeID: connection.runtimeID,
             accountID: member.identity.accountID,
@@ -269,7 +270,7 @@ for (const mode of [
         handoff: (authorization, connection, signal, resources) =>
           source.run(async () => {
             if (sourceHandoff) return sourceHandoff.dispatch(authorization, connection, signal, resources)
-            const input = { authorization, connection, signal, resources }
+            const input = { authorization, connection, authorityNow: resources.authorityNow, signal, resources }
             sourceSignal = signal
             const plan = authorization.plan
             if (plan.operation === "prepare-source") preparations++
@@ -316,6 +317,7 @@ for (const mode of [
           : {}),
         commands(connection, signal, resources) {
           const intake = createCommandIntake({
+            authorityNow: resources.authorityNow,
             identity: connection.signingIdentity,
             runtimeID: connection.runtimeID,
             ...("accountID" in hosted.identity ? { accountID: hosted.identity.accountID } : {}),
@@ -342,6 +344,7 @@ for (const mode of [
             const input = {
               authorization,
               connection,
+              authorityNow: resources.authorityNow,
               signal,
               resources,
               mapping: async (session: Readonly<Session.Info>) => {

@@ -76,11 +76,12 @@ test("generated HTTPS handoff dispatch reaches the verified native connection an
     identity: member.identity,
     ca: f.ca,
     buildVersion: "handoff-native-fixture",
-    commands(current, signal) {
+    commands(current, signal, resources) {
       return {
         create: (delivery) =>
           native.run(() =>
             createCommandIntake({
+              authorityNow: resources.authorityNow,
               identity: current.signingIdentity,
               runtimeID: current.runtimeID,
               accountID: member.identity.accountID,
@@ -95,7 +96,7 @@ test("generated HTTPS handoff dispatch reaches the verified native connection an
         skip: unavailable,
       }
     },
-    handoff: (authorization, current, signal) =>
+    handoff: (authorization, current, signal, resources) =>
       native.run(async () => {
         called++
         captured = authorization
@@ -115,6 +116,7 @@ test("generated HTTPS handoff dispatch reaches the verified native connection an
           workspace: null,
           fn: async () => {
             const intake = createCommandIntake({
+              authorityNow: resources.authorityNow,
               identity: current.signingIdentity,
               runtimeID: current.runtimeID,
               accountID: member.identity.accountID,
@@ -255,6 +257,7 @@ test("generated HTTPS handoff dispatch reaches the verified native connection an
   wire.send(
     JSON.stringify({
       type: "command",
+      issuedAt: connection.resources.authorityNow(),
       connectionEpoch: connection.connected.connectionEpoch,
       exchangeID: "invalid-service-plan",
       command: {

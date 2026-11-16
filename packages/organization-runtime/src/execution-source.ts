@@ -164,7 +164,7 @@ export async function withMemberHandoffPlan<T>(
   }
   const admit = () => {
     assert()
-    const now = Date.now()
+    const now = source.resources.authorityNow()
     if (plan.issuedAt > now || plan.expiresAt <= now)
       throw new OrganizationRuntimeError({
         code: "HANDOFF_BLOCKED",
@@ -847,7 +847,7 @@ export function registerMemberExecution(identity: RuntimeIdentity) {
       assertInfrastructureOwner(grant.selection)
       if (input.model.providerID !== `organization-${grant.selection.modelResourceID}`)
         throw denied("Organization model call differs from its accepted resource selection")
-      const issuedAt = Date.now()
+      const issuedAt = source.resources.authorityNow()
       const capability = await source.resources.reserve(
         {
           schemaVersion: 1,
@@ -890,6 +890,13 @@ export function registerMemberExecution(identity: RuntimeIdentity) {
           origin: source.origin,
           signingIdentity: source.connection.signingIdentity,
           ca: source.ca,
+          authorityTime: {
+            runtimeID: source.connection.runtimeID,
+            connectionEpoch: source.connection.connectionEpoch,
+            callID: modelPermit.data.callID,
+            issuedAt: source.resources.authorityNow(),
+            observedAt: Math.floor(performance.timeOrigin + performance.now()),
+          },
         }),
       }
     },

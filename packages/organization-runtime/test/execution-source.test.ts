@@ -41,6 +41,37 @@ async function materialize(f: Awaited<ReturnType<typeof executionFixture>>) {
   })
 }
 
+test.each([999, -999])(
+  "member execution and gateway capabilities remain independent of the host wall clock (%dms)",
+  async (offset) => {
+    await using f = await executionFixture({ execution: true })
+    const owner = await f.runtime.run(() => RuntimeContext.current())
+    const originalNow = Date.now
+    using clock = spyOn(Date, "now").mockImplementation(() => {
+      try {
+        if (RuntimeContext.current() === owner) return originalNow() + offset
+      } catch {}
+      return originalNow()
+    })
+    const input = await materialize(f)
+    const proof = await f.description()
+    expect(proof.expiresAt - proof.issuedAt).toBe(30_000)
+    const description = await f.runtime.run(() => f.connection.resources.describe(proof))
+    expect(description.grant.sessionID).toBe(f.sessionID)
+    const prepared = await f.runtime.run(() => ProviderRequestSource.prepare(input, plan))
+    const capability = Gateway.decode(prepared.key!)
+    expect(capability.permit.rootID).toBe(input.user.id)
+    expect(capability.permit.resourceID).toBe(f.model.resourceID)
+    expect(
+      await Gateway.verifyPermit(
+        capability.permit,
+        capability.signature,
+        f.connection.connected.signingIdentity.publicKey,
+      ),
+    ).toBe(true)
+  },
+)
+
 test("member request preparation binds canonical roots and gives each call its own finite capability", async () => {
   await using f = await executionFixture({ execution: true })
   const input = await materialize(f)

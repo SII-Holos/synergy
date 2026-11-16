@@ -59,6 +59,7 @@ test("the source controller preserves its original request signal and refuses a 
     const connection = Runtime.Connected.parse({
       type: "handshake",
       protocolVersion: 1,
+      issuedAt: Date.now(),
       orgID: sourceBinding.orgID,
       deploymentIncarnation: "deployment",
       runtimeID: "runtime-a",
@@ -114,6 +115,7 @@ test("the source controller preserves its original request signal and refuses a 
     const input = {
       authorization: { plan, signature: await Handoff.signMachinePlan(plan, keys.privateKey) },
       connection,
+      authorityNow: Date.now,
       signal,
     }
     try {

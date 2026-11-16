@@ -81,6 +81,7 @@ async function roundtrip(mode: "original" | "continued") {
           draft.modelOverride = { providerID: "test", modelID: "test" }
         })
         const intake = createCommandIntake({
+          authorityNow: Date.now,
           identity,
           runtimeID: sourceBinding.driverRuntimeID,
           accountID: sourceBinding.creatorID,
@@ -207,6 +208,7 @@ async function roundtrip(mode: "original" | "continued") {
   const connection = Runtime.Connected.parse({
     type: "handshake",
     protocolVersion: 1,
+    issuedAt: Date.now(),
     orgID: sourceBinding.orgID,
     deploymentIncarnation: "deployment",
     runtimeID: "runtime-b",
@@ -426,6 +428,7 @@ async function roundtrip(mode: "original" | "continued") {
     const oldIntent = (await Leases.page("runtime-a")).items.find((entry) => entry.entryID === exported.pending.entryID)
     expect(oldIntent).toEqual(exported.pending)
     const intake = createCommandIntake({
+      authorityNow: Date.now,
       identity,
       runtimeID: "runtime-a",
       accountID: sourceBinding.creatorID,

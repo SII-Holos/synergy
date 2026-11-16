@@ -84,6 +84,7 @@ export interface MemberConnectionOptions {
     authorization: Handoff.SignedInspectionPlan,
     connection: Connected,
     signal: AbortSignal,
+    authorityNow: () => number,
   ) => Promise<Handoff.InspectionResult>
   handoffVersion?: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | typeof Handoff.syncTransferBridge
   read?: (authorization: Read.SignedPermit, connection: Connected, signal: AbortSignal) => Promise<Read.Result>
@@ -179,6 +180,36 @@ async function attempt(input: {
   let transportEndKind: MemberConnectionClosed["kind"] = "offline"
   let connected: Connected | undefined
   let commands: ReturnType<NonNullable<MemberConnectionOptions["commands"]>> | undefined
+  let authorityAnchor: { issuedAt: number; observedAt: number } | undefined
+  function authorityAt(observedAt: number) {
+    work.signal.throwIfAborted()
+    if (!authorityAnchor) throw failure("PROTOCOL_MISMATCH", "Service time requires its authenticated connection")
+    const elapsed = observedAt - authorityAnchor.observedAt
+    if (!Number.isFinite(elapsed) || elapsed < 0)
+      throw failure("PROTOCOL_MISMATCH", "Service time requires monotonic elapsed time")
+    const now = authorityAnchor.issuedAt + Math.floor(elapsed)
+    if (!Number.isSafeInteger(now) || now < 0)
+      throw failure("PROTOCOL_MISMATCH", "Service time is outside its finite range")
+    return now
+  }
+  function observeAuthority(issuedAt: number, receivedAt: number) {
+    work.signal.throwIfAborted()
+    const observedAt = performance.now()
+    const age = observedAt - receivedAt
+    if (!Number.isSafeInteger(issuedAt) || issuedAt < 0 || !Number.isFinite(age) || age < 0)
+      throw failure("PROTOCOL_MISMATCH", "Service time observation is invalid")
+    const now = issuedAt + Math.floor(age)
+    if (!Number.isSafeInteger(now) || now < 0)
+      throw failure("PROTOCOL_MISMATCH", "Service time is outside its finite range")
+    authorityAnchor = {
+      issuedAt: authorityAnchor ? Math.max(now, authorityAt(observedAt)) : now,
+      observedAt,
+    }
+  }
+  const authorityTime = {
+    now: () => authorityAt(performance.now()),
+    observe: (issuedAt: number) => observeAuthority(issuedAt, performance.now()),
+  }
   let resources: ReturnType<typeof createMemberResourceClient> | undefined
   let pending = Promise.resolve()
   const executing = new Map<string, Promise<void>>()
@@ -224,6 +255,7 @@ async function attempt(input: {
     if (stopped) return
     stopped = true
     work.abort()
+    authorityAnchor = undefined
     chunks.clear()
     chunkBytes = 0
     clearTimeout(heartbeatTimer)
@@ -360,7 +392,7 @@ async function attempt(input: {
     executing.set(frame.exchangeID, task)
   }
 
-  async function receive(raw: string) {
+  async function receive(raw: string, receivedAt: number) {
     if (stopped) return
     let frame: Protocol.ServerFrame
     try {
@@ -384,12 +416,14 @@ async function attempt(input: {
           (options.sync && options.syncVersion === Sync.observationVersion ? Sync.observationVersion : undefined)
       )
         throw failure("PROTOCOL_MISMATCH", "Runtime handshake does not match this connection")
+      observeAuthority(frame.issuedAt, receivedAt)
       await input.checkpoint.save(epoch, work.signal)
       if (stopped || transportClosed) return
       connected = frame
       resources = createMemberResourceClient({
         origin: member.origin,
         connection: frame,
+        authorityTime,
         key: input.key,
         ca: options.ca,
         signal: work.signal,
@@ -401,6 +435,9 @@ async function attempt(input: {
       return
     }
     if (frame.type === "command") {
+      if (!connected || frame.connectionEpoch !== epoch)
+        throw failure("PROTOCOL_MISMATCH", "Command does not match an active intake connection")
+      observeAuthority(frame.issuedAt, receivedAt)
       dispatchCommand(frame, Buffer.byteLength(raw))
       return
     }
@@ -425,6 +462,7 @@ async function attempt(input: {
         throw failure("PROTOCOL_MISMATCH", "Command chunk encoding is invalid")
       if (chunkBytes + bytes.byteLength > 64 * 1024 * 1024)
         throw failure("SERVICE_UNAVAILABLE", "Runtime command chunk buffer is full")
+      observeAuthority(frame.issuedAt, receivedAt)
       transfer.parts.push(bytes)
       transfer.bytes += bytes.byteLength
       transfer.next++
@@ -441,7 +479,13 @@ async function attempt(input: {
         throw failure("PROTOCOL_MISMATCH", "Chunked command payload is invalid")
       }
       dispatchCommand(
-        { type: "command", connectionEpoch: frame.connectionEpoch, exchangeID: frame.exchangeID, command },
+        {
+          type: "command",
+          issuedAt: frame.issuedAt,
+          connectionEpoch: frame.connectionEpoch,
+          exchangeID: frame.exchangeID,
+          command,
+        },
         frameLimit,
       )
       return
@@ -482,6 +526,7 @@ async function attempt(input: {
     }
     if (!connected || frame.connectionEpoch !== epoch || frame.sequence !== expectedSequence)
       throw failure("PROTOCOL_MISMATCH", "Heartbeat does not match this connection")
+    observeAuthority(frame.issuedAt, receivedAt)
     expectedSequence = undefined
     lease(connected.offlineMs)
     scheduleHeartbeat()
@@ -498,7 +543,7 @@ async function attempt(input: {
     try {
       const command = frame.command
       if (command.kind === "handoff-inspection") {
-        if (!options.handoffInspection || !connected)
+        if (!options.handoffInspection || !connected || !resources)
           throw failure("PROTOCOL_MISMATCH", "Handoff inspection is unavailable")
         const { plan, signature } = command.authorization
         if (
@@ -507,13 +552,18 @@ async function attempt(input: {
           plan.keyID !== connected.signingIdentity.keyID ||
           plan.runtimeID !== connected.runtimeID ||
           plan.connectionEpoch !== connected.connectionEpoch ||
-          plan.issuedAt > Date.now() ||
-          plan.expiresAt <= Date.now() ||
+          plan.issuedAt > resources.resources.authorityNow() ||
+          plan.expiresAt <= resources.resources.authorityNow() ||
           !(await Handoff.verifyInspection(plan, signature, connected.signingIdentity.publicKey))
         )
           throw failure("PERMISSION_DENIED", "Handoff inspection does not match this finite connection")
         const result = Handoff.InspectionResult.parse(
-          await options.handoffInspection(command.authorization, connected, work.signal),
+          await options.handoffInspection(
+            command.authorization,
+            connected,
+            work.signal,
+            resources.resources.authorityNow,
+          ),
         )
         if (!Handoff.matchesInspection(plan, result))
           throw failure("PROTOCOL_MISMATCH", "Handoff inspection returned another participant")
@@ -530,8 +580,8 @@ async function attempt(input: {
           plan.keyID !== connected.signingIdentity.keyID ||
           plan.runtimeID !== connected.runtimeID ||
           plan.connectionEpoch !== connected.connectionEpoch ||
-          plan.issuedAt > Date.now() ||
-          plan.expiresAt <= Date.now() ||
+          plan.issuedAt > resources.resources.authorityNow() ||
+          plan.expiresAt <= resources.resources.authorityNow() ||
           !(await Handoff.verifyMachinePlan(plan, signature, connected.signingIdentity.publicKey))
         )
           throw failure("PERMISSION_DENIED", "Handoff machine plan is invalid for this connection")
@@ -754,6 +804,7 @@ async function attempt(input: {
     disconnected(event.code === 4001 ? "replaced" : event.code === 4003 ? "rejected" : "offline"),
   )
   socket.addEventListener("message", (event) => {
+    const receivedAt = performance.now()
     if (stopped) return
     const raw: unknown = event.data
     if (typeof raw !== "string" || Buffer.byteLength(raw) > syncFrameLimit)
@@ -764,7 +815,7 @@ async function attempt(input: {
     if (queuedFrames > 16 || queuedBytes > syncFrameLimit * 4)
       return reject(failure("PROTOCOL_MISMATCH", "Runtime bridge receive window exceeded"))
     pending = pending
-      .then(() => receive(raw))
+      .then(() => receive(raw, receivedAt))
       .catch(reject)
       .finally(() => {
         queuedFrames--

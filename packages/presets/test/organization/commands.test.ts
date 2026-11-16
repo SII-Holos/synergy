@@ -542,6 +542,7 @@ async function peer(
   const socket = await f.connect(epoch)
   const controller = new AbortController()
   const intake = createCommandIntake({
+    authorityNow: Date.now,
     identity: f.signing.identity,
     runtimeID: binding.driverRuntimeID,
     accountID: binding.creatorID,

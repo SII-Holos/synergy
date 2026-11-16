@@ -39,6 +39,7 @@ export namespace OrganizationHandoffTarget {
   interface Input {
     authorization: Handoff.SignedMachinePlan
     connection: z.infer<typeof Runtime.Connected>
+    authorityNow: () => number
     mapping(session: Readonly<Session.Info>): Promise<Mapping>
     signal: AbortSignal
     resources?: Partial<Pick<MemberResourceClient, "handoffWorkspace">>
@@ -48,6 +49,7 @@ export namespace OrganizationHandoffTarget {
     return {
       authorization: Handoff.SignedMachinePlan.parse(input.authorization),
       connection: Runtime.Connected.parse(input.connection),
+      authorityNow: input.authorityNow.bind(input),
       signal: input.signal,
       mapping: input.mapping.bind(input),
       resources: input.resources?.handoffWorkspace
@@ -175,8 +177,8 @@ export namespace OrganizationHandoffTarget {
         plan.orgID !== connection.orgID ||
         plan.deploymentIncarnation !== connection.deploymentIncarnation ||
         plan.keyID !== connection.signingIdentity.keyID ||
-        plan.issuedAt > Date.now() ||
-        plan.expiresAt <= Date.now() ||
+        plan.issuedAt > input.authorityNow() ||
+        plan.expiresAt <= input.authorityNow() ||
         !(await Handoff.verifyMachinePlan(plan, signature, connection.signingIdentity.publicKey))
       )
         fail("Destination controller requires the current finite service authorization")

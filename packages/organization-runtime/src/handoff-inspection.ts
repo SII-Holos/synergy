@@ -31,7 +31,7 @@ export function createHandoffInspection(input: {
       retryable: false,
     })
   }
-  return async (authorization, value, signal) => {
+  return async (authorization, value, signal, authorityNow) => {
     const { plan, signature } = Handoff.SignedInspectionPlan.parse(authorization)
     const connection = Runtime.Connected.parse(value)
     const assert = () => {
@@ -45,8 +45,8 @@ export function createHandoffInspection(input: {
         plan.deploymentIncarnation !== connection.deploymentIncarnation ||
         plan.connectionEpoch !== connection.connectionEpoch ||
         plan.keyID !== connection.signingIdentity.keyID ||
-        plan.issuedAt > Date.now() ||
-        plan.expiresAt <= Date.now()
+        plan.issuedAt > authorityNow() ||
+        plan.expiresAt <= authorityNow()
       )
         fail("Handoff inspection requires its current finite enrolled connection")
     }

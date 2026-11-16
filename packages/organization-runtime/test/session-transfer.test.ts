@@ -114,6 +114,7 @@ test("organization transfer requires its actual reader and carries only the acce
         const root = await Session.create({ organization: binding, workspaceID: null, environmentID: null })
         const other = await Session.create({ organization: binding, workspaceID: null, environmentID: null })
         const intake = createCommandIntake({
+          authorityNow: Date.now,
           identity,
           runtimeID: binding.driverRuntimeID,
           accountID: binding.creatorID,
@@ -518,6 +519,7 @@ test("organization transfer requires its actual reader and carries only the acce
     const connection = Runtime.Connected.parse({
       type: "handshake",
       protocolVersion: 1,
+      issuedAt: Date.now(),
       orgID: binding.orgID,
       deploymentIncarnation: identity.deploymentIncarnation,
       runtimeID: "runtime-b",
@@ -548,6 +550,7 @@ test("organization transfer requires its actual reader and carries only the acce
     ).toEqual(frozen.requests)
     expect(await Storage.read(Keys.release(binding.orgID, binding.creatorID, "original"))).toEqual(frozen.release)
     const observer = createCommandIntake({
+      authorityNow: Date.now,
       identity,
       runtimeID: "runtime-b",
       accountID: binding.creatorID,

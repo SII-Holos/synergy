@@ -141,7 +141,12 @@ function fragment(peer: Peer, value: Partial<Runtime.BlobChunk> = {}): Runtime.B
 }
 async function heartbeat(peer: Peer, sequence: number) {
   await peer.send({ type: "heartbeat", connectionEpoch: peer.epoch, sequence })
-  expect(await peer.next()).toEqual({ type: "heartbeat", connectionEpoch: peer.epoch, sequence })
+  expect(await peer.next()).toEqual({
+    type: "heartbeat",
+    connectionEpoch: peer.epoch,
+    sequence,
+    issuedAt: expect.any(Number),
+  })
 }
 async function rejected(peer: Peer, code: string) {
   expect(await peer.next()).toMatchObject({ type: "error", error: { code } })

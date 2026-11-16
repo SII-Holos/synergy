@@ -233,7 +233,13 @@ export function createCommandTransport(input: {
               return input.send(frame)
             }
             if (payload.byteLength <= commandChunkBytes) {
-              const sent = send({ type: "command", connectionEpoch: handshake.connectionEpoch, exchangeID, command })
+              const sent = send({
+                type: "command",
+                issuedAt: Date.now(),
+                connectionEpoch: handshake.connectionEpoch,
+                exchangeID,
+                command,
+              })
               if (sent === 0) {
                 clear()
                 reject(failure("not_dispatched", "Runtime did not receive the command frame"))
@@ -248,6 +254,7 @@ export function createCommandTransport(input: {
                 ).toString("base64url")
                 const sent = send({
                   type: "command-chunk",
+                  issuedAt: Date.now(),
                   connectionEpoch: handshake.connectionEpoch,
                   exchangeID,
                   index,

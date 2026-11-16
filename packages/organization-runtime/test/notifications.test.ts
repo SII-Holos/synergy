@@ -42,6 +42,7 @@ test("native observation requires an original root binding and retires the captu
           connected: Runtime.Connected.parse({
             type: "handshake",
             protocolVersion: 1,
+            issuedAt: Date.now(),
             orgID: "org",
             deploymentIncarnation: "deployment",
             runtimeID: "runtime",

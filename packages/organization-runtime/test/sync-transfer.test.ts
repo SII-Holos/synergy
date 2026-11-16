@@ -314,6 +314,7 @@ test("the original destination activation publishes the portable sync prefix and
     const connection = Runtime.Connected.parse({
       type: "handshake",
       protocolVersion: 1,
+      issuedAt: Date.now(),
       orgID: binding.orgID,
       deploymentIncarnation: signingIdentity.deploymentIncarnation,
       runtimeID: frozen.epoch.targetID,
@@ -365,6 +366,7 @@ test("native source freezing rejects changed draft hashes and event identity in 
         connected: {
           type: "handshake",
           protocolVersion: 1,
+          issuedAt: Date.now(),
           orgID: binding.orgID,
           deploymentIncarnation: "checksum-deployment",
           runtimeID: binding.driverRuntimeID,
@@ -444,6 +446,7 @@ test("finite source settlement rejects changed live draft identities before uplo
           connected: {
             type: "handshake",
             protocolVersion: 1,
+            issuedAt: Date.now(),
             orgID: binding.orgID,
             deploymentIncarnation: "finite-deployment",
             runtimeID: binding.driverRuntimeID,

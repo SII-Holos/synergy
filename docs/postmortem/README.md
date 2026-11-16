@@ -19,6 +19,8 @@
 
 ## Index
 
+- [0229](0229-connected-machine-proofs-mixed-native-and-service-time.md)
+
 - [0228](0228-portable-links-retained-host-specific-permissions.md)
 
 - [0227](0227-cross-os-receipt-polling-lost-original-target-rejection.md)

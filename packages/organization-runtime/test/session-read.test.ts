@@ -177,6 +177,7 @@ test("remote private reads verify creator, full signed target and current connec
   const connection = Runtime.Connected.parse({
     type: "handshake",
     protocolVersion: 1,
+    issuedAt: Date.now(),
     orgID: binding.orgID,
     deploymentIncarnation: "read-deployment",
     runtimeID: binding.driverRuntimeID,

@@ -36,6 +36,10 @@ export const MemberModelContext = z.strictObject({
   purpose: z.literal("organization-model"),
   origin: Origin,
   signingIdentity: Command.SigningIdentity,
+  authorityTime: Gateway.Target.pick({ runtimeID: true, connectionEpoch: true, callID: true }).extend({
+    issuedAt: z.number().int().nonnegative().safe(),
+    observedAt: z.number().int().nonnegative().safe(),
+  }),
   ca: z.union([z.string(), z.array(z.string())]).optional(),
 })
 
@@ -130,11 +134,40 @@ function factory(
       context.signingIdentity.orgID !== identity.orgID ||
       context.signingIdentity.deploymentIncarnation !== permit.deploymentIncarnation ||
       context.signingIdentity.keyID !== permit.keyID ||
+      context.authorityTime.runtimeID !== permit.runtimeID ||
+      context.authorityTime.connectionEpoch !== permit.connectionEpoch ||
+      context.authorityTime.callID !== permit.callID ||
       permit.protocol !== protocol ||
       options.name !== `organization-${permit.resourceID}` ||
       options.baseURL !== address
     )
       throw denied("Organization model capability does not match its selected provider")
+    const { issuedAt, observedAt } = context.authorityTime
+    // This Host's prepared JSON crosses to its own worker; the Native epoch measures transfer age, not authority.
+    // VM timer origins: https://github.com/oven-sh/bun/blob/c6da4a4d3010e5553438c60f6bd76d981976867c/src/jsc/virtual_machine_exports.rs#L35-L52
+    const hostNow = Math.floor(performance.timeOrigin + performance.now())
+    const age = hostNow - observedAt
+    const authorityAt = issuedAt + age
+    const monotonicAt = performance.now()
+    if (
+      !Number.isSafeInteger(hostNow) ||
+      !Number.isSafeInteger(age) ||
+      age < 0 ||
+      !Number.isSafeInteger(authorityAt) ||
+      !Number.isFinite(monotonicAt) ||
+      monotonicAt < 0
+    )
+      throw denied("Organization model requires its original authority time observation")
+    let lastMonotonicAt = monotonicAt
+    const authorityNow = () => {
+      const observed = performance.now()
+      const elapsed = observed - monotonicAt
+      const now = authorityAt + Math.floor(elapsed)
+      if (!Number.isFinite(observed) || observed < lastMonotonicAt || elapsed < 0 || !Number.isSafeInteger(now))
+        throw denied("Organization model requires monotonic authority time")
+      lastMonotonicAt = observed
+      return now
+    }
     const fetch = options.fetch as typeof globalThis.fetch
     const endpoint = address + (protocol === "openai-compatible" ? "/chat/completions" : "/messages")
     let dispatched = false
@@ -154,8 +187,8 @@ function factory(
           outcome: "unknown",
           retryable: false,
         })
-      if (permit.issuedAt > Date.now() || permit.expiresAt <= Date.now())
-        throw denied("Organization model capability has expired")
+      const now = authorityNow()
+      if (permit.issuedAt > now || permit.expiresAt <= now) throw denied("Organization model capability has expired")
       const incoming = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined))
       const headers = new Headers()
       for (const name of ["content-type", "accept", "anthropic-version", "anthropic-beta"]) {

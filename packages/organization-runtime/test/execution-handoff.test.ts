@@ -72,6 +72,7 @@ test.each(["source-cancel", "target-activate"] as const)(
             draft.modelOverride = { providerID: "test", modelID: "test" }
           })
           const intake = createCommandIntake({
+            authorityNow: Date.now,
             identity,
             runtimeID: binding.driverRuntimeID,
             accountID: binding.creatorID,
@@ -217,6 +218,7 @@ test.each(["source-cancel", "target-activate"] as const)(
           }
           async function continueOwned(driverRuntimeID: string, epoch: number) {
             const receiver = createCommandIntake({
+              authorityNow: Date.now,
               identity,
               runtimeID: driverRuntimeID,
               accountID: driverRuntimeID === binding.driverRuntimeID ? binding.creatorID : "current-controller",
@@ -351,6 +353,7 @@ test.each(["source-cancel", "target-activate"] as const)(
                   const connected = Runtime.Connected.parse({
                     type: "handshake",
                     protocolVersion: 1,
+                    issuedAt: Date.now(),
                     orgID: binding.orgID,
                     deploymentIncarnation: identity.deploymentIncarnation,
                     runtimeID: transfer.targetID,
@@ -368,6 +371,7 @@ test.each(["source-cancel", "target-activate"] as const)(
                       ),
                   )
                   const targetIntake = createCommandIntake({
+                    authorityNow: Date.now,
                     identity,
                     runtimeID: transfer.targetID,
                     accountID: "current-controller",

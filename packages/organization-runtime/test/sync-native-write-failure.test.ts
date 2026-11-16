@@ -100,6 +100,7 @@ test("an original native write failing FULL before its commit fact reports block
           connected: {
             type: "handshake",
             protocolVersion: 1,
+            issuedAt: Date.now(),
             orgID: original.orgID,
             deploymentIncarnation: "native-full-deployment",
             runtimeID: original.driverRuntimeID,

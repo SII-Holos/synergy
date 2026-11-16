@@ -137,6 +137,7 @@ test("the destination controller prepares actual private owner partitions and re
     const connection = Runtime.Connected.parse({
       type: "handshake",
       protocolVersion: 1,
+      issuedAt: Date.now(),
       orgID: sourceBinding.orgID,
       deploymentIncarnation: registration.deploymentIncarnation,
       runtimeID: registration.runtimeID,
@@ -232,9 +233,9 @@ test("the destination controller prepares actual private owner partitions and re
     await foreign.run(async () => {
       const before = rangeReads
       const wrong = Target.create({ identity: hosted.identity, runtimeID: registration.runtimeID })
-      await expect(wrong.prepare({ authorization, connection, resources, mapping, signal })).rejects.toThrow(
-        "enrolled Runtime Home",
-      )
+      await expect(
+        wrong.prepare({ authorization, connection, authorityNow: Date.now, resources, mapping, signal }),
+      ).rejects.toThrow("enrolled Runtime Home")
       expect(rangeReads).toBe(before)
       expect(
         await Storage.readMany([
@@ -259,7 +260,14 @@ test("the destination controller prepares actual private owner partitions and re
         return verify(...args)
       })
       try {
-        const mutable = { authorization, connection, resources, mapping, signal: firstSignal.signal }
+        const mutable = {
+          authorization,
+          connection,
+          authorityNow: Date.now,
+          resources,
+          mapping,
+          signal: firstSignal.signal,
+        }
         const interrupted = controller.prepare(mutable)
         void interrupted.catch(() => {})
         await verifying.promise
@@ -277,6 +285,7 @@ test("the destination controller prepares actual private owner partitions and re
       const mutable = {
         authorization,
         connection,
+        authorityNow: Date.now,
         resources,
         signal: original.signal,
         async mapping() {
@@ -303,6 +312,7 @@ test("the destination controller prepares actual private owner partitions and re
       const concurrent = {
         authorization,
         connection,
+        authorityNow: Date.now,
         resources,
         signal,
         async mapping() {
@@ -327,6 +337,7 @@ test("the destination controller prepares actual private owner partitions and re
         working = await controller.inspect({
           authorization: { plan: inspection, signature: await Handoff.signMachinePlan(inspection, keys.privateKey) },
           connection,
+          authorityNow: Date.now,
           mapping,
           signal,
         })
@@ -348,11 +359,14 @@ test("the destination controller prepares actual private owner partitions and re
       })
       await expect(Session.get(captured.root.id)).rejects.toThrow()
       await expect(Session.get(captured.child.id)).rejects.toThrow()
-      expect(await controller.prepare({ authorization, connection, resources, mapping, signal })).toEqual(fact)
+      expect(
+        await controller.prepare({ authorization, connection, authorityNow: Date.now, resources, mapping, signal }),
+      ).toEqual(fact)
       await expect(
         controller.prepare({
           authorization,
           connection,
+          authorityNow: Date.now,
           resources,
           mapping: async () => ({ workspaceIDs: { unused: "another-workspace" }, environmentID: null }),
           signal,
@@ -398,6 +412,7 @@ test("the destination controller prepares actual private owner partitions and re
         controller.activate({
           authorization: { plan: invalid, signature: await Handoff.signMachinePlan(invalid, keys.privateKey) },
           connection,
+          authorityNow: Date.now,
           mapping,
           signal,
         }),
@@ -407,6 +422,7 @@ test("the destination controller prepares actual private owner partitions and re
         controller.activate({
           authorization: { plan: activation, signature: await Handoff.signMachinePlan(activation, keys.privateKey) },
           connection,
+          authorityNow: Date.now,
           mapping,
           signal,
         })
@@ -425,6 +441,7 @@ test("the destination controller prepares actual private owner partitions and re
         controller.inspect({
           authorization: { plan: inspection, signature: await Handoff.signMachinePlan(inspection, keys.privateKey) },
           connection,
+          authorityNow: Date.now,
           mapping,
           signal,
         })
@@ -442,6 +459,7 @@ test("the destination controller prepares actual private owner partitions and re
         .activate({
           authorization: { plan: activation, signature: await Handoff.signMachinePlan(activation, keys.privateKey) },
           connection,
+          authorityNow: Date.now,
           async mapping() {
             if (!heldActivation) {
               heldActivation = true
@@ -523,6 +541,7 @@ test("the destination controller prepares actual private owner partitions and re
         await controller.activate({
           authorization: { plan: activation, signature: await Handoff.signMachinePlan(activation, keys.privateKey) },
           connection,
+          authorityNow: Date.now,
           mapping,
           signal,
         }),

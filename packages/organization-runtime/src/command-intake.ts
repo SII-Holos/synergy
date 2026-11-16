@@ -50,10 +50,6 @@ async function read<T>(schema: z.ZodType<T>, key: string[]): Promise<T | undefin
   const [value] = await Storage.readMany<unknown>([key])
   return value === undefined ? undefined : parse(schema, value)
 }
-function expired(window: { authorizedAt: number; deadline: number }) {
-  const now = Date.now()
-  return now < window.authorizedAt || now >= window.deadline
-}
 class PermitExpired extends Error {}
 class AdmissionChanged extends Error {}
 
@@ -63,12 +59,18 @@ export function createCommandIntake(options: {
   accountID?: string
   connectionEpoch: number
   signal: AbortSignal
+  authorityNow: () => number
 }) {
   const authority = Command.SigningIdentity.parse(options.identity)
   const runtimeID = Identity.ID.parse(options.runtimeID)
   const accountID = options.accountID === undefined ? undefined : Identity.ID.parse(options.accountID)
   const connectionEpoch = OrganizationProtocol.Epoch.parse(options.connectionEpoch)
   const signal = options.signal
+  const authorityNow = options.authorityNow
+  function expired(window: { authorizedAt: number; deadline: number }) {
+    const now = authorityNow()
+    return now < window.authorizedAt || now >= window.deadline
+  }
 
   function assertActive() {
     if (signal.aborted) throw failure("STALE_CONNECTION", "Command connection is no longer active")
@@ -499,7 +501,7 @@ export function createCommandIntake(options: {
     return ScopeContext.provide({ scope: session.scope, workspace: session.workspace, fn: apply })
     async function apply(): Promise<Command.ControlResult> {
       const timeout = new AbortController()
-      const timer = setTimeout(() => timeout.abort(new PermitExpired()), Math.max(0, permit.deadline - Date.now()))
+      const timer = setTimeout(() => timeout.abort(new PermitExpired()), Math.max(0, permit.deadline - authorityNow()))
       const pending = AbortSignal.any([signal, timeout.signal])
       try {
         if (delivery.control.operation === "pause") {
@@ -737,7 +739,7 @@ export function createCommandIntake(options: {
     const lookup = Lookup.parse(value)
     return Storage.snapshot(async () => {
       const { current, attempt, continuation } = await taskReceipt(lookup, access)
-      const issuedAt = Date.now()
+      const issuedAt = authorityNow()
       return Execution.DescriptionProof.parse({
         schemaVersion: 1,
         purpose: "execution-resource-description",
@@ -767,8 +769,8 @@ export function createCommandIntake(options: {
       plan.sourceRuntimeID !== runtimeID ||
       plan.runtimeID !== runtimeID ||
       plan.connectionEpoch !== connectionEpoch ||
-      plan.issuedAt > Date.now() ||
-      plan.expiresAt <= Date.now() ||
+      plan.issuedAt > authorityNow() ||
+      plan.expiresAt <= authorityNow() ||
       !plan.preparedHash ||
       !(await Handoff.verifyMachinePlan(plan, signature, authority.publicKey)) ||
       !plan.authorization ||
@@ -868,8 +870,8 @@ export function createCommandIntake(options: {
       }
       await Epochs.assertFrozen(plan.sessionID, plan.handoffID)
       assertActive()
-      if (plan.expiresAt <= Date.now()) throw failure("HANDOFF_BLOCKED", "Source surrender authority expired")
-      const issuedAt = Date.now()
+      if (plan.expiresAt <= authorityNow()) throw failure("HANDOFF_BLOCKED", "Source surrender authority expired")
+      const issuedAt = authorityNow()
       return Execution.HandoffCloseProof.parse({
         ...Handoff.Binding.parse(
           Object.fromEntries(
@@ -1006,7 +1008,7 @@ export function createCommandIntake(options: {
             throw failure("STALE_BINDING", "Original cleanup belongs to another Runtime binding")
         }
         assertActive()
-        const issuedAt = Date.now()
+        const issuedAt = authorityNow()
         return Execution.InspectionProof.parse({
           schemaVersion: 1,
           purpose: "execution-retention-inspection",
@@ -1068,7 +1070,7 @@ export function createCommandIntake(options: {
         )
           throw failure("RESOURCE_UNAVAILABLE", "Accepted task has no available materialized root")
         assertActive()
-        const issuedAt = Date.now()
+        const issuedAt = authorityNow()
         return Execution.BindingProof.parse({
           schemaVersion: 1,
           purpose: "execution-root-binding",

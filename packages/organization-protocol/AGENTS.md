@@ -1,6 +1,6 @@
 # Organization Protocol
 
-Own versioned service/Runtime/client DTOs; exclude execution/storage/HTTP/UI. Reject unknown versions/fields; build strings never decide compatibility.
+Own versioned service/Runtime/client [DTOs](../../docs/architecture/organization.md#runtime-command-intake); exclude execution/storage/HTTP/UI. Reject unknown versions/fields; build strings never decide compatibility.
 
 Run `bun run typecheck`/`bun run test`; verify mounted OpenAPI/regenerate SDKs for API-visible schemas.
 

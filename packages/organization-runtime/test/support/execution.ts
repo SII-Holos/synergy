@@ -119,6 +119,7 @@ export async function executionFixture(
         commands(current, signal, client) {
           supplied = client
           intake = createCommandIntake({
+            authorityNow: client.authorityNow,
             identity: current.signingIdentity,
             runtimeID: current.runtimeID,
             accountID: f.identity.accountID,
@@ -352,6 +353,7 @@ export async function executionFixture(
         })
       },
       proof(grant: Execution.BoundGrant, callID: string, resourceID = model.resourceID): Gateway.Proof {
+        const issuedAt = connection!.resources.authorityNow()
         return Gateway.Proof.parse({
           schemaVersion: 1,
           purpose: "gateway-call",
@@ -365,8 +367,8 @@ export async function executionFixture(
           bindingEpoch: grant.bindingEpoch,
           resourceID,
           callID,
-          issuedAt: Date.now(),
-          expiresAt: Date.now() + 30_000,
+          issuedAt,
+          expiresAt: issuedAt + 30_000,
         })
       },
       [Symbol.asyncDispose]: resources.close,

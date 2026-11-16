@@ -135,6 +135,7 @@ test("creator and signed tool attachment reads page canonical metadata and bind 
         const connection = Runtime.Connected.parse({
           type: "handshake",
           protocolVersion: 1,
+          issuedAt: Date.now(),
           orgID: binding.orgID,
           deploymentIncarnation: "deployment",
           runtimeID: binding.driverRuntimeID,

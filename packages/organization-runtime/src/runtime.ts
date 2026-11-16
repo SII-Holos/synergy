@@ -199,6 +199,7 @@ async function openOrganizationRuntime(input: MemberRuntimeOptions) {
                 accountID: "accountID" in member.identity ? member.identity.accountID : undefined,
                 connectionEpoch: connection.connectionEpoch,
                 signal,
+                authorityNow: resources.authorityNow,
               })
               attachMemberExecution({ connection, signal, resources, intake, origin: member.origin, ca: input.ca })
               const closeReleaseObserver = startExecutionReleaseObserver({

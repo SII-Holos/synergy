@@ -19,7 +19,13 @@ import { WorkspaceMove } from "@ericsanchezok/synergy-harness/workspace/move"
 import { WorkspaceArchive } from "@ericsanchezok/synergy-harness/workspace/archive"
 import { WorkspaceTree } from "@ericsanchezok/synergy-harness/workspace/tree"
 
+export interface MemberResourceAuthorityTime {
+  now(): number
+  observe(issuedAt: number): void
+}
+
 export interface MemberResourceClient {
+  authorityNow(): number
   discoverEnvironmentCleanup(
     proof: Execution.InspectionProof,
     page: { limit?: number; cursor?: string },
@@ -174,16 +180,27 @@ function sameRetirement(result: CloudEnvironment.RetirementResult, query: CloudE
 export function createMemberResourceClient(options: {
   origin: string
   connection: z.infer<typeof Runtime.Connected>
+  authorityTime: MemberResourceAuthorityTime
   key: CryptoKey
   ca?: string | string[]
   signal: AbortSignal
 }) {
   const connection = Runtime.Connected.parse(options.connection)
+  const authorityTime = options.authorityTime
+  const readAuthorityTime = authorityTime.now.bind(authorityTime)
+  const observeAuthorityTime = authorityTime.observe.bind(authorityTime)
   const url = new URL(options.origin)
   if (url.protocol !== "https:" || url.origin !== options.origin)
     throw failure("PROTOCOL_MISMATCH", "Resource control requires the verified organization origin", "not_dispatched")
   const stop = new AbortController()
   const lifetime = AbortSignal.any([stop.signal, options.signal])
+  const authorityNow = () => {
+    lifetime.throwIfAborted()
+    const now = readAuthorityTime()
+    if (!Number.isSafeInteger(now) || now < 0)
+      throw failure("PROTOCOL_MISMATCH", "Service time is outside its finite range", "not_dispatched")
+    return now
+  }
   const active = new Set<Promise<unknown>>()
   const bodies = new Set<{ reader: ReadableStreamDefaultReader<Uint8Array>; done: Promise<void> }>()
   const waiters = new Set<() => void>()
@@ -293,7 +310,7 @@ export function createMemberResourceClient(options: {
     request: (signal: AbortSignal) => Promise<{ data?: unknown; error?: unknown }>,
     verify: (result: T) => void | Promise<void>,
     signal?: AbortSignal,
-    now: () => number = () => Date.now(),
+    now: () => number = authorityNow,
   ): Promise<T> {
     current(proof, now)
     const cancellation = AbortSignal.any([
@@ -408,11 +425,13 @@ export function createMemberResourceClient(options: {
         "Organization connection capability does not match this member connection",
         "not_dispatched",
       )
-    if (permit.permit.issuedAt > Date.now() || permit.permit.expiresAt <= Date.now())
+    observeAuthorityTime(permit.permit.issuedAt)
+    if (permit.permit.issuedAt > authorityNow() || permit.permit.expiresAt <= authorityNow())
       throw failure("PERMISSION_DENIED", "Organization connection capability has expired", "not_dispatched")
     return permit
   }
   const resources: MemberResourceClient = {
+    authorityNow,
     async discoverEnvironmentCleanup(value, input, signal) {
       const authority = Execution.InspectionProof.parse(structuredClone(value))
       if (!authority.grantID || authority.generation === undefined)
@@ -673,7 +692,7 @@ export function createMemberResourceClient(options: {
               actor: workspace.selectionActor,
             })
           : undefined
-      const issuedAt = Date.now()
+      const issuedAt = authorityNow()
       const proof = Cloud.HandoffWorkspaceProof.parse({
         ...Object.fromEntries(
           Object.keys(Handoff.Binding.shape).map((key) => [key, plan[key as keyof Handoff.MachinePlan]]),
@@ -1247,6 +1266,7 @@ export function createMemberResourceClient(options: {
             !(await Gateway.verifyPermit(result.permit, result.signature, connection.signingIdentity.publicKey))
           )
             throw failure("PROTOCOL_MISMATCH", "Organization resource capability signature is invalid")
+          if (result.permit.connectionEpoch === connection.connectionEpoch) observeAuthorityTime(result.permit.issuedAt)
         },
         signal,
       )
@@ -1270,7 +1290,7 @@ export function createMemberResourceClient(options: {
       const cancellation = AbortSignal.any([
         lifetime,
         ...(input.signal ? [input.signal] : []),
-        AbortSignal.timeout(Math.max(0, Math.min(15_000, permit.permit.expiresAt - Date.now()))),
+        AbortSignal.timeout(Math.max(0, Math.min(15_000, permit.permit.expiresAt - authorityNow()))),
       ])
       const pending = (async () => {
         await acquire(cancellation)
@@ -1389,7 +1409,7 @@ export function createMemberResourceClient(options: {
       const cancellation = AbortSignal.any([
         lifetime,
         ...(signal ? [signal] : []),
-        AbortSignal.timeout(Math.max(0, Math.min(15_000, permit.permit.expiresAt - Date.now()))),
+        AbortSignal.timeout(Math.max(0, Math.min(15_000, permit.permit.expiresAt - authorityNow()))),
       ])
       const pending = (async () => {
         await acquire(cancellation)

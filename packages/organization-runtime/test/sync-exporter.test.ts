@@ -189,6 +189,7 @@ function transport(sessionID: string, receive?: (batch: Sync.Batch) => Promise<v
     connected: {
       type: "handshake",
       protocolVersion: 1,
+      issuedAt: Date.now(),
       orgID: binding.orgID,
       deploymentIncarnation: "deployment-sync",
       runtimeID: binding.driverRuntimeID,

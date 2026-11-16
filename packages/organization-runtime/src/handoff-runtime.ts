@@ -32,6 +32,7 @@ export function createRuntimeHandoff(input: { identity: RuntimeIdentity; runtime
     const value = {
       authorization,
       connection: current,
+      authorityNow: resources.authorityNow,
       signal,
       resources,
       async mapping(session: Readonly<Session.Info>) {

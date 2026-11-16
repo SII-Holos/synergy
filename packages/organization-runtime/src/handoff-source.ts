@@ -40,6 +40,7 @@ export namespace OrganizationHandoffSource {
   interface Input {
     authorization: Handoff.SignedMachinePlan
     connection: z.infer<typeof Runtime.Connected>
+    authorityNow: () => number
     signal: AbortSignal
     resources?: MemberResourceClient
   }
@@ -79,6 +80,7 @@ export namespace OrganizationHandoffSource {
     return {
       authorization: Handoff.SignedMachinePlan.parse(input.authorization),
       connection: Runtime.Connected.parse(input.connection),
+      authorityNow: input.authorityNow.bind(input),
       signal: input.signal,
       resources: input.resources && { ...input.resources },
     }
@@ -128,8 +130,8 @@ export namespace OrganizationHandoffSource {
         plan.deploymentIncarnation !== connection.deploymentIncarnation ||
         plan.connectionEpoch !== connection.connectionEpoch ||
         plan.keyID !== connection.signingIdentity.keyID ||
-        plan.issuedAt > Date.now() ||
-        plan.expiresAt <= Date.now() ||
+        plan.issuedAt > input.authorityNow() ||
+        plan.expiresAt <= input.authorityNow() ||
         !(await Handoff.verifyMachinePlan(plan, signature, connection.signingIdentity.publicKey))
       )
         fail("Source controller requires the current finite service authorization")
@@ -158,6 +160,7 @@ export namespace OrganizationHandoffSource {
         accountID: "accountID" in identity ? identity.accountID : undefined,
         connectionEpoch: input.connection.connectionEpoch,
         signal: input.signal,
+        authorityNow: input.authorityNow,
       })
     }
     async function objects(plan: Handoff.MachinePlan, signal: AbortSignal) {
@@ -314,7 +317,7 @@ export namespace OrganizationHandoffSource {
       while (true) {
         assertOwner()
         signal.throwIfAborted()
-        const issuedAt = Date.now()
+        const issuedAt = resources.authorityNow()
         const page = await resources.handoffInventory(
           Execution.HandoffInventoryProof.parse({
             ...factBinding(plan),
@@ -488,7 +491,7 @@ export namespace OrganizationHandoffSource {
                   assertOwner()
                   signal.throwIfAborted()
                   if (plan.environmentPlan) OrganizationHandoffEnvironments.assertPlan(plan, "source")
-                  if (plan.issuedAt > Date.now() || plan.expiresAt <= Date.now())
+                  if (plan.issuedAt > input.authorityNow() || plan.expiresAt <= input.authorityNow())
                     fail("Native Workspace drainage requires its current finite handoff plan")
                 }
                 await WorkspaceDrain.prepare(plan, context, assert, verify)

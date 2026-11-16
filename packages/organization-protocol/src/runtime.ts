@@ -93,6 +93,7 @@ export namespace OrganizationRuntimeProtocol {
     connectionEpoch: Protocol.Epoch,
     sequence: Protocol.Revision,
   })
+  export const HeartbeatAck = Heartbeat.safeExtend({ issuedAt: z.number().int().nonnegative().safe() })
   export const Receipt = z.strictObject({
     type: z.literal("receipt"),
     connectionEpoch: Protocol.Epoch,
@@ -148,6 +149,7 @@ export namespace OrganizationRuntimeProtocol {
   export type BlobChunk = z.infer<typeof BlobChunk>
   export const CommandChunk = z.strictObject({
     type: z.literal("command-chunk"),
+    issuedAt: z.number().int().nonnegative().safe(),
     connectionEpoch: Protocol.Epoch,
     exchangeID: Identity.ID,
     index: z.number().int().nonnegative(),
@@ -176,6 +178,7 @@ export namespace OrganizationRuntimeProtocol {
   export const Connected = z.strictObject({
     type: z.literal("handshake"),
     protocolVersion: z.literal(Protocol.version),
+    issuedAt: z.number().int().nonnegative().safe(),
     orgID: Identity.ID,
     deploymentIncarnation: Identity.ID,
     runtimeID: Identity.ID,
@@ -188,9 +191,10 @@ export namespace OrganizationRuntimeProtocol {
   })
   export const ServerFrame = z.discriminatedUnion("type", [
     Connected,
-    Heartbeat,
+    HeartbeatAck,
     z.strictObject({
       type: z.literal("command"),
+      issuedAt: z.number().int().nonnegative().safe(),
       connectionEpoch: Protocol.Epoch,
       exchangeID: Identity.ID,
       command: Command.Delivery,

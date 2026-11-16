@@ -107,13 +107,13 @@ test("a hosted connection authenticates its machine identity and remains indepen
     socket.send(JSON.stringify(await connection(runtime, key.privateKey, 1)))
     expect(await next()).toMatchObject({ type: "handshake", runtimeID: runtime.runtimeID, connectionEpoch: 1 })
     socket.send(JSON.stringify({ type: "heartbeat", connectionEpoch: 1, sequence: 1 }))
-    expect(await next()).toEqual({ type: "heartbeat", connectionEpoch: 1, sequence: 1 })
+    expect(await next()).toEqual({ type: "heartbeat", connectionEpoch: 1, sequence: 1, issuedAt: expect.any(Number) })
     expect(await (await owner.request("GET", `/runtimes/${runtime.runtimeID}/connection`)).json()).toMatchObject({
       state: "online",
     })
     expect((await owner.request("POST", "/auth/logout", {})).status).toBe(200)
     socket.send(JSON.stringify({ type: "heartbeat", connectionEpoch: 1, sequence: 2 }))
-    expect(await next()).toEqual({ type: "heartbeat", connectionEpoch: 1, sequence: 2 })
+    expect(await next()).toEqual({ type: "heartbeat", connectionEpoch: 1, sequence: 2, issuedAt: expect.any(Number) })
   } finally {
     socket.close()
     await server.stop(true)

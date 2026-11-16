@@ -6,6 +6,7 @@ import { spyOn } from "bun:test"
 import { z } from "zod"
 import { createSynergyClient } from "@ericsanchezok/synergy-sdk"
 import { OrganizationCommandProtocol as Command } from "@ericsanchezok/synergy-organization-protocol"
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
 import { SessionHistory } from "@ericsanchezok/synergy-harness/session/history"
@@ -80,9 +81,12 @@ export const json = (value: unknown) => Json.parse(JSON.parse(JSON.stringify(val
 export async function createPeer(input: {
   root: string
   origin: string
+  clockOffsetMs?: number
   identity: MemberIdentity
   ticket(publicKey: string): Promise<Parameters<typeof enrollMemberRuntime>[0]["ticket"]>
 }) {
+  const clockOffsetMs = input.clockOffsetMs ?? 0
+  assert.ok(Number.isSafeInteger(clockOffsetMs), "The test clock offset must be a safe integer")
   const directory = path.join(input.root, "original-native")
   await fs.mkdir(directory, { recursive: true })
   await Bun.write(path.join(directory, "current.txt"), "before the original native task\n")
@@ -115,6 +119,7 @@ export async function createPeer(input: {
   const wake = spyOn(SessionManager, "scheduleWake").mockImplementation(() => {})
   const targetPreparation = createTargetPreparationObservation()
   let runtime: Awaited<ReturnType<typeof openMemberRuntime>>
+  let restoreClock: (() => void) | undefined
   try {
     const createTarget = HandoffTarget.create
     using targetFactory = spyOn(HandoffTarget, "create").mockImplementation((options) => {
@@ -136,7 +141,19 @@ export async function createPeer(input: {
         directory: path.join(input.root, "claims"),
       }),
     })
+    if (clockOffsetMs !== 0) {
+      const owner = await runtime.run(() => RuntimeContext.current())
+      const originalNow = Date.now
+      const clock = spyOn(Date, "now").mockImplementation(() => {
+        try {
+          if (RuntimeContext.current() === owner) return originalNow() + clockOffsetMs
+        } catch {}
+        return originalNow()
+      })
+      restoreClock = () => clock.mockRestore()
+    }
   } catch (error) {
+    restoreClock?.()
     wake.mockRestore()
     throw error
   }
@@ -452,7 +469,11 @@ export async function createPeer(input: {
   }
   async function close() {
     if (closed) return
-    await runtime.close()
+    try {
+      await runtime.close()
+    } finally {
+      restoreClock?.()
+    }
     wake.mockRestore()
     closed = true
   }

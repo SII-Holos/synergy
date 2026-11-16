@@ -34,6 +34,7 @@ async function authority() {
   return {
     receiver: () =>
       createCommandIntake({
+        authorityNow: Date.now,
         identity,
         runtimeID: binding.driverRuntimeID,
         connectionEpoch: 1,

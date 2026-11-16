@@ -26,6 +26,7 @@ async function authority() {
   const connection = Runtime.Connected.parse({
     type: "handshake",
     protocolVersion: 1,
+    issuedAt: Date.now(),
     orgID: binding.orgID,
     deploymentIncarnation: "fixture-deployment",
     runtimeID: binding.driverRuntimeID,

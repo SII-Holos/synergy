@@ -171,7 +171,13 @@ test("verified WSS keeps heartbeats and receipt queries live while a control dra
     const response = Promise.withResolvers<Command.Reply>()
     responses.set(exchangeID, response)
     socket.send(
-      JSON.stringify({ type: "command", connectionEpoch: connection.connected.connectionEpoch, exchangeID, command }),
+      JSON.stringify({
+        type: "command",
+        issuedAt: connection.resources.authorityNow(),
+        connectionEpoch: connection.connected.connectionEpoch,
+        exchangeID,
+        command,
+      }),
     )
     return response.promise
   }
@@ -299,6 +305,7 @@ test("the resident bridge reassembles ordered command chunks before delivery", a
     socket.send(
       JSON.stringify({
         type: "command-chunk",
+        issuedAt: connection.resources.authorityNow(),
         connectionEpoch: connection.connected.connectionEpoch,
         exchangeID: "chunked-exchange",
         index,
@@ -382,6 +389,7 @@ test("a committed control receipt returns before drainage while close retains th
   socket.send(
     JSON.stringify({
       type: "command",
+      issuedAt: connection.resources.authorityNow(),
       connectionEpoch: connection.connected.connectionEpoch,
       exchangeID: "early-receipt",
       command: { kind: "control", delivery: { authorization, control: { operation: "pause" } } },
@@ -478,6 +486,7 @@ for (const limit of ["count", "bytes"] as const)
       }
       const raw = JSON.stringify({
         type: "command",
+        issuedAt: connection.resources.authorityNow(),
         connectionEpoch: connection.connected.connectionEpoch,
         exchangeID: id,
         command,
@@ -511,6 +520,7 @@ for (const limit of ["count", "bytes"] as const)
     socket.send(
       JSON.stringify({
         type: "command",
+        issuedAt: connection.resources.authorityNow(),
         connectionEpoch: connection.connected.connectionEpoch,
         exchangeID: "probe",
         command: { kind: "query", authorization: commandAuthorization(f, connection, "probe") },
@@ -525,6 +535,7 @@ for (const limit of ["count", "bytes"] as const)
     socket.send(
       JSON.stringify({
         type: "command",
+        issuedAt: connection.resources.authorityNow(),
         connectionEpoch: connection.connected.connectionEpoch,
         exchangeID: "closing",
         command: {
@@ -541,6 +552,7 @@ for (const limit of ["count", "bytes"] as const)
       socket.send(
         JSON.stringify({
           type: "command",
+          issuedAt: connection.resources.authorityNow(),
           connectionEpoch: connection.connected.connectionEpoch,
           exchangeID: "closing",
           command: { kind: "query", authorization: commandAuthorization(f, connection, "duplicate") },
@@ -807,6 +819,7 @@ test("the member bridge refuses a foreign handshake before publishing a connecti
       JSON.stringify({
         type: "handshake",
         protocolVersion: 1,
+        issuedAt: Date.now(),
         orgID: "other",
         deploymentIncarnation: f.registration.deploymentIncarnation,
         runtimeID: f.registration.runtimeID,
@@ -836,6 +849,7 @@ test("the member bridge rejects a signing identity from another deployment befor
       JSON.stringify({
         type: "handshake",
         protocolVersion: 1,
+        issuedAt: Date.now(),
         orgID: f.registration.orgID,
         deploymentIncarnation: f.registration.deploymentIncarnation,
         runtimeID: f.registration.runtimeID,

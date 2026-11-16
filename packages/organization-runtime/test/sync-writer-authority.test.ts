@@ -50,8 +50,9 @@ test("creator HTTP credentials cannot replace the current Runtime shared project
     ca: f.ca,
     buildVersion: "sync-writer-fixture",
     sync: true,
-    commands(current, signal) {
+    commands(current, signal, resources) {
       const intake = createCommandIntake({
+        authorityNow: resources.authorityNow,
         identity: current.signingIdentity,
         runtimeID: current.runtimeID,
         accountID: f.identity.accountID,

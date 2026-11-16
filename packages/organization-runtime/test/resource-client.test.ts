@@ -135,7 +135,7 @@ test("resource control rejects changed authority and altered replies without exp
   await expect(
     f.connection.resources.describe({ ...description, connectionEpoch: description.connectionEpoch + 1 }),
   ).rejects.toMatchObject({ data: { code: "STALE_CONNECTION", outcome: "not_dispatched" } })
-  const expiresAt = Date.now() - 1
+  const expiresAt = f.connection.resources.authorityNow() - 1
   await expect(
     f.connection.resources.describe({ ...description, issuedAt: expiresAt - 30_000, expiresAt }),
   ).rejects.toMatchObject({ data: { code: "PERMISSION_DENIED", outcome: "not_dispatched" } })
@@ -226,6 +226,10 @@ test("resource control preserves uncertain admission, rejects redirects and veri
   })
   const keys = await crypto.subtle.generateKey("Ed25519", true, ["sign", "verify"])
   const untrusted = createMemberResourceClient({
+    authorityTime: {
+      now: f.connection.resources.authorityNow,
+      observe() {},
+    },
     origin: f.origin,
     connection: f.connection.connected,
     key: keys.privateKey,

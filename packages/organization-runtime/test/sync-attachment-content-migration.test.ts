@@ -37,6 +37,7 @@ function transport(sessionID: string) {
     connected: {
       type: "handshake",
       protocolVersion: 1,
+      issuedAt: Date.now(),
       orgID: binding.orgID,
       deploymentIncarnation: "attachment-migration-deployment",
       runtimeID: binding.driverRuntimeID,

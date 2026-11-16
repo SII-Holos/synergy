@@ -31,6 +31,7 @@ test("automatic terminal release follows a reacquired generation without rewriti
     const connection = f.connection.connected
     const controller = new AbortController()
     const intake = createCommandIntake({
+      authorityNow: f.connection.resources.authorityNow,
       identity: connection.signingIdentity,
       runtimeID: connection.runtimeID,
       accountID: f.identity.accountID,
@@ -160,6 +161,7 @@ test("lost renewed bind reply cannot be mistaken for an older pending terminal r
     const connection = f.connection.connected
     const controller = new AbortController()
     const intake = createCommandIntake({
+      authorityNow: f.connection.resources.authorityNow,
       identity: connection.signingIdentity,
       runtimeID: connection.runtimeID,
       accountID: f.identity.accountID,
@@ -373,6 +375,7 @@ test("a lost provisional describe reply is reconciled without binding or replayi
     const connection = f.connection.connected
     const controller = new AbortController()
     const intake = createCommandIntake({
+      authorityNow: f.connection.resources.authorityNow,
       identity: connection.signingIdentity,
       runtimeID: connection.runtimeID,
       accountID: f.identity.accountID,
@@ -417,6 +420,7 @@ test("a fresh native Runtime migrates settled legacy receptions and closes an un
   const connection = f.connection.connected
   const controller = new AbortController()
   const options = {
+    authorityNow: f.connection.resources.authorityNow,
     identity: connection.signingIdentity,
     runtimeID: connection.runtimeID,
     accountID: f.identity.accountID,
@@ -515,6 +519,7 @@ test("closing waits for an accepted inspection and rejects its late cleanup writ
     const connection = f.connection.connected
     const controller = new AbortController()
     const intake = createCommandIntake({
+      authorityNow: f.connection.resources.authorityNow,
       identity: connection.signingIdentity,
       runtimeID: connection.runtimeID,
       accountID: f.identity.accountID,
@@ -592,6 +597,7 @@ test("an unknown delayed bind retains its own signed commit horizon before an ol
   const connection = f.connection.connected
   const controller = new AbortController()
   const intakeOptions = {
+    authorityNow: f.connection.resources.authorityNow,
     identity: connection.signingIdentity,
     runtimeID: connection.runtimeID,
     accountID: f.identity.accountID,
@@ -728,6 +734,7 @@ test("an unresolved native cleanup index failure survives observer shutdown", as
     const connection = f.connection.connected
     const controller = new AbortController()
     const intake = createCommandIntake({
+      authorityNow: f.connection.resources.authorityNow,
       identity: connection.signingIdentity,
       runtimeID: connection.runtimeID,
       accountID: f.identity.accountID,
@@ -790,6 +797,7 @@ test("unknown cleanup waits for the service inspection watermark even after its 
     const connection = f.connection.connected
     const controller = new AbortController()
     const intake = createCommandIntake({
+      authorityNow: f.connection.resources.authorityNow,
       identity: connection.signingIdentity,
       runtimeID: connection.runtimeID,
       accountID: f.identity.accountID,

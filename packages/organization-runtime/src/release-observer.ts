@@ -62,7 +62,7 @@ export function startExecutionReleaseObserver(input: {
   }
   async function settle(entry: Leases.Entry) {
     signal.throwIfAborted()
-    if (entry.uncertainUntil !== undefined && entry.uncertainUntil > Date.now()) return true
+    if (entry.uncertainUntil !== undefined && entry.uncertainUntil > input.resources.authorityNow()) return true
     using fence = await Lock.tryAcquireWrite(`organization-execution:${entry.authority.sessionID}`)
     if (!fence) return true
     signal.throwIfAborted()

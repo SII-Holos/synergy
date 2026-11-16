@@ -101,6 +101,7 @@ test("local and signed attachment reads share canonical byte ownership, creator 
         const connection = Runtime.Connected.parse({
           type: "handshake",
           protocolVersion: 1,
+          issuedAt: Date.now(),
           orgID: binding.orgID,
           deploymentIncarnation: "attachment-deployment",
           runtimeID: binding.driverRuntimeID,

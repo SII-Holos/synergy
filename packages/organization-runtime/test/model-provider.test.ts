@@ -116,6 +116,13 @@ for (const protocol of ["openai-compatible", "anthropic-compatible"] as const)
                       purpose: "organization-model",
                       origin: f.origin,
                       signingIdentity: f.connection.connected.signingIdentity,
+                      authorityTime: {
+                        runtimeID: f.connection.connected.runtimeID,
+                        connectionEpoch: f.connection.connected.connectionEpoch,
+                        callID: capability.permit.callID,
+                        issuedAt: f.connection.resources.authorityNow(),
+                        observedAt: Math.floor(performance.timeOrigin + performance.now()),
+                      },
                       ca: f.ca,
                     }),
                   },
@@ -197,6 +204,13 @@ test("member SDKs reject missing, changed, expired and reused authority before t
       purpose: "organization-model",
       origin: f.origin,
       signingIdentity: f.connection.connected.signingIdentity,
+      authorityTime: {
+        runtimeID: f.connection.connected.runtimeID,
+        connectionEpoch: f.connection.connected.connectionEpoch,
+        callID: capability.permit.callID,
+        issuedAt: f.connection.resources.authorityNow(),
+        observedAt: Math.floor(performance.timeOrigin + performance.now()),
+      },
       ca: f.ca,
     })
     const sent: Array<{ url: string; init: RequestInit | undefined }> = []
@@ -231,6 +245,27 @@ test("member SDKs reject missing, changed, expired and reused authority before t
       { hostRequest: { ...context, signingIdentity: { ...context.signingIdentity, orgID: "another-org" } } },
     ])
       expect(() => factory({ ...options, ...change })).toThrow()
+    expect(() =>
+      factory({
+        ...options,
+        hostRequest: {
+          ...context,
+          authorityTime: { ...context.authorityTime, callID: capability.permit.callID + "-another" },
+        },
+      }),
+    ).toThrow("selected provider")
+    expect(() =>
+      factory({
+        ...options,
+        hostRequest: {
+          ...context,
+          authorityTime: {
+            ...context.authorityTime,
+            observedAt: Math.floor(performance.timeOrigin + performance.now()) + 60_000,
+          },
+        },
+      }),
+    ).toThrow("authority time observation")
     const anthropic = await ProviderSdkSource.load("@ai-sdk/anthropic")
     expect(() => anthropic(options)).toThrow("selected provider")
     const invalid = language({ ...options, apiKey: Gateway.encode({ ...capability, signature: "0".repeat(128) }) })
@@ -357,6 +392,13 @@ test("cancelling a member worker drains its real gateway stream without replay",
                     purpose: "organization-model",
                     origin: f.origin,
                     signingIdentity: f.connection.connected.signingIdentity,
+                    authorityTime: {
+                      runtimeID: f.connection.connected.runtimeID,
+                      connectionEpoch: f.connection.connected.connectionEpoch,
+                      callID: capability.permit.callID,
+                      issuedAt: f.connection.resources.authorityNow(),
+                      observedAt: Math.floor(performance.timeOrigin + performance.now()),
+                    },
                     ca: f.ca,
                   }),
                 },
@@ -446,6 +488,13 @@ test("the recorded provider transport verifies deployment trust and rejects redi
                 purpose: "organization-model",
                 origin: f.origin,
                 signingIdentity: f.connection.connected.signingIdentity,
+                authorityTime: {
+                  runtimeID: f.connection.connected.runtimeID,
+                  connectionEpoch: f.connection.connected.connectionEpoch,
+                  callID: capability.permit.callID,
+                  issuedAt: f.connection.resources.authorityNow(),
+                  observedAt: Math.floor(performance.timeOrigin + performance.now()),
+                },
                 ca,
               }),
             },

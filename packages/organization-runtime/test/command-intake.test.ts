@@ -75,6 +75,7 @@ async function authority(selectedBinding: Sessions.Binding = binding) {
     identity,
     receiver(connectionEpoch = 1, signal = new AbortController().signal) {
       return createCommandIntake({
+        authorityNow: () => Date.now(),
         identity,
         runtimeID: binding.driverRuntimeID,
         accountID: binding.creatorID,
@@ -206,6 +207,7 @@ async function nativeSyncAcknowledgements() {
           connected: Runtime.Connected.parse({
             type: "handshake",
             protocolVersion: 1,
+            issuedAt: Date.now(),
             orgID: lease.handshake.orgID,
             deploymentIncarnation: lease.handshake.deploymentIncarnation,
             runtimeID: lease.handshake.runtimeID,

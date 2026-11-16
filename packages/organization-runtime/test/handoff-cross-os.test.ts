@@ -1482,6 +1482,7 @@ async function linux() {
     createPeer({
       root,
       origin: bootstrap.origin,
+      clockOffsetMs: 999,
       identity: { ...bootstrap.identity, deviceID: "cross-os-linux" },
       async ticket(publicKey) {
         return Runtime.Ticket.parse(await exchange(secret, bootstrap, bootstrap.origin, "hello", { publicKey }, nonces))

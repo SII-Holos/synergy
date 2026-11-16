@@ -67,7 +67,7 @@ export function createMemberConnectionTool(identity: RuntimeIdentity): Tool.Info
             if (resource.definition.protocol !== "fixed-http")
               throw denied("This organization connection requires its protocol adapter")
             const grant = await source.resources.bind(proof, signal)
-            const now = Date.now()
+            const now = source.resources.authorityNow()
             const capability = await source.resources.reserve(
               Gateway.Proof.parse({
                 schemaVersion: 1,

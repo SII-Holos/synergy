@@ -68,7 +68,12 @@ test("real Runtime connections authenticate, fence replacements and revoke indep
     first.send(signed)
     expect(await first.next()).toMatchObject({ type: "handshake", runtimeID: runtime.runtimeID, connectionEpoch: 1 })
     first.send({ type: "heartbeat", connectionEpoch: 1, sequence: 1 })
-    expect(await first.next()).toEqual({ type: "heartbeat", connectionEpoch: 1, sequence: 1 })
+    expect(await first.next()).toEqual({
+      type: "heartbeat",
+      connectionEpoch: 1,
+      sequence: 1,
+      issuedAt: expect.any(Number),
+    })
     expect(await (await owner.request("GET", `/runtimes/${runtime.runtimeID}/connection`)).json()).toMatchObject({
       state: "online",
       connectionEpoch: 1,
@@ -332,7 +337,12 @@ test("dropped and throwing native sends disconnect only the affected Runtime and
         await (await owner.request("GET", `/runtimes/${failingRuntime.runtimeID}/connection`)).json(),
       ).toMatchObject({ state: "offline", connectionEpoch: epoch })
       healthy.send({ type: "heartbeat", connectionEpoch: 1, sequence: epoch })
-      expect(await healthy.next()).toEqual({ type: "heartbeat", connectionEpoch: 1, sequence: epoch })
+      expect(await healthy.next()).toEqual({
+        type: "heartbeat",
+        connectionEpoch: 1,
+        sequence: epoch,
+        issuedAt: expect.any(Number),
+      })
     }
   } finally {
     await server.stop(true)
