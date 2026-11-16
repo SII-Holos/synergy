@@ -4,6 +4,7 @@ import { z } from "zod"
 import { cert, key } from "@ericsanchezok/synergy-testing/organization-tls"
 import { testResources } from "@ericsanchezok/synergy-testing/resources"
 import { createSocket } from "node:dgram"
+import { execFileSync } from "node:child_process"
 import { Resolver, getServers } from "node:dns/promises"
 import { OrganizationProtocol } from "@ericsanchezok/synergy-organization-protocol"
 import {
@@ -15,13 +16,18 @@ import {
   type HeaderFailureKindSample,
 } from "./support/cross-os-failures"
 import { readControlJSON, safeCrossOSFailure } from "./support/cross-os-transport"
-import { observeDNSAfterFailedHealth, observeTemporaryName } from "./support/cross-os-dns"
+import {
+  observeDNSAfterFailedHealth,
+  observeTemporaryName,
+  observeDNSAfterFirstHeaderFailure,
+} from "./support/cross-os-dns"
 import {
   observeCrossOSFailureHTTP,
   observeCrossOSFailureChild,
   crossOSFailureBunScript,
   crossOSLibinfoFlag,
 } from "./support/cross-os-post-failure-http"
+import { summarizeCrossOSResolverRoute, observeCrossOSResolverRoute } from "./support/cross-os-resolver-route"
 import { createCrossOSTunnelObservation, readCrossOSTunnelStderr } from "./support/cross-os-tunnel"
 
 test("cross-OS JSON transport counts streamed bytes before decoding and cancels an oversized unsigned body", async () => {
@@ -1048,4 +1054,252 @@ test("temporary-name observation cancels constructor-abort owners and never disp
   })
   expect(before.signal.reason).toBe(beforeReason)
   expect(during.signal.reason).toBe(duringReason)
+})
+
+test("first native-failure DNS observations are labeled as overlapping original retries and retain no address values", async () => {
+  const A = Promise.withResolvers<unknown>(),
+    AAAA = Promise.withResolvers<unknown>()
+  const calls: number[] = []
+  const signal = new AbortController()
+  const trigger = { attempt: 7, observedAtMs: performance.now() }
+  const originalTrigger = { ...trigger }
+  const sample = observeDNSAfterFirstHeaderFailure(
+    "https://synthetic.trycloudflare.com",
+    trigger,
+    signal.signal,
+    () => ({
+      resolve4() {
+        calls.push(4)
+        return A.promise
+      },
+      resolve6() {
+        calls.push(6)
+        return AAAA.promise
+      },
+      cancel() {},
+    }),
+  )
+  trigger.attempt = 99
+  trigger.observedAtMs = -1
+  A.resolve([{ address: "192.0.2.17", ttl: 377 }])
+  AAAA.resolve([
+    { address: "2001:db8::17", ttl: 377 },
+    { address: "192.0.2.18", ttl: 377 },
+  ])
+  const observed = await sample.result
+  expect(observed).toMatchObject({
+    timing: "after-first-original-fetch-enotfound",
+    sampling: "overlaps-original-retries",
+    triggerAttempt: 7,
+    originalFailureObservedAtMs: originalTrigger.observedAtMs,
+    A: { code: "OK", validAddressCount: 1, invalidAddressCount: 0 },
+    AAAA: { code: "OK", validAddressCount: 1, invalidAddressCount: 1 },
+  })
+  expect(observed.startedAtMs).toBeGreaterThanOrEqual(originalTrigger.observedAtMs)
+  expect(observed.endedAtMs).toBeGreaterThanOrEqual(observed.startedAtMs)
+  expect(calls).toEqual([4, 6])
+  expect("systemBaseline" in observed).toBe(false)
+  expect(JSON.stringify(observed)).not.toContain("192.0.2.")
+  expect(JSON.stringify(observed)).not.toContain("2001:db8")
+  expect(await sample.close()).toEqual({ resultObserved: true, queriesSettled: true, settlement: "complete" })
+})
+
+test("first-failure channels cancel on the original signal without dispatching an aborted sibling or restarting their close budget", async () => {
+  const signal = new AbortController(),
+    reason = new Error("original-budget-abort")
+  const calls: number[] = []
+  let cancels = 0
+  const sample = observeDNSAfterFirstHeaderFailure(
+    "https://synthetic.trycloudflare.com",
+    { attempt: 1, observedAtMs: performance.now() },
+    signal.signal,
+    () => ({
+      async resolve4() {
+        calls.push(4)
+        signal.abort(reason)
+        return []
+      },
+      async resolve6() {
+        calls.push(6)
+        return []
+      },
+      cancel() {
+        cancels++
+      },
+    }),
+  )
+  const observed = await sample.result
+  expect(observed.abortObserved).toBe(true)
+  expect(signal.signal.reason).toBe(reason)
+  expect(calls).toEqual([4])
+  expect(cancels).toBe(1)
+  await sample.close()
+  const failedCancel = observeDNSAfterFirstHeaderFailure(
+    "https://synthetic.trycloudflare.com",
+    { attempt: 1, observedAtMs: performance.now() },
+    new AbortController().signal,
+    () => ({
+      async resolve4() {
+        return []
+      },
+      async resolve6() {
+        return []
+      },
+      cancel() {
+        throw { code: "private-cancel-error" }
+      },
+    }),
+  )
+  await failedCancel.result
+  expect(await failedCancel.close()).toMatchObject({ queriesSettled: true, cancelError: "OTHER" })
+  const held = Promise.withResolvers<unknown>()
+  const pending = observeDNSAfterFirstHeaderFailure(
+    "https://synthetic.trycloudflare.com",
+    { attempt: 1, observedAtMs: performance.now() },
+    new AbortController().signal,
+    () => ({
+      resolve4: () => held.promise,
+      resolve6: () => held.promise,
+      cancel() {},
+    }),
+  )
+  const bounded = await pending.result
+  const original = JSON.stringify(bounded)
+  expect(bounded).toMatchObject({ queriesSettled: false })
+  expect(await pending.close()).toEqual({ resultObserved: true, queriesSettled: false, settlement: "not-observed" })
+  held.resolve([])
+  await held.promise
+  expect(JSON.stringify(bounded)).toBe(original)
+}, 2000)
+
+const resolverConfiguration = `DNS configuration
+resolver #1
+  nameserver[0] : 192.0.2.1
+  flags : Request A records
+  reach : 0x00000002 (Reachable)
+resolver #2
+  domain : private.example
+  nameserver[0] : 198.51.100.2
+  order : 101000
+DNS configuration (for scoped queries)
+resolver #1
+  nameserver[0] : 203.0.113.3
+  if_index : 4 (private-interface)
+  flags : Scoped
+DNS configuration (for service-specific queries)
+resolver #1
+  nameserver[0] : 203.0.113.4
+  service_identifier : 5
+`
+
+test("passive resolver summaries distinguish scoped servers from defaults without retaining domains or addresses", () => {
+  const summary = summarizeCrossOSResolverRoute(resolverConfiguration, ["192.0.2.1"], "tunnel.private.example")
+  expect(summary).toMatchObject({
+    parseComplete: true,
+    comparisonAvailable: true,
+    generalResolverCount: 2,
+    supplementalResolverCount: 1,
+    scopedResolverCount: 1,
+    serviceSpecificResolverCount: 1,
+    firstGeneralServerSetEqual: true,
+    domainlessGeneralServerSetEqual: true,
+    matchingSupplementalDomainPresent: true,
+  })
+  expect(summarizeCrossOSResolverRoute(resolverConfiguration, ["203.0.113.3"], "xprivate.example")).toMatchObject({
+    firstGeneralServerSetEqual: false,
+    domainlessGeneralServerSetEqual: false,
+    matchingSupplementalDomainPresent: false,
+  })
+  for (const secret of ["192.0.2.", "198.51.", "203.0.113.", "private.example", "private-interface"])
+    expect(JSON.stringify(summary)).not.toContain(secret)
+  for (const text of [
+    resolverConfiguration + "unknown private field : secret\n",
+    "x".repeat(65537),
+    "No DNS configuration available\n" + resolverConfiguration,
+  ]) {
+    const incomplete = summarizeCrossOSResolverRoute(text, ["192.0.2.1"], "private.example")
+    expect(incomplete).toMatchObject({
+      parseComplete: false,
+      comparisonAvailable: false,
+      resolverCount: null,
+      firstGeneralServerSetEqual: null,
+      scopedPresent: null,
+    })
+  }
+  expect(summarizeCrossOSResolverRoute(resolverConfiguration, undefined, "private.example").comparisonAvailable).toBe(
+    false,
+  )
+  const scopedAddress = "DNS configuration\nresolver #1\n  nameserver[0] : fe80::1%private-interface\n"
+  expect(summarizeCrossOSResolverRoute(scopedAddress, ["192.0.2.1"], "private.example")).toMatchObject({
+    parseComplete: true,
+    comparisonAvailable: false,
+    firstGeneralServerSetEqual: null,
+  })
+  const scopedOnly = "DNS configuration (for scoped queries)\nresolver #1\n  nameserver[0] : 192.0.2.1\n"
+  expect(
+    summarizeCrossOSResolverRoute(scopedOnly, ["192.0.2.1"], "private.example").firstGeneralServerSetEqual,
+  ).toBeNull()
+})
+
+test("post-cleanup configuration observation parses a real bounded child and contains unavailable or hostile observations", () => {
+  const observed = observeCrossOSResolverRoute(
+    "tunnel.private.example",
+    () =>
+      execFileSync(process.execPath, ["--eval", `process.stdout.write(${JSON.stringify(resolverConfiguration)})`], {
+        timeout: 500,
+        killSignal: "SIGKILL",
+        maxBuffer: 65536,
+        stdio: ["ignore", "pipe", "ignore"],
+        encoding: "utf8",
+      }),
+    () => ({ getServers: () => ["192.0.2.1"] }),
+  )
+  expect(observed).toMatchObject({
+    purpose: "post-cleanup-passive-configuration-only",
+    channelAvailable: true,
+    parseComplete: true,
+    firstGeneralServerSetEqual: true,
+  })
+  expect(observed.endedAtMs).toBeGreaterThanOrEqual(observed.channelObservedAtMs)
+  let getterCalls = 0
+  const hostile = Object.defineProperty({}, "code", {
+    get() {
+      getterCalls++
+      throw new Error("private-error")
+    },
+  })
+  for (const error of [
+    hostile,
+    new Proxy(
+      {},
+      {
+        getOwnPropertyDescriptor() {
+          throw new Error("private-proxy")
+        },
+      },
+    ),
+  ]) {
+    const result = observeCrossOSResolverRoute(
+      "private.example",
+      () => {
+        throw error
+      },
+      () => ({ getServers: () => [] }),
+    )
+    expect(result).toMatchObject({ parseComplete: false, comparisonAvailable: false, code: "OTHER" })
+    expect(JSON.stringify(result)).not.toContain("private-")
+  }
+  expect(getterCalls).toBe(0)
+  const missing = observeCrossOSResolverRoute(
+    "private.example",
+    () => resolverConfiguration,
+    () => {
+      throw new Error("private-config")
+    },
+  )
+  expect(missing).toMatchObject({
+    channelAvailable: false,
+    comparisonAvailable: false,
+    firstGeneralServerSetEqual: null,
+  })
 })

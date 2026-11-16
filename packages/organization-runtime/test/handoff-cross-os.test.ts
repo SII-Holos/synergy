@@ -15,7 +15,12 @@ import {
 } from "@ericsanchezok/synergy-organization-protocol"
 import { Action, Task, Outcome, InitialBytes, LinuxBytes, createPeer, json } from "./support/cross-os-peer"
 import { createHandoffCompletion } from "./support/handoff-completion"
-import { observeDNSAfterFailedHealth, observeTemporaryName } from "./support/cross-os-dns"
+import {
+  observeDNSAfterFailedHealth,
+  observeTemporaryName,
+  observeDNSAfterFirstHeaderFailure,
+} from "./support/cross-os-dns"
+import { observeCrossOSResolverRoute } from "./support/cross-os-resolver-route"
 import { startCrossOSPostFailureHTTP } from "./support/cross-os-post-failure-http"
 import {
   createCrossOSTunnelObservation,
@@ -102,6 +107,11 @@ const transportFacts = {
     },
     attempts: 0,
     originalENOTFOUND: 0,
+    firstFailureDNSError: undefined as "OBSERVATION_ERROR" | undefined,
+    firstFailureDNS: undefined as Awaited<ReturnType<typeof observeDNSAfterFirstHeaderFailure>["result"]> | undefined,
+    firstFailureDNSCleanup: undefined as
+      Awaited<ReturnType<ReturnType<typeof observeDNSAfterFirstHeaderFailure>["close"]>> | undefined,
+    passiveResolverRoute: undefined as ReturnType<typeof observeCrossOSResolverRoute> | undefined,
     temporaryNameHint: undefined as Awaited<ReturnType<typeof observeTemporaryName>["result"]> | undefined,
     temporaryNameCleanup: undefined as
       Awaited<ReturnType<ReturnType<typeof observeTemporaryName>["close"]>> | undefined,
@@ -448,6 +458,7 @@ async function host() {
   const connection = await setup("darwin-tunnel-bootstrap", () => tunnel(root, port))
   const capturedHostname = new URL(connection.origin).hostname
   let temporaryNameHint: ReturnType<typeof observeTemporaryName> | undefined
+  let firstHeaderDNS: ReturnType<typeof observeDNSAfterFirstHeaderFailure> | undefined
   let failedPublicHealth = false
   const cleanups: Array<{ owner: CrossOSCleanupOwner; close(): Promise<unknown> }> = [
     { owner: "tunnel", close: () => connection.close() },
@@ -655,12 +666,20 @@ async function host() {
             assert.deepEqual(value.run, run())
             return true
           } catch (error) {
+            let firstDNSTrigger: { attempt: number; observedAtMs: number } | undefined
             if (!headersReceived) {
               transportFacts.health.headerFailures++
               transportFacts.health.lastHeaderFailure = safeFailure(error)
               const failure = safeCrossOSHeaderFailure(error, capturedHostname)
-              if (fetchInvoked && [failure.code, failure.cause?.code, failure.cause?.cause?.code].includes("ENOTFOUND"))
+              if (
+                fetchInvoked &&
+                [failure.code, failure.cause?.code, failure.cause?.cause?.code].includes("ENOTFOUND")
+              ) {
                 transportFacts.health.originalENOTFOUND++
+                if (!firstHeaderDNS) {
+                  firstDNSTrigger = { attempt: transportFacts.health.attempts, observedAtMs: performance.now() }
+                }
+              }
               recordCrossOSHeaderFailure(transportFacts.health, failure, () => ({
                 attempt: fetchInvoked ? transportFacts.health.attempts : null,
                 observedAtMs: performance.now(),
@@ -673,6 +692,17 @@ async function host() {
               if (bootstrapSignal.aborted) transportFacts.health.budgetAborts++
             }
             if (bootstrapSignal.aborted) throw error
+            if (firstDNSTrigger && !firstHeaderDNS) {
+              firstHeaderDNS = observeDNSAfterFirstHeaderFailure(connection.origin, firstDNSTrigger, bootstrapSignal)
+              void firstHeaderDNS.result.then(
+                (facts) => {
+                  transportFacts.health.firstFailureDNS = facts
+                },
+                () => {
+                  transportFacts.health.firstFailureDNSError = "OBSERVATION_ERROR"
+                },
+              )
+            }
             await setupReport("darwin-public-health-retry", "pending", requestStarted, error)
             return
           }
@@ -1186,6 +1216,7 @@ async function host() {
     } catch (error) {
       errors.push(error)
     }
+    if (firstHeaderDNS) transportFacts.health.firstFailureDNSCleanup = await firstHeaderDNS.close()
     if (errors.length) throw new AggregateError(errors, "Cross-OS actual owners did not close")
     costs.cleanupMs = performance.now() - started
     await fs.writeFile(
@@ -1211,7 +1242,9 @@ async function host() {
     const failedHTTPStatus = phase === "service-bootstrap" ? setupHTTPStatus : undefined
     let postFailureHTTP: ReturnType<typeof startCrossOSPostFailureHTTP> | undefined
     let postFailureCleanup: Awaited<ReturnType<ReturnType<typeof startCrossOSPostFailureHTTP>["close"]>> | undefined
-    async function writeFailureReport(cleanupStage: "before-original-cleanup" | "before-diagnostic-join" | "complete") {
+    async function writeFailureReport(
+      cleanupStage: "before-original-cleanup" | "before-diagnostic-join" | "before-passive-configuration" | "complete",
+    ) {
       await fs.writeFile(
         path.join(state(), "report.json"),
         JSON.stringify({
@@ -1288,6 +1321,22 @@ async function host() {
       } catch (cleanup) {
         errors.push(cleanup)
       }
+    }
+    if (firstHeaderDNS) {
+      try {
+        failedTransport.health.firstFailureDNSCleanup = await firstHeaderDNS.close()
+        failedTransport.health.firstFailureDNS = transportFacts.health.firstFailureDNS
+      } catch (diagnostic) {
+        errors.push(diagnostic)
+      }
+    }
+    if (failedPublicHealth && failedTransport.health.originalENOTFOUND > 0) {
+      try {
+        await writeFailureReport("before-passive-configuration")
+      } catch (checkpoint) {
+        errors.push(checkpoint)
+      }
+      failedTransport.health.passiveResolverRoute = observeCrossOSResolverRoute(capturedHostname)
     }
     await writeFailureReport("complete")
     throw new Error("Actual cross-OS acceptance failed at " + phase + "; original failure retained in the runner", {

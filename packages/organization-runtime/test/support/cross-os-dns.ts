@@ -352,3 +352,96 @@ export function observeTemporaryName(
     },
   }
 }
+
+export function observeDNSAfterFirstHeaderFailure(
+  origin: string,
+  trigger: { attempt: number; observedAtMs: number },
+  signal: AbortSignal,
+  createResolver: (options: { timeout: number; tries: number }) => FailedHealthResolver = (options) =>
+    new Resolver(options),
+) {
+  const { attempt: triggerAttempt, observedAtMs: originalFailureObservedAtMs } = trigger
+  const startedAtMs = performance.now()
+  let owner: FailedHealthResolver | undefined,
+    cancelled = false,
+    complete = false,
+    queriesSettled = false,
+    abortObserved = signal.aborted,
+    cancelError: string | undefined
+  function cancel() {
+    if (!owner || cancelled) return
+    cancelled = true
+    cancelError = cancelResolver(owner)
+  }
+  function onAbort() {
+    abortObserved = true
+    cancel()
+  }
+  signal.addEventListener("abort", onAbort, { once: true })
+  const result = observeDNSAfterFailedHealth(origin, 1, (options) => {
+    owner = createResolver(options)
+    if (signal.aborted) onAbort()
+    const selected = owner
+    return {
+      resolve4(hostname, options) {
+        if (signal.aborted || cancelled) return Promise.reject({ code: "ECANCELLED" })
+        return selected.resolve4(hostname, options)
+      },
+      resolve6(hostname, options) {
+        if (signal.aborted || cancelled) return Promise.reject({ code: "ECANCELLED" })
+        return selected.resolve6(hostname, options)
+      },
+      cancel,
+    }
+  }).then((observation) => {
+    signal.removeEventListener("abort", onAbort)
+    complete = true
+    queriesSettled =
+      observation !== undefined &&
+      (!observation.available || ("queriesSettled" in observation && observation.queriesSettled))
+    const { timing, sampling, systemBaseline, ...facts } = observation ?? {
+      timing: undefined,
+      sampling: undefined,
+      systemBaseline: undefined,
+      available: false,
+    }
+    return {
+      ...facts,
+      timing: "after-first-original-fetch-enotfound" as const,
+      sampling: "overlaps-original-retries" as const,
+      triggerAttempt,
+      originalFailureObservedAtMs,
+      startedAtMs,
+      endedAtMs: performance.now(),
+      abortObserved,
+      ...(cancelError === undefined ? {} : { cancelError }),
+    }
+  })
+  return {
+    result,
+    async close() {
+      signal.removeEventListener("abort", onAbort)
+      cancel()
+      const remaining = Math.max(0, 750 - (performance.now() - startedAtMs))
+      if (!complete && remaining > 0) {
+        let timer: ReturnType<typeof setTimeout> | undefined
+        try {
+          await Promise.race([
+            Promise.allSettled([result]),
+            new Promise<void>((resolve) => {
+              timer = setTimeout(resolve, remaining)
+            }),
+          ])
+        } finally {
+          if (timer !== undefined) clearTimeout(timer)
+        }
+      }
+      return {
+        resultObserved: complete,
+        queriesSettled,
+        settlement: queriesSettled ? ("complete" as const) : ("not-observed" as const),
+        ...(cancelError === undefined ? {} : { cancelError }),
+      }
+    },
+  }
+}

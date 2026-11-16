@@ -2747,9 +2747,13 @@ test("continue actually resumes a paused session whose rollout was terminalized"
   runtime.run(async () => {
     await using tmp = await tmpdir({ git: true })
     const processedRoots: string[] = []
+    const modelEntered = Promise.withResolvers<void>()
+    const releaseModel = Promise.withResolvers<void>()
     const restore = installBasicLoopMocks({
-      onProcess(input) {
+      async onProcess(input) {
         processedRoots.push(input.user.id)
+        modelEntered.resolve()
+        await releaseModel.promise
       },
     })
     try {
@@ -2757,6 +2761,7 @@ test("continue actually resumes a paused session whose rollout was terminalized"
         scope: await tmp.scope(),
         fn: async () => {
           const session = await Session.create({})
+          let continued: Promise<boolean> | undefined
           try {
             const rootID = Identifier.ascending("message")
             await Session.updateMessage({
@@ -2785,11 +2790,40 @@ test("continue actually resumes a paused session whose rollout was terminalized"
             // advance work: the run is reopened and a model call happens. A
             // handler that returned true without doing this would be the silent
             // no-op this whole design exists to prevent.
-            expect(await continueSession(session.id)).toBe(true)
+            continued = continueSession(session.id)
+            await Promise.race([
+              modelEntered.promise,
+              continued.then(() => {
+                if (!processedRoots.length) throw new Error("Continue settled without entering the model producer")
+              }),
+            ])
             expect(processedRoots).toEqual([rootID])
             expect(await SessionLifecycle.snapshot(session.id)).toBeUndefined()
-            expect((await RolloutLedger.getRun(owner, rootID)).status).toBe("running")
+            const resumed = await RolloutLedger.getRun(owner, rootID)
+            expect(resumed.status).toBe("running")
+            expect(resumed.cancelRequestedAt).toBeUndefined()
+            expect(SessionManager.isRunning(session.id)).toBe(true)
+
+            releaseModel.resolve()
+            expect(await continued).toBe(true)
+            await LoopJob.settleDetached(session.id, new Set([rootID]))
+            expect((await RolloutLifecycle.reconcile(session.id, rootID))?.status).toBe("completed")
+            expect(SessionManager.isRunning(session.id)).toBe(false)
+            const messages = await Session.messages({ sessionID: session.id })
+            expect(
+              messages
+                .filter((message) => message.info.role === "user" && message.info.isRoot)
+                .map((message) => message.info.id),
+            ).toEqual([rootID])
+            expect(SessionProgress.findTerminalReply(messages, rootID)).toBeDefined()
+            expect(SessionProgress.needsModelCall(messages, rootID)).toBe(false)
+            await continueSession(session.id)
+            expect(processedRoots).toEqual([rootID])
+            expect((await RolloutLedger.getRun(owner, rootID)).status).toBe("completed")
           } finally {
+            releaseModel.resolve()
+            if (continued) await Promise.allSettled([continued])
+            await LoopJob.settleDetached(session.id)
             SessionManager.unregisterRuntime(session.id)
             await Session.remove(session.id)
           }
