@@ -1,6 +1,16 @@
-import { afterAll, expect, test } from "bun:test"
+import { afterAll, expect, spyOn, test } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"
+import { PostgresDriver } from "../../src/storage/postgres-driver"
+import { SqliteDriver } from "../../src/storage/sqlite-driver"
+import type {
+  SqlConnection,
+  SqlDriver,
+  SqlQueryOptions,
+  SqlRow,
+  SqlTransactionOptions,
+  SqlValue,
+} from "../../src/storage/sql-contract"
 import { TransactionalStore } from "../../src/storage/transactional-store"
 import { storageTestBackends } from "../support/storage-backends"
 import { storageTestRuntime } from "../support/storage-runtime"
@@ -67,6 +77,49 @@ for (const backend of storageTestBackends()) {
           ).rejects.toThrow("cancelled maintenance")
           expect(await store.read<{ retained: boolean }>([...prefix, "info"])).toEqual({ retained: true })
           expect(await store.snapshot((tx) => tx.artifact([...prefix, "artifacts", "256"]))).toBeDefined()
+          {
+            const leaf = ["maintenance", "nested", "leaf"]
+            await store.write(leaf, true)
+            const stop = new AbortController()
+            const reason = new Error("cancel after deleting an empty ancestor")
+            const driver: SqlDriver = backend === "postgres" ? PostgresDriver.prototype : SqliteDriver.prototype
+            const original = driver.transaction
+            using afterDelete = spyOn(driver, "transaction").mockImplementation(async function <T>(
+              this: SqlDriver,
+              body: (c: SqlConnection) => Promise<T>,
+              options?: SqlTransactionOptions,
+            ) {
+              return (await original.call(
+                this,
+                (c) =>
+                  body({
+                    async query<Row extends SqlRow>(
+                      statement: string,
+                      values?: SqlValue[],
+                      settings?: SqlQueryOptions,
+                    ) {
+                      const rows = await c.query<Row>(statement, values, settings)
+                      if (
+                        statement.includes("DELETE FROM storage_nodes") &&
+                        statement.includes("RETURNING key_id") &&
+                        rows.length
+                      )
+                        stop.abort(reason)
+                      return rows
+                    },
+                  }),
+                options,
+              )) as T
+            })
+            await expect(
+              store.transaction(async (tx) => {
+                await expect(tx.pruneTree(leaf, { signal: stop.signal })).rejects.toThrow(reason.message)
+              }),
+            ).rejects.toThrow(reason.message)
+            expect(stop.signal.aborted).toBe(true)
+            expect(await store.read(leaf)).toBe(true)
+            expect(await store.scan(["maintenance"])).toEqual(["nested"])
+          }
           await store.transaction((tx) =>
             tx.writeMany(
               Array.from({ length: 5000 }, (_, index) => ({

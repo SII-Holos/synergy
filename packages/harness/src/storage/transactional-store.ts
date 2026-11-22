@@ -20,6 +20,7 @@ import type { StorageMaintenanceOperation } from "@ericsanchezok/synergy-util/ru
 import { StoragePath } from "./path"
 import { SqliteDriver } from "./sqlite-driver"
 import { PostgresDriver } from "./postgres-driver"
+import { cleanPostgresNodes } from "./postgres-node-cleanup"
 import { sqlParameterBytes } from "./sql-contract"
 import { Identifier } from "../id/id"
 import { EvidenceOwnerProjection, evidenceOwnerTables, evidenceOwnerTriggers } from "./evidence-owner-projection"
@@ -201,11 +202,7 @@ function metadata(key: string[]) {
 export const STORAGE_RECORDS_OWNER_INDEX =
   "CREATE INDEX IF NOT EXISTS storage_records_owner ON storage_records(namespace, kind, scope_id, session_id, updated) WHERE body IS NOT NULL"
 
-// How many records one prune statement removes. Retention prunes whole
-// subtrees, and a subtree can hold millions of rows: issuing that as one
-// statement is what let a single pass occupy the worker's event loop past the
-// ceiling. Each round is its own statement the caller commits, so the work is
-// interruptible between rounds and no single statement grows with subtree size.
+// Candidate output per SQLite cleanup statement inside the caller's transaction.
 const PRUNE_CHUNK = 4096
 
 // Format 3 stores a logical key as the raw 32-byte digest in a column declared
@@ -348,6 +345,7 @@ const schemaFor = (backend: StorageBackend) => [
 ]
 
 export class StoreTransaction {
+  private cleanupCursor = 0
   private publishedOnly = false
   private mutationGuard?: (keys: string[][], tree: boolean) => Promise<void>
 
@@ -424,7 +422,7 @@ export class StoreTransaction {
   }
 
   assertHealthy() {
-    if (this.failure) throw this.failure
+    if (this.failure !== undefined) throw this.failure
   }
 
   finish() {
@@ -950,11 +948,15 @@ export class StoreTransaction {
     }
   }
 
+  private checkPruneSignal(signal?: AbortSignal) {
+    if (!signal?.aborted) return
+    this.failure = signal.reason
+    signal.throwIfAborted()
+  }
+
   // Provenance: docs/research/2026-09-22-interactive-storage-validation.md
   // Local adaptation: indexed addressed-key joins bound interference from unrelated historical nodes.
-  // Every join is driven by addressed keys. A namespace-led OR/IN predicate
-  // makes even deletion of a missing key scan the whole historical node table.
-  private async cleanDanglingNodes(prefixes: string[][]): Promise<void> {
+  private async cleanDanglingNodes(prefixes: string[][], signal?: AbortSignal): Promise<void> {
     const roots = new Map(prefixes.map((key) => [keyID(key), keyParameter(this.keys, key)]))
     if (!roots.size) return
     const ancestors = new Map<string, SqlValue>()
@@ -963,12 +965,20 @@ export class StoreTransaction {
         const key = prefix.slice(0, depth)
         ancestors.set(keyID(key), keyParameter(this.keys, key))
       }
+    if (this.backend === "postgres")
+      return cleanPostgresNodes(
+        this.connection,
+        this.namespace,
+        [...roots.keys()],
+        [...ancestors.keys()],
+        this.cleanupCursor++,
+        () => this.checkPruneSignal(signal),
+      )
     const ancestorRows = ancestors.size
       ? `, ancestors(key_id) AS (VALUES ${[...ancestors].map(() => "(?)").join(",")})`
       : ""
-    // PostgreSQL may inline candidates into a nested deletion loop when a new
-    // namespace has stale statistics. Compute each bounded candidate set once.
     for (;;) {
+      this.checkPruneSignal(signal)
       const dropped = await this.connection.query<SqlRow>(
         `WITH RECURSIVE roots(key_id) AS (VALUES ${[...roots].map(() => "(?)").join(",")}),
          subtree(key_id) AS (
@@ -1004,6 +1014,7 @@ export class StoreTransaction {
           this.namespace,
         ],
       )
+      this.checkPruneSignal(signal)
       if (!dropped.length) break
     }
   }
@@ -1036,7 +1047,7 @@ export class StoreTransaction {
       "WITH RECURSIVE tree(key_id) AS MATERIALIZED (SELECT key_id FROM storage_nodes WHERE namespace = ? AND key_id = ? UNION ALL SELECT node.key_id FROM tree CROSS JOIN storage_nodes node WHERE node.namespace = ? AND node.parent_id = tree.key_id) "
     const values = [this.namespace, keyParameter(this.keys, prefix), this.namespace, this.namespace]
     const queryOptions = options.maintenance ? { maintenance: "prune" as const } : undefined
-    options.signal?.throwIfAborted()
+    this.checkPruneSignal(options.signal)
     const [count] = await this.connection.query(
       tree +
         "SELECT COUNT(*) AS count FROM tree CROSS JOIN storage_records record WHERE record.namespace = ? AND record.key_id = tree.key_id",
@@ -1048,14 +1059,14 @@ export class StoreTransaction {
       values,
       queryOptions,
     )
-    options.signal?.throwIfAborted()
+    this.checkPruneSignal(options.signal)
     await this.connection.query(
       tree + "DELETE FROM storage_nodes WHERE namespace = ? AND key_id IN (SELECT key_id FROM tree)",
       values,
       queryOptions,
     )
-    options.signal?.throwIfAborted()
-    await this.cleanDanglingNodes([prefix])
+    this.checkPruneSignal(options.signal)
+    await this.cleanDanglingNodes([prefix], options.signal)
     const removed = Number(count?.count ?? 0)
     return removed
   }
