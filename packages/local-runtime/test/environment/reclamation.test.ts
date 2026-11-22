@@ -1,9 +1,10 @@
-import { expect, test } from "bun:test"
+import { expect, spyOn, test } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { createHash } from "node:crypto"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { ExecutionProtocol } from "@ericsanchezok/synergy-harness/environment/executor"
+import { AtomicFile } from "@ericsanchezok/synergy-util/atomic-file"
 import { NativeExecutor } from "../../src/environment/native-executor"
 import { WorkspaceCoordinator } from "../../src/workspace/coordinator"
 
@@ -38,15 +39,32 @@ test("local release reclaims output while retaining immutable restart and duplic
     expect(terminal?.exitCode).toBe(0)
     const output = await executor.output(request.id, 0, 128)
     expect(output.reduce((size, chunk) => size + Buffer.from(chunk.data, "base64").length, 0)).toBe(512 * 1024)
-    await Promise.all([executor.release(request.id), executor.release(request.id)])
-    expect(await fs.readdir(directory)).toEqual(["receipt.json"])
+    const filename = path.join(directory, "receipt.json")
+    const receipt = Bun.file(filename)
+    {
+      const write = AtomicFile.writeJsonAtomic
+      using held = spyOn(AtomicFile, "writeJsonAtomic").mockImplementation((file, data, settings) => {
+        if (file === filename && JSON.parse(data).payloadsAcknowledged) throw new Error("ACK write interrupted")
+        return write(file, data, settings)
+      })
+      await expect(executor.release(request.id)).rejects.toThrow("ACK write interrupted")
+    }
+    expect((await receipt.json()).payloadsAcknowledged).toBeUndefined()
+    expect(await executor.output(request.id, 0, 128)).toEqual(output)
+    {
+      using interrupted = spyOn(executor.files, "releaseBlobs").mockRejectedValueOnce(new Error("cleanup interrupted"))
+      await expect(executor.release(request.id)).rejects.toThrow("cleanup interrupted")
+    }
+    expect((await receipt.json()).payloadsAcknowledged).toBe(true)
+    expect((await fs.readdir(directory)).length).toBeGreaterThan(1)
     await expect(executor.output(request.id, 0, 128)).rejects.toThrow("released")
     expect(await executor.start(request)).toEqual(terminal)
   }
   await using recovered = await NativeExecutor.open(options)
   expect(await recovered.status(request.id)).toEqual(terminal)
   expect(await recovered.start(request)).toEqual(terminal)
-  await recovered.release(request.id)
+  await expect(recovered.output(request.id, 0, 128)).rejects.toThrow("released")
+  await Promise.all([recovered.release(request.id), recovered.release(request.id)])
   expect(await fs.readdir(directory)).toEqual(["receipt.json"])
   await expect(
     recovered.start({

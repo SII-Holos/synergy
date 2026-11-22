@@ -656,10 +656,8 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
     await this.serial(`checkpoint:${id}`, async () => {
       const receipt = Receipt.parse(await this.receipt("checkpoints", id))
       if (!receipt.checkpoint) throw new Error("Workspace checkpoint is incomplete")
-      if (!receipt.released) {
-        if (receipt.claim) await (await this.options.coordinator.recover(receipt.claim)).release()
-        await this.persist("checkpoints", id, { ...receipt, released: true })
-      }
+      if (!receipt.released) await this.persist("checkpoints", id, { ...receipt, released: true })
+      if (receipt.claim) await (await this.options.coordinator.recover(receipt.claim)).release()
       await this.releaseBlobs({ kind: "checkpoint", id })
     })
   }

@@ -26,6 +26,7 @@ export class RetainedWorkspaceBlobs {
       if (await Bun.file(path.join(directory, "released")).exists()) return
       await fs.mkdir(directory, { recursive: true, mode: 0o700 })
       await fs.mkdir(path.dirname(object), { recursive: true, mode: 0o700 })
+      await AtomicFile.syncDirectories(path.dirname(directory), this.directory)
       const retained = path.join(directory, hash)
       if (!(await Bun.file(retained).exists())) {
         if (await Bun.file(object).exists()) await fs.link(object, retained)
@@ -50,6 +51,7 @@ export class RetainedWorkspaceBlobs {
     const directory = this.owner(owner)
     await withFileLock({ directory: this.directory, key: "blobs" }, async () => {
       await AtomicFile.writeFileAtomic(path.join(directory, "released"), "", { private: true, durable: true })
+      await AtomicFile.syncDirectories(path.dirname(directory), this.directory)
       for (const name of await fs.readdir(directory)) {
         if (!WorkspaceTree.Hash.safeParse(name).success) continue
         const object = this.object(name)

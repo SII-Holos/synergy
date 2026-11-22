@@ -22,6 +22,7 @@ import { WorkspaceErrors } from "@ericsanchezok/synergy-harness/workspace/errors
 const Receipt = z.object({
   status: ExecutionProtocol.Status,
   released: z.boolean(),
+  payloadsAcknowledged: z.literal(true).optional(),
   sandboxID: z.string().uuid().optional(),
   sandbox: ExecutionProtocol.Sandbox.omit({ id: true }).extend({ tempPath: z.string().optional() }).optional(),
   claim: z.object({ id: z.string(), token: z.string() }).optional(),
@@ -437,7 +438,8 @@ export class NativeExecutor implements Executor {
       throw new Error("Invalid output cursor or limit")
     const status = await this.required(id)
     await this.operations.get(id)?.writes
-    if (status.cursor && (await this.read(id))?.released) throw new Error("Execution output has been released")
+    if (status.cursor && (await this.read(id))?.payloadsAcknowledged)
+      throw new Error("Execution output has been released")
     const result: ExecutionProtocol.Chunk[] = []
     for (let cursor = after + 1; cursor <= Math.min(status.cursor, after + limit); cursor++)
       result.push(ExecutionProtocol.Chunk.parse(await Bun.file(this.filename(id, String(cursor))).json()))
@@ -512,28 +514,26 @@ export class NativeExecutor implements Executor {
     const status = await this.required(id)
     if (!ExecutionProtocol.terminal(status)) throw new Error("Cannot release an execution without physical completion")
     const operation = this.operations.get(id)
-    if (operation) {
-      await operation.finished
-      await operation.lease?.release()
-      operation.released = true
-      await this.persist(operation)
-      if (operation.sandboxID) await this.releaseSandbox(operation.sandboxID)
-      await this.discardInputs(id)
-      await this.reclaim(id)
-      this.operations.delete(id)
-      return
-    }
+    await operation?.finished
     const receipt = await this.read(id)
-    if (!receipt) return
-    if (!receipt.released && receipt.claim) await (await this.options.coordinator.recover(receipt.claim)).release()
-    await AtomicFile.writeJsonAtomic(this.filename(id), JSON.stringify({ ...receipt, released: true }), {
-      private: true,
-      durable: true,
-    })
+    if (!receipt) throw new Error("Terminal execution has no durable receipt")
+    if (!receipt.payloadsAcknowledged)
+      await AtomicFile.writeJsonAtomic(
+        this.filename(id),
+        JSON.stringify({ ...receipt, released: true, payloadsAcknowledged: true }),
+        {
+          private: true,
+          durable: true,
+        },
+      )
+    if (operation) operation.released = true
+    if (operation?.lease) await operation.lease.release()
+    else if (receipt.claim) await (await this.options.coordinator.recover(receipt.claim)).release()
     if (receipt.sandboxID) await this.releaseSandbox(receipt.sandboxID)
-    if (receipt.sandbox) this.options.sandbox?.cleanupWrapper(receipt.sandbox)
+    if (!operation && receipt.sandbox) this.options.sandbox?.cleanupWrapper(receipt.sandbox)
     await this.discardInputs(id)
     await this.reclaim(id)
+    this.operations.delete(id)
   }
 
   private async reclaim(id: string) {
