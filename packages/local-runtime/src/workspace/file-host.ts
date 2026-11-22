@@ -20,6 +20,7 @@ import { FileWatcherBinding } from "../file/watcher-binding"
 import { createWrapper } from "@parcel/watcher/wrapper"
 import type { AsyncSubscription } from "@parcel/watcher"
 import { FileWatcherEvents } from "../file/watcher-events"
+import { RetainedWorkspaceBlobs } from "./retained-blobs"
 
 // Executor observation also runs without an Agent Runtime; the kernel watch budget is process-wide.
 const observationGate = FileWatcherEvents.createSerialQueue()
@@ -50,6 +51,7 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
   private readonly pending = new Map<string, Promise<unknown>>()
   private readonly shutdown = new AbortController()
   private readonly observations = new Map<string, WorkspaceProtocol.Observation & { watcher: AsyncSubscription }>()
+  private readonly retained: RetainedWorkspaceBlobs
   constructor(
     private readonly options: {
       directory: string
@@ -60,7 +62,9 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
       owner?: { uid: number; gid: number }
       executionWriter?(id: string, root: string): Promise<{ id: string; token: string }>
     },
-  ) {}
+  ) {
+    this.retained = new RetainedWorkspaceBlobs(path.join(options.directory, "retained-blobs"))
+  }
 
   private acquire(input: Parameters<WorkspaceCoordinator["acquire"]>[0]) {
     return this.options.acquire ? this.options.acquire(input) : this.options.coordinator.acquire(input)
@@ -103,7 +107,11 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
       const previous = MountReceipt.optional().parse(await this.receipt("mounts", input.id))
       if (previous && (previous.digest !== digest || previous.detached))
         throw new Error("Workspace mount already has different input or was detached")
-      if (previous?.mount) return this.required(input)
+      if (previous?.mount) {
+        const mount = await this.required(input)
+        await this.releaseBlobs({ kind: "mount", id: input.id })
+        return mount
+      }
       await this.persist("mounts", input.id, { input, digest })
       const root =
         input.source.kind === "directory"
@@ -134,12 +142,18 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
           })
           if (exists) {
             const actual = WorkspaceTree.hash(
-              WorkspaceTree.encode(await NativeWorkspaceTree.capture(root, this.blobs(), this.shutdown.signal)),
+              WorkspaceTree.encode(
+                await NativeWorkspaceTree.capture(
+                  root,
+                  this.blobs({ kind: "mount", id: input.id }),
+                  this.shutdown.signal,
+                ),
+              ),
             )
             if (actual !== input.source.manifest)
               throw new Error("Materialized Workspace changed before mount acknowledgement")
           } else
-            await NativeWorkspaceTree.materialize(root, manifest, this.blobs(), {
+            await NativeWorkspaceTree.materialize(root, manifest, this.blobs({ kind: "mount", id: input.id }), {
               owner: this.options.owner,
               signal: this.shutdown.signal,
             })
@@ -148,6 +162,7 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
         if (!(await fs.stat(root)).isDirectory()) throw new Error("Workspace mount is not a directory")
         const mount = WorkspaceProtocol.Mount.parse({ ...input, path: root, physicalID: identity.physicalID })
         await this.persist("mounts", input.id, { input, digest, mount })
+        await this.releaseBlobs({ kind: "mount", id: input.id })
         return mount
       } finally {
         await claim.release()
@@ -471,7 +486,9 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
           const staging = await fs.realpath(await fs.mkdtemp(path.join(stagingRoot, "transfer-")))
           try {
             const content = path.join(staging, "content")
-            await NativeWorkspaceTree.materialize(content, tree, this.blobs(), { signal: this.shutdown.signal })
+            await NativeWorkspaceTree.materialize(content, tree, this.blobs({ kind: "checkpoint", id: input.id }), {
+              signal: this.shutdown.signal,
+            })
             const source = path.join(content, "entry")
             const entry = await NativeFileEntry.inspect(source)
             if (!entry) throw new Error("Transfer has no source entry")
@@ -527,6 +544,7 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
     return this.serial(`checkpoint:${id}`, async () => {
       let receipt = Receipt.optional().parse(await this.receipt("checkpoints", id))
       if (receipt && receipt.digest !== digest) throw new Error("Workspace operation already has different input")
+      if (receipt?.released) await this.releaseBlobs({ kind: "checkpoint", id })
       if (receipt?.failure) throw WorkspaceErrors.restore(receipt.failure)
       if (receipt?.error) throw new Error(receipt.error)
       if (receipt?.checkpoint) return receipt.checkpoint
@@ -564,6 +582,7 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
           receipt.error = error instanceof Error ? error.message : "Workspace write admission failed"
           receipt.released = true
           await this.persist("checkpoints", id, receipt)
+          await this.releaseBlobs({ kind: "checkpoint", id })
           throw error
         })
         receipt.claim = lease.recovery
@@ -572,7 +591,7 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
       try {
         if (mutate && !receipt.effectCompleted) {
           if (!receipt.effectStarted && !receipt.beforeManifest) {
-            receipt.beforeManifest = await this.captureBefore(reference, receipt.claim!)
+            receipt.beforeManifest = await this.captureBefore(reference, receipt.claim!, { kind: "checkpoint", id })
             await this.persist("checkpoints", id, receipt)
           }
           await mutate(mount, receipt, async () => {
@@ -590,16 +609,21 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
           receipt.error = error instanceof Error ? error.message : "Workspace mutation rejected"
           receipt.released = true
           await this.persist("checkpoints", id, receipt)
+          await this.releaseBlobs({ kind: "checkpoint", id })
         }
         throw error
       }
       const source = MountReceipt.parse(await this.receipt("mounts", reference.id)).input.source
       let manifest: string | null = null
       if (source.kind === "materialized") {
-        const tree = await NativeWorkspaceTree.capture(mount.path, this.blobs(), this.shutdown.signal)
+        const tree = await NativeWorkspaceTree.capture(
+          mount.path,
+          this.blobs({ kind: "checkpoint", id }),
+          this.shutdown.signal,
+        )
         const bytes = WorkspaceTree.encode(tree)
         manifest = WorkspaceTree.hash(bytes)
-        await this.putBlob(manifest, bytes)
+        await this.putBlob(manifest, bytes, { kind: "checkpoint", id })
       }
       const owner = retained ?? receipt.claim
       const checkpoint = {
@@ -613,24 +637,28 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
       return checkpoint
     })
   }
-  async captureBefore(reference: WorkspaceProtocol.Reference, claim: { id: string; token: string }) {
+  async captureBefore(
+    reference: WorkspaceProtocol.Reference,
+    claim: { id: string; token: string },
+    owner: WorkspaceProtocol.BlobOwner,
+  ) {
     const mount = await this.required(reference)
     const source = MountReceipt.parse(await this.receipt("mounts", reference.id)).input.source
     if (source.kind !== "materialized") return undefined
     await this.options.coordinator.validateRetention(claim, mount.path)
-    const tree = await NativeWorkspaceTree.capture(mount.path, this.blobs(), this.shutdown.signal)
+    const tree = await NativeWorkspaceTree.capture(mount.path, this.blobs(owner), this.shutdown.signal)
     const bytes = WorkspaceTree.encode(tree)
     const manifest = WorkspaceTree.hash(bytes)
-    await this.putBlob(manifest, bytes)
+    await this.putBlob(manifest, bytes, owner)
     return manifest
   }
   async acknowledge(id: string) {
     await this.serial(`checkpoint:${id}`, async () => {
       const receipt = Receipt.parse(await this.receipt("checkpoints", id))
-      if (receipt.released) return
       if (!receipt.checkpoint) throw new Error("Workspace checkpoint is incomplete")
+      if (!receipt.released) await this.persist("checkpoints", id, { ...receipt, released: true })
       if (receipt.claim) await (await this.options.coordinator.recover(receipt.claim)).release()
-      await this.persist("checkpoints", id, { ...receipt, released: true })
+      await this.releaseBlobs({ kind: "checkpoint", id })
     })
   }
 
@@ -655,7 +683,7 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
       if (!mount) throw new Error("Workspace mount is unavailable")
       if (mount.id !== input.id || mount.workspaceID !== input.workspaceID || mount.generation !== input.generation)
         throw new Error("Workspace mount changed")
-      if (receipt.detached) return
+      if (receipt.detached) return this.releaseBlobs({ kind: "mount", id: input.id })
       if (receipt.input.source.kind === "materialized") await this.required(input)
       const lease = await this.acquire({
         id: `detach:${input.id}`,
@@ -671,26 +699,32 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
         this.observations.delete(input.id)
         if (receipt.input.source.kind === "materialized") await fs.rm(mount.path, { recursive: true })
         await this.persist("mounts", input.id, { ...receipt, detached: true })
+        await this.releaseBlobs({ kind: "mount", id: input.id })
       } finally {
         await lease.release()
       }
     })
   }
-  async putBlob(hash: string, bytes: Uint8Array) {
-    WorkspaceTree.verify(hash, bytes, WorkspaceTree.manifestBytes)
-    await AtomicFile.writeFileAtomic(this.filename("blobs", hash), bytes, { private: true, durable: true })
+  async putBlob(hash: string, bytes: Uint8Array, owner: WorkspaceProtocol.BlobOwner) {
+    await this.retained.put(hash, bytes, owner)
+  }
+  async releaseBlobs(owner: WorkspaceProtocol.BlobOwner) {
+    await this.retained.release(owner)
   }
   async getBlob(hash: string, maximumBytes: number) {
     WorkspaceTree.Hash.parse(hash)
     if (!Number.isSafeInteger(maximumBytes) || maximumBytes < 0 || maximumBytes > WorkspaceTree.manifestBytes)
       throw new Error("Invalid Workspace object size")
+    const retained = await this.retained.get(hash, maximumBytes)
+    if (retained) return retained
+    // Pre-retention allocations keep their unscoped cache readable until physical retirement.
     const file = Bun.file(this.filename("blobs", hash))
     if (file.size > maximumBytes) throw new Error("Workspace object exceeds its read limit")
     return WorkspaceTree.verify(hash, new Uint8Array(await file.arrayBuffer()), maximumBytes)
   }
-  private blobs() {
+  private blobs(owner: WorkspaceProtocol.BlobOwner) {
     return {
-      put: (hash: string, bytes: Uint8Array) => this.putBlob(hash, bytes),
+      put: (hash: string, bytes: Uint8Array) => this.putBlob(hash, bytes, owner),
       get: (hash: string, maximumBytes: number) => this.getBlob(hash, maximumBytes),
     }
   }

@@ -6,7 +6,7 @@ import { WorkspaceTree } from "../workspace/tree"
 import { WorkspaceErrors } from "../workspace/errors"
 
 export namespace ExecutionProtocol {
-  export const version = 2
+  export const version = 3
   export const Description = z
     .object({
       target: EnvironmentSchema.Target,
