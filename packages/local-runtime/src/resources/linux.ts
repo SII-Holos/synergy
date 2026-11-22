@@ -106,7 +106,10 @@ export function linuxResources(proc = "/proc"): ResourceHost.Source {
       const counters = new Map([["host", { stall: psi(hostPressure ?? "").full || 0, high: 0, oom: 0 }]])
       let throttled = false
       const directories = cgroupDirectories(membership, mounts)
-      if (!directories.length && membership.trim()) throw new Error("Cgroup memory accounting requires v2")
+      // Hosts without cgroup v2 (v1 or non-cgroup environments) have no per-cgroup
+      // accounting; fall back to the /proc/meminfo physical domain at partial quality
+      // instead of failing, or resource admission stays blocked for every workload.
+      if (!directories.length && membership.trim()) quality = "partial"
       cgroup = directories[0] ? CgroupMemory.readCgroupV2(directories[0]) : undefined
       for (const directory of directories) {
         const [currentText, maxText, highText, eventsText, pressureText, statText] = await Promise.all([
@@ -118,12 +121,12 @@ export function linuxResources(proc = "/proc"): ResourceHost.Source {
           optional(path.join(directory, "memory.stat")),
         ])
         // A root without a memory controller has neither counter nor limit; partial reads are unsafe.
-        if (currentText === undefined && maxText === undefined) {
-          if (directory !== directories.at(-1)) throw new Error("Cgroup hard limit is unreadable")
+        // A directory without the v2 memory controller files (v1-only or controller-less
+        // mounts) drops to partial quality and is skipped rather than failing the whole sample.
+        if (currentText === undefined || maxText === undefined) {
           quality = "partial"
           continue
         }
-        if (currentText === undefined || maxText === undefined) throw new Error("Cgroup hard limit is unreadable")
         const current = limit(currentText)
         const max = limit(maxText)
         if (current === undefined) throw new Error("Cgroup usage is unavailable")

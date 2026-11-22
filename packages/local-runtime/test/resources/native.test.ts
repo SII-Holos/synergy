@@ -128,7 +128,52 @@ describe("native resource sampling", () => {
           reclaimableBytes: 425,
         })
         await rm(path.join(group, "memory.max"))
-        await expect(linuxResources(proc).sample()).rejects.toThrow("unreadable")
+        const degraded = await linuxResources(proc).sample()
+        expect(degraded.quality).toBe("partial")
+        expect(degraded.domains).toEqual([{ kind: "physical", capacityBytes: 1024000, availableBytes: 819200 }])
+      } finally {
+        await rm(home, { recursive: true, force: true })
+      }
+    },
+  )
+
+  test.skipIf(process.platform === "win32")(
+    "degrades to a partial /proc/meminfo snapshot on cgroup v1 hosts instead of failing",
+    async () => {
+      const home = await mkdtemp(path.join(os.tmpdir(), "synergy-resource-probe-"))
+      try {
+        const proc = path.join(home, "proc")
+        await mkdir(path.join(proc, "self"), { recursive: true })
+        await writeFile(path.join(proc, "meminfo"), "MemTotal: 1000 kB\nMemAvailable: 800 kB")
+        await writeFile(path.join(proc, "self/cgroup"), "1:name=systemd:/user.slice/user-1000.slice\n")
+        await writeFile(path.join(proc, "self/mountinfo"), "1 0 0:1 / / rw - ext4 /dev/sda rw\n")
+        const result = await linuxResources(proc).sample()
+        expect(result.quality).toBe("partial")
+        expect(result.pressure).toBe("normal")
+        expect(result.domains).toEqual([{ kind: "physical", capacityBytes: 1024000, availableBytes: 819200 }])
+      } finally {
+        await rm(home, { recursive: true, force: true })
+      }
+    },
+  )
+
+  test.skipIf(process.platform === "win32")(
+    "degrades to partial when a cgroup v2 directory lacks memory controller files",
+    async () => {
+      const home = await mkdtemp(path.join(os.tmpdir(), "synergy-resource-probe-"))
+      try {
+        const proc = path.join(home, "proc")
+        const group = path.join(home, "cgroup")
+        await mkdir(path.join(proc, "self"), { recursive: true })
+        await mkdir(path.join(group, "child"), { recursive: true })
+        await writeFile(path.join(proc, "meminfo"), "MemTotal: 1000 kB\nMemAvailable: 800 kB")
+        await writeFile(path.join(proc, "self/cgroup"), "0::/child")
+        await writeFile(path.join(proc, "self/mountinfo"), `1 0 0:1 / ${group} rw - cgroup2 cgroup rw`)
+        await writeFile(path.join(group, "memory.current"), "900")
+        await writeFile(path.join(group, "memory.max"), "1000")
+        const result = await linuxResources(proc).sample()
+        expect(result.quality).toBe("partial")
+        expect(result.domains).toContainEqual({ kind: "physical", capacityBytes: 1024000, availableBytes: 819200 })
       } finally {
         await rm(home, { recursive: true, force: true })
       }
