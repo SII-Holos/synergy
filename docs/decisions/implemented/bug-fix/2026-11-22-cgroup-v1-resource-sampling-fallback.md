@@ -1,26 +1,25 @@
-# Decision Record: cgroup v1 hosts fall back to partial resource snapshot
+# Decision Record: Sample Linux memory across cgroup hierarchies
 
 Status: implemented
 
 ## Problem
 
-On hosts without cgroup v2 memory accounting (cgroup v1 or controller-less mounts), the Linux resource sampler in `packages/local-runtime/src/resources/linux.ts` threw: `Cgroup memory accounting requires v2` when no v2 mount exists, or `Cgroup hard limit is unreadable` when a directory lacks `memory.current`/`memory.max`. A failed sample feeds the runtime memory admission gate an unavailable snapshot, which keeps the gate blocked forever — every session stalls at input materialization and no LLM turn ever starts.
+Missing memory samples leave execution waiting for admission. A host-only sample can also overstate the capacity of a constrained container.
 
 ## Decision
 
-Sampler degrades to a `partial`-quality snapshot built on the `/proc/meminfo` physical-memory domain instead of throwing:
+The native resource sampler reads the memory controller selected by the process membership and mount table. On cgroup v1 it pairs each visible hard limit with usage from the same directory, including the parent that also accounts for siblings. A stricter inherited limit reported by memory.stat with no visible usage has zero known headroom. V1 observations have partial quality. The admission policy already takes the minimum across the physical and constrained domains. [Linux v1 memory accounting](https://docs.kernel.org/admin-guide/cgroup-v1/memory.html)
 
-- No cgroup v2 directories resolved while the process has cgroup membership: mark `quality = "partial"` and continue instead of `Cgroup memory accounting requires v2`.
-- A resolved directory without the v2 controller files: mark `quality = "partial"` and skip that directory instead of `Cgroup hard limit is unreadable`, regardless of position in the ancestor chain.
-
-Cgroup v2 hosts are unchanged: directories with both counters still produce cgroup domains, reclaim-credit and pressure handling are untouched. Failures unrelated to cgroup structure (unreadable host meminfo, malformed counters that do parse) still throw.
+On v2, a directory with neither memory counter can lack the controller. Sampling continues up the hierarchy. A partially readable limit/usage pair or an unresolved memory mount fails the sample. A delegated v2 mount with no visible hard capacity cannot establish headroom for a hidden parent. A machine with no memory-controller membership can still supply a partial physical snapshot. [Linux v2 memory controller](https://docs.kernel.org/admin-guide/cgroup-v2.html#memory)
 
 ## Alternatives considered
 
-- **Probe startup and disable admission on v1**: admission would silently change semantics per host; a sampler-level partial snapshot keeps one admission path with visible quality.
-- **Implement cgroup v1 accounting reading**: v1 hierarchy layouts vary (multiple mounts, named hierarchies) and the physical `/proc/meminfo` domain already bounds admission adequately; reading v1 adds parsing risk for a shrinking host population.
-- **Keep throwing**: leaves all sessions permanently blocked on v1 hosts with no operator-visible recovery path.
+Using physical availability alone loses the usage charged to sibling containers. Treating every missing child controller as fatal blocks workloads even when the parent exposes sufficient accounting.
 
 ## Consequences
 
-Costs: on v1 hosts the snapshot carries only host-level physical memory (no per-process cgroup limit), reported as `partial` quality so consumers can distinguish it; reclaim-credit prediction is unavailable there. Buys: sessions start and admission drains on v1 hosts with no configuration; v2 behavior is bit-for-bit preserved, so the larger v2 deployment base sees no change. Covered by `packages/local-runtime/test/resources/native.test.ts` cases for both the no-v2-mount path and the controller-less-directory path.
+Unobservable hard limits keep admission conservative. Missing optional v1 pressure information permits the existing partial-sample policy.
+
+## Verification
+
+The resource suite covers hybrid membership, nested limits, absent controllers, unreadable counters and the current host. An isolated arm64 Linux guest booted with real v1 and v2 mounts also ran the sampler and admission gate. A child under a 256 MiB parent stayed bounded by that parent's usage on each hierarchy, including a v2 child without delegated memory accounting.

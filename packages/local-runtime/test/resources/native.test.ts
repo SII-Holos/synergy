@@ -128,9 +128,7 @@ describe("native resource sampling", () => {
           reclaimableBytes: 425,
         })
         await rm(path.join(group, "memory.max"))
-        const degraded = await linuxResources(proc).sample()
-        expect(degraded.quality).toBe("partial")
-        expect(degraded.domains).toEqual([{ kind: "physical", capacityBytes: 1024000, availableBytes: 819200 }])
+        await expect(linuxResources(proc).sample()).rejects.toThrow("unreadable")
       } finally {
         await rm(home, { recursive: true, force: true })
       }
@@ -174,8 +172,53 @@ describe("native resource sampling", () => {
         const result = await linuxResources(proc).sample()
         expect(result.quality).toBe("partial")
         expect(result.domains).toContainEqual({ kind: "physical", capacityBytes: 1024000, availableBytes: 819200 })
+        expect(result.domains).toContainEqual({ kind: "cgroup", capacityBytes: 1000, availableBytes: 100 })
+        await writeFile(path.join(group, "memory.max"), "max")
+        await writeFile(path.join(group, "cgroup.type"), "domain")
+        await expect(linuxResources(proc).sample()).rejects.toThrow("headroom is unavailable")
       } finally {
         await rm(home, { recursive: true, force: true })
+      }
+    },
+  )
+
+  test.skipIf(process.platform === "win32")(
+    "honors v1 memory ancestry on a hybrid host and fails closed on missing accounting",
+    async () => {
+      const root = await mkdtemp(path.join(os.tmpdir(), "synergy-v1-memory-"))
+      try {
+        const proc = path.join(root, "proc")
+        const mount = path.join(root, "memory")
+        const leaf = path.join(mount, "child")
+        await mkdir(path.join(proc, "self"), { recursive: true })
+        await mkdir(leaf, { recursive: true })
+        await writeFile(path.join(proc, "meminfo"), "MemTotal: 4096 kB\nMemAvailable: 3072 kB")
+        await writeFile(path.join(proc, "self/cgroup"), "0::/ignored\n5:cpu,memory:/tenant/child")
+        await writeFile(path.join(proc, "self/mountinfo"), `1 0 0:1 /tenant ${mount} rw - cgroup cgroup rw,cpu,memory`)
+        for (const [dir, hard, usage] of [
+          [leaf, "9223372036854771712", "10"],
+          [mount, "1000", "950"],
+        ] as const) {
+          await writeFile(path.join(dir, "memory.limit_in_bytes"), hard)
+          await writeFile(path.join(dir, "memory.usage_in_bytes"), usage)
+          await writeFile(path.join(dir, "memory.stat"), "hierarchical_memory_limit 1000\n")
+        }
+        const source = linuxResources(proc)
+        expect((await source.sample()).domains).toContainEqual({
+          kind: "cgroup",
+          capacityBytes: 1000,
+          availableBytes: 50,
+        })
+        await writeFile(path.join(leaf, "memory.stat"), "hierarchical_memory_limit 500\n")
+        expect((await source.sample()).domains).toContainEqual({
+          kind: "cgroup",
+          capacityBytes: 500,
+          availableBytes: 0,
+        })
+        await rm(path.join(mount, "memory.usage_in_bytes"))
+        await expect(source.sample()).rejects.toThrow()
+      } finally {
+        await rm(root, { recursive: true, force: true })
       }
     },
   )
