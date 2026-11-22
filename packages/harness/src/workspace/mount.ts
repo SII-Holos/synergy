@@ -177,8 +177,9 @@ export namespace WorkspaceMounts {
         const tree = await WorkspaceContent.manifest(info, store)
         const bytes = WorkspaceTree.encode(tree)
         const manifest = WorkspaceTree.hash(bytes)
-        await transfer(tree, store, { put: (hash, data) => files.putBlob(hash, data) })
-        await files.putBlob(manifest, bytes)
+        const owner = { kind: "mount" as const, id: active.id }
+        await transfer(tree, store, { put: (hash, data) => files.putBlob(hash, data, owner) })
+        await files.putBlob(manifest, bytes, owner)
         source = { kind: "materialized", manifest }
       } else {
         if (!active.path)

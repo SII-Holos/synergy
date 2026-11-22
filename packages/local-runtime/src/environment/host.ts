@@ -53,51 +53,54 @@ export namespace ExecutionHost {
           const url = new URL(request.url)
           if (request.method === "GET" && url.pathname === "/v1/status")
             return Response.json({ version: ExecutionProtocol.version, target: input.target })
-          if (request.method === "GET" && url.pathname === "/v1/runtime") {
+          if (url.pathname.startsWith("/v1/") && url.pathname !== "/v1/openapi.json")
+            return Response.json({ error: "Execution protocol 3 required" }, { status: 409 })
+          if (request.method === "GET" && url.pathname === "/v3/runtime") {
             if (!input.executor.describe)
               return Response.json({ error: "Runtime description unavailable" }, { status: 404 })
             return Response.json(await input.executor.describe())
           }
           if (request.method === "GET" && url.pathname === "/v1/openapi.json") return Response.json(openAPI())
-          if (url.pathname === "/v1/inputs" && request.method === "POST") {
+          if (url.pathname === "/v3/inputs" && request.method === "POST") {
             if (!input.executor.prepareInputs)
               return Response.json({ error: "Input staging unavailable" }, { status: 404 })
             return Response.json(
               await input.executor.prepareInputs(ExecutionProtocol.Inputs.parse(await request.json())),
             )
           }
-          if (url.pathname.startsWith("/v1/inputs/") && request.method === "DELETE") {
+          if (url.pathname.startsWith("/v3/inputs/") && request.method === "DELETE") {
             if (!input.executor.discardInputs)
               return Response.json({ error: "Input staging unavailable" }, { status: 404 })
             await input.executor.discardInputs(
-              ExecutionProtocol.ID.parse(decodeURIComponent(url.pathname.slice("/v1/inputs/".length))),
+              ExecutionProtocol.ID.parse(decodeURIComponent(url.pathname.slice("/v3/inputs/".length))),
             )
             return Response.json(true)
           }
-          if (url.pathname === "/v1/sandbox" && request.method === "POST") {
+          if (url.pathname === "/v3/sandbox" && request.method === "POST") {
             if (!input.executor.prepareSandbox)
               return Response.json({ error: "Sandbox preparation unavailable" }, { status: 404 })
             return Response.json(
               await input.executor.prepareSandbox(ExecutionProtocol.SandboxInput.parse(await request.json())),
             )
           }
-          if (url.pathname.startsWith("/v1/sandbox/") && request.method === "DELETE") {
-            await input.executor.releaseSandbox?.(z.string().uuid().parse(url.pathname.slice("/v1/sandbox/".length)))
+          if (url.pathname.startsWith("/v3/sandbox/") && request.method === "DELETE") {
+            await input.executor.releaseSandbox?.(z.string().uuid().parse(url.pathname.slice("/v3/sandbox/".length)))
             return Response.json(true)
           }
-          if (url.pathname === "/v1/workspaces" && request.method === "POST") {
+          if (url.pathname === "/v3/workspaces" && request.method === "POST") {
             if (!input.executor.files)
               return Response.json({ error: "Workspace operations unavailable" }, { status: 404 })
             return Response.json(
               await workspace(input.executor.files, WorkspaceProtocol.Request.parse(await request.json())),
             )
           }
-          if (url.pathname.startsWith("/v1/workspace-objects/")) {
+          if (url.pathname.startsWith("/v3/workspace-objects/")) {
             if (!input.executor.files)
               return Response.json({ error: "Workspace operations unavailable" }, { status: 404 })
-            const hash = WorkspaceTree.Hash.parse(url.pathname.slice("/v1/workspace-objects/".length))
+            const hash = WorkspaceTree.Hash.parse(url.pathname.slice("/v3/workspace-objects/".length))
             if (request.method === "PUT") {
-              await input.executor.files.putBlob(hash, new Uint8Array(await request.arrayBuffer()))
+              const owner = WorkspaceProtocol.BlobOwner.parse(Object.fromEntries(url.searchParams))
+              await input.executor.files.putBlob(hash, new Uint8Array(await request.arrayBuffer()), owner)
               return Response.json(true)
             }
             if (request.method === "GET")
@@ -116,9 +119,9 @@ export namespace ExecutionHost {
               )
             return new Response(null, { status: 405 })
           }
-          if (request.method === "POST" && url.pathname === "/v1/operations")
+          if (request.method === "POST" && url.pathname === "/v3/operations")
             return Response.json(await input.executor.start(ExecutionProtocol.Request.parse(await request.json())))
-          const match = /^\/v1\/operations\/([^/]+)(?:\/(output|events|duplex|stdin|resize|cancel|release))?$/.exec(
+          const match = /^\/v3\/operations\/([^/]+)(?:\/(output|events|duplex|stdin|resize|cancel|release))?$/.exec(
             url.pathname,
           )
           if (!match) return Response.json({ error: "Not found" }, { status: 404 })
@@ -348,22 +351,22 @@ export namespace ExecutionHost {
       security: [{ bearerAuth: [] }],
       components: { securitySchemes: { bearerAuth: { type: "http", scheme: "bearer" } } },
       paths: {
-        "/v1/inputs": action("Stage immutable execution inputs", ExecutionProtocol.Inputs),
-        "/v1/inputs/{id}": {
+        "/v3/inputs": action("Stage immutable execution inputs", ExecutionProtocol.Inputs),
+        "/v3/inputs/{id}": {
           delete: {
             summary: "Discard unsubmitted or released execution inputs",
             responses: { "200": { description: "Released" } },
           },
         },
-        "/v1/sandbox": action("Prepare target sandbox containment", ExecutionProtocol.SandboxInput),
-        "/v1/sandbox/{id}": {
+        "/v3/sandbox": action("Prepare target sandbox containment", ExecutionProtocol.SandboxInput),
+        "/v3/sandbox/{id}": {
           delete: { summary: "Release target sandbox preparation", responses: { "200": { description: "Released" } } },
         },
-        "/v1/workspaces": action(
+        "/v3/workspaces": action(
           "Manage Workspace mounts, file operations and retained checkpoints",
           WorkspaceProtocol.Request,
         ),
-        "/v1/workspace-objects/{hash}": {
+        "/v3/workspace-objects/{hash}": {
           get: {
             summary: "Read an immutable Workspace object",
             responses: {
@@ -375,6 +378,15 @@ export namespace ExecutionHost {
           },
           put: {
             summary: "Stage an immutable Workspace object",
+            parameters: [
+              {
+                name: "kind",
+                in: "query",
+                required: true,
+                schema: { type: "string", enum: ["mount", "checkpoint", "execution"] },
+              },
+              { name: "id", in: "query", required: true, schema: { type: "string" } },
+            ],
             requestBody: {
               required: true,
               content: { "application/octet-stream": { schema: { type: "string", format: "binary" } } },
@@ -393,36 +405,36 @@ export namespace ExecutionHost {
             },
           },
         },
-        "/v1/runtime": {
+        "/v3/runtime": {
           get: {
             summary: "Inspect target execution defaults",
             responses: { "200": { description: "Target runtime", ...json(ExecutionProtocol.Description) } },
           },
         },
-        "/v1/operations": {
+        "/v3/operations": {
           post: {
             summary: "Submit one deduplicated execution",
             requestBody: { required: true, ...json(ExecutionProtocol.Request) },
             responses: { "200": { description: "Execution status", ...json(ExecutionProtocol.Status) } },
           },
         },
-        "/v1/operations/{id}": {
+        "/v3/operations/{id}": {
           get: {
             summary: "Inspect execution",
             responses: { "200": { description: "Execution status", ...json(ExecutionProtocol.Status) } },
           },
         },
-        "/v1/operations/{id}/cancel": action("Request confirmed process-tree termination", Cancel),
-        "/v1/operations/{id}/release": action("Acknowledge saved output and files"),
-        "/v1/operations/{id}/stdin": action("Write binary input", Input),
-        "/v1/operations/{id}/resize": action("Resize PTY", Size),
-        "/v1/operations/{id}/output": {
+        "/v3/operations/{id}/cancel": action("Request confirmed process-tree termination", Cancel),
+        "/v3/operations/{id}/release": action("Acknowledge saved output and files"),
+        "/v3/operations/{id}/stdin": action("Write binary input", Input),
+        "/v3/operations/{id}/resize": action("Resize PTY", Size),
+        "/v3/operations/{id}/output": {
           get: {
             summary: "Replay output after a cursor",
             responses: { "200": { description: "Output chunks", ...json(z.array(ExecutionProtocol.Chunk)) } },
           },
         },
-        "/v1/operations/{id}/events": {
+        "/v3/operations/{id}/events": {
           get: {
             summary: "Stream resumable output and final status",
             responses: {
@@ -433,7 +445,7 @@ export namespace ExecutionHost {
             },
           },
         },
-        "/v1/operations/{id}/duplex": {
+        "/v3/operations/{id}/duplex": {
           get: {
             summary: "Attach binary output and input with PTY controls",
             responses: { "101": { description: "WebSocket upgrade" } },

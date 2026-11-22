@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises"
+import { readFile, stat } from "node:fs/promises"
 import path from "node:path"
 import type { ResourceHost } from "@ericsanchezok/synergy-harness/resources/host"
 import type { ResourceSnapshot } from "@ericsanchezok/synergy-harness/resources/schema"
@@ -7,17 +7,21 @@ import { CgroupMemory } from "./cgroup"
 const unescapeMount = (value: string) =>
   value.replace(/\\([0-7]{3})/g, (_match, octal: string) => String.fromCharCode(parseInt(octal, 8)))
 
-export function cgroupDirectories(membership: string, mounts: string): string[] {
+export function cgroupDirectories(membership: string, mounts: string, version: 1 | 2 = 2): string[] {
   const member = membership
     .split("\n")
-    .find((line) => line.startsWith("0::"))
-    ?.slice(3)
+    .map((line) => /^(\d+):([^:]*):(\/.*)$/.exec(line))
+    .find(
+      (match) => match && (version === 1 ? match[2]!.split(",").includes("memory") : match[1] === "0" && !match[2]),
+    )?.[3]
   if (member === undefined) return []
   const candidates = mounts
     .split("\n")
     .flatMap((line) => {
       const [left, right] = line.split(" - ")
-      if (!left || right?.split(" ")[0] !== "cgroup2") return []
+      const [type, , options] = (right ?? "").split(" ")
+      if (!left || (version === 1 ? type !== "cgroup" || !options?.split(",").includes("memory") : type !== "cgroup2"))
+        return []
       const fields = left.split(" ")
       const root = unescapeMount(fields[3] ?? "")
       const mount = unescapeMount(fields[4] ?? "")
@@ -33,11 +37,11 @@ export function cgroupDirectories(membership: string, mounts: string): string[] 
       if (relative === undefined) return []
       const directory = path.posix.resolve(mount, `.${relative.startsWith("/") ? relative : `/${relative}`}`)
       if (directory !== mount && !directory.startsWith(`${mount}/`)) return []
-      return [{ mount, directory }]
+      return [{ mount, directory, root }]
     })
-    .sort((a, b) => b.mount.length - a.mount.length)
+    .sort((a, b) => a.root.length - b.root.length || b.mount.length - a.mount.length)
   const selected = candidates[0]
-  if (!selected) throw new Error("Cannot resolve cgroup v2 mount")
+  if (!selected) throw new Error(`Cannot resolve cgroup v${version} memory mount`)
   const directories: string[] = []
   for (let current = selected.directory; ; current = path.posix.dirname(current)) {
     directories.push(current)
@@ -63,7 +67,7 @@ export function memoryFields(text: string) {
 function limit(text: string) {
   if (text.trim() === "max") return undefined
   const value = Number(text.trim())
-  if (!Number.isFinite(value) || value < 0 || !text.trim()) throw new Error("Invalid cgroup memory counter")
+  if (!/^\d+$/.test(text.trim()) || !Number.isFinite(value)) throw new Error("Invalid cgroup memory counter")
   return value
 }
 function psi(text: string) {
@@ -83,6 +87,38 @@ const readCounter = (file: string) =>
     if (error.code === "ENOENT") return undefined
     throw error
   })
+
+// Linux v1 reports PAGE_COUNTER_MAX rounded to a page boundary for an unlimited counter.
+// Provenance: https://docs.kernel.org/admin-guide/cgroup-v1/memory.html
+function v1Limit(raw: string) {
+  if (!/^\d+$/.test(raw.trim())) throw new Error("Invalid cgroup v1 memory counter")
+  const value = BigInt(raw.trim())
+  return [4096n, 16384n, 65536n].some((page) => value === (1n << 63n) - page) ? undefined : Number(value)
+}
+
+async function v1Domains(directories: string[]): Promise<ResourceSnapshot["domains"]> {
+  const domains: ResourceSnapshot["domains"] = []
+  let inherited = Infinity
+  for (const directory of directories) {
+    const [limitText, usageText, stats] = await Promise.all([
+      readFile(path.join(directory, "memory.limit_in_bytes"), "utf8"),
+      readFile(path.join(directory, "memory.usage_in_bytes"), "utf8"),
+      readFile(path.join(directory, "memory.stat"), "utf8"),
+    ])
+    const hard = v1Limit(limitText)
+    const usage = limit(usageText)
+    if (usage === undefined) throw new Error("Cgroup usage is unavailable")
+    if (hard !== undefined)
+      domains.push({ kind: "cgroup", capacityBytes: hard, availableBytes: Math.max(0, hard - usage) })
+    const reported = /^hierarchical_memory_limit\s+(\S+)/m.exec(stats)?.[1]
+    if (reported) inherited = Math.min(inherited, v1Limit(reported) ?? Infinity)
+  }
+  // A bind mount can hide the parent paying for sibling usage. Its limit is
+  // visible in memory.stat, but its remaining bytes cannot be inferred from the leaf.
+  if (inherited < Math.min(...domains.map((domain) => domain.capacityBytes ?? Infinity)))
+    domains.push({ kind: "cgroup", capacityBytes: inherited, availableBytes: 0 })
+  return domains
+}
 
 export function linuxResources(proc = "/proc"): ResourceHost.Source {
   let previous: { at: number; counters: Map<string, { stall: number; high: number; oom: number }> } | undefined
@@ -105,8 +141,10 @@ export function linuxResources(proc = "/proc"): ResourceHost.Source {
       let quality: ResourceSnapshot["quality"] = hostPressure ? "complete" : "partial"
       const counters = new Map([["host", { stall: psi(hostPressure ?? "").full || 0, high: 0, oom: 0 }]])
       let throttled = false
-      const directories = cgroupDirectories(membership, mounts)
-      if (!directories.length && membership.trim()) throw new Error("Cgroup memory accounting requires v2")
+      const legacy = cgroupDirectories(membership, mounts, 1)
+      const directories = legacy.length ? [] : cgroupDirectories(membership, mounts)
+      if (!directories.length) quality = "partial"
+      if (legacy.length) domains.push(...(await v1Domains(legacy)))
       cgroup = directories[0] ? CgroupMemory.readCgroupV2(directories[0]) : undefined
       for (const directory of directories) {
         const [currentText, maxText, highText, eventsText, pressureText, statText] = await Promise.all([
@@ -117,13 +155,13 @@ export function linuxResources(proc = "/proc"): ResourceHost.Source {
           optional(path.join(directory, "memory.pressure")),
           optional(path.join(directory, "memory.stat")),
         ])
-        // A root without a memory controller has neither counter nor limit; partial reads are unsafe.
         if (currentText === undefined && maxText === undefined) {
-          if (directory !== directories.at(-1)) throw new Error("Cgroup hard limit is unreadable")
+          if (!(await stat(directory)).isDirectory()) throw new Error("Cgroup membership is unavailable")
           quality = "partial"
           continue
         }
-        if (currentText === undefined || maxText === undefined) throw new Error("Cgroup hard limit is unreadable")
+        if (currentText === undefined || maxText === undefined)
+          throw new Error("Cgroup hard limit or usage is unreadable")
         const current = limit(currentText)
         const max = limit(maxText)
         if (current === undefined) throw new Error("Cgroup usage is unavailable")
@@ -155,6 +193,11 @@ export function linuxResources(proc = "/proc"): ResourceHost.Source {
         })
         if (!eventsText || !pressureText) quality = "partial"
       }
+      // cgroup.type exists only on non-root cgroups. At a delegated mount an
+      // unbounded visible chain cannot establish the remaining bytes of a hidden parent.
+      const mount = directories.at(-1)
+      if (mount && domains.length === 1 && (await readCounter(path.join(mount, "cgroup.type"))) !== undefined)
+        throw new Error("Container memory headroom is unavailable")
       const at = Date.now()
       let stallFraction = 0
       let highEvent = false

@@ -20,22 +20,22 @@ export class RemoteExecutor implements Executor {
 
   async start(request: ExecutionProtocol.Request) {
     await this.health()
-    return ExecutionProtocol.Status.parse(await this.request("POST", "/v1/operations", request))
+    return ExecutionProtocol.Status.parse(await this.request("POST", "/v3/operations", request))
   }
   async describe() {
-    return ExecutionProtocol.Description.parse(await this.request("GET", "/v1/runtime"))
+    return ExecutionProtocol.Description.parse(await this.request("GET", "/v3/runtime"))
   }
   async prepareInputs(input: ExecutionProtocol.Inputs) {
-    return ExecutionProtocol.PreparedInputs.parse(await this.request("POST", "/v1/inputs", input))
+    return ExecutionProtocol.PreparedInputs.parse(await this.request("POST", "/v3/inputs", input))
   }
   async discardInputs(id: string) {
-    await this.request("DELETE", `/v1/inputs/${encodeURIComponent(ExecutionProtocol.ID.parse(id))}`)
+    await this.required("DELETE", `/v3/inputs/${encodeURIComponent(ExecutionProtocol.ID.parse(id))}`)
   }
   async prepareSandbox(input: ExecutionProtocol.SandboxInput) {
-    return ExecutionProtocol.Sandbox.parse(await this.request("POST", "/v1/sandbox", input))
+    return ExecutionProtocol.Sandbox.parse(await this.request("POST", "/v3/sandbox", input))
   }
   async releaseSandbox(id: string) {
-    await this.request("DELETE", `/v1/sandbox/${encodeURIComponent(id)}`)
+    await this.required("DELETE", `/v3/sandbox/${encodeURIComponent(id)}`)
   }
   async status(id: string) {
     const result = await this.request("GET", this.route(id))
@@ -71,6 +71,6 @@ export class RemoteExecutor implements Executor {
   }
 
   private route(id: string) {
-    return `/v1/operations/${encodeURIComponent(ExecutionProtocol.ID.parse(id))}`
+    return `/v3/operations/${encodeURIComponent(ExecutionProtocol.ID.parse(id))}`
   }
 }

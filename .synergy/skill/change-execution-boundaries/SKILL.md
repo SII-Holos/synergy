@@ -58,6 +58,8 @@ Update the architecture document when the pipeline, profile semantics, capabilit
 
 ## Handoff
 
+For Executor storage reclamation, verify saved output replay, duplicate dispatch, repeated release, restart after partial cleanup and independently retained shared blobs. Uploads need an explicit mount/checkpoint owner before publication; execution before-images remain retained until the execution is saved. Do not collect by age or delete an entire shared blob directory while another owner can still reference it. Test native providers as well as Docker tmpfs allocations.
+
 For embedded tool admission, register ToolPolicySource before composition seals. Test catalog narrowing for visible and deferred tools, denial before resource acquisition, exact message/call identity, cancellation and independent Runtime instances. Keep host authority independent of permission and sandbox decisions; do not export the resolver, processor or scheduler to hosts.
 
 For host-owned domain consent, opt in through requestPermission for exact owned tool identities. Return false for requests that retain generic Harness permission handling. Test detached request data, preserved origin, refusal, cancellation before and after the host callback, and unchanged capability/containment admission. Keep business confirmation separate from physical execution permission; use the public permission service for prompts and replies.

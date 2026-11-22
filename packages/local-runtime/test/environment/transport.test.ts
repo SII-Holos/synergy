@@ -3,6 +3,7 @@ import path from "node:path"
 import fs from "node:fs/promises"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { ExecutionProtocol } from "@ericsanchezok/synergy-harness/environment/executor"
+import { WorkspaceTree } from "@ericsanchezok/synergy-harness/workspace/tree"
 import { NativeExecutor } from "../../src/environment/native-executor"
 import { ExecutionHost } from "../../src/environment/host"
 import { RemoteExecutor } from "../../src/environment/remote-executor"
@@ -62,14 +63,16 @@ test.skipIf(process.platform === "win32")(
   },
 )
 
-test("a legacy Execution Host is rejected before command dispatch", async () => {
+test("a protocol 2 host receives no command, upload or acknowledgement effects from a protocol 3 client", async () => {
   const target = { environmentID: "environment", allocationID: "allocation", generation: 1 }
   let dispatched = 0
   const host = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
     fetch(request) {
-      if (new URL(request.url).pathname === "/v1/status") return Response.json({ version: 1, target })
+      const route = new URL(request.url).pathname
+      if (route === "/v1/status") return Response.json({ version: 2, target })
+      if (!route.startsWith("/v1/")) return new Response(null, { status: 404 })
       dispatched++
       return new Response("Unexpected dispatch", { status: 400 })
     },
@@ -83,6 +86,12 @@ test("a legacy Execution Host is rejected before command dispatch", async () => 
     const command = { command: "unused", args: [], cwd: "/workspace", env: {}, useRoots: [] }
     await expect(
       remote.start({ id: "legacy", target, command, digest: ExecutionProtocol.digest(command) }),
+    ).rejects.toThrow()
+    await expect(remote.release("legacy")).rejects.toThrow()
+    await expect(remote.files.acknowledge("legacy")).rejects.toThrow()
+    const bytes = new TextEncoder().encode("mixed protocol")
+    await expect(
+      remote.files.putBlob(WorkspaceTree.hash(bytes), bytes, { kind: "mount", id: "legacy" }),
     ).rejects.toThrow()
     expect(dispatched).toBe(0)
   } finally {
@@ -155,10 +164,18 @@ test("authenticated execution transport uses the native handler and replays outp
     status = await remote.status(request.id)
   }
   expect(status?.state).toBe("exited")
+  const oldAck = await fetch(new URL(`/v1/operations/${request.id}/release`, host.url), {
+    method: "POST",
+    headers: {
+      authorization: "Bearer test-token-with-at-least-thirty-two-bytes",
+      "x-synergy-target": JSON.stringify(target),
+    },
+  })
+  expect(oldAck.status).toBe(409)
   const chunks = await remote.output(request.id, 0, 128)
   expect(chunks.map((chunk) => Buffer.from(chunk.data, "base64").toString()).sort()).toEqual(["error", "remote"])
   expect(await remote.output(request.id, chunks[0].cursor, 128)).toEqual(chunks.slice(1))
-  const events = await fetch(new URL(`/v1/operations/${request.id}/events?after=${chunks[0].cursor}`, host.url), {
+  const events = await fetch(new URL(`/v3/operations/${request.id}/events?after=${chunks[0].cursor}`, host.url), {
     headers: {
       authorization: "Bearer test-token-with-at-least-thirty-two-bytes",
       "x-synergy-target": JSON.stringify(target),
@@ -218,7 +235,7 @@ test("duplex transport preserves binary input and output, and disconnect does no
   }
   await remote.start({ id: "binary", target, command, digest: ExecutionProtocol.digest(command) })
   for (let i = 0; (await remote.status("binary"))?.state !== "running" && i < 300; i++) await Bun.sleep(10)
-  const url = new URL("/v1/operations/binary/duplex", host.url)
+  const url = new URL("/v3/operations/binary/duplex", host.url)
   url.protocol = "ws:"
   const headers = { authorization: `Bearer ${token}`, "x-synergy-target": JSON.stringify(target) }
   const disconnected = new Socket(url, { headers })

@@ -374,14 +374,18 @@ export namespace FileView {
   ) {
     const info = await selected()
     const files = info.activeMount ? await WorkspaceMounts.connect(info) : undefined
+    const id = operationID ?? EnvironmentResources.nextOperationID()
     const store: BlobStore = files
-      ? { get: (hash, limit) => files.getBlob(hash, limit), put: (hash, bytes) => files.putBlob(hash, bytes) }
+      ? {
+          get: (hash, limit) => files.getBlob(hash, limit),
+          put: (hash, bytes) => files.putBlob(hash, bytes, { kind: "checkpoint", id }),
+        }
       : (await WorkspaceContent.resolve(selection(info))).store
     const tree = await capture(store)
     const bytes = WorkspaceTree.encode(tree)
     const manifest = WorkspaceTree.hash(bytes)
     await store.put(manifest, bytes)
-    await mutate({ kind: "import", to: relative(filename), manifest }, signal, true, operationID)
+    await mutate({ kind: "import", to: relative(filename), manifest }, signal, true, id)
   }
 
   export async function mutate(

@@ -8,7 +8,7 @@ export class RemoteWorkspaceFiles implements WorkspaceFileHost {
   private async request(request: WorkspaceProtocol.Request, signal?: AbortSignal) {
     const result = await this.connection.json(
       "POST",
-      "/v1/workspaces",
+      "/v3/workspaces",
       WorkspaceProtocol.Request.parse(request),
       signal,
     )
@@ -61,16 +61,18 @@ export class RemoteWorkspaceFiles implements WorkspaceFileHost {
   async mutate(input: WorkspaceProtocol.ChangeInput) {
     return WorkspaceProtocol.Checkpoint.parse(await this.request({ action: "mutate", input }))
   }
-  async putBlob(hash: string, bytes: Uint8Array) {
+  async putBlob(hash: string, bytes: Uint8Array, owner: WorkspaceProtocol.BlobOwner) {
     WorkspaceTree.verify(hash, bytes, WorkspaceTree.manifestBytes)
-    if (!(await this.connection.send("PUT", `/v1/workspace-objects/${hash}`, bytes, true)))
+    const retention = WorkspaceProtocol.BlobOwner.parse(owner)
+    const query = new URLSearchParams(retention)
+    if (!(await this.connection.send("PUT", `/v3/workspace-objects/${hash}?${query}`, bytes, true)))
       throw new Error("Workspace blob transport is unavailable")
   }
   async getBlob(hash: string, maximumBytes: number) {
     WorkspaceTree.Hash.parse(hash)
     if (!Number.isSafeInteger(maximumBytes) || maximumBytes < 0 || maximumBytes > WorkspaceTree.manifestBytes)
       throw new Error("Invalid Workspace object size")
-    const response = await this.connection.send("GET", `/v1/workspace-objects/${hash}?maximumBytes=${maximumBytes}`)
+    const response = await this.connection.send("GET", `/v3/workspace-objects/${hash}?maximumBytes=${maximumBytes}`)
     if (!response?.body) throw new Error("Workspace blob is unavailable")
     const reader = response.body.getReader()
     const chunks: Uint8Array[] = []
