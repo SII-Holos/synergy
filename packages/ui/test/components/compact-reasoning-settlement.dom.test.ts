@@ -86,7 +86,7 @@ describe("process settlement", () => {
     const row = document.querySelector('[data-component="process-reasoning"]')
     expect(process().getAttribute("aria-expanded")).toBe("true")
     expect(reasoning().getAttribute("aria-expanded")).toBe("true")
-    expect(reasoning().getAttribute("aria-label")).toBe("Hide reasoning")
+    expect(reasoning().getAttribute("aria-label")).toBe("Hide reasoning. Thinking, 8 generated words")
     expect(row?.closest('[data-slot="turn-process-meta"]')).toBeNull()
     reasoning().click()
     await waitForUpdate()
@@ -102,7 +102,7 @@ describe("process settlement", () => {
     await waitForUpdate()
     expect(document.querySelector('[data-component="process-reasoning"]')).toBe(row)
     expect(reasoning().getAttribute("aria-expanded")).toBe("true")
-    expect(reasoning().getAttribute("aria-label")).toBe("Hide reasoning")
+    expect(reasoning().getAttribute("aria-label")).toBe("Hide reasoning. Reasoning, 8 generated words")
     const controls = reasoning().getAttribute("aria-controls")
     expect(
       document.getElementById(controls!)?.contains(document.querySelector('[data-slot="process-reasoning-detail"]')),

@@ -109,6 +109,12 @@ i18n.load("zh-CN", {
   "session.process.hideReasoning": "收起推理",
   "session.reasoning.segment": ["第 ", ["number"], " 段推理"],
   "session.reasoning.segments": [["count"], " 段推理"],
+  "session.reasoning.title": "推理",
+  "session.reasoning.words": "{count, plural, one {个词} other {个词}}",
+  "session.process.viewReasoningStatus":
+    "查看推理。{state, select, thinking {正在思考} other {推理}}，{count, plural, one {已生成 1 个词} other {已生成 # 个词}}",
+  "session.process.hideReasoningStatus":
+    "收起推理。{state, select, thinking {正在思考} other {推理}}，{count, plural, one {已生成 1 个词} other {已生成 # 个词}}",
 })
 render(
   () => (

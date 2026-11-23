@@ -59,7 +59,7 @@ beforeAll(async () => {
       render(
         () => (
           <I18nProvider i18n={i18n}>
-            <CompactReasoningLine fullText={text()} running={running()} />
+            <CompactReasoningLine fullText={text()} running={running()} identity="compact-reasoning-test" />
           </I18nProvider>
         ),
         root,
@@ -162,7 +162,7 @@ describe("CompactReasoningLine DOM behavior", () => {
     const trigger = document.querySelector('[data-slot="compact-reasoning-trigger"]') as HTMLButtonElement
     expect(trigger).not.toBeNull()
     expect(document.querySelector('[data-slot="compact-reasoning-leading"] [data-component="spinner"]')).toBeNull()
-    expect(document.querySelector('[data-slot="compact-reasoning-label"]')?.textContent).toBe("Thinking")
+    expect(document.querySelector('[data-slot="compact-reasoning-label"]')?.textContent).toBe("Reasoning")
     expect(document.querySelector('[data-slot="compact-reasoning-summary"]')?.textContent).toBe("Planning")
     expect(document.querySelector('[data-slot="compact-reasoning-detail"]')).toBeNull()
     expect(trigger.getAttribute("aria-expanded")).toBe("false")
@@ -184,5 +184,104 @@ describe("CompactReasoningLine DOM behavior", () => {
     trigger.click()
     await wait(20)
     expect(document.querySelector('[data-slot="compact-reasoning-detail"]')).toBeNull()
+  })
+})
+
+const compactProgress = () => document.querySelector('[data-slot="compact-reasoning-progress"]')
+const compactCount = () =>
+  document.querySelector('[data-slot="compact-reasoning-progress"] [data-slot="activity-count-new"]')
+const compactUnit = () => document.querySelector('[data-slot="compact-reasoning-progress-unit"]')
+const compactLabel = () => document.querySelector('[data-slot="compact-reasoning-label"]')
+
+describe("CompactReasoningLine progress", () => {
+  test("shows the cumulative generated-word count beside the running label", async () => {
+    harness.setText("Planning")
+    harness.setRunning(true)
+    await wait(20)
+    expect(compactLabel()?.textContent).toBe("Thinking")
+    expect(compactCount()?.textContent).toBe("1")
+    expect(compactUnit()?.textContent).toBe("generated word")
+    expect(document.querySelector('[data-slot="compact-reasoning-text"]')?.textContent).toBe("Planning")
+    expect(document.querySelector('[data-slot="compact-reasoning-trigger"]')).toBeNull()
+  })
+
+  test("increases the count as visible reasoning text grows", async () => {
+    harness.setText("Planning")
+    harness.setRunning(true)
+    await wait(20)
+    const number = document.querySelector(
+      '[data-slot="compact-reasoning-progress"] [data-component="animated-activity-count"]',
+    )
+    expect(compactCount()?.textContent).toBe("1")
+
+    harness.setText("Planning the reply")
+    await wait(20)
+    expect(compactCount()?.textContent).toBe("3")
+    expect(compactUnit()?.textContent).toBe("generated words")
+    expect(
+      document.querySelector('[data-slot="compact-reasoning-progress"] [data-component="animated-activity-count"]'),
+    ).toBe(number)
+    expect(
+      document.querySelectorAll('[data-slot="compact-reasoning-progress"] [data-slot="activity-count-new"]'),
+    ).toHaveLength(1)
+  })
+
+  test("settles with the Reasoning label and retains the final count", async () => {
+    harness.setText("## Planning\nFirst reasoning line.\n- Second reasoning line.")
+    harness.setRunning(true)
+    await wait(20)
+    expect(compactLabel()?.textContent).toBe("Thinking")
+    expect(compactCount()?.textContent).toBe("7")
+
+    harness.setRunning(false)
+    await wait(20)
+    expect(compactLabel()?.textContent).toBe("Reasoning")
+    expect(compactCount()?.textContent).toBe("7")
+    expect(compactUnit()?.textContent).toBe("generated words")
+    expect(document.querySelector('[data-slot="compact-reasoning-summary"]')?.textContent).toBe("Planning")
+  })
+
+  test("keeps the count and verbatim detail text while the settled row is expanded", async () => {
+    const trigger = document.querySelector('[data-slot="compact-reasoning-trigger"]') as HTMLButtonElement
+    expect(trigger).not.toBeNull()
+    expect(trigger.getAttribute("aria-expanded")).toBe("false")
+    expect(compactCount()?.textContent).toBe("7")
+
+    trigger.click()
+    await wait(20)
+    expect(trigger.getAttribute("aria-expanded")).toBe("true")
+    expect(compactCount()?.textContent).toBe("7")
+    expect(document.querySelector('[data-slot="compact-reasoning-detail-text"]')?.textContent).toBe(
+      "## Planning\nFirst reasoning line.\n- Second reasoning line.",
+    )
+
+    trigger.click()
+    await wait(20)
+    expect(trigger.getAttribute("aria-expanded")).toBe("false")
+    expect(compactCount()?.textContent).toBe("7")
+  })
+
+  test("shows no count for punctuation-only reasoning", async () => {
+    harness.setText("... --- ***")
+    harness.setRunning(true)
+    await wait(20)
+    expect(compactProgress()).toBeNull()
+    expect(compactLabel()?.textContent).toBe("Thinking")
+
+    harness.setRunning(false)
+    await wait(20)
+    expect(compactProgress()).toBeNull()
+    expect(compactLabel()?.textContent).toBe("Reasoning")
+  })
+
+  test("the running row rides alongside the scroller without pausing follow", async () => {
+    harness.setText("Continuing the reasoning well past the visible edge of the row")
+    harness.setRunning(true)
+    await wait(20)
+    setScrollerGeometry(500, 100)
+    harness.setText("Continuing the reasoning well past the visible edge of the row twice")
+    await wait(20)
+    expect(scroller().scrollLeft).toBe(400)
+    expect(compactCount()?.textContent).toBe("12")
   })
 })

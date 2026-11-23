@@ -26,6 +26,27 @@
     color: var(--text-base);
   }
 
+  [data-slot="compact-reasoning-progress"] {
+    display: inline-flex;
+    align-items: baseline;
+    flex: 0 1 auto;
+    min-width: 0;
+    gap: 4px;
+    color: var(--text-subtle);
+    white-space: nowrap;
+  }
+
+  [data-slot="compact-reasoning-progress"] > [data-component="animated-activity-count"] {
+    flex: 0 0 auto;
+  }
+
+  [data-slot="compact-reasoning-progress-unit"] {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
   [data-slot="compact-reasoning-scroller"] {
     flex: 1 1 auto;
     min-width: 0;
