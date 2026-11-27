@@ -316,6 +316,11 @@ export const storageRecordsIndexes = (backend: StorageBackend) => [
     ? "CREATE INDEX IF NOT EXISTS storage_records_message ON storage_records(namespace, message_id, kind, order_key, key_id) WHERE message_id <> ''"
     : "CREATE INDEX IF NOT EXISTS storage_records_message ON storage_records(namespace, message_id, kind, order_key, key_id)",
   "CREATE INDEX IF NOT EXISTS storage_records_kind ON storage_records(namespace, kind, order_key, key_id)",
+  ...(backend === "postgres"
+    ? [
+        "CREATE INDEX IF NOT EXISTS storage_records_live_kind ON storage_records(namespace, kind, order_key, key_id) WHERE body IS NOT NULL",
+      ]
+    : []),
   STORAGE_RECORDS_OWNER_INDEX,
   ...(backend === "sqlite" ? evidenceOwnerTriggers : []),
 ]
