@@ -26,6 +26,7 @@ export const POSTGRES_TEST_FILES = [
   "test/storage/packed-import.test.ts",
   "test/session/message-read-errors.test.ts",
   "test/storage/postgres-contract.test.ts",
+  "test/storage/postgres-live-kind.test.ts",
   "test/storage/postgres-node-cleanup.test.ts",
   "test/storage/postgres-schema.test.ts",
   "test/storage/postgres-ownership.test.ts",
